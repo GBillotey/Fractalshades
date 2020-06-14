@@ -9,12 +9,14 @@ This program is written in python (python 2.7, I should have switched to python3
 
 ## Getting started
 
-Have a look first at the small gallery included (see the directory *Gallery*) ; the code  used to these images is provided.
+Have a look first at the small gallery included (see the directory *Gallery*) ; the code used to generate these images is provided.
 To generate one of these example simply launch one of :
 
    - run_mandelbrot.py
    - run_power_tower.py
    - run_nova.py
+
+![Screenshot](cover_pic.jpeg)
 
 ## Program architecture
 
@@ -27,15 +29,15 @@ fractal.py  is the main low-level part, defining 4 classes
 
 The base class Fractal is subclassed in the following 3 files : 
 
-    -  Classical_mandelbrot for the famous iteration z(n+1) <- zn**2 +c  (classical_mandelbrot.py)
-    -  Power_tower for z(n+1) <- c**zn (Power_tower.py)
-    -  Nova.py for f(z) = z**p - 1 and z(n+1) <- zn - R * f / dfdz + c (Nova.py), a fractal  familly derived from Newton fractals.
+   - Classical_mandelbrot for the famous iteration `z(n+1) <- zn**2 +c`  (classical_mandelbrot.py)
+   - Power_tower for `z(n+1) <- c**zn` (Power_tower.py)
+   - Nova.py for `f(z) = z**p - 1 and z(n+1) <- zn - R * f / dfdz + c` (Nova.py), a fractal  familly derived from Newton fractals.
 
 The 3 example scripts already discussed rely on those 3 classes.
 
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
-I am not a software engineer so I guess a lot of 
+I am not a computer engineer so I guess a lot of basic "software" things could be improved.
 
 ## License
 BSD-3

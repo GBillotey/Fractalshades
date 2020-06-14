@@ -26,8 +26,7 @@ class Power_tower(Fractal):
 
         def iterate(Z, U, c, n_iter):
             """
-            dz(n+1)dz   <- 2. * dzndz * zn
-            z(n+1)      <- zn**zn +
+            z(n+1)  <- c**zn 
             """
             Z[3, :] = Z[0, :]  # back-up needed as escape is based on overflow.
 
@@ -42,7 +41,7 @@ class Power_tower(Fractal):
             Shall modify in place stop_reason, if != -1 loop will stop for this
             pixel.
              0 -> max_iter reached
-             1 -> divergence reached by np.abs(zn) i.e. overflow
+             1 -> divergence reached by zn i.e. overflow
              2 -> dzn stationnary
             """
             if n_iter > max_iter:
