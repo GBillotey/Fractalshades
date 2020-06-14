@@ -11,6 +11,7 @@ This program is written in python (python 2.7, I should have switched to python3
 
 Have a look first at the small gallery included (see the directory *Gallery*) ; the code  used to these images is provided.
 To generate one of these example simply launch one of :
+
    - run_mandelbrot.py
    - run_power_tower.py
    - run_nova.py
@@ -18,12 +19,14 @@ To generate one of these example simply launch one of :
 ## Program architecture
 
 fractal.py  is the main low-level part, defining 4 classes
+
   - Color_tools for color operation in CIE color space (shading, color gradient, ...)
   - Fractal_colormap maps floats to colors
   - Fractal_plotter plots a fractal object
   - Fractal abstract base class encapsulating a fractal object, to be subclassed
 
 The base class Fractal is subclassed in the following 3 files : 
+
     -  Classical_mandelbrot for the famous iteration z(n+1) <- zn**2 +c  (classical_mandelbrot.py)
     -  Power_tower for z(n+1) <- c**zn (Power_tower.py)
     -  Nova.py for f(z) = z**p - 1 and z(n+1) <- zn - R * f / dfdz + c (Nova.py), a fractal  familly derived from Newton fractals.
