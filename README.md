@@ -41,3 +41,6 @@ I am not a computer engineer so I guess a lot of basic "software" things could b
 
 ## License
 BSD-3
+
+## Gallery
+![Screenshot](gallery/billard.jpg)
