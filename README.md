@@ -43,4 +43,15 @@ I am not a computer engineer so I guess a lot of basic "software" things could b
 BSD-3
 
 ## Gallery
+
+### From "classical" Mandelbrot set
 ![Screenshot](gallery/billard.jpg)
+![Screenshot](gallery/medaillon.jpg)
+![Screenshot](gallery/Emerauld_shield.jpg.jpg)
+
+### From "Nova 6" Mandelbrot set
+![Screenshot](gallery/Nova6_whole_set.jpg)
+![Screenshot](gallery/Nova6_zoom.jpg)
+
+### From "Power Tower" Mandelbrot set
+![Screenshot](gallery/Power_tower_Ankh.jpg)
