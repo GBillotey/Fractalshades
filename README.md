@@ -9,14 +9,12 @@ This program is written in python (python 2.7, I should have switched to python3
 
 ## Getting started
 
-Have a look first at the small gallery included (see the directory *Gallery*) ; the code used to generate these images is provided.
+Have a look first at the small gallery included (see the directory *Gallery* or the section below) ; the code used to generate these images is provided.
 To generate one of these example simply launch one of :
 
    - run_mandelbrot.py
    - run_power_tower.py
    - run_nova.py
-
-![Screenshot](cover_pic.jpeg)
 
 ## Program architecture
 
@@ -47,7 +45,7 @@ BSD-3
 ### From "classical" Mandelbrot set
 ![Screenshot](gallery/billard.jpg)
 ![Screenshot](gallery/medaillon.jpg)
-![Screenshot](gallery/Emerauld_shield.jpg.jpg)
+![Screenshot](gallery/Emerauld_shield.jpg)
 
 ### From "Nova 6" Mandelbrot set
 ![Screenshot](gallery/Nova6_whole_set.jpg)
