@@ -15,6 +15,8 @@ To generate one of these example simply launch one of :
    - run_mandelbrot.py
    - run_power_tower.py
    - run_nova.py
+   
+This files are intended as working examples and you should be able to easily adapt the zoom parameters or color scheme.
 
 ## Program architecture
 
