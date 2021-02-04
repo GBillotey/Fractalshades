@@ -7,10 +7,16 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 import os, errno, sys
+import fnmatch
 import functools
 import copy
 import PIL
+#from PIL.PngImagePlugin import PngInfo
 
+import multiprocessing
+import tempfile
+
+enable_multiprocessing = True
 
 def mkdir_p(path):
     """ Creates directory ; if exists does nothing """
@@ -215,9 +221,9 @@ class Color_tools():
             L = Lab[:, 0, np.newaxis]
             a = Lab[:, 1, np.newaxis]
             b = Lab[:, 2, np.newaxis]
-            np.putmask(L, shade > 0, L  + shade * (100. - L))  # lighten
-            np.putmask(L, shade < 0, L * (1. +  shade ))       # darken
-            np.putmask(a, shade > 0, a  - shade**2 * a)        # lighten
+            np.putmask(L, shade > 0, L  + shade * (100. - L))     # lighten
+            np.putmask(L, shade < 0, L * (1. +  shade ))          # darken
+            np.putmask(a, shade > 0, a  - shade**2 * a)           # lighten
             np.putmask(a, shade < 0, a * (1. -  shade**2 ))       # darken
             np.putmask(b, shade > 0, b  - shade**2 * b)           # lighten
             np.putmask(b, shade < 0, b * (1. -  shade**2 ))       # darken
@@ -237,7 +243,8 @@ class Color_tools():
         return blend
 
     @staticmethod
-    def shade_layer(normal, theta_LS, phi_LS, shininess=0., ratio_specular=0.):
+    def shade_layer(normal, theta_LS, phi_LS, shininess=0., ratio_specular=0.,
+                    **kwargs):
         """
         *normal* flat array of normal vect
         shade_dict:
@@ -246,11 +253,42 @@ class Color_tools():
             "shininess" material coefficient for specular
             "ratio_specular" ratio of specular to lambert
         Returns 
-        *shade* array of light intensity, n&B image (value btwn 0 and 1)
+        *shade* array of light intensity, greyscale image (value btwn 0 and 1)
         https://en.wikipedia.org/wiki/Blinn%E2%80%93Phong_reflection_model
         """
-        theta_LS = theta_LS * np.pi / 180.
+        if "LS_coords" in kwargs.keys():
+            # LS is localized somewhere in the image computing theta_LS
+            # as a vector
+            LSx, LSy = kwargs["LS_coords"]
+            (ix, ixx, iy, iyy) = kwargs["chunk_slice"]
+            chunk_mask = kwargs["chunk_mask"]
+            nx = kwargs["nx"]
+            ny = kwargs["ny"]
+            nx_grid = (np.arange(ix, ixx, dtype=np.float32) / nx) - 0.5
+            ny_grid = (np.arange(iy, iyy, dtype=np.float32) / ny) - 0.5
+            ny_vec, nx_vec  = np.meshgrid(ny_grid, nx_grid)
+            theta_LS = - np.ravel(np.arctan2(LSy - ny_vec, nx_vec - LSx)) + np.pi
+            if chunk_mask is not None:
+                theta_LS = theta_LS[chunk_mask]
+        else:
+            # Default case LS at infinity incoming angle provided
+            theta_LS = theta_LS * np.pi / 180.
         phi_LS = phi_LS * np.pi / 180.
+        
+        if "exp_map" in kwargs.keys():
+            # Normal angle correction in case of exponential map
+            if kwargs["exp_map"]:
+                (ix, ixx, iy, iyy) = kwargs["chunk_slice"]
+                chunk_mask = kwargs["chunk_mask"]
+                nx = kwargs["nx"]
+                ny = kwargs["ny"]
+                nx_grid = (np.arange(ix, ixx, dtype=np.float32) / nx) - 0.5
+                ny_grid = (np.arange(iy, iyy, dtype=np.float32) / ny) - 0.5
+                ny_vec, nx_vec  = np.meshgrid(ny_grid, nx_grid)
+                expmap_angle = np.ravel(np.exp(-1j * (ny_vec) * np.pi * 2.))
+                if chunk_mask is not None:
+                    expmap_angle = expmap_angle[chunk_mask]
+                normal = normal * expmap_angle
 
         k_ambient = - 1. / (2. * ratio_specular + 1.)
         k_lambert = - 2. * k_ambient
@@ -265,6 +303,11 @@ class Color_tools():
         nx = normal.real
         ny = normal.imag
         nz = np.sqrt(1. - nx**2 - ny**2) 
+        if "inverse_n" in kwargs.keys():
+            if kwargs["inverse_n"]:
+                nx = -nx
+                ny = -ny
+                
         lambert = LSx * nx + LSy * ny + LSz * nz
         np.putmask(lambert, lambert < 0., 0.)
 
@@ -282,15 +325,220 @@ class Color_tools():
         return  k_ambient + k_lambert * lambert + k_spec * specular
 
 
+def process_init(job, redirect_path):
+    """
+    Save *job* as a global for the child-process ; redirects stdout and stderr.
+    -> 'On Unix a child process can make use of a shared resource created in a
+    parent process using a global resource. However, it is better to pass the
+    object as an argument to the constructor for the child process.'
+    """
+    global process_job
+    process_job = job
+    mkdir_p(redirect_path)
+    out_file = str(os.getpid())
+    sys.stdout = open(os.path.join(redirect_path, out_file + ".out"), "a")
+    sys.stderr = open(os.path.join(redirect_path, out_file + ".err"), "a")
+
+def job_proxy(key):
+    global process_job
+    return process_job(key)
+
+class Multiprocess_filler():
+    def __init__(self, iterable_attr, res_attr=None, redirect_path_attr=None,
+                 iter_kwargs="key", veto_multiprocess=False):
+        """
+        Decorator class for an instance-method *method*
+
+        *iterable_attr* : string, getattr(instance, iterable_attr) is an
+            iterable.
+        *res_attr* : string or None, if not None (instance, res_attr) is a
+            dict-like.
+        *redirect_path_attr* : string or None. If veto_multiprocess is False,
+            getattr(instance, redirect_path_attr) is the directory where
+            processes redirects sys.stdout and sys.stderr.
+        veto_multiprocess : if True, defaults to normal iteration without
+            multiprocessing
+
+        Usage :
+        @Multiprocess_filler(iterable_attr, res_attr, redirect_pathattr,
+                             iter_kwargs)
+        def method(self, *args, iter_kwargs=None, **otherkwargs):
+            (... CPU-intensive calculations ...)
+            return val
+
+        - iter_kwargs will be filled with successive values yield by *iterable*
+            and successive outputs calculated by multiprocessing.cpu_count()
+            child-processes,
+        - these outputs will be pushed in place to res in parent process:
+            res[key] = val
+        - the child-processes stdout and stderr are redirected to os.getpid()
+            files in subdir *redirect_path* (extensions .out, in)
+        """
+        self.iterable = iterable_attr
+        self.res = res_attr
+        self.redirect_path_attr = redirect_path_attr
+        self.iter_kwargs = iter_kwargs
+        self.veto_multiprocess = veto_multiprocess
+
+    def __call__(self, method):
+        @functools.wraps(method)
+        def wrapper(instance, *args, **kwargs):
+            iterable = getattr(instance, self.iterable)
+            res = None
+            if self.res is not None:
+                res = getattr(instance, self.res)
+            def job(key):
+                kwargs[self.iter_kwargs] = key
+                return method(instance, *args, **kwargs)
+
+            if enable_multiprocessing and not(self.veto_multiprocess):
+                print("Launch Multiprocess_filler of ", method.__name__)
+                print("cpu count:", multiprocessing.cpu_count())
+                redirect_path = getattr(instance, self.redirect_path_attr)
+                with multiprocessing.Pool(initializer=process_init,
+                        initargs=(job, redirect_path)) as pool:
+                    worker_res = {key: pool.apply_async(job_proxy, (key,))
+                                  for key in iterable()}
+                    for key, val in worker_res.items():
+                        if res is not None:
+                            res[key] = val.get()
+                        else:
+                            val.get()
+                    pool.close()
+                    pool.join()
+            else:
+                for key in iterable():
+                    if res is not None:
+                        res[key] = job(key)
+                    else:
+                        job(key)
+        return wrapper
+
+
+class Fractal_Data_array():
+    def __init__(self, fractal, file_prefix=None, postproc_keys=None,
+                 mode="r_raw"):
+        """
+        mode :
+            r+raw          direct read of stored file (from file_prefix)
+            r+postproc     postproc layer on stored file (from file_prefix)
+            rw+temp        tempfile.SpooledTemporaryFile (file_prefix ignored)   
+
+        postproc_keys:
+            mode r_raw : tuple (code, None) or (code, function)
+            mode r_postproc : as expeted by Fractal.postproc
+            mode rw_temp : ignored
+        """
+        self.fractal = fractal
+        self.file_prefix = file_prefix
+        self.postproc_keys = postproc_keys
+        self.mode = mode
+
+        self._ref = None
+        self._kind = None
+
+    @property
+    def kind(self):
+        """ lazzy evaluation of the data type on first chunk, for r_raw mode
+        """
+        if self._kind is not None:
+            return self._kind
+        else:
+            fractal = self.fractal
+            chunk_slice = next(fractal.chunk_slices())
+            (params, codes) = fractal.reload_data_chunk(
+                    chunk_slice, self.file_prefix, scan_only=True)
+            dtype, kind = fractal.type_kind_from_code(self.code, codes)
+            self._kind = kind
+            return kind
+
+    def __getitem__(self, chunk_slice):
+        """
+        Returns chunk_item dentified by key "chunk_slice"
+        Returns:
+            np array of shape (nfields, chunk, chunk)
+        """
+        fractal = self.fractal
+        mode = self.mode
+
+        if mode == "r+raw":
+            self.code, func = self.postproc_keys
+            ret = fractal.get_raw_data(self.code, self.kind, self.file_prefix,
+                chunk_slice)
+            if func is None:
+                return ret
+            else:
+                return func(ret)
+        elif mode == "r+postproc":
+            return fractal.postproc_chunck(self.postproc_keys,
+                chunk_slice, self.file_prefix)
+        elif mode == "rw+temp":
+            subarray_file = self._ref[chunk_slice]
+            _ = subarray_file.seek(0)
+            return np.load(subarray_file)
+        else:
+            raise ValueError("Unexpected read call for mode : " + 
+                             "{}".format(mode))
+
+    def __setitem__(self, chunk_slice, val):
+        """
+        Writes subarray *val* to temporary file.
+        """
+        if self.mode == "rw+temp":
+            if self._ref is None:
+                self._ref = dict()
+            self._ref[chunk_slice] = tempfile.SpooledTemporaryFile(mode='w+b')
+            to_disk = False
+            if to_disk:
+                self._ref[chunk_slice].fileno()
+            np.save(self._ref[chunk_slice], val)
+        else:
+            raise ValueError("Unexpected write call for mode: " + 
+                             "{}".format(self.mode))
+
+    def __invert__(self):
+        """ Allows use of the ~ notation """
+        if self.mode != "r+raw":
+            raise ValueError("~ operator not defined for this mode{}".format(
+                             self.mode))
+        code, func = self.postproc_keys
+        if func is None:
+            inv_func = lambda x: ~x
+        else:
+            inv_func = lambda x: ~func(x)
+        return Fractal_Data_array(self.fractal, self.file_prefix,
+                postproc_keys=(code, inv_func), mode=self.mode)
+
+    def free(self):
+        """ Closes the SpooledTemporaryFiles """
+        if self.mode == "rw+temp":
+            if self._ref is not None:
+                for val in self._ref.values():
+                    val.close()
+
+
 class Fractal_colormap():
-    def __init__(self, color_gradient, colormap=None):
+    """
+    Class responsible for mapping a real array to a colors array.
+    Attributes :
+        *_colors* Internal list of possible colors, [0 to self.n_colors]
+        *_probes* list of indices in self._colors array, identifying the
+                  transitions between differrent sections of the colormap. Each
+                  of this probe is mapped to *_probe_value*, either given by the
+                  user or computed at plot time.
+    """
+    def __init__(self, color_gradient, colormap=None, extent="clip"):
         """
         Creates from : 
             - Directly a color gradient array (as output by Color_tools
               gradient functions, array of shape (n_colors, 3))
             - A matplotlib colormap ; in this case color_gradient shall be a
               list of the form (start, stop, n _colors)
-        *colormap* 
+*color_gradient*  Either: a Color gradient array from COlortool class, or if a
+maltplotlib colormap is provided at second input, a tuple (xmin, xmax,
+n_colors) where xmi, xmax refer to this colormap (xmin xmax btw. 0 and 1).
+*colormap*  None or a matplotlib colormap
+*extent*    What to do with out of range Values. "clip" or "mirror"
         """
         if colormap is None:
             self._colors = color_gradient
@@ -303,21 +551,17 @@ class Fractal_colormap():
                              "mpl.colors.Colormap or None")
         self._probes = np.array([0, n_colors-1])
         self.quantiles_ref = None
-
+        self.extent = extent
 
     @property
     def n_colors(self):
-        """
-        Total number of colors in the colormap.
-        """
+        """ Total number of colors in the colormap. """
         return self._colors.shape[0]
 
     @property
     def probes(self):
-        """
-        Position of the "probes" ie transitions between the different parts of
-        the colormap. Read-only.
-        """
+        """ Position of the "probes" ie transitions between the different parts
+        of the colormap. Read-only. """
         return np.copy(self._probes)
 
     def __neg__(self):
@@ -329,15 +573,14 @@ class Fractal_colormap():
         return other
     
     def __add__(self, other):
-        """
-        Concatenates 2 Colormaps
-        """
+        """ Concatenates 2 Colormaps """
         fcm = Fractal_colormap(np.vstack([self._colors, other._colors]))
         fcm._probes = np.concatenate([self._probes,
             (other._probes + self._probes[-1] + 1)[1:]])
         return fcm
 
     def __sub__(self, other):
+        """ Sbstract a colormap ie adds its reversed version """
         return self.__add__(other.__neg__())
 
     def output_png(self, dir_path, file_name):
@@ -356,14 +599,13 @@ class Fractal_colormap():
         PIL.Image.fromarray(np.swapaxes(B, 0, 1)).save(
             os.path.join(dir_path, file_name + ".cbar.png"))
 
-    def colorize(self, z, probe_values):
+    def colorize(self, z, probes_z):
         """
         Returns a color array bazed on z values
         """
-        z = self.normalize(z, probe_values)
-        # on over / under flow, default to max / min color
-        np.putmask(z, z < 0., 0.)
-        np.putmask(z, z > self.n_colors - 1., self.n_colors - 1.)
+        nx, ny = z.shape
+        z = np.ravel(z)
+        z = self.normalize(z, probes_z)
         # linear interpolation in sorted color array
         indices = np.searchsorted(np.arange(self.n_colors), z)
         alpha = indices - z
@@ -372,184 +614,174 @@ class Fractal_colormap():
                                    self._colors[-1, :]])
         z_colors = (alpha[:, np.newaxis] * search_colors[indices, :] + 
              (1.-alpha[:, np.newaxis]) * search_colors[indices + 1, :])
-        return z_colors
-    
-    def colorize2d(self, z, probe_values):
-        nx, ny = z.shape
-        z = np.ravel(z)
-        z_colors = self.colorize(z, probe_values)
         return np.reshape(z_colors, [nx, ny, 3])  
     
-    
-    
-    def normalize(self, z, probe_values, percentiles_ref=None):
+    def greyscale(self, z, probes_z):
         """
-        Normalise z , z -> z* so that
-            - z* distribution function F* goes through the points
-              (probe, probe_values) ie F*^-1(probe_values) = probe
-            - z* is monotonic and C1-smooth
+        Returns a color array bazed on z values
+        """
+        z = self.normalize(z, probes_z)
+        # linear interpolation in sorted greyscale array
+        indices = np.searchsorted(np.arange(self.n_colors), z)
+        alpha = indices - z
+        search_colors = np.concatenate([
+            [0.], np.linspace(0., 1., self.n_colors),  [1.]])
+        z_greys = (alpha * search_colors[indices] +
+                   (1. - alpha) * search_colors[indices + 1])
+        return z_greys
+
+    def normalize(self, z, probes_z):
+        """
+        Normalise z , z -> z* so that z*min = 0 / z*max = self.n_colors
         *z*  array to normalise
-        *probes_values* array of dim self.n_probes: stricly increasing
-                        fractiles between 0. and 1.
+        *probes_z* array of dim self.n_probes: values of z at probes
         """
-        probe_values = np.asanyarray(probe_values)
-        if np.any(probe_values.shape != self._probes.shape):
+        if np.any(probes_z.shape != self._probes.shape):
             raise ValueError("Expected *probes_values* of shape {0}, "
-                             "found {1}".format(self._probes.shape,
-                                                 probe_values.shape))
-        if np.any(np.diff(probe_values) <= 0):
-            raise ValueError("Expected strictly increasing probe_values")
-        n_probes, = probe_values.shape
+                "given {1}".format(self._probes.shape, probes_z.shape))        
 
-        if self.quantiles_ref is not None:
-            qt = self.quantiles_ref(probe_values)
+        # on over / under flow : clip or mirror
+        ext_min = np.min(probes_z)
+        ext_max = np.max(probes_z)
+        if self.extent == "clip":
+            z = self.clip(z, ext_min, ext_max)
+        elif self.extent == "mirror":
+            z = self.mirror(z, ext_min, ext_max)
         else:
-            data_min, data_max = np.nanmin(z),  np.nanmax(z)
-            hist, bins = np.histogram(z, bins=100, range=(data_min, data_max))
-            qt_ref = np.cumsum(hist) / float(np.count_nonzero(~np.isnan(z)))
-            qt_ref = np.insert(qt_ref, 0, 0.)
-            qt = lambda x: np.interp(x, qt_ref, bins)            
+            raise ValueError("Unexpected extent property {}".format(
+                    self.extent))
 
-        return np.interp(z, qt, self._probes)
+        return np.interp(z, probes_z, self._probes)
+    
+    @staticmethod
+    def clip(x, ext_min, ext_max):
+        np.putmask(x, x < ext_min, ext_min)
+        np.putmask(x, x > ext_max, ext_max)
+        return x
 
-
-
-class Fractal_plotter(object):
-    def  __init__(self, fractal, base_data_key, base_data_prefix, 
-                  base_data_function, colormap, probe_values, calc_layers=[],
-                  mask=None):
+    @staticmethod
+    def mirror(x, ext_min, ext_max):
+        """ Mirroring of x on ext_min & ext_max
+Formula: https://en.wikipedia.org/wiki/Triangle_wave
+4/p * (t - p/2 * floor(2t/p + 1/2)) * (-1)**floor(2t/p + 1/2) where p = 4
         """
-        
-        *base_data_key* key wich identifies a prosprocessed field from Fractal
-                        will be used as the "base source" of color.
-                          (post_name, post_dic) for just 1 key here.
-        *base_data_prefix* The prefix for the files for accessing the base data
-                           arrays.
+        t = (x - ext_min) / (ext_max - ext_min)  # btw. 0. and 1
+        e = np.floor((t + 1) / 2)
+        t = np.abs((t - 2. * np.floor(e)) * (-1)**e)
+        return ext_min + (t * (ext_max - ext_min))
+
+
+class Fractal_plotter():
+    def  __init__(self, fractal, base_data_key, base_data_prefix, 
+            base_data_function, colormap, probes_val, probes_kind="qt",
+            mask=None):
+        """
+        Parameters
+*fractal* The plotted fractal object
+
+*base_data_key* key wich identifies a prosprocessed field from Fractal
+                will be used as the "base source" of color.
+                (post_name, post_dic) for just 1 key here.
+*base_data_prefix* The prefix for the files were are stored the base data
+                   arrays (on file per 'chunk' ie calculation tile).
+*base_data_function* function which will be applied as a last postproc step to
+the array returned by base_data_key
+*colormap* a Fractal_colormap object used for the float to color mapping
+
+*probes_qt*   Fractiles of the total image area, used to compute
+    the mapping of the colormap probes ie *probe_values*.
+    User can also impose directly the *probes_z* (e.g. movies or
+    compositing of several images). If probe_fractiles, will default to
+    probe_values (which cannot be None).
+
+*probes_kind*  One of "qt" of "z"
+
+*mask*  bool Fractal_Data_array, where True the point will be flagged
+        as masked (a special color can be applied to masked points in
+        subsequent plotting operations)
         """
         self.fractal = fractal
         self.base_data_key = base_data_key
         self.file_prefix = base_data_prefix
         self.base_data_function = base_data_function
+
         self.colormap = colormap
-        self.probe_values = probe_values
+        
+        self.probes_kind = probes_kind
+        if probes_kind == "qt":
+            self.probes_qt = np.asanyarray(probes_val)
+        elif probes_kind == "z": 
+            self.probes_z = np.asanyarray(probes_val)
+
         self.mask = mask
-        self.calc_layers = calc_layers
-        self.hist, self.bins = self.define_hist()
-        self.NB_layer = []
+        self.calc_layers = []
+        self.grey_layers = []
+        self.normal_layers = []
+        self.plot_mask = False
+        self.plot_zoning = False
 
-    @property
-    def plot_dir(self):
-        return self.fractal.directory
+        # Attibutes used for multiprocessing loops
+        self.plot_dir = self.fractal.directory
+        self.multiprocess_dir = os.path.join(self.fractal.directory,
+                                             "plot_multiproc")
+        self.chunk_slices = self.fractal.chunk_slices
 
-    @staticmethod
-    def loop_crops(func):
-        """
-        We provide looping over the image pixels for the keyword-arguments:
-            - chunk_slice
-        The other arguments are simply passed through.
-        """
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            self = args[0]
-            args = args[1:]
-            for chunk_slice in self.fractal.chunk_slices(
-                                                      self.fractal.chunk_size):
-                kwargs["chunk_slice"] = chunk_slice
-                func(self, *args, **kwargs)
-        return wrapper
+        # Calculated attributes used during plot
+        self.base_min = np.inf
+        self.base_max = -np.inf
+        self.hist = None
+        self.bins = None
 
-
-    def define_hist(self, debug_mode=True):
-        """
-        First pass only to compute the histogramm of "base data"
-        """
-        nx, ny = self.fractal.nx, self.fractal.ny
-        base_data = np.empty([nx, ny], dtype=self.fractal.float_postproc_type)
-        self.fill_base_data(base_data)
-        base_data = np.ravel(base_data)
-        # Need to provide min & max for an histogramm with potential nan values
-        data_min, data_max = np.nanmin(base_data),  np.nanmax(base_data)
-        print "computing histo", data_min, data_max, base_data.shape
-        if np.isnan(data_min) or np.isnan(data_max):
-            data_min, data_max = 0., 1.
-        hist, bins = np.histogram(base_data, bins=100,
-                                  range=(data_min, data_max))
-   
-        qt_ref = np.cumsum(hist) / float(np.count_nonzero(~np.isnan(base_data)))
-        qt_ref = np.insert(qt_ref, 0, 0.)  # pos, val                    
-
-        self.colormap.quantiles_ref = lambda x: np.interp(x, qt_ref, bins)
-        self.base_distrib = lambda x: np.interp(x, bins, qt_ref)
-
-        if debug_mode:
-             # plot the histogramm
-             fig = Figure(figsize=(6., 6.))
-             FigureCanvasAgg(fig);
-             ax = fig.add_subplot(111)
-             width = 1.0 * (bins[1] - bins[0])
-             center = (bins[:-1] + bins[1:]) / 2
-             ax.bar(center, hist, align='edge', width=width)  
-             ax2 = ax.twinx()
-             ax2.plot(bins, qt_ref, color="red", linewidth=2)
-             fig.savefig(os.path.join(
-                 self.plot_dir, self.file_prefix + "_hist.png"))
-        print "end computing histo"
-        return hist, bins
-
-    def apply_mask(self, array, chunk_slice):
-        """
-        array shape [:, :] or [n, :, :]
-        """
-        (ix, ixx, iy, iyy) = chunk_slice
-        sh = array.shape
-        if self.mask is not None:
-            if len(sh) == 2:
-                return np.where(self.mask[ix:ixx, iy:iyy], np.nan, array)
-            elif len(sh) == 3:
-                mask = self.mask[ix:ixx, iy:iyy][np.newaxis, :, :]
-                return np.where(mask, np.nan, array)
-        return array
-
-
-    @loop_crops.__func__
-    def fill_base_data(self, base_data, chunk_slice=None):
-        """"
-        fill successive chunks of base_data array
-        """
-        keys_with_prerequisites = list(self.calc_layers) + [self.base_data_key]
-
-        i_base = len(self.calc_layers)
-        chunk_2d = self.fractal.postproc_chunck(keys_with_prerequisites,
-             chunk_slice, self.file_prefix)
-        chunk_2d = self.apply_mask(chunk_2d, chunk_slice)
-
-        (ix, ixx, iy, iyy) = chunk_slice
-        chunk_2d = self.base_data_function(chunk_2d[i_base, :, :])
-        base_data[ix:ixx, iy:iyy] = chunk_2d
 
     def add_calculation_layer(self, postproc_key):
         """
         Adds an intermediate calculation step, which might be needed for 
-        postprocessing
+        postprocessing. No layer image is output.
         """
-        self.calc_layers += [{
-            "postproc_key": postproc_key, # field as postprocessed by Fractal
-            }]
+        self.calc_layers += [postproc_key] # field as postprocessed by Fractal
 
+    def add_normal_map(self, postproc_key):
+        """
+        Adds a colored normal layer following OpenGL normal map format.
+        """
+        post_name, post_dic = postproc_key
+        self.normal_layers += [
+                {"postproc_keys":  [(post_name + "x", post_dic),
+                                    (post_name + "y", post_dic)]}]
 
-    def add_NB_layer(self, postproc_key, output=True, normalized=False,
+    def add_grey_layer(self, postproc_key, veto_blend=False, normalized=False,
                      Fourrier=None, skewness=None, hardness=None,
-                     intensity=None, blur_ranges=None, shade_type=None):
+                     intensity=None, blur_ranges=None, shade_type=None,
+                     disp_layer=False, layer_mask_color=(0,),
+                     user_func=None, clip_min=None, clip_max=None):
         """
+        Adds a greyscale layer.
+
         postproc_key : the key to retrieve a prosprocessed field from Fractal
                           (post_name, post_dic) for just 1 key here.
-        output:       Boolen, if true the layer will be output to a N&B image
-        Fourrier, hardness, intensity, blur_ranges : arguments passed to 
-            further image post-procesing functions, see details in each
-            function descriptions
+        veto_blend:  Boolean, if true the layer will be output to a greyscale
+            image but NOT blended with the rgb base image to give the final
+            image. Note that irrelative to veto_blend, a displacement layer
+            (see doc for disp_layer param) is intended for further
+            post-processing and never blended to the final image.
+        blender_layer : if True, not mixed with color image only exported for 
+                        further processing with Blender software.
+        Fourrier, skewness, hardness, intensity, blur_ranges : arguments passed
+            to further image post-procesing functions, see details in each
+            function descriptions.
+        shade_type: If None, default to {"Lch": 4., "overlay": 4., "pegtop": 1.})
+            Passed to Color_tools.blend when blending to the color image.
+        disp_layer: If True will use 32-bit signed integer pixels for the image
+            output (instead of 8 bits) to allow further 3d postprocessing.
+            Displacement layers are NOT blended with the final rgb image.
+        layer_mask_color: Only applied in case of "disp" layer, otherwise no
+            real interest as will be anyhow mixed with color rgb mask.
+        user_func: function which will be applied as a last postproc step to
+            the array returned by postproc_key
+        clip_min, clip_max: Imposed cliping range. If None, the full range will
+            be considered.
         """
-
-        def func(data, data_min, data_max, qt_base):
+        def func(data, data_min, data_max, blur_base):
             """
             The function that will be applied on successive crops.
             data_min, data_max cannot be evaluated locally and need to be passed
@@ -559,10 +791,17 @@ class Fractal_plotter(object):
             # First if data is given as a phase, generate the 'physical' data
             if Fourrier is not None:
                 data = self.data_from_phase(Fourrier, data)
+
+            if user_func is not None:
+                data = user_func(data)
+            
             # renormalise between -1 and 1
             if not(normalized):
                 data = (2 * data - (data_max + data_min)) / (
                         data_max - data_min)
+                # Clipping in case of imposed min max range
+                data = np.where(data < -1., -1., data)
+                data = np.where(data > 1., 1., data)
 
             if skewness is not None:
                 data = self.skew(skewness, data)
@@ -571,30 +810,89 @@ class Fractal_plotter(object):
             if intensity is not None:
                 data = self.intensify(intensity, data)
             if blur_ranges is not None:
-                data = self.blur(blur_ranges, data, qt_base)
+                data = self.blur(blur_ranges, data, blur_base)
             data = 0.5 * (data + 1.)
             return data
 
-        i_layer = len(self.NB_layer) + 1
-        self.NB_layer += [{
+        self.grey_layers += [{
             "postproc_key": postproc_key, # field as postprocessed by Fractal
             "layer_func": func,   # will be applied to the postprocessed field
-            "output": output,
+            "veto_blend": veto_blend,
             "Fourrier": Fourrier,
-            "shade_type": shade_type
+            "user_func": user_func,
+            "shade_type": shade_type,
+            "disp_layer": disp_layer,
+            "layer_mask_color": layer_mask_color,
+            "clip_min": clip_min,
+            "clip_max": clip_max
             }]
-        return i_layer
+
+    def add_mask_layer(self):
+        """
+        Adds a black and white boolean layer based on mask.
+        """
+        self.plot_mask = True
+
+    def add_zoning_layer(self):
+        """ Adds a greyscale layers based on colormap mapping """
+        self.plot_zoning = True
+
+    def apply_mask(self, array, chunk_slice):
+        """
+        Apply the 2d self.mask to the array
+        array shape expected [:, :] or [n, :, :]
+        """
+        #(ix, ixx, iy, iyy) = chunk_slice
+        sh = array.shape
+        if self.mask is not None:
+            if len(sh) == 2:
+                return np.where(self.mask[chunk_slice], np.nan, array)
+            elif len(sh) == 3:
+                mask = self.mask[chunk_slice][np.newaxis, :, :]
+                return np.where(mask, np.nan, array)
+        return array
+
+    def precompute_plot(self):
+        """
+        Precompute the data-fields needed for the plot, use a data-wrapper of
+        type Fractal_Data_array
+        """
+        postproc_keys = list(self.calc_layers)
+        postproc_keys += [self.base_data_key]
+        for i_layer, layer_options in enumerate(self.grey_layers):
+            postproc_keys += [layer_options["postproc_key"]]
+        for i_layer, layer_options in enumerate(self.normal_layers):
+            postproc_keys += layer_options["postproc_keys"]
+        
+        fractal_data = Fractal_Data_array(self.fractal, mode="r+postproc",
+                    file_prefix=self.file_prefix, postproc_keys=postproc_keys)
+        self._data = Fractal_Data_array(self.fractal, mode="rw+temp")
+        self.precompute_chunk(fractal_data)
+
+    @Multiprocess_filler(iterable_attr="chunk_slices", res_attr="_data",
+        redirect_path_attr="multiprocess_dir", iter_kwargs="chunk_slice")
+    def precompute_chunk(self, fractal_data, chunk_slice=None):
+        return fractal_data[chunk_slice]
 
 
     def plot(self, file_name, transparency=False, mask_color=(0., 0., 0.)):
         """
         file_name
+        transparency: used for 
         
         Note: Pillow image modes:
-        P (8-bit pixels, mapped to any other mode using a color palette)
         RGB (3x8-bit pixels, true color)
         RGBA (4x8-bit pixels, true color with transparency mask)
+        1 (1-bit pixels, black and white, stored with one pixel per byte)
+        P (8-bit pixels, mapped to any other mode using a color palette)
+        I (32-bit signed integer pixels)
         """
+        self.precompute_plot()
+
+        # Compute base layer histogram
+        self.compute_baselayer_minmax()
+        self.compute_baselayer_hist()
+        
         self.colormap.output_png(self.plot_dir, file_name)
 
         mode = "RGB"
@@ -605,127 +903,378 @@ class Fractal_plotter(object):
         base_img = PIL.Image.new(mode=mode, size=(nx, ny), color=0)
 
         postproc_keys = []
-        NB_img = []
+        grey_img = []
         postproc_keys = list(self.calc_layers)
         postproc_keys += [self.base_data_key]
 
-        for i_layer, layer_options in enumerate(self.NB_layer):
+        for i_layer, layer_options in enumerate(self.grey_layers):
             postproc_keys += [layer_options["postproc_key"]]
-            if layer_options["output"]:
-                NB_img += [PIL.Image.new(mode="P", size=(nx, ny), color=0)]
+#            if layer_options["output"]:
+            layer_mode = {True: "I",
+                          False: "P"}[layer_options["disp_layer"]]
+            grey_img += [PIL.Image.new(mode=layer_mode,
+                                     size=(nx, ny), color=0)]
 
-        layers_minmax = [[np.inf, -np.inf] for layer in self.NB_layer]
-        self.compute_layers_minmax(layers_minmax, postproc_keys)   
-        
-        self.plot_cropped(base_img, NB_img, postproc_keys, 
-                          mask_color, layers_minmax)
+        layers_minmax = [[np.inf, -np.inf] for layer in self.grey_layers]
+        self.compute_greylayers_minmax(layers_minmax)#, postproc_keys)
 
-        base_img.save(os.path.join(self.plot_dir, file_name + ".png"))
-        i_NB_img = 0
-        for i_layer, layer_options in enumerate(self.NB_layer):
-            if layer_options["output"]:
-                NB_img[i_NB_img].save(os.path.join(self.plot_dir,
-                    file_name + "_" + layer_options["postproc_key"][0] + 
-                    ".layer" + str(i_NB_img) + ".png"))
-                i_NB_img += 1
+        # Magic trick if user imposed min and max
+        layers_computed_minmax = copy.copy(layers_minmax)
+        layers_imposed_minmax = [[layer_options.get("clip_min", None),
+                                  layer_options.get("clip_max", None)
+                                  ] for layer_options in self.grey_layers]
+        for i_layer, _ in enumerate(self.grey_layers):
+            layers_minmax[i_layer] = [
+                    layers_computed_minmax[i_layer][0] if 
+                      layers_imposed_minmax[i_layer][0] is None else
+                      layers_imposed_minmax[i_layer][0],
+                    layers_computed_minmax[i_layer][1] if 
+                      layers_imposed_minmax[i_layer][1] is None else
+                      layers_imposed_minmax[i_layer][1]] 
 
-    @loop_crops.__func__
-    def compute_layers_minmax(self, layers_minmax, postproc_keys,
-                              chunk_slice=None):
-        chunk_2d = self.fractal.postproc_chunck(postproc_keys, chunk_slice,
-                                                self.file_prefix)
+        # for the 'blender normal' type, no need of layer min max
+        # only outputing to separeted image
+        normal_img = []
+        for i_layer, layer_options in enumerate(self.normal_layers):
+            postproc_keys += layer_options["postproc_keys"]
+            normal_img += [PIL.Image.new(mode="RGB", size=(nx, ny))]
+            
+        # Otional mask layer
+        mask_img = None
+        if self.plot_mask:
+            mask_mode = "1"
+            mask_img = PIL.Image.new(mode=mask_mode, size=(nx, ny), color=0)
+            
+        # Optional "zoning" layer
+        zoning_img = None
+        if self.plot_zoning:
+            zoning_mode = "P"
+            zoning_img = PIL.Image.new(mode=zoning_mode, size=(nx, ny), color=0)
+
+        self.plot_cropped(base_img, grey_img, normal_img, mask_img, zoning_img,
+                          postproc_keys, mask_color, layers_minmax)
+
+        base_img_path = os.path.join(self.plot_dir, file_name + ".png")
+        self.save_tagged(base_img, base_img_path,
+                          {"Software": "py-fractal",
+                           "fractal": type(self.fractal).__name__,
+                           "projection": self.fractal.projection,
+                           "x": repr(self.fractal.x),
+                           "y": repr(self.fractal.y),
+                           "dx": repr(self.fractal.dx),
+                           "theta_deg": repr(self.fractal.theta_deg)
+                           })
+
+        if self.plot_mask:
+            mask_img.save(os.path.join(self.plot_dir, file_name + ".mask.png"))
+        if self.plot_zoning:
+            zoning_img.save(os.path.join(self.plot_dir, file_name +
+                                         ".zoning.png"))
+
+        i_grey_img = 0
+        for i_layer, layer_options in enumerate(self.grey_layers):
+            #if layer_options["output"]:
+            file_img = (file_name + "_" + 
+                        layer_options["postproc_key"][0] + 
+                        ".layer" + str(i_grey_img) + ".png")
+            file_minmax = (file_name + "_" + 
+                        layer_options["postproc_key"][0] + 
+                        ".layer" + str(i_grey_img) + ".minmax")
+            grey_img[i_grey_img].save(os.path.join(self.plot_dir, file_img))
+            i_grey_img += 1
+            with open(os.path.join(self.plot_dir, file_minmax), 'w'
+                      ) as minmax_file:
+                str_format = "{} / {}\n"
+                minmax_file.write("imposed min max:\n")
+                minmax_file.write(str_format.format(
+                        *layers_imposed_minmax[i_layer]))
+                minmax_file.write("computed min max:\n")
+                minmax_file.write(str_format.format(
+                        *layers_computed_minmax[i_layer]))
+                minmax_file.write("final min max:\n")
+                minmax_file.write(str_format.format(
+                        *layers_minmax[i_layer]))
+
+        i_normal_img = 0
+        for i_layer, layer_options in enumerate(self.normal_layers):
+            key = layer_options["postproc_keys"][0][0][:-1]
+            normal_img[i_normal_img].save(os.path.join(self.plot_dir,
+                    file_name + "_" + key + 
+                    ".nmap" + str(i_grey_img) + ".png"))
+            i_normal_img += 1
+
+        # let's free some RAM
+        self._data.free()
+
+    def save_tagged(self, img, img_path, tag_dict):
+        """
+        Saves *img* to png format at *path*, tagging with *tag_dict*.
+        https://dev.exiv2.org/projects/exiv2/wiki/The_Metadata_in_PNG_files
+        """
+        pnginfo = PIL.PngImagePlugin.PngInfo()
+        for k, v in tag_dict.items():
+            pnginfo.add_text(k, v)
+        img.save(img_path, pnginfo=pnginfo)
+
+
+    @Multiprocess_filler(iterable_attr="chunk_slices",
+            iter_kwargs="chunk_slice", veto_multiprocess=True)
+    def compute_greylayers_minmax(self, layers_minmax, chunk_slice=None):
+        """
+        Computes the min & max for the grey layers
+        """
+        if chunk_slice is None:
+            return
+
+        chunk_2d = self._data[chunk_slice]
         chunk_2d = self.apply_mask(chunk_2d, chunk_slice)
 
         i_base = len(self.calc_layers)
-        for i_layer, layer_options in enumerate(self.NB_layer):
+        for i_layer, layer_options in enumerate(self.grey_layers):
             data_layer = chunk_2d[i_layer + i_base + 1, :, :]
             if layer_options["Fourrier"] is not None:
                 data_layer = self.data_from_phase(layer_options["Fourrier"],
                                                   data_layer)
+            if layer_options["user_func"] is not None:
+                data_layer = layer_options["user_func"](data_layer)
             lmin, lmax = np.nanmin(data_layer), np.nanmax(data_layer)
             cmin, cmax = layers_minmax[i_layer]
             layers_minmax[i_layer] = [np.nanmin([lmin, cmin]),
                                       np.nanmax([lmax, cmax])]
 
+
+    @Multiprocess_filler(iterable_attr="chunk_slices",
+            iter_kwargs="chunk_slice", veto_multiprocess=True)
+    def compute_baselayer_minmax(self, chunk_slice=None, debug_mode=True):
+        """ Compute the min & max of "base data" """
+        chunk_2d = self._data[chunk_slice]
+        chunk_2d = self.apply_mask(chunk_2d, chunk_slice)
+        base_data = self.base_data_function(
+                chunk_2d[len(self.calc_layers), :, :])
+        lmin, lmax = np.nanmin(base_data), np.nanmax(base_data)
+
+        self.base_min = np.nanmin([lmin, self.base_min])
+        self.base_max = np.nanmax([lmax, self.base_max])
+
+
+    def compute_baselayer_hist(self):
+        """ Compute the histogramm of "base data"
+        """
+        print("computing histo", self.base_min, self.base_max)
+        count_nonzero = [0]
+        self.chunk_baselayer_hist(count_nonzero)
+        bins_qt = np.cumsum(self.hist) / float(count_nonzero[0])
+        bins_qt = np.insert(bins_qt, 0, 0.) 
+        self.qt_to_z = lambda x: np.interp(x, bins_qt, self.bins)
+        self.z_to_qt = lambda x: np.interp(x, self.bins, bins_qt)
+        print("end computing histo")
+
+        if self.probes_kind == "qt":
+            # Define mappings :  quantiles -> z and z -> quantiles
+            if np.any(np.diff(self.probes_qt) <= 0):
+                raise ValueError("Expected strictly increasing probes_qt")
+            self.probes_z = self.qt_to_z(self.probes_qt)
+        elif self.probes_kind == "z":
+            pass
+        else:
+            raise ValueError("Unexpected probes_kind {}".format(
+                    self.probes_kind))
+
+        # plot the histogramm
+        bins = self.bins
+        fig = Figure(figsize=(6., 6.))
+        FigureCanvasAgg(fig)
+        ax = fig.add_subplot(111)
+        width = 1.0 * (bins[1] - bins[0])
+        center = (bins[:-1] + bins[1:]) / 2
+        ax.bar(center, self.hist, align='edge', width=width)  
+        ax2 = ax.twinx()
+        ax2.plot(bins, bins_qt, color="red", linewidth=2)
+        fig.savefig(os.path.join(
+             self.plot_dir, self.file_prefix + "_hist.png"))
+        # saving to a human-readable format
+        pc = np.linspace(0., 1., 101)
+        np.savetxt(os.path.join(
+            self.plot_dir, self.file_prefix + ".hist_bins.csv"),
+            np.vstack([self.bins, bins_qt, self.qt_to_z(pc), pc]).T,
+                      delimiter="\t", header="bins\tbins_qt\tpc_z\tpc")
+
+
+    @Multiprocess_filler(iterable_attr="chunk_slices",
+        iter_kwargs="chunk_slice", veto_multiprocess=True)
+    def chunk_baselayer_hist(self, count_nonzero, chunk_slice=None):
+        """
+        Looping over chunks to compute self.hist, self.bins
+        """
+        chunk_2d = self._data[chunk_slice]
+        chunk_2d = self.apply_mask(chunk_2d, chunk_slice)
+        base_data = self.base_data_function(
+                chunk_2d[len(self.calc_layers), :, :])
+
+        loc_count_nonzero = np.count_nonzero(~np.isnan(base_data))
+        if loc_count_nonzero == 0:
+            return
+
+        count_nonzero[0] += loc_count_nonzero
+        loc_hist, loc_bins = np.histogram(base_data, bins=100,
+                                  range=(self.base_min, self.base_max))
+        if self.bins is None:
+            self.bins = loc_bins
+        if self.hist is None:
+            self.hist = loc_hist
+        else:
+            self.hist += loc_hist
+
+
     @staticmethod
     def np2PIL(arr):
-        """
-        Unfortunately this is a mess between numpy and pillow
-        """
+        """ Unfortunately this is a mess between numpy and pillow """
         sh = arr.shape
         if len(sh) == 2:
-            nx, ny = arr.shape
             return np.swapaxes(arr, 0 , 1 )[::-1, :]
-        nx, ny, _ = arr.shape
-        return np.swapaxes(arr, 0 , 1 )[::-1, :, :]
+        elif len(sh) == 3:
+            return np.swapaxes(arr, 0 , 1 )[::-1, :, :]
+        else:
+            raise ValueError("Expected 2 or 3 dim array, got: {}".format(
+                             len(sh)))
 
-    @loop_crops.__func__
-    def plot_cropped(self, base_img, NB_img, postproc_keys, 
-                     mask_color, layers_minmax, chunk_slice=None):
+    @Multiprocess_filler(iterable_attr="chunk_slices",
+        iter_kwargs="chunk_slice", veto_multiprocess=True)
+    def plot_cropped(self, base_img, grey_img, normal_img, mask_img,
+            zoning_img, postproc_keys, mask_color, layers_minmax,
+            chunk_slice=None):
         """
         base_img: a reference to the "base" image
-        NB_img :  a dict containing references to the individual grayscale 
+        grey_img :  a dict containing references to the individual grayscale 
                   "secondary layers" images, if layer *output* is true
         chunk_slice: None, provided by the wrapping looping function
         """
-        print "plotting", chunk_slice
+        print("plotting", chunk_slice)
         (ix, ixx, iy, iyy) = chunk_slice
-        nx = self.fractal.nx
         ny = self.fractal.ny
+
         # box – The crop rectangle, as a (left, upper, right, lower)-tuple.
-        crop_slice = (iy, nx-ixx, iyy, nx-ix)
         crop_slice = (ix, ny-iyy, ixx, ny-iy)
-        chunk_2d = self.fractal.postproc_chunck(postproc_keys, chunk_slice,
-                                                self.file_prefix)
+        chunk_2d = self._data[chunk_slice]
         chunk_2d = self.apply_mask(chunk_2d, chunk_slice)
 
         # Now we render in color - remember to apply base data function
         i_base = len(self.calc_layers) # pure "calculation" layers
-        rgb = self.colormap.colorize2d(self.base_data_function(
-                                    chunk_2d[i_base, :, :]), self.probe_values)
+        rgb = self.colormap.colorize(self.base_data_function(
+            chunk_2d[i_base, :, :]), self.probes_z)
 
         # now we render the layers
-        i_NB_img = 0  # here the first...
-        for i_layer, layer_options in enumerate(self.NB_layer):
-
+        i_grey_img = 0  # here the first...
+        for i_layer, layer_options in enumerate(self.grey_layers):
             shade = chunk_2d[i_layer + 1 + i_base, :, :]
             shade_function = layer_options["layer_func"]
             data_min, data_max = layers_minmax[i_layer]
-            qt_base = self.base_distrib(self.base_data_function(
-                                    chunk_2d[i_base, :, :])) # distribution function
-            shade = shade_function(shade, data_min, data_max, qt_base)
+            if self.probes_kind == "qt":
+                blur_base = self.z_to_qt(self.base_data_function(
+                                         chunk_2d[i_base, :, :]))
+            elif self.probes_kind == "z":
+                blur_base = self.base_data_function(chunk_2d[i_base, :, :])
+            # Shading, only bluring is based on qt values or z values
+            shade = shade_function(shade, data_min, data_max, blur_base)
             shade = np.where(np.isnan(shade), 0.50, shade)
 
-            if layer_options["output"]:
+            if layer_options["disp_layer"]:
+                shade = np.where(np.isnan(shade), 0.0, shade)
+
+#            if layer_options["output"]:
+#                if layer_options["disp_layer"]:
+                layer_mask_color = layer_options["layer_mask_color"]
                 paste_layer = PIL.Image.fromarray(self.np2PIL(
-                                                  np.uint8(255 * shade)))
-                NB_img[i_NB_img].paste(paste_layer, box=crop_slice)
-                i_NB_img += 1
+                        np.int32(shade * 65535))) # 2**16-1
+                if self.mask is not None:
+                    self.apply_color_to_mask_cropped(paste_layer,
+                        chunk_slice, layer_mask_color, mode="I")
+            else:
+                paste_layer = PIL.Image.fromarray(self.np2PIL(
+                        np.uint8(255 * shade)))
+            grey_img[i_grey_img].paste(paste_layer, box=crop_slice)
+            i_grey_img += 1
             shade = np.expand_dims(shade, axis=2)
             shade_type = layer_options.get("shade_type",
                               {"Lch": 4., "overlay": 4., "pegtop": 1.})
-            rgb = Color_tools.blend(rgb, shade, shade_type)
+            if not (layer_options["disp_layer"] or
+                    layer_options["veto_blend"]):
+                rgb = Color_tools.blend(rgb, shade, shade_type)
 
         rgb = np.uint8(rgb * 255)
         paste = PIL.Image.fromarray(self.np2PIL(rgb))
 
+        # Here we render the normal maps for further post-processing
+        i_normal_img = 0
+        for i_layer, layer_options in enumerate(self.normal_layers):
+            i_dzdx = i_base + len(self.grey_layers) + 2*i_normal_img + 1
+            i_dzdy = i_dzdx + 1
+            rgb =  np.zeros([ixx - ix, iyy - iy, 3], dtype=np.float32)
+            rgb[:, :, 0] = chunk_2d[i_dzdx, :, :]
+            rgb[:, :, 1] = chunk_2d[i_dzdy, :, :]
+            rgb[:, :, 2] = -1.
+            k = np.sqrt(rgb[:, :, 0]**2 + rgb[:, :, 1]**2 + rgb[:, :, 2]**2)
+            for ik in range(3):
+                rgb[:, :, ik] = rgb[:, :, ik] / k
+            rgb = 0.5 * (-rgb + 1.)
+            paste_layer = PIL.Image.fromarray(self.np2PIL(
+                                              np.uint8(255 * rgb)))
+            if self.mask is not None:
+                self.apply_color_to_mask_cropped(paste_layer, chunk_slice,
+                                                 mask_color=(0.5, 0.5, 1))
+            normal_img[i_normal_img].paste(paste_layer, box=crop_slice)
+            i_normal_img += 1
+
+        # The optionnal mask layer
+        if self.plot_mask:
+            paste_layer = PIL.Image.fromarray(self.np2PIL(
+                    self.mask[chunk_slice]))
+            mask_img.paste(paste_layer, box=crop_slice)
+
+        # The optionnal zoning layer
+        if self.plot_zoning:
+            greys = self.colormap.greyscale(self.base_data_function(
+                chunk_2d[i_base, :, :]), self.probes_z)
+            paste_layer = PIL.Image.fromarray(self.np2PIL(
+                    np.uint8(255 * greys)))
+            zoning_img.paste(paste_layer, box=crop_slice)
+
         if self.mask is not None:
             # define if we need transparency...
-            mask_channel_count = len(mask_color)
-            has_transparency = (mask_channel_count > 3)
-            if has_transparency:
+            if len(mask_color) > 3:
                 paste.putalpha(255)
-
-            lx, ly = ixx-ix, iyy-iy
-            crop_mask = PIL.Image.fromarray(self.np2PIL(
-                                    np.uint8(255 * self.mask[ix:ixx, iy:iyy])))
-            mask_colors = np.tile(np.array(mask_color), (lx, ly)).reshape(
-                                                  [lx, ly, mask_channel_count])
-            mask_colors = PIL.Image.fromarray(self.np2PIL(
-                                                  np.uint8(255 * mask_colors)))
-            paste.paste(mask_colors, (0, 0), crop_mask)
+                
+            self.apply_color_to_mask_cropped(paste, chunk_slice, mask_color)
 
         base_img.paste(paste, box=crop_slice)
+
+
+    def apply_color_to_mask_cropped(self, cropped_img, chunk_slice,
+                                    mask_color, mode=None):
+        """
+        Take the image
+        Uniformely applies "mask_color" to the masked pixel
+        """        
+        mask_channel_count = len(mask_color)
+        (ix, ixx, iy, iyy) = chunk_slice
+        lx, ly = ixx-ix, iyy-iy
+
+        crop_mask = PIL.Image.fromarray(self.np2PIL(
+            np.uint8(255 * self.mask[chunk_slice])))
+        mask_colors = np.tile(np.array(mask_color), (lx, ly)).reshape(
+                                              [lx, ly, mask_channel_count])
+        if mode == "I":
+            mask_colors = self.np2PIL(np.int32((2**16 -1) * mask_colors))
+        else:
+            mask_colors = self.np2PIL(np.uint8(255 * mask_colors))
+
+        if mask_channel_count == 1:
+            mask_colors = mask_colors[:, :, 0]
+            if mode is None:
+                mode = "L"
+
+        mask_colors = PIL.Image.fromarray(mask_colors, mode=mode)
+        cropped_img.paste(mask_colors, (0, 0), crop_mask)
 
 
     @staticmethod
@@ -794,8 +1343,8 @@ class Fractal_plotter(object):
         *x*                          Array
         
         Returns
-        *y*   Arays of bluring coefficient at x location, as below if blur param
-              are increasing :
+        *y*   Arrays of bluring coefficient at x location, as below if blur 
+              param are increasing :
                  1 below blur1.    
                  smooth from blur1 to blur 2 1. -> 0.
                  stay at 0 between blur2 and blur 3
@@ -823,7 +1372,7 @@ class Fractal_plotter(object):
             return y
 
     @staticmethod
-    def blur(blur_ranges, data, qt_base):
+    def blur(blur_ranges, data, blur_base):
         """
         Selectively "blurs" ie contracts to 0. the data inside "blur ranges"
         defined as quantiles of the base_layer_data.
@@ -838,43 +1387,118 @@ class Fractal_plotter(object):
         for blur_range in blur_ranges:
             blur1, blur2, blur3 = blur_range
             data = data * Fractal_plotter.bluring_coeff(
-                                                  blur1, blur2, blur3, qt_base)
+                                                  blur1, blur2, blur3, blur_base)
         return data
 
-    def blend_plots(self, im_file1, im_file2, output_mode='RGB'):
+    def blend_plots(self, im_file1, im_file2, im_mask=None, output_mode='RGB',
+                    output_file="composite.png"):
+        """ Programatically blend 2 images :
+        - if *im_mask* is None, taking into account transparency of im2
+        - else taking into account *im_mask* to select between image 1 and 2.
         """
-        Programatically merge 2 images taking into account transparency
-        Image.alpha_composite(im, dest=(0, 0), source=(0, 0))
-        """
-        print "blending"
         im_path1 = os.path.join(self.plot_dir, im_file1)
         im_path2 = os.path.join(self.plot_dir, im_file2)
-        im_path = os.path.join(self.plot_dir, "composite" + ".png")
+        im_path = os.path.join(self.plot_dir, output_file)
+        mask_path = None
+        if im_mask is not None: 
+            mask_path = os.path.join(self.plot_dir, im_mask)
 
-        print "blend source 1", im_path1
-        print "blend source 2", im_path2
-        print "blend dest", im_path
+        print("Blending :")
+        print("blend source 1", im_path1)
+        print("blend source 2", im_path2)
+        print("blend mask", mask_path)
+        print("blend dest", im_path)
 
-        im1 = PIL.Image.open(im_path1).convert('RGBA')
-        im2 = PIL.Image.open(im_path2).convert('RGBA')
+        if im_mask is None:
+            im1 = PIL.Image.open(im_path1).convert('RGBA')
+            im2 = PIL.Image.open(im_path2).convert('RGBA')
+            im = PIL.Image.alpha_composite(im1, im2).convert(output_mode)
+        else:
+            im1 = PIL.Image.open(im_path1)
+            im2 = PIL.Image.open(im_path2)
+            mask = PIL.Image.open(mask_path)
+            im = PIL.Image.composite(im1, im2, mask).convert(output_mode)
 
-        im = PIL.Image.alpha_composite(im1, im2).convert(output_mode)
         im.save(im_path)
+        
+#    def to_cartesian(self, exp_img_file, zooms):
+#        """
+#        """
+#        im_path_source = os.path.join(self.plot_dir, exp_img_file)
+#        exp_img = PIL.Image.open(im_path_source)
+#        for zoom in zooms:
+#            map_nx, map_ny = exp_img.size
+#            h_max =  2 * np.pi * map_nx / map_ny
+#            res_nx = map_ny / np.pi
+#            res_ny = res_nx
+#            # define y_loc, xloc in 0..1 x 0..1
+#            x_loc, y_loc = np.meshgrid(np.linspace(-1., 1., res_nx),
+#                                       np.linspace(-1., 1., res_ny))
+#            rho = np.sqrt(y_loc, x_loc) * zoom
+#            phi = np.arctan2(y_loc, x_loc)
+#            xbar = np.where(rho < 1., rho, np.log(rho) + 1.)
+#            ybar = phi * (np.arctan(xbar * np.pi / 2.) / np.pi * 2.)
+#            rgb_zoom = np.array([res_nx, res_ny, 3], dtype= np.float32)
+#            
+#            h_chunk = (100. / map_nx) * h_max
+#            xbar_min = np.min(xbar)
+#            xbar_max = np.max(xbar)
+#
+#            # loop by steps of 1h
+#            for ih in range(int((xbar_max - xbar_min) / h_chunk + 1)):
+#                crop_h = (xbar_max + ih * h_chunk, 
+#                          xbar_max + (ih + 1) * h_chunk )
+#                self.to_cartesian_cropped(self, crop_h, xbar, ybar, rgb_zoom)
+#            # now look in the original pic in terms of xbar ybar
+#            
+#        
+##    @Multiprocess_filler(iterable_attr="chunk_slices",
+##        iter_kwargs="zoom_slice", veto_multiprocess=True)
+#    def to_cartesian_cropped(self, zoom_img, crop_h, xbar, ybar, rgb_zoom):
+#        in_crop = (xbar >= crop_h) & (xbar < crop_h + 1.)
+#        h_loc = np.log(zoom)
+#        numpy.array(zoom_img.)
+    
+#        elif self.projection == "exp_map":
+#            h_max = 2. * np.pi / self.xy_ratio # max h reached on the picture
+#            xbar = (dx_vec / dx + 0.5) * h_max  # 0 .. hmax
+#            ybar = dy_vec / dy * 2. * np.pi     # -pi .. +pi
+#
+#            phi = ybar / (np.arctan(xbar * np.pi / 2.) / np.pi * 2.)
+#            phi = np.where(np.abs(phi) > np.pi, np.nan, phi) # outside
+#            rho = np.where(xbar < 1., xbar, np.exp(xbar - 1.))
+#            rho = rho * dx
+#
+#            x_vec = x + rho * np.cos(phi)
+#            y_vec = y + rho * np.sin(phi) 
+#    
+    
 
-
-class Fractal(object):
+class Fractal():
     """
     Abstract base class
     Derived classes are reponsible for computing, storing and reloading the raw
     data composing a fractal image.
+    
+    ref:
+https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbrot_set
     """
 
     def __init__(self, directory, x, y, dx, nx, xy_ratio, theta_deg,
-                 chunk_size=200, complex_type=np.complex128):
+                 chunk_size=200, complex_type=np.complex128,
+                 projection="cartesian"):
         """
-        Defines 
-           - the pixels composing the image
-           - The working directory
+        Parameters
+*directory*   The working base directory
+*x* *y*  coordinates of the central point
+*dx*     reference data range (on x axis). Definition depends of the
+projection selected, for 'cartesian' (default) this is the total range.
+*nx*     number of pixels of the image along x axis
+*xy_ratio*  ratio of dy / dx or ny / nx
+*theta_deg*    Pre-rotation of the calculation domain
+*chunk_size*   size of the basic calculation 'tile' is chunk_size x chunk_size
+projection   "cartesian" "spherical" "exp_map"
+complex_type  np type or ("mpmath", pres)
         """
         self.x = x
         self.y = y
@@ -889,6 +1513,9 @@ class Fractal(object):
         self.float_postproc_type = np.float32
         self.termination_type = np.int8
         self.int_type = np.int32
+        self.projection = projection
+
+        self.multiprocess_dir = os.path.join(self.directory, "multiproc_calc")
 
     @property
     def ny(self):
@@ -906,7 +1533,8 @@ class Fractal(object):
                 "ny": self.ny,
                 "dx": self.dx,
                 "dy": self.dy,
-                "theta_deg": self.theta_deg }
+                "theta_deg": self.theta_deg,
+                "projection": self.projection}
 
     def data_file(self, chunk_slice, file_prefix):
         """
@@ -916,6 +1544,18 @@ class Fractal(object):
         return os.path.join(self.directory, "data",
                 file_prefix + "_{0:d}-{1:d}_{2:d}-{3:d}.tmp".format(
                 *chunk_slice))
+        
+    def clean_up(self, file_prefix):
+        """ Deletes all data files associated with a given file_prefix
+        """
+        pattern = file_prefix + "_*-*_*-*.tmp"
+        data_dir = os.path.join(self.directory, "data")
+        if not os.path.isdir(data_dir):
+            return
+        with os.scandir(data_dir) as it:
+            for entry in it:
+                if (fnmatch.fnmatch(entry.name, pattern)):
+                    os.unlink(entry.path)
 
     def save_data_chunk(self, chunk_slice, file_prefix,
                         params, codes, raw_data):
@@ -928,7 +1568,7 @@ class Fractal(object):
         save_path = self.data_file(chunk_slice, file_prefix)
         mkdir_p(os.path.dirname(save_path))
         with open(save_path, 'wb+') as tmpfile:
-            print "Data computed, saving", save_path
+            print("Data computed, saving", save_path)
             pickle.dump(params, tmpfile, pickle.HIGHEST_PROTOCOL)
             pickle.dump(codes, tmpfile, pickle.HIGHEST_PROTOCOL)
             pickle.dump(raw_data, tmpfile, pickle.HIGHEST_PROTOCOL)
@@ -949,36 +1589,11 @@ class Fractal(object):
             raw_data = pickle.load(tmpfile)
         return params, codes, raw_data
 
-    @staticmethod
-    def loop_pixels(func):
-        """
-        func shall have *chunk_slice*, *c* as keyword arguments.
-        If *chunk_slice* or *c* are None (or not provided):
-        We loop over the image pixels with these 2 keyword-arguments:
-            - chunk_slice
-            - c
-            (The other args and kwargs are passed untouched)
-        If *chunk_slice* AND *c* are provided, simply the usual call to f.
-        """
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            self = args[0]
-            args = args[1:]
-            if (kwargs.get("chunk_slice", None) is None
-                ) and (kwargs.get("c", None) is None):
-                for chunk_slice in self.chunk_slices():
-                    c = self.c_chunk(chunk_slice)
-                    kwargs["chunk_slice"] = chunk_slice
-                    kwargs["c"] = c
-                    func(self, *args, **kwargs)
-            else:
-                func(self, *args, **kwargs)
-        return wrapper
 
     @staticmethod
     def dic_matching(dic1, dic2):
         """
-        If we want to do some clever sanity test
+        If we want to do some clever sanity test (not implemented)
         If not matching shall raise a ValueError
         """
         return
@@ -998,7 +1613,8 @@ class Fractal(object):
                 iyy = min(iy + chunk_size, self.ny)
                 yield  (ix, ixx, iy, iyy)
 
-    def c_chunk(self, chunk_slice, data_type=None):
+
+    def c_chunk(self, chunk_slice):#, data_type=None):
         """
         Returns a chunk of c_vec for the calculation
         Parameters
@@ -1006,32 +1622,125 @@ class Fractal(object):
          - data_type: expected one of np.float64, np.longdouble
         
         Returns: 
-        span :  (ix, ixx, iy, iyy) The slice in the x and y  direction
-        c_vec : [chunk_size x chunk_size] 1d-vec of type datatype
-        
+        c_vec : [chunk_size x chunk_size] 2d-vec of type datatype
+
+        Projection availables cases :
+            - cartesian : standard cartesisan
+            - spherical : uses a spherical projection
+            - exp_map : uses an exponential map projection
+            - mixed_exp_map :  a mix of cartesian, exponential
         """
-        if data_type is None:
-            select = {np.complex256: np.float128,
-                      np.complex128: np.float64}
-            data_type = select[self.complex_type]
-        (x, y, nx, ny, dx, dy, theta_deg) = (self.x, self.y, self.nx, self.ny,
-            self.dx, self.dy, self.theta_deg)
+        
+        (x, y)  = (self.x, self.y)
+
+        offset = self.offset_chunk(chunk_slice)
+        return (x + offset[0]) + (y + offset[1]) * 1j
+
+
+    def offset_chunk(self, chunk_slice):
+        """
+        Only computes the delta around ref central point for different projections
+        """
+        select = {np.complex256: np.float128,
+                  np.complex128: np.float64}
+        data_type = select[self.complex_type]
+
+        (xy_ratio, theta_deg)  = (self.xy_ratio, self.theta_deg)
+        (nx, ny, dx, dy) = (self.nx, self.ny, self.dx, self.dy)
+        (ix, ixx, iy, iyy) = chunk_slice
+        theta = theta_deg / 180. * np.pi
+
+        dx_grid = np.linspace(- dx * 0.5, dx * 0.5, num=nx, dtype=data_type)
+        dy_grid = np.linspace(- dy * 0.5, dy * 0.5, num=ny, dtype=data_type)
+        dy_vec, dx_vec  = np.meshgrid(dy_grid[iy:iyy], dx_grid[ix:ixx])
+
+        if self.projection == "cartesian":
+            offset = [(dx_vec * np.cos(theta)) - (dy_vec * np.sin(theta)),
+                      (dx_vec * np.sin(theta)) + (dy_vec * np.cos(theta))]
+
+        elif self.projection == "spherical":
+            dr_sc = np.sqrt(dx_vec**2 + dy_vec**2) / max(dx, dy) * np.pi
+            k = np.where(dr_sc >= np.pi * 0.5, np.nan,  # outside circle
+                         np.where(dr_sc < 1.e-12, 1., np.tan(dr_sc) / dr_sc))
+            dx_vec *= k
+            dy_vec *= k
+            offset = [(dx_vec * np.cos(theta)) - (dy_vec * np.sin(theta)),
+                      (dx_vec * np.sin(theta)) + (dy_vec * np.cos(theta))]
+
+        elif self.projection == "mixed_exp_map":
+            # square + exp. map
+            h_max = 2. * np.pi / xy_ratio # max h reached on the picture
+            xbar = (dx_vec + 0.5 * dx - dy) / dx * h_max # 0 .. hmax
+            ybar = dy_vec / dy * 2. * np.pi              # -pi .. +pi
+            rho = dx * 0.5 * np.where(xbar > 0., np.exp(xbar), 0.)
+            phi = ybar + theta
+            dx_vec = (dx_vec + 0.5 * dx - 0.5 * dy) / xy_ratio
+            dy_vec = dy_vec / xy_ratio
+            offset = [np.where(xbar <= 0.,
+                          (dx_vec * np.cos(theta)) - (dy_vec * np.sin(theta)),
+                          rho * np.cos(phi)),
+                      np.where(xbar <= 0.,
+                          (dx_vec * np.sin(theta)) + (dy_vec * np.cos(theta)),
+                          rho * np.sin(phi))]
+
+        elif self.projection == "exp_map":
+            # only exp. map
+            h_max = 2. * np.pi / xy_ratio # max h reached on the picture
+            xbar = (dx_vec + 0.5 * dx - dy) / dx * h_max # 0 .. hmax
+            ybar = dy_vec / dy * 2. * np.pi              # -pi .. +pi
+            rho = dx * 0.5 * np.exp(xbar)
+            phi = ybar + theta
+            offset = [rho * np.cos(phi), rho * np.sin(phi)]
+
+        else:
+            raise ValueError("Projection not implemented: {}".format(
+                              self.projection))
+        return offset
+
+
+    def px_chunk(self, chunk_slice):
+        """
+        Local size of pixel for different projections
+        """
+        select = {np.complex256: np.float128,
+                  np.complex128: np.float64}
+        data_type = select[self.complex_type]
+
+        xy_ratio  = self.xy_ratio
+        (nx, ny, dx, dy) = (self.nx, self.ny, self.dx, self.dy)
         (ix, ixx, iy, iyy) = chunk_slice
 
-        theta = theta_deg / 180. * np.pi
         dx_grid = np.linspace(- dx * 0.5, dx * 0.5, num=nx, dtype=data_type)
-        dy_grid = np.linspace(- dy * 0.5, dy * 0.5, num=ny, dtype=data_type) 
+        dy_grid = np.linspace(- dy * 0.5, dy * 0.5, num=ny, dtype=data_type)
+        dy_vec, dx_vec  = np.meshgrid(dy_grid[iy:iyy], dx_grid[ix:ixx])
 
         dy_vec, dx_vec  = np.meshgrid(dy_grid[iy:iyy], dx_grid[ix:ixx])
-        x_vec = x + (dx_vec * np.cos(theta)) - (dy_vec * np.sin(theta))
-        y_vec = y + (dx_vec * np.sin(theta)) + (dy_vec * np.cos(theta))
+        if self.projection == "cartesian":
+            px = (dx / (nx - 1.)) * np.ones_like(dx_vec)
 
-        return x_vec + y_vec * 1j
+        elif self.projection == "spherical":
+            raise NotImplementedError()
+
+        elif self.projection == "mixed_exp_map":
+            raise NotImplementedError()
+
+        elif self.projection == "exp_map":
+            h_max = 2. * np.pi / xy_ratio
+            xbar = (dx_vec + 0.5 * dx - dy) / dx * h_max
+            px = (dx / (nx - 1.)) * 0.5 * h_max * np.exp(xbar)
+
+        else:
+            raise ValueError("Projection not implemented: {}".format(
+                              self.projection))
+        return px
 
 
-    @loop_pixels.__func__
+    @Multiprocess_filler(iterable_attr="chunk_slices",
+                         redirect_path_attr="multiprocess_dir",
+                         iter_kwargs="chunk_slice")
     def cycles(self, initialize, iterate, terminate, subset, codes,
-               file_prefix, chunk_slice=None, c=None, pc_threshold=0.2):
+               file_prefix, chunk_slice=None, pc_threshold=0.2, iref=None,
+               ref_path=None, SA_params=None):
         """
         Fast-looping for Julia and Mandelbrot sets computation.
 
@@ -1046,38 +1755,43 @@ class Fractal(object):
                     of axis ":" is np.sum(subset[ix:ixx, iy:iyy]) - see below
         *codes*  = complex_codes, int_codes, termination_codes
         *file_prefix* prefix identifig the data files
-        *chunk_slice* None - provided by the looping wrapper
-        *c*           None - provided by the looping wrapper
-
+        *chunk_slice_c* None - provided by the looping wrapper
+        
+        *iref* *ref_path* : defining the reference path
         Returns 
         None - save to a file
         
-        - *raw_data* = (Z, U, stop_reason, stop_iter) where
+        - *raw_data* = (chunk_mask, Z, U, stop_reason, stop_iter) where
             *chunk_mask*    1d mask
             *Z*             Final values of iterated complex fields shape [ncomplex, :]
             *U*             Final values of int fields [nint, :]       np.int32
             *stop_reason*   Byte codes -> reasons for termination [:]  np.int8
             *stop_iter*     Numbers of iterations when stopped [:]     np.int32
         """
+        if iref is not None:
+            c = self.diff_c_chunk(chunk_slice, iref, file_prefix)
+        else:
+            c = self.c_chunk(chunk_slice)
         
-        # First Tries to reload the data :
+
+        # First tries to reload the data :
         try:
             (dparams, dcodes) = self.reload_data_chunk(chunk_slice,
                                                    file_prefix, scan_only=True)
             self.dic_matching(dparams, self.params)
             self.dic_matching(dcodes, codes)
-            print "Data found, skipping calc: ", chunk_slice
+            print("Data found, skipping calc: ", chunk_slice)
             return
         except IOError:
-            print "Unable to find data_file, computing"
+            print("Unable to find data_file, computing")
         except:
-            print sys.exc_info()[0], "\nUnmaching params, computing"
-            
-        # We did't find we need to compute
+            print(sys.exc_info()[0], "\nUnmaching params, computing")
+
+        # We didn't find, we need to compute
         (ix, ixx, iy, iyy) = chunk_slice
         c = np.ravel(c)
         if subset is not None:
-            chunk_mask = np.ravel(subset[ix:ixx, iy:iyy])
+            chunk_mask = np.ravel(subset[chunk_slice])
             c = c[chunk_mask]
         else:
             chunk_mask = None
@@ -1089,9 +1803,13 @@ class Fractal(object):
         Z = np.zeros([n_Z, n_pts], dtype=c.dtype)
         U = np.zeros([n_U, n_pts], dtype=self.int_type)
         stop_reason = -np.ones([1, n_pts], dtype=self.termination_type) # np.int8 -> -128 to 127
-        stop_iter = np.zeros([1, n_pts], dtype=self.int_type) 
-        initialize(Z, U, c, chunk_slice)
+        stop_iter = np.zeros([1, n_pts], dtype=self.int_type)
         
+        if iref is not None:
+            initialize(Z, U, c, chunk_slice, iref)
+        else:
+            initialize(Z, U, c, chunk_slice)
+
         #  temporary array for looping
         index_active = np.arange(c.size, dtype=self.int_type)
         bool_active = np.ones(c.size, dtype=np.bool)
@@ -1101,7 +1819,18 @@ class Fractal(object):
         c_act = np.copy(c)
         
         looping = True
-        n_iter = 0
+
+        if SA_params is None:
+            n_iter = 0
+        else:
+            n_iter = SA_params["n_iter"]
+            kc = SA_params["kc"]
+            P = SA_params["P"]
+            for i_z in range(n_Z):
+                Z_act[i_z, :] = ((P[i_z])(c / kc)).to_standard()
+                print(i_z, "Z[i_z, :]\n", Z[i_z, :])
+            print("ref", iref, ref_path[n_iter, :])
+
         pc_trigger = [False, 0, 0]   #  flag, counter, count_trigger
         while looping:
             n_iter += 1
@@ -1116,10 +1845,18 @@ class Fractal(object):
                 index_active = index_active[bool_active]
 
             # 2) Iterate all active parts vec, delegate to *iterate*
-            iterate(Z_act, U_act, c_act, n_iter)
+            if iref is not None:
+                iterate(Z_act, U_act, c_act, n_iter, ref_path[n_iter - 1, :])
+            else:
+                iterate(Z_act, U_act, c_act, n_iter)
 
-            # 3) Partial loop ends, delagate to *terminate*
-            terminate(stop_reason_act, Z_act, U_act, c_act, n_iter)
+            # 3) Partial loop ends, delegate to *terminate*
+            if iref is not None:
+                terminate(stop_reason_act, Z_act, U_act, c_act, n_iter,
+                          ref_path[n_iter, :])
+            else:
+                terminate(stop_reason_act, Z_act, U_act, c_act, n_iter)
+            
             for stop in range(n_stop):
                 stopped = (stop_reason_act[0, :] == stop)
                 index_stopped = index_active[stopped]
@@ -1135,18 +1872,27 @@ class Fractal(object):
             count_active = np.count_nonzero(bool_active)
             pc = 0 if(count_active == 0) else count_active / (c.size *.01)
 
-            if pc < pc_threshold and n_iter > 5000:
+            if (count_active < 3 or pc < pc_threshold) and n_iter > 5000:
                 if pc_trigger[0]:
                     pc_trigger[1] += 1   # increment counter
                 else:
                     pc_trigger[0] = True # start couting
                     pc_trigger[2] = int(n_iter * 0.25) # set_trigger to 125%
-                    print "Trigger hit at", n_iter
-                    print "will exit at most at", pc_trigger[2] + n_iter
+                    print("Trigger hit at", n_iter)
+                    print("will exit at most at", pc_trigger[2] + n_iter)
+                    
+                    reasons_pc = np.zeros([n_stop], dtype=np.float32)
+                    for stop in range(n_stop):
+                        reasons_pc[stop] = np.count_nonzero(
+                            stop_reason[0, :] == stop) /(c.size *.01)
+                    status = ("iter{0} : active: {1} - {2}% " +
+                              "- by reasons (%): {3}").format(
+                              n_iter, count_active, pc, reasons_pc)
+                    print(status)
 
             looping = (count_active != 0 and
                        (pc_trigger[1] <= pc_trigger[2]))
-            if n_iter%5000 == 0:
+            if n_iter%5000 == 0: # 5000
                 reasons_pc = np.zeros([n_stop], dtype=np.float32)
                 for stop in range(n_stop):
                     reasons_pc[stop] = np.count_nonzero(
@@ -1154,8 +1900,8 @@ class Fractal(object):
                 status = ("iter{0} : active: {1} - {2}% " +
                           "- by reasons (%): {3}").format(
                           n_iter, count_active, pc, reasons_pc)
-                print status
-        
+                print(status)
+
         # Don't save temporary codes - i.e. those which startwith "_"
         # inside Z and U arrays
         select = {0: Z, 1: U}
@@ -1176,25 +1922,6 @@ class Fractal(object):
         self.save_data_chunk(chunk_slice, file_prefix, self.params,
                              save_codes, raw_data)
 
-    def raw_data(self, code, file_prefix):
-        """
-        Return an array of stored raw data from its code
-        *code* one item of complex_codes, int_codes, termination_codes
-        *file_prefix* prefix identifig the data files
-        *chunk_slice* None - provided by the looping wrapper
-        *c*           None - provided by the looping wrapper
-        """
-        for chunk_slice in self.chunk_slices():
-            break
-        (params, codes) = self.reload_data_chunk(chunk_slice,
-                              file_prefix, scan_only=True)
-        
-        # Select the case
-        dtype, kind = self.type_kind_from_code(code, codes)
-
-        data = np.empty([self.nx, self.ny], dtype=dtype)
-        self.fill_raw_data(data, code, kind, file_prefix)
-        return data
 
     def type_kind_from_code(self, code, codes):
         """
@@ -1216,12 +1943,11 @@ class Fractal(object):
         return dtype , kind
 
 
-    @loop_pixels.__func__
-    def fill_raw_data(self, data, code, kind, file_prefix,
-                      chunk_slice=None, c=None, return_as_list=False):
+    def get_raw_data(self, code, kind, file_prefix, chunk_slice):
         """
-        *chunk_slice* None - provided by the looping wrapper
-        *c*           None - provided by the looping wrapper
+        Note: looping to be done outside of this func
+        #*chunk_slice* None - provided by the looping wrapper
+        #*c*           None - provided by the looping wrapper
         """
         (ix, ixx, iy, iyy) = chunk_slice
         params, codes, raw_data = self.reload_data_chunk(chunk_slice,
@@ -1242,11 +1968,8 @@ class Fractal(object):
             raise KeyError("raw data code unknow")
         filler = filler[np.newaxis, :]
         filler = self.reshape2d(filler, chunk_mask, chunk_slice)
-        if return_as_list:
-            data += [filler] # only makes sense if not looping...
-            return
-        data[ix:ixx, iy:iyy] = filler[0, :, :]
-        
+        return filler[0, :, :]
+
 
     def reshape2d(self, chunk_array, chunk_mask, chunk_slice):
         """
@@ -1278,7 +2001,7 @@ class Fractal(object):
         """
         Postproc a stored array of data
         reshape as a sub-image crop to feed fractalImage
-        
+
         called by :
         if reshape
             post_array[ix:ixx, iy:iyy, :]
@@ -1289,7 +2012,7 @@ class Fractal(object):
         params, codes, raw_data = self.reload_data_chunk(chunk_slice,
                                                          file_prefix)
         post_array, chunk_mask = self.postproc(postproc_keys, codes, raw_data,
-                                               chunk_slice)
+                                               chunk_slice, file_prefix)
         return self.reshape2d(post_array, chunk_mask, chunk_slice)
 
 
@@ -1323,15 +2046,15 @@ class Fractal(object):
                           | "theta_LS":, "phi_LS":, "shininess":, 
                           | "ratio_specular":}
                           |
-        ["attr_shade"]    |[{"theta_LS":, "phi_LS":, "shininess":, 
-                          |"ratio_specular":} 
+        ["attr_shade"dc]  |[{"theta_LS":, "phi_LS":, "shininess":, 
+                          | "ratio_specular":, "LS_coords"} 
         [power_attr_shade]| Variation on ["attr_shade"] 
                           |
         [field_lines]     |{} # Calculation of a C1 phase angle (modulo 2 pi)
         [Lyapounov]       |{"n_iter": [field / None]}
         [raw]             | {"code": "raw_code"}
         [phase]           | {"source": "raw_code"}
-        [minibrot_phase]  |{"source": "raw_code"}  same than *phase* but with
+        [minibrot_phase]  | {"source": "raw_code"}  same than *phase* but with
                           |                        smoothing around 0
         [abs]             | {"source": "raw_code"}
                             
@@ -1348,11 +2071,22 @@ class Fractal(object):
         # The potential & real iteration number is a prerequisite for some
         # other postproc...
         has_potential = False
+        
+        def fill_color_tool_dic():
+            color_tool_dic = post_dic.copy()
+            color_tool_dic["chunk_slice"] = chunk_slice
+            color_tool_dic["chunk_mask"] = chunk_mask
+            print("sending chunk_mask", chunk_mask)
+            color_tool_dic["nx"] = self.nx
+            color_tool_dic["ny"] = self.ny
+            return color_tool_dic
 
         for i_key, postproc_key in enumerate(postproc_keys):
+#            print("postproc_keys", postproc_keys)
+#            print("i_key, postproc_key", i_key, postproc_key)
             post_name, post_dic = postproc_key
 
-            if post_name == "potential":
+            if post_name == "potential": # In fact the 'real iteration number'
                 has_potential = True
                 potential_dic = post_dic
                 n = stop_iter
@@ -1369,12 +2103,11 @@ class Fractal(object):
                     nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(N * k))
                                 / np.log(d))
 
-
                 elif potential_dic["kind"] == "convergent":
                     eps = potential_dic["epsilon_cv"]
-                    alpha = Z[complex_dic["alpha"]]
+                    alpha = 1. / Z[complex_dic["attractivity"]]
                     z_star = Z[complex_dic["zr"]]
-                    nu_frac = - np.log(eps / np.abs(zn - z_star)
+                    nu_frac = + np.log(eps / np.abs(zn - z_star)  # nu frac > 0
                                        ) / np.log(np.abs(alpha))
 
                 elif potential_dic["kind"] == "transcendent":
@@ -1392,7 +2125,11 @@ class Fractal(object):
                 if not has_potential:
                     raise ValueError("Potential shall be defined before shade")
                 dzndc = Z[complex_dic["dzndc"], :]
-                color_tool_dic = post_dic.copy()
+                color_tool_dic = fill_color_tool_dic() #post_dic.copy()
+#                color_tool_dic["chunk_slice"] = chunk_slice
+#                color_tool_dic["chunk_mask"] = chunk_mask
+#                color_tool_dic["nx"] = self.nx
+#                color_tool_dic["ny"] = self.ny
                 shade_kind = color_tool_dic.pop("kind")
 
                 if shade_kind == "Milnor":   # use only for z -> z**2 + c
@@ -1419,6 +2156,7 @@ class Fractal(object):
                         normal = - (zr - zn) / (dzrdc - dzndc)
                         normal = normal / np.abs(normal)
 
+                print("sending !", np.shape(zn))
                 val = Color_tools.shade_layer(
                         normal * np.cos(post_dic["phi_LS"] * np.pi / 180.),
                         **color_tool_dic)
@@ -1433,7 +2171,7 @@ class Fractal(object):
                     # G. Billotey
                     k_alpha = 1. / (1. - d)       # -1.0 if N = 2
                     k_beta = - d * k_alpha        # 2.0 if N = 2
-                    z_norm = zn * a_d ** (-k_alpha) # the normalization coeff
+                    z_norm = zn * a_d**(-k_alpha) # the normalization coeff
 
                     t = [np.angle(z_norm)]
                     val = np.zeros_like(t)
@@ -1447,10 +2185,13 @@ class Fractal(object):
                     del t
 
                 elif potential_dic["kind"] == "convergent":
-                    alpha = Z[complex_dic["alpha"]]
+                    alpha = 1. / Z[complex_dic["attractivity"]]
                     z_star = Z[complex_dic["zr"]]
                     beta = np.angle(alpha)
-                    val = np.angle(z_star - zn) - nu_frac * beta
+                    # val = np.angle((z_star - zn) / (-nu_frac * beta))
+                    val = np.angle(z_star - zn) + nu_frac * beta
+                    # We have an issue if z_star == zn...
+                    val = val * 2.
 
 
             elif post_name == "Lyapounov":
@@ -1472,7 +2213,7 @@ class Fractal(object):
                 dattrdc = Z[complex_dic["dattrdc"], :]
                 normal = attr * np.conj(dattrdc) / np.abs(dattrdc)
 
-                color_tool_dic = post_dic.copy()
+                color_tool_dic = fill_color_tool_dic()
                 val = Color_tools.shade_layer(
                         normal,
                         **color_tool_dic)
@@ -1490,10 +2231,195 @@ class Fractal(object):
                 dattrdc = np.where(invalid, 0., dattrdc)
                 normal = (.2 + .8 * attr) * np.conj(dattrdc) / np.abs(dattrdc)
 
-                color_tool_dic = post_dic.copy()
+                color_tool_dic = fill_color_tool_dic()
                 val = Color_tools.shade_layer(
                         normal * np.cos(post_dic["phi_LS"] * np.pi / 180.),
                         **color_tool_dic)     
+
+            elif "attr_normal_n" in post_name:
+                # Plotting the 2 main coords for a complex normal map
+                coord = post_name[13]
+                attr = Z[complex_dic["attractivity"], :]
+                dattrdc = Z[complex_dic["dattrdc"], :]
+                normal = attr * np.conj(dattrdc)  / np.abs(dattrdc)
+                if coord == "x":
+                    val = - np.real(normal)
+                elif coord == "y":
+                    val = - np.imag(normal)
+                else:
+                    raise ValueError(coord)
+
+            elif "DEM_shade_normal_n" in post_name:
+                # Plotting the 2 main coords for a complex normal map based on
+                # Millnor distance estimator
+                coord = post_name[18]
+                zn = Z[complex_dic["zn"], :]
+                dzndc = Z[complex_dic["dzndc"], :]
+                d2zndc2 = Z[complex_dic["d2zndc2"], :]
+                lo = np.log(np.abs(zn))
+                normal = zn * dzndc * ((1.+lo)*np.conj(dzndc * dzndc)
+                                  -lo * np.conj(zn * d2zndc2))
+                normal = normal / np.abs(normal)
+
+                if coord == "x":
+                    val = - np.real(normal)
+                elif coord == "y":
+                    val = - np.imag(normal)
+                else:
+                    raise ValueError(coord)
+
+            elif post_name == "attr_height_map" :
+                # Plotting the 'domed' height map for the cycle attractivity
+                attr = Z[complex_dic["attractivity"], :]
+                invalid = (np.abs(attr) > 1.)
+                attr = np.where(invalid, attr / np.abs(attr), attr)
+                dattrdc = Z[complex_dic["dattrdc"], :]
+                dattrdc = np.where(invalid, 1., dattrdc)                
+                normal = attr * np.conj(dattrdc) / np.abs(dattrdc)
+
+                r = U[int_dic["r"], :]
+                val = np.sqrt(1. - attr * np.conj(attr)) / r
+
+
+            elif post_name == "DEM_height_map" :
+                # This height may have a noticeable banding (especially when
+                # exported to 3d)
+                # in this case the user can pass the function :
+                # zn -> zn+1 and dzndc -> dzn+1dc 
+                # (iter_zn, iter_dzndc) = iteration(zn, dzndc, c)
+                # iteration
+                if not has_potential:
+                    raise ValueError("Potential shall be defined before " +
+                                     "DEM_height_map")
+                zn = Z[complex_dic["zn"], :]
+                dzndc = Z[complex_dic["dzndc"], :]
+
+                iteration = post_dic.get("iteration", None)
+                if iteration is not None:
+                    c = np.ravel(self.c_chunk(chunk_slice))
+                    if chunk_mask is not None:
+                        c = c[chunk_mask]
+                    iter_zn, iter_dzndc = self.d1_iteration(zn, dzndc, c,
+                                                            **iteration)
+                    s_zn =  iter_zn + nu_frac * (zn - iter_zn)
+                    s_dzndc = dzndc * (nu_frac) + (1. - nu_frac) * iter_dzndc
+                    
+
+                else:
+                    s_zn, s_dzndc = zn, dzndc
+
+                if potential_dic["kind"] == "infinity":
+                    abs_zn = np.abs(s_zn)
+                    val = abs_zn * np.log(abs_zn) / np.abs(s_dzndc)
+
+                elif potential_dic["kind"] == "convergent":
+                    zr = Z[complex_dic["zr"]]
+                    dzrdc = Z[complex_dic["dzrdc"], :]
+                    val = np.abs((zr - s_zn) / (dzrdc - s_dzndc))
+
+                px = self.dx / float(self.nx)
+                px_snap = post_dic.get("px_snap", 1.)
+                val = np.where(val < px * px_snap, 0., val)
+
+            elif post_name == "DEM_explore" :
+                # This height may have a noticeable banding (especially when
+                # exported to 3d)
+                # in this case the user can pass the function :
+                # zn -> zn+1 and dzndc -> dzn+1dc 
+                # (iter_zn, iter_dzndc) = iteration(zn, dzndc, c)
+                # iteration
+                if not has_potential:
+                    potential_dic = post_dic.get("potential_dic", None)
+                    if potential_dic is None:
+                        raise ValueError("Potential shall be defined before "
+                            "DEM_height_map")
+
+                zn = Z[complex_dic["zn"], :]
+                dzndc = Z[complex_dic["dzndc"], :]
+
+                if potential_dic["kind"] == "infinity":
+                    abs_zn = np.abs(zn)
+                    val = abs_zn * np.log(abs_zn) / np.abs(dzndc)
+
+                elif potential_dic["kind"] == "convergent":
+                    zr = Z[complex_dic["zr"]]
+                    dzrdc = Z[complex_dic["dzrdc"], :]
+                    val = np.abs((zr - zn) / (dzrdc - dzndc))
+
+                px = self.dx / float(self.nx)
+                px_snap = post_dic.get("px_snap", 1.)
+                val = np.where(val < px * px_snap, 0., 1.)
+
+
+            elif post_name == "potential_height_map" :
+                if not has_potential:
+                    raise ValueError("Potential shall be defined before " +
+                                     "potential_height_map")
+                # Plotting the height map for the Potential
+                nu = stop_iter + nu_frac
+                val = np.log(nu)
+
+            elif post_name == "power_attr_heightmap":
+                r = U[int_dic["r"], :]
+                val =  np.where(r == 0, 0., 1./np.log(1./ r))
+                
+            elif "power_attr__normal_n" in post_name:
+                # Plotting the 2 main coords for a complex map based on Millnor
+                # distance
+                coord = post_name[20]
+                attr = Z[complex_dic["attractivity"], :]
+                invalid = (np.abs(attr) > 1.)
+                attr = np.where(invalid, attr / np.abs(attr), attr)
+
+                dattrdc = Z[complex_dic["dattrdc"], :]
+                dattrdc = np.where(invalid, 0., dattrdc)
+                normal = (.2 + .8 * attr) * np.conj(dattrdc) / np.abs(dattrdc)
+
+                if coord == "x":
+                    val = - np.real(normal)
+                elif coord == "y":
+                    val = - np.imag(normal)
+                else:
+                    raise ValueError(coord)
+
+            elif post_name == "_special1":
+                code = post_dic["r_candidate"]
+                order = U[int_dic[code], :]
+                val = order
+#                has_potential = True
+#                potential_dic = {"kind": "infinity", "d": 2, "a_d": 1., "N": 1e3}
+#                dx = 2.375e-14 * 0.36 * 0.2 * 2.
+#                n = stop_iter
+#                zn = Z[complex_dic["zn"], :]
+#                d = 2.
+#                a_d = 1.
+#                N = 1e3
+#                k = np.abs(a_d) ** (1. / (d - 1.))
+#                    # k normaliszation corefficient, because the formula given
+#                    # in https://en.wikipedia.org/wiki/Julia_set                    
+#                    # suppose the highest order monome is normalized
+#                nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(N * k))
+#                                / np.log(d))
+#                nu = n + nu_frac
+#                val1 = np.log(nu)
+#                val1 = np.arctan(val1 - 7.35906457901001)
+#                min1 = -0.48491284251213074
+#                max1 = 1.4317854642868042
+#                val1 = (val1 - min1) / (max1 - min1)
+#                val1 = np.where(val1 > max1, max1, val1)
+#                val1 = np.where(val1 < min1, min1, val1)
+#
+#                dzndc = Z[complex_dic["dzndc"], :]
+#                abs_zn = np.abs(zn)
+#                val2 = abs_zn * np.log(abs_zn) / np.abs(dzndc)
+#                val2 = np.where(val2 > dx, dx, val2)
+#                px = dx / 4000.# float(self.nx)
+#                px_snap = post_dic.get("px_snap", 1.)
+#                val2 = np.where(val2 < px * px_snap, 0., val2)
+#                min2 = 0.0
+#                max2 = 3.4199999999999996e-15
+#                val2 = (val2 - min2) / (max2 - min2)
+#                val = np.where(val2 == 0., val1, -val2)
 
             elif post_name == "phase":
                 # Plotting raw complex data : plot the angle
@@ -1504,8 +2430,9 @@ class Fractal(object):
             elif post_name == "abs":
                 # Plotting raw complex data : plot the abs
                 code = post_dic["source"]
+                multiplier = post_dic.get("multiplier", 1.)
                 z = Z[complex_dic[code], :] 
-                val = np.abs(z)         
+                val = multiplier * np.abs(z)
 
             elif post_name == "minibrot_phase":
                 # Pure graphical post-processing for minibrot 'attractivity'
@@ -1528,7 +2455,7 @@ class Fractal(object):
                 else:
                     raise KeyError("raw data code unknow")
             else:
-                    raise ValueError("Unknown post_name", post_name)
+                raise ValueError("Unknown post_name", post_name)
 
             post_array[i_key, :] = val
 
@@ -1545,6 +2472,7 @@ class Fractal(object):
             complex_codes, int_codes, termination_codes]]
         return complex_dic, int_dic, termination_dic
 
+
     @staticmethod
     def subsubset(bool_set, bool_subset_of_set):
         """
@@ -1558,8 +2486,33 @@ class Fractal(object):
         set_count = np.sum(bool_set)
         Card_set, = np.shape(bool_subset_of_set)
         if Card_set != set_count:
-            raise ValueError("Expected bool_subset_of_set of shape [Card(set)]"
-                             )
+            raise ValueError("Expected bool_subset_of_set of shape"
+                             " [Card(set)]")
         bool_subset = np.copy(bool_set)
         bool_subset[bool_set] = bool_subset_of_set
         return bool_subset
+
+
+
+#
+#
+#class PerturbationFractal(object):
+#    """
+#    Abstract base class using perturbation
+#    Derived classes are reponsible for computing, storing and reloading the raw
+#    data composing a fractal image.
+#    https://mrob.com/pub/muency/reversebifurcation.html
+#       http://www.fractalforums.com/announcements-and-news/pertubation-theory-glitches-improvement/
+#    """
+#    
+#    
+#    
+#    @property    
+#    def params(self):
+#        return {"x": self.x,
+#                "y": self.y,
+#                "nx": self.nx,
+#                "ny": self.ny,
+#                "dx": self.dx,
+#                "dy": self.dy,
+#                "theta_deg": self.theta_deg}
