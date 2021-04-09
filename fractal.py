@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
+import mpmath
+from numpy_utils.xrange import Xrange_array, mpc_to_Xrange, mpf_to_Xrange
 import pickle
 
 import matplotlib.colors
@@ -12,11 +14,15 @@ import functools
 import copy
 import PIL
 #from PIL.PngImagePlugin import PngInfo
+#from perturbation import PerturbationFractal
 
 import multiprocessing
 import tempfile
 
+import datetime
+
 enable_multiprocessing = True
+no_compute = False
 
 def mkdir_p(path):
     """ Creates directory ; if exists does nothing """
@@ -205,7 +211,8 @@ class Color_tools():
         XYZ_pegtop = np.zeros([imx * imy, 3])
         XYZ_Lch = np.zeros([imx * imy, 3])
 
-        ref_white = Color_tools.Lab_ref_white
+        ref_white = Color_tools.D50_ref_white
+
 
         if shade_type.get("overlay", 0.) != 0:
             low = 2. * shade * XYZ
@@ -276,6 +283,7 @@ class Color_tools():
         phi_LS = phi_LS * np.pi / 180.
         
         if "exp_map" in kwargs.keys():
+            raise ValueError() # debug
             # Normal angle correction in case of exponential map
             if kwargs["exp_map"]:
                 (ix, ixx, iy, iyy) = kwargs["chunk_slice"]
@@ -290,8 +298,8 @@ class Color_tools():
                     expmap_angle = expmap_angle[chunk_mask]
                 normal = normal * expmap_angle
 
-        k_ambient = - 1. / (2. * ratio_specular + 1.)
-        k_lambert = - 2. * k_ambient
+        # k_ambient = - 1. / (2. * ratio_specular + 1.)
+        k_lambert = 1. #- 2. * k_ambient
         k_spec = ratio_specular * k_lambert
 
         # Light source coordinates
@@ -315,14 +323,22 @@ class Color_tools():
         specular = np.zeros_like(lambert)
         if ratio_specular != 0.:
             phi_half = (np.pi * 0.5 + phi_LS) * 0.5
-            half_x = np.cos(theta_LS) * np.cos(phi_half)
-            half_y = np.sin(theta_LS) * np.cos(phi_half)
-            half_z = np.sin(phi_half)
+            half_x = np.cos(theta_LS) * np.sin(phi_half)
+            half_y = np.sin(theta_LS) * np.sin(phi_half)
+            half_z = np.cos(phi_half)
             spec_angle = half_x * nx + half_y * ny + half_z * nz
             np.putmask(spec_angle, spec_angle < 0., 0.)
             specular = np.power(spec_angle, shininess)
+            
+        res =  k_lambert * lambert + k_spec * specular # + k_ambient
+        
+        #res[normal == 0.] = 0.5 * (np.nanmin(res) + np.nanmax(res))
+        try:
+            np.putmask(res, normal == 0., np.nanmin(res) + 0.5 * (np.nanmax(res) - np.nanmin(res)))
+        except ValueError:
+            pass
 
-        return  k_ambient + k_lambert * lambert + k_spec * specular
+        return res# k_ambient + k_lambert * lambert + k_spec * specular
 
 
 def process_init(job, redirect_path):
@@ -396,7 +412,8 @@ class Multiprocess_filler():
                 print("cpu count:", multiprocessing.cpu_count())
                 redirect_path = getattr(instance, self.redirect_path_attr)
                 with multiprocessing.Pool(initializer=process_init,
-                        initargs=(job, redirect_path)) as pool:
+                        initargs=(job, redirect_path),
+                        processes=multiprocessing.cpu_count()) as pool:
                     worker_res = {key: pool.apply_async(job_proxy, (key,))
                                   for key in iterable()}
                     for key, val in worker_res.items():
@@ -448,7 +465,7 @@ class Fractal_Data_array():
             chunk_slice = next(fractal.chunk_slices())
             (params, codes) = fractal.reload_data_chunk(
                     chunk_slice, self.file_prefix, scan_only=True)
-            dtype, kind = fractal.type_kind_from_code(self.code, codes)
+            kind = fractal.kind_from_code(self.code, codes)
             self._kind = kind
             return kind
 
@@ -475,6 +492,8 @@ class Fractal_Data_array():
         elif mode == "rw+temp":
             subarray_file = self._ref[chunk_slice]
             _ = subarray_file.seek(0)
+            # Note : no "extended_range" magic... to be handled downstream
+            # if accessing raw Z values
             return np.load(subarray_file)
         else:
             raise ValueError("Unexpected read call for mode : " + 
@@ -515,6 +534,27 @@ class Fractal_Data_array():
             if self._ref is not None:
                 for val in self._ref.values():
                     val.close()
+                    
+    def __iter__(self):
+        """
+        Iterate the Fractal_Data_array by chunks.
+        Note: Should make min, max just work.
+        """
+        for chunk_slice in self.fractal.chunk_slices():
+            yield self[chunk_slice]
+            
+    def nanmax(self):
+        """ extension of np.nanmax """
+        return max([np.nanmax(chunk) for chunk in self])
+    
+    def nanmin(self):
+        """ extension of np.nanmin """
+        return max([np.nanmin(chunk) for chunk in self])
+    
+    def nansum(self):
+        """ extension of np.nansum """
+        return sum([np.nansum(chunk) for chunk in self])
+
 
 
 class Fractal_colormap():
@@ -647,6 +687,8 @@ n_colors) where xmi, xmax refer to this colormap (xmin xmax btw. 0 and 1).
             z = self.clip(z, ext_min, ext_max)
         elif self.extent == "mirror":
             z = self.mirror(z, ext_min, ext_max)
+        elif self.extent == "repeat":
+            z = self.repeat(z, ext_min, ext_max)
         else:
             raise ValueError("Unexpected extent property {}".format(
                     self.extent))
@@ -669,6 +711,13 @@ Formula: https://en.wikipedia.org/wiki/Triangle_wave
         e = np.floor((t + 1) / 2)
         t = np.abs((t - 2. * np.floor(e)) * (-1)**e)
         return ext_min + (t * (ext_max - ext_min))
+    
+    @staticmethod
+    def repeat(x, ext_min, ext_max):
+        """
+        Repeating x based on ext_min & ext_max (Sawtooth)
+        """
+        return ext_min + ((x - ext_min) % (ext_max - ext_min))
 
 
 class Fractal_plotter():
@@ -764,8 +813,6 @@ the array returned by base_data_key
             image. Note that irrelative to veto_blend, a displacement layer
             (see doc for disp_layer param) is intended for further
             post-processing and never blended to the final image.
-        blender_layer : if True, not mixed with color image only exported for 
-                        further processing with Blender software.
         Fourrier, skewness, hardness, intensity, blur_ranges : arguments passed
             to further image post-procesing functions, see details in each
             function descriptions.
@@ -802,6 +849,7 @@ the array returned by base_data_key
                 # Clipping in case of imposed min max range
                 data = np.where(data < -1., -1., data)
                 data = np.where(data > 1., 1., data)
+
 
             if skewness is not None:
                 data = self.skew(skewness, data)
@@ -955,6 +1003,7 @@ the array returned by base_data_key
                           postproc_keys, mask_color, layers_minmax)
 
         base_img_path = os.path.join(self.plot_dir, file_name + ".png")
+#        tag_dicts = 
         self.save_tagged(base_img, base_img_path,
                           {"Software": "py-fractal",
                            "fractal": type(self.fractal).__name__,
@@ -1489,16 +1538,16 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                  projection="cartesian"):
         """
         Parameters
-*directory*   The working base directory
-*x* *y*  coordinates of the central point
-*dx*     reference data range (on x axis). Definition depends of the
-projection selected, for 'cartesian' (default) this is the total range.
-*nx*     number of pixels of the image along x axis
-*xy_ratio*  ratio of dy / dx or ny / nx
-*theta_deg*    Pre-rotation of the calculation domain
-*chunk_size*   size of the basic calculation 'tile' is chunk_size x chunk_size
-projection   "cartesian" "spherical" "exp_map"
-complex_type  np type or ("mpmath", pres)
+    *directory*   The working base directory
+    *x* *y*  coordinates of the central point
+    *dx*     reference data range (on x axis). Definition depends of the
+        projection selected, for 'cartesian' (default) this is the total span.
+    *nx*     number of pixels of the image along x axis
+    *xy_ratio*  ratio of dy / dx and ny / nx
+    *theta_deg*    Pre-rotation of the calculation domain
+    *chunk_size*   size of the basic calculation 'tile' is chunk_size x chunk_size
+    *complex_type*  numpy type or ("Xrange", numpy type)
+    *projection*   "cartesian" "spherical" "exp_map"
         """
         self.x = x
         self.y = y
@@ -1508,14 +1557,30 @@ complex_type  np type or ("mpmath", pres)
         self.theta_deg = theta_deg
         self.directory = directory
         self.chunk_size = chunk_size
+        self.projection = projection
+        self.multiprocess_dir = os.path.join(self.directory, "multiproc_calc")
+
+        # Data types
         self.complex_type = complex_type
-        self.complex_store_type = complex_type
+        self.Xrange_complex_type = False
+        self.base_complex_type = complex_type
+        if type(self.complex_type) is tuple:
+            type_modifier, base_complex_type = self.complex_type
+            if type_modifier != "Xrange":
+                raise ValueError(type_modifier)
+            self.Xrange_complex_type = True
+            self.base_complex_type = base_complex_type
+
+        select = {np.complex64: np.float32,
+                  np.complex128: np.float64}
+        self.base_float_type = select[self.base_complex_type]
+
+        # self.complex_store_type = self.base_complex_type # unused
         self.float_postproc_type = np.float32
         self.termination_type = np.int8
         self.int_type = np.int32
-        self.projection = projection
-
-        self.multiprocess_dir = os.path.join(self.directory, "multiproc_calc")
+        
+        
 
     @property
     def ny(self):
@@ -1525,9 +1590,21 @@ complex_type  np type or ("mpmath", pres)
     def dy(self):
         return self.dx * self.xy_ratio
 
+    @property
+    def px(self):
+        if not(hasattr(self, "_px")): # is None:
+            self._px = self.dx / self.nx
+        return self._px
+
     @property    
     def params(self):
-        return {"x": self.x,
+        """ Used for tagging a data chunk
+        """
+        return {"Software": "py-fractal",
+                "fractal": type(self).__name__,
+                "datetime": datetime.datetime.today().strftime(
+                        '%Y-%m-%d_%H:%M:%S'),
+                "x": self.x,
                 "y": self.y,
                 "nx": self.nx,
                 "ny": self.ny,
@@ -1535,6 +1612,9 @@ complex_type  np type or ("mpmath", pres)
                 "dy": self.dy,
                 "theta_deg": self.theta_deg,
                 "projection": self.projection}
+#                "max_iter": self.max_iter,
+#                "M_divergence": self.M_divergence,
+#                "epsilon_stationnary": self.epsilon_stationnary}
 
     def data_file(self, chunk_slice, file_prefix):
         """
@@ -1572,6 +1652,17 @@ complex_type  np type or ("mpmath", pres)
             pickle.dump(params, tmpfile, pickle.HIGHEST_PROTOCOL)
             pickle.dump(codes, tmpfile, pickle.HIGHEST_PROTOCOL)
             pickle.dump(raw_data, tmpfile, pickle.HIGHEST_PROTOCOL)
+            
+        # debug
+        chunk_mask, Z, U, stop_reason, stop_iter = raw_data
+                # debug
+
+        print("debug save", chunk_slice)
+        glitched = (stop_reason[0, :] == 3)
+        print("**abs raw of ", chunk_slice)
+        print("Z0 glitched shape", ((Z[3, :])[glitched]).shape)
+        print("Z0 glitched", (Z[3, :])[glitched][:100])
+            #raise ValueError
 
     def reload_data_chunk(self, chunk_slice, file_prefix, scan_only=False):
         """
@@ -1581,13 +1672,50 @@ complex_type  np type or ("mpmath", pres)
            - arrays : [Z, U, stop_reason, stop_iter]
         """
         save_path = self.data_file(chunk_slice, file_prefix)
-        with open(save_path, 'rb') as tmpfile:
-            params = pickle.load(tmpfile)
-            codes = pickle.load(tmpfile)
-            if scan_only:
-                return params, codes
-            raw_data = pickle.load(tmpfile)
-        return params, codes, raw_data
+
+        try:
+            with open(save_path, 'rb') as tmpfile:
+                params = pickle.load(tmpfile)
+                codes = pickle.load(tmpfile)
+                if scan_only:
+                    return params, codes
+                raw_data = pickle.load(tmpfile)
+            
+            return params, codes, raw_data
+        
+        # If no_compute ...
+        except FileNotFoundError:
+            if not(no_compute):
+                raise
+            
+            # Else: no_compute selected, return empty fields
+            # Except: first chunk will be computed (maybe more if
+            # multiprocessing)
+            for ref_chunk_slice in self.chunk_slices():
+                ref_path = self.data_file(ref_chunk_slice, file_prefix)
+                with open(ref_path, 'rb') as tmpfile:
+                    params = pickle.load(tmpfile)
+                    codes = pickle.load(tmpfile)
+                    if scan_only:
+                        return params, codes
+                    raw_data = pickle.load(tmpfile)
+
+                    n_Z, n_U, n_stop = (len(code) for code in codes)
+                    (ix, ixx, iy, iyy) = chunk_slice
+                    nxy = (ixx - ix) * (iyy - iy)
+                    chunk_mask = np.zeros([nxy], dtype=np.bool)
+                    if not(self.Xrange_complex_type):
+                        Z = np.zeros([n_Z, 0], dtype=self.base_complex_type)
+                    else:
+                        Z = Xrange_array.zeros([n_Z, 0],
+                                               dtype=self.base_complex_type)
+                    U = np.zeros([n_U, 0], dtype=self.int_type)
+                    stop_reason = -np.ones([1, 0], dtype=self.termination_type)
+                    stop_iter = np.zeros([1, 0], dtype=self.int_type)
+
+                    raw_data = (chunk_mask, Z, U, stop_reason, stop_iter)
+                return params, codes, raw_data
+            
 
 
     @staticmethod
@@ -1629,6 +1757,8 @@ complex_type  np type or ("mpmath", pres)
             - spherical : uses a spherical projection
             - exp_map : uses an exponential map projection
             - mixed_exp_map :  a mix of cartesian, exponential
+
+        Note : return type is always standard prec - standard range
         """
         
         (x, y)  = (self.x, self.y)
@@ -1637,21 +1767,34 @@ complex_type  np type or ("mpmath", pres)
         return (x + offset[0]) + (y + offset[1]) * 1j
 
 
-    def offset_chunk(self, chunk_slice):
+    def offset_chunk(self, chunk_slice, ensure_Xr=False):
         """
         Only computes the delta around ref central point for different projections
+        Note : return type is always standard prec - standard or extended range
         """
-        select = {np.complex256: np.float128,
-                  np.complex128: np.float64}
-        data_type = select[self.complex_type]
+#        select = {np.complex256: np.float128,
+#                  np.complex128: np.float64}
+        data_type = self.base_float_type # select[self.base_complex_type]
 
         (xy_ratio, theta_deg)  = (self.xy_ratio, self.theta_deg)
         (nx, ny, dx, dy) = (self.nx, self.ny, self.dx, self.dy)
+
+        if self.Xrange_complex_type or ensure_Xr:
+            dx_m, dx_exp = mpmath.frexp(dx)
+            dx_m = np.array(dx_m, data_type)
+            dx = Xrange_array(dx_m, dx_exp)
+            dy_m, dy_exp = mpmath.frexp(dy)
+            dy_m = np.array(dy_m, data_type)
+            dy = Xrange_array(dy_m, dy_exp)
+        else:
+            dx = float(dx)
+            dy = float(dy)
+        
         (ix, ixx, iy, iyy) = chunk_slice
         theta = theta_deg / 180. * np.pi
 
-        dx_grid = np.linspace(- dx * 0.5, dx * 0.5, num=nx, dtype=data_type)
-        dy_grid = np.linspace(- dy * 0.5, dy * 0.5, num=ny, dtype=data_type)
+        dx_grid = dx * np.linspace(-0.5, 0.5, num=nx, dtype=data_type)
+        dy_grid = dy * np.linspace(-0.5, 0.5, num=ny, dtype=data_type)
         dy_vec, dx_vec  = np.meshgrid(dy_grid[iy:iyy], dx_grid[ix:ixx])
 
         if self.projection == "cartesian":
@@ -1702,21 +1845,32 @@ complex_type  np type or ("mpmath", pres)
         """
         Local size of pixel for different projections
         """
-        select = {np.complex256: np.float128,
-                  np.complex128: np.float64}
-        data_type = select[self.complex_type]
+#        select = {np.complex64: np.float32,
+#                  np.complex128: np.float64}
+        data_type = self.base_float_type# select[self.base_complex_type]
 
         xy_ratio  = self.xy_ratio
         (nx, ny, dx, dy) = (self.nx, self.ny, self.dx, self.dy)
         (ix, ixx, iy, iyy) = chunk_slice
+        
+        if not(self.Xrange_complex_type):
+            dx = float(dx)
+            dy = float(dy)
+        else:
+            dx_m, dx_exp = mpmath.frexp(dx)
+            dx_m = np.array(dx_m, data_type)
+            dx = Xrange_array(dx_m, dx_exp)
+            dy_m, dy_exp = mpmath.frexp(dy)
+            dy_m = np.array(dy_m, data_type)
+            dy = Xrange_array(dy_m, dy_exp)
 
-        dx_grid = np.linspace(- dx * 0.5, dx * 0.5, num=nx, dtype=data_type)
-        dy_grid = np.linspace(- dy * 0.5, dy * 0.5, num=ny, dtype=data_type)
+        dx_grid = dx * np.linspace(-0.5, 0.5, num=nx, dtype=data_type)
+        dy_grid = dy * np.linspace(-0.5, 0.5, num=ny, dtype=data_type)
         dy_vec, dx_vec  = np.meshgrid(dy_grid[iy:iyy], dx_grid[ix:ixx])
 
-        dy_vec, dx_vec  = np.meshgrid(dy_grid[iy:iyy], dx_grid[ix:ixx])
+#        dy_vec, dx_vec  = np.meshgrid(dy_grid[iy:iyy], dx_grid[ix:ixx])
         if self.projection == "cartesian":
-            px = (dx / (nx - 1.)) * np.ones_like(dx_vec)
+            px = (dx / (nx - 1.)) #* np.ones_like(dx_vec)
 
         elif self.projection == "spherical":
             raise NotImplementedError()
@@ -1738,18 +1892,17 @@ complex_type  np type or ("mpmath", pres)
     @Multiprocess_filler(iterable_attr="chunk_slices",
                          redirect_path_attr="multiprocess_dir",
                          iter_kwargs="chunk_slice")
-    def cycles(self, initialize, iterate, terminate, subset, codes,
-               file_prefix, chunk_slice=None, pc_threshold=0.2, iref=None,
-               ref_path=None, SA_params=None):
+    def cycles(self, initialize, iterate, subset, codes, file_prefix,
+               chunk_slice=None, pc_threshold=0.2,
+               iref=None, ref_path=None, SA_params=None,
+               glitched=None, irefs=None):
         """
         Fast-looping for Julia and Mandelbrot sets computation.
 
         Parameters
         *initialize*  function(Z, U, c) modify in place Z, U (return None)
-        *iter_func*   function(Z, U, c, n) modify place Z, U (return None)
-        *terminate*   function (stop_reason, Z, U, c, n) modifiy in place
-                      stop_reason (return None); if stop reason in range(nstop)
-                      -> stopping iteration of this point.
+        *iterate*   function(Z, U, c, n) modify place Z, U (return None)
+
         *subset*   bool arrays, iteration is restricted to the subset of current
                    chunk defined by this array. In the returned arrays the size
                     of axis ":" is np.sum(subset[ix:ixx, iy:iyy]) - see below
@@ -1757,81 +1910,221 @@ complex_type  np type or ("mpmath", pres)
         *file_prefix* prefix identifig the data files
         *chunk_slice_c* None - provided by the looping wrapper
         
-        *iref* *ref_path* : defining the reference path
-        Returns 
-        None - save to a file
+        *iref* *ref_path* : defining the reference path, for iterations with
+            perturbation method. if iref > 0 : means glitch correction loop.
         
-        - *raw_data* = (chunk_mask, Z, U, stop_reason, stop_iter) where
+
+        
+        *gliched* boolean Fractal_Data_array of pixels that should be updated
+                  with a new ref point
+        *irefs*   integer Fractal_Data_array of pixels current ref points
+        
+        
+        Returns 
+        None - save to a file. 
+        *raw_data* = (chunk_mask, Z, U, stop_reason, stop_iter) where
             *chunk_mask*    1d mask
             *Z*             Final values of iterated complex fields shape [ncomplex, :]
             *U*             Final values of int fields [nint, :]       np.int32
             *stop_reason*   Byte codes -> reasons for termination [:]  np.int8
             *stop_iter*     Numbers of iterations when stopped [:]     np.int32
         """
-        if iref is not None:
-            c = self.diff_c_chunk(chunk_slice, iref, file_prefix)
-        else:
-            c = self.c_chunk(chunk_slice)
+        # LEGACY dev
+#      *terminate*   function (stop_reason, Z, U, c, n) modifiy in place
+#      stop_reason (return None); if stop reason in range(nstop)
+#     -> stopping iteration of this point.
+        print("**CALLING cycles ")
+        print("iref", iref)
+        print("SA_params cutdeg", SA_params["cutdeg"])
+        print("SA_params iref", SA_params["iref"])
+        print("SA_params kc", SA_params["kc"])
+        print("**/CALLING cycles ")
         
-
+        
+        if subset is not None:
+            chunk_mask = np.ravel(subset[chunk_slice])
+        else:
+            chunk_mask = None
+        
         # First tries to reload the data :
         try:
             (dparams, dcodes) = self.reload_data_chunk(chunk_slice,
                                                    file_prefix, scan_only=True)
             self.dic_matching(dparams, self.params)
             self.dic_matching(dcodes, codes)
-            print("Data found, skipping calc: ", chunk_slice)
-            return
+
+            if (iref is None) or iref == 0:
+                print("Data found, skipping calc: ", chunk_slice)
+                return
+            # Now if this is a glitch correction iteration... we should check
+            # if any pixel in this chunk is glitched with iref_pix < iref
+            else:
+                glitch_loop =True
+                glitched_chunk = np.ravel(glitched[chunk_slice])  # TODO: mask ??? Non because all gliched necessarly unmasked
+                #glitched_chunk[...] = True #debug
+                irefs_chunk = np.ravel(irefs[chunk_slice])
+                if subset is not None:
+                    glitched_chunk = glitched_chunk[chunk_mask]
+                    irefs_chunk = irefs_chunk[chunk_mask]
+                if (np.any(glitched_chunk) and
+                    (np.min(irefs_chunk[glitched_chunk]) < iref)):
+                    print("Glitch correction triggered, computing: ", iref)
+                else:
+                    print("Data found in glitch correction loop, "
+                          "skipping calc: ", chunk_slice)        
+                    return
         except IOError:
+            glitch_loop = False # File not found, nothing to 'unglitch'
             print("Unable to find data_file, computing")
-        except:
-            print(sys.exc_info()[0], "\nUnmaching params, computing")
+
+
 
         # We didn't find, we need to compute
+        if iref is not None: # Using perturbation
+            c = self.diff_c_chunk(chunk_slice, iref, file_prefix)
+            Xrc_needed = False
+            if not(self.Xrange_complex_type) and (SA_params is not None):
+                # We still need a Xrange version, to evaluate...
+                Xrc_needed = True
+                Xrc = self.diff_c_chunk(chunk_slice, iref, file_prefix,
+                                        ensure_Xr=True)
+        else:
+            c = self.c_chunk(chunk_slice)
         (ix, ixx, iy, iyy) = chunk_slice
+        print("c_chunk", chunk_slice, ":\n", c)
+
         c = np.ravel(c)
         if subset is not None:
-            chunk_mask = np.ravel(subset[chunk_slice])
             c = c[chunk_mask]
-        else:
-            chunk_mask = None
+
+        if Xrc_needed:
+            Xrc = np.ravel(Xrc)
+            if subset is not None:
+                Xrc = Xrc[chunk_mask]
 
         (n_pts,) = c.shape
-        
         n_Z, n_U, n_stop = (len(code) for code in codes)
-
-        Z = np.zeros([n_Z, n_pts], dtype=c.dtype)
+        if self.Xrange_complex_type:
+            Z = Xrange_array.zeros([n_Z, n_pts], dtype=self.base_complex_type)
+        else:
+            Z = np.zeros([n_Z, n_pts], dtype=self.complex_type)
         U = np.zeros([n_U, n_pts], dtype=self.int_type)
         stop_reason = -np.ones([1, n_pts], dtype=self.termination_type) # np.int8 -> -128 to 127
         stop_iter = np.zeros([1, n_pts], dtype=self.int_type)
-        
+
         if iref is not None:
             initialize(Z, U, c, chunk_slice, iref)
+            # check is ref point had a early exit ??
+            FP_params = self.reload_ref_point(iref, file_prefix, scan_only=True)
+            ref_div_iter = FP_params.get("div_iter", 2**63 - 1) # max int64
+            print("in cycles, ref point maxiter", ref_div_iter,
+                  "ref_point", FP_params["ref_point"])
         else:
             initialize(Z, U, c, chunk_slice)
 
         #  temporary array for looping
         index_active = np.arange(c.size, dtype=self.int_type)
         bool_active = np.ones(c.size, dtype=np.bool)
-        Z_act = np.copy(Z)
-        U_act = np.copy(U)
-        stop_reason_act = np.copy(stop_reason)
-        c_act = np.copy(c)
-        
         looping = True
 
-        if SA_params is None:
-            n_iter = 0
+        if glitch_loop:
+            # Glitch correction engaged - we will only loop the glitched pixel
+            # and keep the other 'as is'. We reload "raw data"
+            (dparams, dcodes, raw_data) = self.reload_data_chunk(chunk_slice,
+                                       file_prefix, scan_only=False)
+            k_chunk_mask, k_Z, k_U, k_stop_reason, k_stop_iter = raw_data
+
+            keep = ~glitched_chunk
+            if k_chunk_mask is not None: # Safeguard
+                np.testing.assert_equal(k_chunk_mask, chunk_mask)
+
+            Z[:, keep] = k_Z[:, keep]
+            U[:, keep] = k_U[:, keep]
+            stop_reason[:, keep] =  k_stop_reason[:, keep]
+            stop_iter[:, keep] = k_stop_iter[:, keep]
+
+            
+            index_active = index_active[glitched_chunk]
+            Z_act = (Z[:, glitched_chunk]).copy() # ok for ndarray subclass
+            U_act = np.copy(U[:, glitched_chunk])
+            stop_reason_act = np.copy(stop_reason[:, glitched_chunk])
+            c_act = (c[glitched_chunk]).copy() # np.copy(c)
+            if Xrc_needed:
+                Xrc = Xrc[glitched_chunk]
+            bool_active = glitched_chunk[glitched_chunk]
+
+            
         else:
+            # No glitch correction, every pixel active...
+            Z_act = Z.copy() # ok for ndarray subclass
+            U_act = np.copy(U)
+            stop_reason_act = np.copy(stop_reason)
+            c_act = c.copy() # np.copy(c)
+
+
+        n_iter = 0
+        SA_iter = 0
+        # Skipping first iterations if Series approximation activated
+        if SA_params is not None:# and False:
+            # Check if SA given is from another ref point in this case it will
+            # need to be translated
+            bool_SA_shift = (SA_params["iref"] != iref)
+            print("bool_SA_shift", bool_SA_shift)
+            # Seems that even if SA_params["iref"] != iref we do not need
+            # to shift ??? How comes ???
+            
             n_iter = SA_params["n_iter"]
+            SA_iter = n_iter
             kc = SA_params["kc"]
             P = SA_params["P"]
+#            if bool_SA_shift:
+#                raise ValueError()
+#                # Need to correct Z etc. by ref point shift
+#                ref_array = self.get_ref_array(file_prefix)[:, :, :]
+#                FP_params0 = self.reload_ref_point(SA_params["iref"], file_prefix,
+#                                                   scan_only=True)
+#                FP_paramsi = self.reload_ref_point(iref, file_prefix,
+#                                                   scan_only=True)
+#                dc_ref = (FP_paramsi["ref_point"] - FP_params0["ref_point"])
+#                
+#                print("refSA", SA_params["iref"], FP_params0["ref_point"])
+#                print("ref1", iref, FP_paramsi["ref_point"])
+#                
+#                if self.Xrange_complex_type:
+#                    dc_ref = mpc_to_Xrange(dc_ref, self.base_complex_type)
+#                else:
+#                    dc_ref = complex(dc_ref)#, self.base_complex_type)
+#                    
+#            else:
+#                dc_ref = 0.
+            
+            
             for i_z in range(n_Z):
-                Z_act[i_z, :] = ((P[i_z])(c / kc)).to_standard()
-                print(i_z, "Z[i_z, :]\n", Z[i_z, :])
-            print("ref", iref, ref_path[n_iter, :])
+                if self.Xrange_complex_type:
+#                    if bool_SA_shift:
+#                        print("c shifted\n:", c_act - dc_ref)  # OK with return diff - drift_rp
+#                        Z_act[i_z, :] = ((P[i_z])((c_act + dc_ref) / kc) 
+#                                - ref_array[iref, n_iter, i_z]
+#                                + ref_array[SA_params["iref"], n_iter, i_z])
+#                    else:
+                    Z_act[i_z, :] = (P[i_z])(c_act / kc)
+#                    if bool_SA_shift and False:
+                else:
+#                    if bool_SA_shift:
+#                        Z_act[i_z, :] = ((P[i_z])((c_act + dc_ref) / kc)
+#                                - ref_array[iref, n_iter, i_z]
+#                                + ref_array[SA_params["iref"], n_iter, i_z]
+#                                 ).to_standard()
+#                    else:
+                    Z_act[i_z, :] = ((P[i_z])(Xrc / kc)).to_standard()
+#                    if bool_SA_shift:
+#                        Z_act[i_z, :] += (ref_array[iref, n_iter, i_z] - 
+#                                ref_array[SA_params["iref"], n_iter, i_z]
+#                                ).to_standard()
 
         pc_trigger = [False, 0, 0]   #  flag, counter, count_trigger
+        
+        print("**/CALLING cycles looping,  n_stop", n_stop)
         while looping:
             n_iter += 1
 
@@ -1840,34 +2133,51 @@ complex_type  np type or ("mpmath", pres)
                 #print "select"
                 c_act = c_act[bool_active]
                 Z_act = Z_act[:, bool_active]
+#                print(type(Z_act), Z_act.dtype)
                 U_act = U_act[:, bool_active]
                 stop_reason_act = stop_reason_act[:, bool_active]
                 index_active = index_active[bool_active]
 
             # 2) Iterate all active parts vec, delegate to *iterate*
             if iref is not None:
-                iterate(Z_act, U_act, c_act, n_iter, ref_path[n_iter - 1, :])
+#                iterate(Z_act, U_act, c_act, n_iter, ref_path[n_iter - 1, :])
+                iterate(Z_act, U_act, c_act, stop_reason_act, n_iter, SA_iter,
+                        ref_div_iter, ref_path[n_iter - 1 , :], ref_path[n_iter, :])
             else:
-                iterate(Z_act, U_act, c_act, n_iter)
+                iterate(Z_act, U_act, c_act, stop_reason_act, n_iter)
 
             # 3) Partial loop ends, delegate to *terminate*
-            if iref is not None:
-                terminate(stop_reason_act, Z_act, U_act, c_act, n_iter,
-                          ref_path[n_iter, :])
-            else:
-                terminate(stop_reason_act, Z_act, U_act, c_act, n_iter)
+#            if iref is not None:
+#                terminate(stop_reason_act, Z_act, U_act, c_act, n_iter,
+#                          ref_path[n_iter, :])
+#            else:
+#                terminate(stop_reason_act, Z_act, U_act, c_act, n_iter)
+            stopped = (stop_reason_act[0, :] >= 0)
+            index_stopped = index_active[stopped]
+            stop_iter[0, index_stopped] = n_iter
+            stop_reason[0, index_stopped] = stop_reason_act[0, stopped]
+            Z[:, index_stopped] = Z_act[:, stopped]
+            U[:, index_stopped] = U_act[:, stopped]
+            bool_active = ~stopped
             
-            for stop in range(n_stop):
-                stopped = (stop_reason_act[0, :] == stop)
-                index_stopped = index_active[stopped]
-                stop_iter[0, index_stopped] = n_iter
-                stop_reason[0, index_stopped] = stop
-                Z[:, index_stopped] = Z_act[:, stopped]
-                U[:, index_stopped] = U_act[:, stopped]
-                if stop == 0:
-                    bool_active = ~stopped
-                else:
-                    bool_active[stopped] = False
+            
+#            for stop in range(n_stop):
+#                stopped = (stop_reason_act[0, :] == stop)
+#                index_stopped = index_active[stopped]
+#                stop_iter[0, index_stopped] = n_iter
+#                stop_reason[0, index_stopped] = stop
+#                Z[:, index_stopped] = Z_act[:, stopped]
+#                U[:, index_stopped] = U_act[:, stopped]
+#                if stop == 0:
+#                    bool_active = ~stopped
+#                else:
+#                    bool_active[stopped] = False
+#                    # debug
+#                if np.any(stopped) and stop == 3:
+#                    print("dyn glitch µµµ")
+#                    #print(Z_act[3, stopped])
+#                    print(Z[3, index_stopped])
+                    
 
             count_active = np.count_nonzero(bool_active)
             pc = 0 if(count_active == 0) else count_active / (c.size *.01)
@@ -1880,6 +2190,7 @@ complex_type  np type or ("mpmath", pres)
                     pc_trigger[2] = int(n_iter * 0.25) # set_trigger to 125%
                     print("Trigger hit at", n_iter)
                     print("will exit at most at", pc_trigger[2] + n_iter)
+                    sys.stdout.flush()
                     
                     reasons_pc = np.zeros([n_stop], dtype=np.float32)
                     for stop in range(n_stop):
@@ -1892,7 +2203,7 @@ complex_type  np type or ("mpmath", pres)
 
             looping = (count_active != 0 and
                        (pc_trigger[1] <= pc_trigger[2]))
-            if n_iter%5000 == 0: # 5000
+            if n_iter%500 == 0: # 5000
                 reasons_pc = np.zeros([n_stop], dtype=np.float32)
                 for stop in range(n_stop):
                     reasons_pc[stop] = np.count_nonzero(
@@ -1901,12 +2212,25 @@ complex_type  np type or ("mpmath", pres)
                           "- by reasons (%): {3}").format(
                           n_iter, count_active, pc, reasons_pc)
                 print(status)
+                sys.stdout.flush()
+
+
+
+        # debug
+        if chunk_slice == (0, 200, 0, 200):
+            print("debug")
+            glitched = (stop_reason[0, :] == 3)
+            print("**abs raw of ", chunk_slice)
+            print("Z0 glitched shape", ((Z[3, :])[glitched]).shape)
+            print("Z0 glitched", (Z[3, :])[glitched][:100])
+            #raise ValueError
+            
 
         # Don't save temporary codes - i.e. those which startwith "_"
         # inside Z and U arrays
         select = {0: Z, 1: U}
         target = [None, None]
-        save_codes = copy.deepcopy(codes)
+        save_codes = copy.copy(codes) # deepcopy
         for icode, code in enumerate(save_codes):
             if icode == 2:
                 break
@@ -1917,13 +2241,30 @@ complex_type  np type or ("mpmath", pres)
                 del code[index]
         save_Z, save_U = target
 
-        raw_data = [chunk_mask, save_Z.astype(self.complex_store_type),
-                    save_U, stop_reason, stop_iter]
+
+        
+#        params = self.params + 
+#        if (iref is not None) and iref > 0:
+#            # Glich correction engaged - shall only modify in place
+#            # glitched pixels
+#            for icode, code in enumerate(save_codes):
+#                pass
+#            raise NotImplementedError()
+            
+            
+        raw_data = [chunk_mask, save_Z, save_U, stop_reason, stop_iter]
+        
+        
+        # debug
+        if chunk_slice == (0, 200, 0, 200):
+            print("save_Z glitched", (save_Z[3, :])[glitched][:100])
+
+        
         self.save_data_chunk(chunk_slice, file_prefix, self.params,
                              save_codes, raw_data)
 
 
-    def type_kind_from_code(self, code, codes):
+    def kind_from_code(self, code, codes):
         """
         codes as returned by 
         (params, codes) = self.reload_data_chunk(chunk_slice,
@@ -1931,16 +2272,17 @@ complex_type  np type or ("mpmath", pres)
         """
         complex_codes, int_codes, _ = codes
         if code in complex_codes:
-            dtype, kind = self.complex_store_type, "complex"
+            kind = "complex"
         elif code in int_codes:
-            dtype, kind = self.int_type, "int"
+            kind = "int"
         elif code == "stop_reason":
-            dtype , kind = self.termination_type, code
+            kind = code
         elif code == "stop_iter":
-            dtype , kind = self.int_type, code
+            kind = code
         else:
-            raise KeyError("raw data code unknow" + code)
-        return dtype , kind
+            print("complex_codes: ", complex_codes)
+            raise KeyError("raw data code unknow: " + code)
+        return kind
 
 
     def get_raw_data(self, code, kind, file_prefix, chunk_slice):
@@ -2076,7 +2418,7 @@ complex_type  np type or ("mpmath", pres)
             color_tool_dic = post_dic.copy()
             color_tool_dic["chunk_slice"] = chunk_slice
             color_tool_dic["chunk_mask"] = chunk_mask
-            print("sending chunk_mask", chunk_mask)
+#            print("sending chunk_mask", chunk_mask)
             color_tool_dic["nx"] = self.nx
             color_tool_dic["ny"] = self.ny
             return color_tool_dic
@@ -2089,8 +2431,9 @@ complex_type  np type or ("mpmath", pres)
             if post_name == "potential": # In fact the 'real iteration number'
                 has_potential = True
                 potential_dic = post_dic
-                n = stop_iter
+                n = stop_iter[0, :]
                 zn = Z[complex_dic["zn"], :]
+#                print("zn", type(zn), zn.dtype)
 
                 if potential_dic["kind"] == "infinity":
                     d = potential_dic["d"]
@@ -2102,6 +2445,7 @@ complex_type  np type or ("mpmath", pres)
                     # suppose the highest order monome is normalized
                     nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(N * k))
                                 / np.log(d))
+#                    print("nu_frac", type(nu_frac), nu_frac.dtype)
 
                 elif potential_dic["kind"] == "convergent":
                     eps = potential_dic["epsilon_cv"]
@@ -2117,6 +2461,11 @@ complex_type  np type or ("mpmath", pres)
 
                 else:
                     raise NotImplementedError("Potential 'kind' unsupported")
+#                print("nu_frac", type(nu_frac), nu_frac.dtype, nu_frac.shape)
+#                print("n", type(n), n.dtype, n.shape)
+                #nu = n[].astype(self.base_complex_type) + nu_frac
+                if type(nu_frac) == Xrange_array:
+                    nu_frac = nu_frac.to_standard()
                 nu = n + nu_frac
                 val = nu
 
@@ -2135,17 +2484,36 @@ complex_type  np type or ("mpmath", pres)
                 if shade_kind == "Milnor":   # use only for z -> z**2 + c
 # https://www.math.univ-toulouse.fr/~cheritat/wiki-draw/index.php/Mandelbrot_set
                     d2zndc2 = Z[complex_dic["d2zndc2"], :]
-                    lo = np.log(np.abs(zn))
+                    abs_zn = np.abs(zn)
+                    lo = np.log(abs_zn)
                     normal = zn * dzndc * ((1+lo)*np.conj(dzndc * dzndc)
                                   -lo * np.conj(zn * d2zndc2))
                     normal = normal / np.abs(normal)
+                    
+                    # Normal doesnt't mean anything when too close...
+                    dist = abs_zn * lo / np.abs(dzndc)
+                    px = self.px  #self.dx / float(self.nx)
+                    if type(px) == mpmath.ctx_mp_python.mpf:
+                        m, exp = mpmath.frexp(px)
+                        px = Xrange_array(float(m), int(exp))
+#                        print("px", px)
+#                        print("dist", dist, type(dist), dist.dtype)
+#                        print("ineq", dist < (px * 0.01))
+                        if type(normal) == Xrange_array:
+                            normal = normal.to_standard()
+                        #normal[dist < (px * 0.25)] = 0.#, 0., 1.)
+
+#                px_snap = post_dic.get("px_snap", 1.)
+                    #val = np.where(val < px * px_snap, 0., val)
 
                 elif shade_kind == "potential": # safer
                     if potential_dic["kind"] == "infinity":
                     # pulls back the normal direction from an approximation of 
                     # potential: phi = log(zn) / 2**n 
-                        normal = zn / dzndc
+                        normal = zn / dzndc# zn / dzndc
                         normal = normal / np.abs(normal)
+                        if type(normal) == Xrange_array:
+                            normal = normal.to_standard()
 
                     elif potential_dic["kind"] == "convergent":
                     # pulls back the normal direction from an approximation of
@@ -2155,11 +2523,33 @@ complex_type  np type or ("mpmath", pres)
                         dzrdc = Z[complex_dic["dzrdc"]]
                         normal = - (zr - zn) / (dzrdc - dzndc)
                         normal = normal / np.abs(normal)
+                        
+#                if self.Xrange_complex_type:
+#                    normal = normal.to_standard()
+                    
 
-                print("sending !", np.shape(zn))
+#                fade = ((dist > px * 0.5) & (dist < px))
+#                print("normal", type(normal), normal.dtype)
+#                print("dist", type(dist), dist.dtype)
+#                print("fade", type(fade), fade.dtype)
+#                print("px", type(px), px.dtype)
+#                _ = dist[fade] / px
+#                print("1 ok")
+#                _ = ((dist[fade] / px) - 0.5)
+#                print("2 ok")
+#                _ = (((dist[fade] / px) - 0.5) * 2.)
+#                print("3 ok")
+#                test = (((dist[fade] / px) - 0.5) * 2.).to_standard()
+#                print("4 ok", type(test), test.dtype, np.min(test), np.max(test))
+#                normal[fade] = normal[fade] * (
+#                        ((dist[fade] / px) - 0.5) * 2.).to_standard()
+                
+#                print("sending !", np.shape(zn), color_tool_dic)
+#                print("sending normal !", normal.shape, type(normal), normal.dtype)
                 val = Color_tools.shade_layer(
                         normal * np.cos(post_dic["phi_LS"] * np.pi / 180.),
                         **color_tool_dic)
+                #val = np.where(val < px * 0.1, 0.5, val)
 
 
             elif post_name == "field_lines":
@@ -2174,14 +2564,22 @@ complex_type  np type or ("mpmath", pres)
                     z_norm = zn * a_d**(-k_alpha) # the normalization coeff
 
                     t = [np.angle(z_norm)]
+#                    print("t", t[0].dtype)
                     val = np.zeros_like(t)
+                    valk = 0.
+#                    print("val", val.dtype)
                     for i in range(1, 6):
                         t += [d * t[i - 1]]
-                        dphi = - i * np.pi * 0.
-                        val += (0.5)**i  * (np.sin(t[i-1] + dphi) + (
+                        dphi =  i * np.pi * 0.1
+#                        print("val2", type((0.5)**i)) #float
+#                        print("val3", type(np.sin(t[i-1] + dphi)))
+#                        print("val3", type(t[i-1]))
+#                        print("val4", type(k_alpha + k_beta * d**nu_frac.to_standard()))
+                        val += (0.9)**i  * (np.sin(t[i-1] + dphi) + (
                                   k_alpha + k_beta * d**nu_frac) * (
                                   np.sin(t[i] + dphi) - np.sin(t[i-1] + dphi)))
-                    val = np.arcsin(val)
+                        valk += (0.9)**i
+                    val = np.arcsin(((((val / valk) + 1) * 0.5) % 1.) * 2. - 1.)
                     del t
 
                 elif potential_dic["kind"] == "convergent":
@@ -2197,7 +2595,7 @@ complex_type  np type or ("mpmath", pres)
             elif post_name == "Lyapounov":
                 dzndz = Z[complex_dic["dzndz"], :]
                 if post_dic["n_iter"] is None:
-                    n = stop_iter
+                    n = stop_iter[0, :]
                 else:
                     code = post_dic["n_iter"]
                     n = U[int_dic[code], :]
@@ -2356,7 +2754,7 @@ complex_type  np type or ("mpmath", pres)
                     raise ValueError("Potential shall be defined before " +
                                      "potential_height_map")
                 # Plotting the height map for the Potential
-                nu = stop_iter + nu_frac
+                nu = stop_iter[0, :] + nu_frac
                 val = np.log(nu)
 
             elif post_name == "power_attr_heightmap":
@@ -2433,7 +2831,22 @@ complex_type  np type or ("mpmath", pres)
                 multiplier = post_dic.get("multiplier", 1.)
                 z = Z[complex_dic[code], :] 
                 val = multiplier * np.abs(z)
-
+                
+                # debug
+                debug = True
+                if debug:
+        #                if type(val) == Xrange_array:
+        #                    val = val.to_standard()
+                    #val[~np.isfinite(val)] = 0.
+                    glitched = (stop_reason[0, :] == 3)
+                    print("**abs raw of ", chunk_slice)
+                    print("field ", code, complex_dic[code])
+                    print("abs print", val[glitched][:100])
+                    print("Z0 glitched shape", ((Z[3, :])[glitched]).shape)
+                    print("Z0 glitched", (Z[3, :])[glitched][:100])
+                    val = np.log(val)
+                    #raise ValueError
+    
             elif post_name == "minibrot_phase":
                 # Pure graphical post-processing for minibrot 'attractivity'
                 # The phase 'vanihes' at the center
@@ -2443,7 +2856,7 @@ complex_type  np type or ("mpmath", pres)
 
             elif post_name == "raw":
                 code = post_dic["code"]
-                _ , kind = self.type_kind_from_code(code, codes)
+                kind = self.kind_from_code(code, codes)
                 if kind == "complex":
                     raise ValueError("Complex, use \"phase\" or \"abs\"")
                 elif kind == "int":
@@ -2457,7 +2870,9 @@ complex_type  np type or ("mpmath", pres)
             else:
                 raise ValueError("Unknown post_name", post_name)
 
-            post_array[i_key, :] = val
+            if type(val) == Xrange_array:
+                val = val.to_standard()
+            post_array[i_key, :] = val  #.to_standard()
 
         return post_array, chunk_mask
 
@@ -2491,28 +2906,3 @@ complex_type  np type or ("mpmath", pres)
         bool_subset = np.copy(bool_set)
         bool_subset[bool_set] = bool_subset_of_set
         return bool_subset
-
-
-
-#
-#
-#class PerturbationFractal(object):
-#    """
-#    Abstract base class using perturbation
-#    Derived classes are reponsible for computing, storing and reloading the raw
-#    data composing a fractal image.
-#    https://mrob.com/pub/muency/reversebifurcation.html
-#       http://www.fractalforums.com/announcements-and-news/pertubation-theory-glitches-improvement/
-#    """
-#    
-#    
-#    
-#    @property    
-#    def params(self):
-#        return {"x": self.x,
-#                "y": self.y,
-#                "nx": self.nx,
-#                "ny": self.ny,
-#                "dx": self.dx,
-#                "dy": self.dy,
-#                "theta_deg": self.theta_deg}
