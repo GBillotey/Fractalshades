@@ -47,7 +47,7 @@ BSD-3
 ### From "classical" Mandelbrot set
 ![Screenshot](gallery/billard.jpg)
 ![Screenshot](gallery/medaillon.jpg)
-![Screenshot](gallery/Emerauld_shield.jpg)
+![Screenshot](gallery/dev_03.jpg)
 
 ### From "Nova 6" Mandelbrot set
 ![Screenshot](gallery/Nova6_whole_set.jpg)
