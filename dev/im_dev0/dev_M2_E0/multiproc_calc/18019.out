@@ -1,0 +1,77 @@
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.07106781e+00
+**/CALLING cycles 
+Data found, skipping calc:  (0, 200, 600, 800)
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.07106781e+00
+**/CALLING cycles 
+Data found, skipping calc:  (200, 400, 800, 1000)
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.07106781e+00
+**/CALLING cycles 
+Data found, skipping calc:  (200, 400, 1400, 1600)
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.07106781e+00
+**/CALLING cycles 
+Data found, skipping calc:  (400, 600, 400, 600)
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.07106781e+00
+**/CALLING cycles 
+Data found, skipping calc:  (400, 600, 1000, 1200)
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.07106781e+00
+**/CALLING cycles 
+Data found, skipping calc:  (600, 800, 0, 200)
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.07106781e+00
+**/CALLING cycles 
+Data found, skipping calc:  (600, 800, 600, 800)
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.07106781e+00
+**/CALLING cycles 
+Data found, skipping calc:  (600, 800, 1200, 1400)
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.07106781e+00
+**/CALLING cycles 
+Data found, skipping calc:  (800, 1000, 200, 400)
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.07106781e+00
+**/CALLING cycles 
+Data found, skipping calc:  (800, 1000, 1200, 1400)
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.07106781e+00
+**/CALLING cycles 
+Data found, skipping calc:  (1400, 1600, 1400, 1600)

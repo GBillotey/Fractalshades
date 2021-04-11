@@ -1,0 +1,35 @@
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.61987533e+00
+**/CALLING cycles 
+Data found, skipping calc:  (0, 200, 400, 600)
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.61987533e+00
+**/CALLING cycles 
+Data found, skipping calc:  (200, 400, 0, 200)
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.61987533e+00
+**/CALLING cycles 
+Data found, skipping calc:  (200, 400, 600, 800)
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.61987533e+00
+**/CALLING cycles 
+Data found, skipping calc:  (400, 600, 600, 800)
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.61987533e+00
+**/CALLING cycles 
+Data found, skipping calc:  (600, 800, 400, 600)

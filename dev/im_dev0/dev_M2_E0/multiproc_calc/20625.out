@@ -1,0 +1,589 @@
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.07106781e+00
+**/CALLING cycles 
+Unable to find data_file, computing
+DIFF c_chunk Shifting c with respect to iref 0 (0.0 + 0.0j)
+Shift in pc 0.0 0.0
+DIFF c_chunk Shifting c with respect to iref 0 (0.0 + 0.0j)
+Shift in pc 0.0 0.0
+c_chunk (0, 200, 0, 200) :
+ [[-2.50042801-2.49860408j -2.49928058-2.49626639j -2.49856554-2.49336294j
+  ... -2.50085203-1.88243955j -2.50149458-1.8809866j
+  -2.50028084-1.87675513j]
+ [-2.49630955-2.50076453j -2.49589651-2.49640291j -2.49741219-2.49294283j
+  ... -2.49558142-1.88426633j -2.49664135-1.8803355j
+  -2.4965504 -1.87791919j]
+ [-2.49281537-2.4989359j  -2.49511454-2.49700388j -2.49247977-2.49283894j
+  ... -2.49317478-1.88439268j -2.49496442-1.88060877j
+  -2.49301393-1.8763419j ]
+ ...
+ [-1.88258776-2.49974008j -1.88514867-2.49573508j -1.88471517-2.49324495j
+  ... -1.88532726-1.88523788j -1.8851037 -1.88061442j
+  -1.8829466 -1.87881688j]
+ [-1.88231198-2.50133134j -1.88012757-2.4955592j  -1.87997798-2.4932867j
+  ... -1.87947574-1.88352426j -1.88097828-1.88132714j
+  -1.88121179-1.87788106j]
+ [-1.87916639-2.49994627j -1.87754441-2.4958642j  -1.87923364-2.49296932j
+  ... -1.87689405-1.88295477j -1.87794106-1.88029796j
+  -1.87922626-1.87714895j]]
+in cycles, ref point maxiter 9223372036854775807 ref_point (0.0 + 0.0j)
+bool_SA_shift False
+**/CALLING cycles looping,  n_stop 5
+Data computed, saving /home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/dev/im_dev0/dev_M2_E0/data/complex128_0-200_0-200.tmp
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.07106781e+00
+**/CALLING cycles 
+Unable to find data_file, computing
+DIFF c_chunk Shifting c with respect to iref 0 (0.0 + 0.0j)
+Shift in pc 0.0 0.0
+DIFF c_chunk Shifting c with respect to iref 0 (0.0 + 0.0j)
+Shift in pc 0.0 0.0
+c_chunk (0, 200, 800, 1000) :
+ [[-2.50042801+2.95939878e-03j -2.49928058+5.29708309e-03j
+  -2.49856554+8.20053692e-03j ... -2.50085203+6.19123923e-01j
+  -2.50149458+6.20576880e-01j -2.50028084+6.24808344e-01j]
+ [-2.49630955+7.98950932e-04j -2.49589651+5.16056769e-03j
+  -2.49741219+8.62064517e-03j ... -2.49558142+6.17297143e-01j
+  -2.49664135+6.21227979e-01j -2.4965504 +6.23644290e-01j]
+ [-2.49281537+2.62757588e-03j -2.49511454+4.55959819e-03j
+  -2.49247977+8.72453628e-03j ... -2.49317478+6.17170796e-01j
+  -2.49496442+6.20954711e-01j -2.49301393+6.25221573e-01j]
+ ...
+ [-1.88258776+1.82340049e-03j -1.88514867+5.82840056e-03j
+  -1.88471517+8.31853198e-03j ... -1.88532726+6.16325595e-01j
+  -1.8851037 +6.20949060e-01j -1.8829466 +6.22746600e-01j]
+ [-1.88231198+2.32132703e-04j -1.88012757+6.00427320e-03j
+  -1.87997798+8.27677899e-03j ... -1.87947574+6.18039222e-01j
+  -1.88097828+6.20236335e-01j -1.88121179+6.23682421e-01j]
+ [-1.87916639+1.61720705e-03j -1.87754441+5.69927372e-03j
+  -1.87923364+8.59415282e-03j ... -1.87689405+6.18608708e-01j
+  -1.87794106+6.21265516e-01j -1.87922626+6.24414532e-01j]]
+in cycles, ref point maxiter 9223372036854775807 ref_point (0.0 + 0.0j)
+bool_SA_shift False
+**/CALLING cycles looping,  n_stop 5
+Data computed, saving /home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/dev/im_dev0/dev_M2_E0/data/complex128_0-200_800-1000.tmp
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.07106781e+00
+**/CALLING cycles 
+Unable to find data_file, computing
+DIFF c_chunk Shifting c with respect to iref 0 (0.0 + 0.0j)
+Shift in pc 0.0 0.0
+DIFF c_chunk Shifting c with respect to iref 0 (0.0 + 0.0j)
+Shift in pc 0.0 0.0
+c_chunk (0, 200, 1400, 1600) :
+ [[-2.50042801+1.87913201j -2.49928058+1.88146969j -2.49856554+1.88437314j
+  ... -2.50085203+2.49529653j -2.50149458+2.49674949j
+  -2.50028084+2.50098095j]
+ [-2.49630955+1.87697156j -2.49589651+1.88133318j -2.49741219+1.88479325j
+  ... -2.49558142+2.49346975j -2.49664135+2.49740059j
+  -2.4965504 +2.4998169j ]
+ [-2.49281537+1.87880018j -2.49511454+1.88073221j -2.49247977+1.88489714j
+  ... -2.49317478+2.4933434j  -2.49496442+2.49712732j
+  -2.49301393+2.50139418j]
+ ...
+ [-1.88258776+1.87799601j -1.88514867+1.88200101j -1.88471517+1.88449114j
+  ... -1.88532726+2.4924982j  -1.8851037 +2.49712167j
+  -1.8829466 +2.49891921j]
+ [-1.88231198+1.87640474j -1.88012757+1.88217688j -1.87997798+1.88444939j
+  ... -1.87947574+2.49421183j -1.88097828+2.49640894j
+  -1.88121179+2.49985503j]
+ [-1.87916639+1.87778981j -1.87754441+1.88187188j -1.87923364+1.88476676j
+  ... -1.87689405+2.49478132j -1.87794106+2.49743812j
+  -1.87922626+2.50058714j]]
+in cycles, ref point maxiter 9223372036854775807 ref_point (0.0 + 0.0j)
+bool_SA_shift False
+**/CALLING cycles looping,  n_stop 5
+Data computed, saving /home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/dev/im_dev0/dev_M2_E0/data/complex128_0-200_1400-1600.tmp
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.07106781e+00
+**/CALLING cycles 
+Unable to find data_file, computing
+DIFF c_chunk Shifting c with respect to iref 0 (0.0 + 0.0j)
+Shift in pc 0.0 0.0
+DIFF c_chunk Shifting c with respect to iref 0 (0.0 + 0.0j)
+Shift in pc 0.0 0.0
+c_chunk (200, 400, 600, 800) :
+ [[-1.87503714-6.22431471e-01j -1.87388971-6.20093786e-01j
+  -1.87317467-6.17190332e-01j ... -1.87546116-6.26694629e-03j
+  -1.87610371-4.81398895e-03j -1.87488997-5.82525418e-04j]
+ [-1.87091868-6.24591918e-01j -1.87050564-6.20230302e-01j
+  -1.87202132-6.16770224e-01j ... -1.87019056-8.09372610e-03j
+  -1.87125048-4.16288985e-03j -1.87115953-1.74657957e-03j]
+ [-1.8674245 -6.22763293e-01j -1.86972368-6.20831271e-01j
+  -1.8670889 -6.16666333e-01j ... -1.86778391-8.22007337e-03j
+  -1.86957355-4.43615853e-03j -1.86762306-1.69296098e-04j]
+ ...
+ [-1.25719689-6.23567469e-01j -1.2597578 -6.19562469e-01j
+  -1.2593243 -6.17072337e-01j ... -1.25993639-9.06527409e-03j
+  -1.25971283-4.44180947e-03j -1.25755573-2.64426883e-03j]
+ [-1.25692111-6.25158737e-01j -1.2547367 -6.19386596e-01j
+  -1.25458711-6.17114090e-01j ... -1.25408487-7.35164761e-03j
+  -1.25558741-5.15453416e-03j -1.25582092-1.70844787e-03j]
+ [-1.25377552-6.23773662e-01j -1.25215354-6.19691596e-01j
+  -1.25384277-6.16796716e-01j ... -1.25150318-6.78216127e-03j
+  -1.25255019-4.12535315e-03j -1.25383539-9.76337187e-04j]]
+in cycles, ref point maxiter 9223372036854775807 ref_point (0.0 + 0.0j)
+bool_SA_shift False
+**/CALLING cycles looping,  n_stop 5
+iter500 : active: 93 - 0.2325% - by reasons (%): [ 0.     98.345   1.4225  0.      0.    ]
+iter1000 : active: 47 - 0.1175% - by reasons (%): [ 0.     98.3675  1.515   0.      0.    ]
+iter1500 : active: 32 - 0.08% - by reasons (%): [ 0.     98.3725  1.5475  0.      0.    ]
+iter2000 : active: 24 - 0.06% - by reasons (%): [ 0.    98.375  1.565  0.     0.   ]
+iter2500 : active: 17 - 0.0425% - by reasons (%): [ 0.     98.375   1.5825  0.      0.    ]
+iter3000 : active: 15 - 0.0375% - by reasons (%): [ 0.     98.375   1.5875  0.      0.    ]
+iter3500 : active: 12 - 0.03% - by reasons (%): [ 0.     98.3775  1.5925  0.      0.    ]
+iter4000 : active: 11 - 0.0275% - by reasons (%): [ 0.     98.3775  1.595   0.      0.    ]
+iter4500 : active: 10 - 0.025% - by reasons (%): [ 0.     98.3775  1.5975  0.      0.    ]
+iter5000 : active: 9 - 0.0225% - by reasons (%): [ 0.     98.3775  1.6     0.      0.    ]
+iter5500 : active: 9 - 0.0225% - by reasons (%): [ 0.     98.3775  1.6     0.      0.    ]
+iter6000 : active: 9 - 0.0225% - by reasons (%): [ 0.     98.3775  1.6     0.      0.    ]
+iter6500 : active: 8 - 0.02% - by reasons (%): [ 0.   98.38  1.6   0.    0.  ]
+iter7000 : active: 7 - 0.0175% - by reasons (%): [ 0.     98.38    1.6025  0.      0.    ]
+iter7500 : active: 7 - 0.0175% - by reasons (%): [ 0.     98.38    1.6025  0.      0.    ]
+iter8000 : active: 7 - 0.0175% - by reasons (%): [ 0.     98.38    1.6025  0.      0.    ]
+iter8500 : active: 7 - 0.0175% - by reasons (%): [ 0.     98.38    1.6025  0.      0.    ]
+iter9000 : active: 7 - 0.0175% - by reasons (%): [ 0.     98.38    1.6025  0.      0.    ]
+iter9500 : active: 7 - 0.0175% - by reasons (%): [ 0.     98.38    1.6025  0.      0.    ]
+iter10000 : active: 5 - 0.0125% - by reasons (%): [ 0.     98.38    1.6075  0.      0.    ]
+iter10500 : active: 4 - 0.01% - by reasons (%): [ 0.     98.3825  1.6075  0.      0.    ]
+iter11000 : active: 4 - 0.01% - by reasons (%): [ 0.     98.3825  1.6075  0.      0.    ]
+iter11500 : active: 4 - 0.01% - by reasons (%): [ 0.     98.3825  1.6075  0.      0.    ]
+iter12000 : active: 4 - 0.01% - by reasons (%): [ 0.     98.3825  1.6075  0.      0.    ]
+iter12500 : active: 4 - 0.01% - by reasons (%): [ 0.     98.3825  1.6075  0.      0.    ]
+iter13000 : active: 4 - 0.01% - by reasons (%): [ 0.     98.3825  1.6075  0.      0.    ]
+iter13500 : active: 4 - 0.01% - by reasons (%): [ 0.     98.3825  1.6075  0.      0.    ]
+iter14000 : active: 4 - 0.01% - by reasons (%): [ 0.     98.3825  1.6075  0.      0.    ]
+iter14500 : active: 4 - 0.01% - by reasons (%): [ 0.     98.3825  1.6075  0.      0.    ]
+iter15000 : active: 4 - 0.01% - by reasons (%): [ 0.     98.3825  1.6075  0.      0.    ]
+iter15500 : active: 4 - 0.01% - by reasons (%): [ 0.     98.3825  1.6075  0.      0.    ]
+iter16000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter16500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter17000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter17500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter18000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter18500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter19000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter19500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter20000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter20500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter21000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter21500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter22000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter22500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter23000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter23500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter24000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter24500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter25000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter25500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter26000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter26500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter27000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter27500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter28000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter28500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter29000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter29500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter30000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter30500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter31000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter31500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter32000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter32500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter33000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter33500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter34000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter34500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter35000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter35500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter36000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter36500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter37000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter37500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter38000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter38500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter39000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter39500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter40000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter40500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter41000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter41500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter42000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter42500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter43000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter43500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter44000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter44500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter45000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter45500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter46000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter46500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter47000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter47500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter48000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter48500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter49000 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+iter49500 : active: 3 - 0.0075% - by reasons (%): [ 0.     98.3825  1.61    0.      0.    ]
+Trigger hit at 50000
+will exit at most at 62500
+iter50000 : active: 0 - 0% - by reasons (%): [7.50000e-03 9.83825e+01 1.61000e+00 0.00000e+00 0.00000e+00]
+iter50000 : active: 0 - 0% - by reasons (%): [7.50000e-03 9.83825e+01 1.61000e+00 0.00000e+00 0.00000e+00]
+Data computed, saving /home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/dev/im_dev0/dev_M2_E0/data/complex128_200-400_600-800.tmp
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.07106781e+00
+**/CALLING cycles 
+Unable to find data_file, computing
+DIFF c_chunk Shifting c with respect to iref 0 (0.0 + 0.0j)
+Shift in pc 0.0 0.0
+DIFF c_chunk Shifting c with respect to iref 0 (0.0 + 0.0j)
+Shift in pc 0.0 0.0
+c_chunk (600, 800, 600, 800) :
+ [[-0.6242554 -6.22431471e-01j -0.62310798-6.20093786e-01j
+  -0.62239293-6.17190332e-01j ... -0.62467942-6.26694629e-03j
+  -0.62532197-4.81398895e-03j -0.62410824-5.82525418e-04j]
+ [-0.62013694-6.24591918e-01j -0.6197239 -6.20230302e-01j
+  -0.62123958-6.16770224e-01j ... -0.61940882-8.09372610e-03j
+  -0.62046874-4.16288985e-03j -0.62037779-1.74657957e-03j]
+ [-0.61664276-6.22763293e-01j -0.61894194-6.20831271e-01j
+  -0.61630716-6.16666333e-01j ... -0.61700217-8.22007337e-03j
+  -0.61879181-4.43615853e-03j -0.61684132-1.69296098e-04j]
+ ...
+ [-0.00641515-6.23567469e-01j -0.00897606-6.19562469e-01j
+  -0.00854256-6.17072337e-01j ... -0.00915465-9.06527409e-03j
+  -0.00893109-4.44180947e-03j -0.00677399-2.64426883e-03j]
+ [-0.00613937-6.25158737e-01j -0.00395496-6.19386596e-01j
+  -0.00380537-6.17114090e-01j ... -0.00330313-7.35164761e-03j
+  -0.00480567-5.15453416e-03j -0.00503918-1.70844787e-03j]
+ [-0.00299378-6.23773662e-01j -0.0013718 -6.19691596e-01j
+  -0.00306103-6.16796716e-01j ... -0.00072144-6.78216127e-03j
+  -0.00176845-4.12535315e-03j -0.00305365-9.76337187e-04j]]
+in cycles, ref point maxiter 9223372036854775807 ref_point (0.0 + 0.0j)
+bool_SA_shift False
+**/CALLING cycles looping,  n_stop 5
+iter500 : active: 787 - 1.9675% - by reasons (%): [ 0.      5.715  92.3175  0.      0.    ]
+iter1000 : active: 401 - 1.0025% - by reasons (%): [ 0.      5.8025 93.195   0.      0.    ]
+iter1500 : active: 259 - 0.6475% - by reasons (%): [ 0.      5.83   93.5225  0.      0.    ]
+iter2000 : active: 199 - 0.4975% - by reasons (%): [ 0.      5.85   93.6525  0.      0.    ]
+iter2500 : active: 160 - 0.4% - by reasons (%): [ 0.      5.8625 93.7375  0.      0.    ]
+iter3000 : active: 124 - 0.31% - by reasons (%): [ 0.     5.875 93.815  0.     0.   ]
+iter3500 : active: 106 - 0.265% - by reasons (%): [ 0.     5.875 93.86   0.     0.   ]
+iter4000 : active: 96 - 0.24% - by reasons (%): [ 0.      5.8775 93.8825  0.      0.    ]
+iter4500 : active: 88 - 0.22% - by reasons (%): [ 0.      5.8775 93.9025  0.      0.    ]
+iter5000 : active: 75 - 0.1875% - by reasons (%): [ 0.      5.8775 93.935   0.      0.    ]
+iter5500 : active: 69 - 0.1725% - by reasons (%): [ 0.      5.8775 93.95    0.      0.    ]
+iter6000 : active: 62 - 0.155% - by reasons (%): [ 0.     5.88  93.965  0.     0.   ]
+iter6500 : active: 58 - 0.145% - by reasons (%): [ 0.     5.88  93.975  0.     0.   ]
+iter7000 : active: 55 - 0.1375% - by reasons (%): [ 0.      5.88   93.9825  0.      0.    ]
+iter7500 : active: 50 - 0.125% - by reasons (%): [ 0.     5.88  93.995  0.     0.   ]
+iter8000 : active: 47 - 0.1175% - by reasons (%): [ 0.      5.88   94.0025  0.      0.    ]
+iter8500 : active: 44 - 0.11% - by reasons (%): [ 0.    5.88 94.01  0.    0.  ]
+iter9000 : active: 43 - 0.1075% - by reasons (%): [ 0.      5.88   94.0125  0.      0.    ]
+iter9500 : active: 40 - 0.1% - by reasons (%): [ 0.    5.88 94.02  0.    0.  ]
+iter10000 : active: 39 - 0.0975% - by reasons (%): [ 0.      5.88   94.0225  0.      0.    ]
+iter10500 : active: 38 - 0.095% - by reasons (%): [ 0.     5.88  94.025  0.     0.   ]
+iter11000 : active: 36 - 0.09% - by reasons (%): [ 0.    5.88 94.03  0.    0.  ]
+iter11500 : active: 36 - 0.09% - by reasons (%): [ 0.    5.88 94.03  0.    0.  ]
+iter12000 : active: 34 - 0.085% - by reasons (%): [ 0.      5.8825 94.0325  0.      0.    ]
+iter12500 : active: 34 - 0.085% - by reasons (%): [ 0.      5.8825 94.0325  0.      0.    ]
+iter13000 : active: 34 - 0.085% - by reasons (%): [ 0.      5.8825 94.0325  0.      0.    ]
+iter13500 : active: 33 - 0.0825% - by reasons (%): [ 0.      5.8825 94.035   0.      0.    ]
+iter14000 : active: 32 - 0.08% - by reasons (%): [ 0.      5.8825 94.0375  0.      0.    ]
+iter14500 : active: 30 - 0.075% - by reasons (%): [ 0.     5.885 94.04   0.     0.   ]
+iter15000 : active: 30 - 0.075% - by reasons (%): [ 0.     5.885 94.04   0.     0.   ]
+iter15500 : active: 30 - 0.075% - by reasons (%): [ 0.     5.885 94.04   0.     0.   ]
+iter16000 : active: 29 - 0.0725% - by reasons (%): [ 0.      5.885  94.0425  0.      0.    ]
+iter16500 : active: 29 - 0.0725% - by reasons (%): [ 0.      5.885  94.0425  0.      0.    ]
+iter17000 : active: 28 - 0.07% - by reasons (%): [ 0.     5.885 94.045  0.     0.   ]
+iter17500 : active: 28 - 0.07% - by reasons (%): [ 0.     5.885 94.045  0.     0.   ]
+iter18000 : active: 27 - 0.0675% - by reasons (%): [ 0.      5.885  94.0475  0.      0.    ]
+iter18500 : active: 27 - 0.0675% - by reasons (%): [ 0.      5.885  94.0475  0.      0.    ]
+iter19000 : active: 26 - 0.065% - by reasons (%): [ 0.     5.885 94.05   0.     0.   ]
+iter19500 : active: 26 - 0.065% - by reasons (%): [ 0.     5.885 94.05   0.     0.   ]
+iter20000 : active: 25 - 0.0625% - by reasons (%): [ 0.      5.885  94.0525  0.      0.    ]
+iter20500 : active: 25 - 0.0625% - by reasons (%): [ 0.      5.885  94.0525  0.      0.    ]
+iter21000 : active: 25 - 0.0625% - by reasons (%): [ 0.      5.885  94.0525  0.      0.    ]
+iter21500 : active: 25 - 0.0625% - by reasons (%): [ 0.      5.885  94.0525  0.      0.    ]
+iter22000 : active: 24 - 0.06% - by reasons (%): [ 0.     5.885 94.055  0.     0.   ]
+iter22500 : active: 24 - 0.06% - by reasons (%): [ 0.     5.885 94.055  0.     0.   ]
+iter23000 : active: 22 - 0.055% - by reasons (%): [ 0.     5.885 94.06   0.     0.   ]
+iter23500 : active: 22 - 0.055% - by reasons (%): [ 0.     5.885 94.06   0.     0.   ]
+iter24000 : active: 22 - 0.055% - by reasons (%): [ 0.     5.885 94.06   0.     0.   ]
+iter24500 : active: 22 - 0.055% - by reasons (%): [ 0.     5.885 94.06   0.     0.   ]
+iter25000 : active: 21 - 0.0525% - by reasons (%): [ 0.      5.885  94.0625  0.      0.    ]
+iter25500 : active: 19 - 0.0475% - by reasons (%): [ 0.      5.885  94.0675  0.      0.    ]
+iter26000 : active: 18 - 0.045% - by reasons (%): [ 0.      5.8875 94.0675  0.      0.    ]
+iter26500 : active: 18 - 0.045% - by reasons (%): [ 0.      5.8875 94.0675  0.      0.    ]
+iter27000 : active: 17 - 0.0425% - by reasons (%): [ 0.      5.8875 94.07    0.      0.    ]
+iter27500 : active: 17 - 0.0425% - by reasons (%): [ 0.      5.8875 94.07    0.      0.    ]
+iter28000 : active: 17 - 0.0425% - by reasons (%): [ 0.      5.8875 94.07    0.      0.    ]
+iter28500 : active: 16 - 0.04% - by reasons (%): [ 0.      5.8875 94.0725  0.      0.    ]
+iter29000 : active: 16 - 0.04% - by reasons (%): [ 0.      5.8875 94.0725  0.      0.    ]
+iter29500 : active: 16 - 0.04% - by reasons (%): [ 0.      5.8875 94.0725  0.      0.    ]
+iter30000 : active: 14 - 0.035% - by reasons (%): [ 0.     5.89  94.075  0.     0.   ]
+iter30500 : active: 14 - 0.035% - by reasons (%): [ 0.     5.89  94.075  0.     0.   ]
+iter31000 : active: 14 - 0.035% - by reasons (%): [ 0.     5.89  94.075  0.     0.   ]
+iter31500 : active: 14 - 0.035% - by reasons (%): [ 0.     5.89  94.075  0.     0.   ]
+iter32000 : active: 14 - 0.035% - by reasons (%): [ 0.     5.89  94.075  0.     0.   ]
+iter32500 : active: 14 - 0.035% - by reasons (%): [ 0.     5.89  94.075  0.     0.   ]
+iter33000 : active: 14 - 0.035% - by reasons (%): [ 0.     5.89  94.075  0.     0.   ]
+iter33500 : active: 14 - 0.035% - by reasons (%): [ 0.     5.89  94.075  0.     0.   ]
+iter34000 : active: 14 - 0.035% - by reasons (%): [ 0.     5.89  94.075  0.     0.   ]
+iter34500 : active: 13 - 0.0325% - by reasons (%): [ 0.      5.89   94.0775  0.      0.    ]
+iter35000 : active: 12 - 0.03% - by reasons (%): [ 0.    5.89 94.08  0.    0.  ]
+iter35500 : active: 12 - 0.03% - by reasons (%): [ 0.    5.89 94.08  0.    0.  ]
+iter36000 : active: 12 - 0.03% - by reasons (%): [ 0.    5.89 94.08  0.    0.  ]
+iter36500 : active: 12 - 0.03% - by reasons (%): [ 0.    5.89 94.08  0.    0.  ]
+iter37000 : active: 12 - 0.03% - by reasons (%): [ 0.    5.89 94.08  0.    0.  ]
+iter37500 : active: 12 - 0.03% - by reasons (%): [ 0.    5.89 94.08  0.    0.  ]
+iter38000 : active: 11 - 0.0275% - by reasons (%): [ 0.      5.8925 94.08    0.      0.    ]
+iter38500 : active: 11 - 0.0275% - by reasons (%): [ 0.      5.8925 94.08    0.      0.    ]
+iter39000 : active: 11 - 0.0275% - by reasons (%): [ 0.      5.8925 94.08    0.      0.    ]
+iter39500 : active: 11 - 0.0275% - by reasons (%): [ 0.      5.8925 94.08    0.      0.    ]
+iter40000 : active: 11 - 0.0275% - by reasons (%): [ 0.      5.8925 94.08    0.      0.    ]
+iter40500 : active: 10 - 0.025% - by reasons (%): [ 0.      5.8925 94.0825  0.      0.    ]
+iter41000 : active: 10 - 0.025% - by reasons (%): [ 0.      5.8925 94.0825  0.      0.    ]
+iter41500 : active: 10 - 0.025% - by reasons (%): [ 0.      5.8925 94.0825  0.      0.    ]
+iter42000 : active: 10 - 0.025% - by reasons (%): [ 0.      5.8925 94.0825  0.      0.    ]
+iter42500 : active: 10 - 0.025% - by reasons (%): [ 0.      5.8925 94.0825  0.      0.    ]
+iter43000 : active: 9 - 0.0225% - by reasons (%): [ 0.      5.8925 94.085   0.      0.    ]
+iter43500 : active: 9 - 0.0225% - by reasons (%): [ 0.      5.8925 94.085   0.      0.    ]
+iter44000 : active: 9 - 0.0225% - by reasons (%): [ 0.      5.8925 94.085   0.      0.    ]
+iter44500 : active: 9 - 0.0225% - by reasons (%): [ 0.      5.8925 94.085   0.      0.    ]
+iter45000 : active: 9 - 0.0225% - by reasons (%): [ 0.      5.8925 94.085   0.      0.    ]
+iter45500 : active: 9 - 0.0225% - by reasons (%): [ 0.      5.8925 94.085   0.      0.    ]
+iter46000 : active: 9 - 0.0225% - by reasons (%): [ 0.      5.8925 94.085   0.      0.    ]
+iter46500 : active: 9 - 0.0225% - by reasons (%): [ 0.      5.8925 94.085   0.      0.    ]
+iter47000 : active: 9 - 0.0225% - by reasons (%): [ 0.      5.8925 94.085   0.      0.    ]
+iter47500 : active: 9 - 0.0225% - by reasons (%): [ 0.      5.8925 94.085   0.      0.    ]
+iter48000 : active: 9 - 0.0225% - by reasons (%): [ 0.      5.8925 94.085   0.      0.    ]
+iter48500 : active: 9 - 0.0225% - by reasons (%): [ 0.      5.8925 94.085   0.      0.    ]
+iter49000 : active: 9 - 0.0225% - by reasons (%): [ 0.      5.8925 94.085   0.      0.    ]
+iter49500 : active: 9 - 0.0225% - by reasons (%): [ 0.      5.8925 94.085   0.      0.    ]
+Trigger hit at 50000
+will exit at most at 62500
+iter50000 : active: 0 - 0% - by reasons (%): [2.2500e-02 5.8925e+00 9.4085e+01 0.0000e+00 0.0000e+00]
+iter50000 : active: 0 - 0% - by reasons (%): [2.2500e-02 5.8925e+00 9.4085e+01 0.0000e+00 0.0000e+00]
+Data computed, saving /home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/dev/im_dev0/dev_M2_E0/data/complex128_600-800_600-800.tmp
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.07106781e+00
+**/CALLING cycles 
+Unable to find data_file, computing
+DIFF c_chunk Shifting c with respect to iref 0 (0.0 + 0.0j)
+Shift in pc 0.0 0.0
+DIFF c_chunk Shifting c with respect to iref 0 (0.0 + 0.0j)
+Shift in pc 0.0 0.0
+c_chunk (800, 1000, 600, 800) :
+ [[1.13547190e-03-6.22431471e-01j 2.28289369e-03-6.20093786e-01j
+  2.99793491e-03-6.17190332e-01j ... 7.11448419e-04-6.26694629e-03j
+  6.88968175e-05-4.81398895e-03j 1.28263333e-03-5.82525418e-04j]
+ [5.25392641e-03-6.24591918e-01j 5.66696991e-03-6.20230302e-01j
+  4.15128579e-03-6.16770224e-01j ... 5.98205238e-03-8.09372610e-03j
+  4.92213077e-03-4.16288985e-03j 5.01308187e-03-1.74657957e-03j]
+ [8.74811057e-03-6.22763293e-01j 6.44893240e-03-6.20831271e-01j
+  9.08370875e-03-6.16666333e-01j ... 8.38870063e-03-8.22007337e-03j
+  6.59905692e-03-4.43615853e-03j 8.54954815e-03-1.69296098e-04j]
+ ...
+ [6.18975719e-01-6.23567469e-01j 6.16414805e-01-6.19562469e-01j
+  6.16848306e-01-6.17072337e-01j ... 6.16236222e-01-9.06527409e-03j
+  6.16459774e-01-4.44180947e-03j 6.18616876e-01-2.64426883e-03j]
+ [6.19251499e-01-6.25158737e-01j 6.21435907e-01-6.19386596e-01j
+  6.21585500e-01-6.17114090e-01j ... 6.22087739e-01-7.35164761e-03j
+  6.20585198e-01-5.15453416e-03j 6.20351690e-01-1.70844787e-03j]
+ [6.22397091e-01-6.23773662e-01j 6.24019071e-01-6.19691596e-01j
+  6.22329834e-01-6.16796716e-01j ... 6.24669425e-01-6.78216127e-03j
+  6.23622421e-01-4.12535315e-03j 6.22337216e-01-9.76337187e-04j]]
+in cycles, ref point maxiter 9223372036854775807 ref_point (0.0 + 0.0j)
+bool_SA_shift False
+**/CALLING cycles looping,  n_stop 5
+iter500 : active: 980 - 2.45% - by reasons (%): [ 0.   48.01 49.54  0.    0.  ]
+iter1000 : active: 484 - 1.21% - by reasons (%): [ 0.     48.1525 50.6375  0.      0.    ]
+iter1500 : active: 315 - 0.7875% - by reasons (%): [ 0.     48.195  51.0175  0.      0.    ]
+iter2000 : active: 236 - 0.59% - by reasons (%): [ 0.    48.205 51.205  0.     0.   ]
+iter2500 : active: 189 - 0.4725% - by reasons (%): [ 0.     48.2125 51.315   0.      0.    ]
+iter3000 : active: 161 - 0.4025% - by reasons (%): [ 0.     48.225  51.3725  0.      0.    ]
+iter3500 : active: 142 - 0.355% - by reasons (%): [ 0.    48.225 51.42   0.     0.   ]
+iter4000 : active: 116 - 0.29% - by reasons (%): [ 0.     48.2325 51.4775  0.      0.    ]
+iter4500 : active: 104 - 0.26% - by reasons (%): [ 0.    48.235 51.505  0.     0.   ]
+iter5000 : active: 99 - 0.2475% - by reasons (%): [ 0.     48.235  51.5175  0.      0.    ]
+iter5500 : active: 94 - 0.235% - by reasons (%): [ 0.     48.2375 51.5275  0.      0.    ]
+iter6000 : active: 90 - 0.225% - by reasons (%): [ 0.    48.24  51.535  0.     0.   ]
+iter6500 : active: 85 - 0.2125% - by reasons (%): [ 0.     48.245  51.5425  0.      0.    ]
+iter7000 : active: 81 - 0.2025% - by reasons (%): [ 0.     48.245  51.5525  0.      0.    ]
+iter7500 : active: 80 - 0.2% - by reasons (%): [ 0.    48.245 51.555  0.     0.   ]
+iter8000 : active: 76 - 0.19% - by reasons (%): [ 0.    48.245 51.565  0.     0.   ]
+iter8500 : active: 73 - 0.1825% - by reasons (%): [ 0.     48.2475 51.57    0.      0.    ]
+iter9000 : active: 69 - 0.1725% - by reasons (%): [ 0.     48.2475 51.58    0.      0.    ]
+iter9500 : active: 62 - 0.155% - by reasons (%): [ 0.    48.25  51.595  0.     0.   ]
+iter10000 : active: 59 - 0.1475% - by reasons (%): [ 0.     48.2525 51.6     0.      0.    ]
+iter10500 : active: 57 - 0.1425% - by reasons (%): [ 0.     48.255  51.6025  0.      0.    ]
+iter11000 : active: 52 - 0.13% - by reasons (%): [ 0.    48.255 51.615  0.     0.   ]
+iter11500 : active: 51 - 0.1275% - by reasons (%): [ 0.     48.255  51.6175  0.      0.    ]
+iter12000 : active: 49 - 0.1225% - by reasons (%): [ 0.     48.255  51.6225  0.      0.    ]
+iter12500 : active: 47 - 0.1175% - by reasons (%): [ 0.     48.255  51.6275  0.      0.    ]
+iter13000 : active: 44 - 0.11% - by reasons (%): [ 0.    48.255 51.635  0.     0.   ]
+iter13500 : active: 40 - 0.1% - by reasons (%): [ 0.    48.255 51.645  0.     0.   ]
+iter14000 : active: 40 - 0.1% - by reasons (%): [ 0.    48.255 51.645  0.     0.   ]
+iter14500 : active: 39 - 0.0975% - by reasons (%): [ 0.     48.255  51.6475  0.      0.    ]
+iter15000 : active: 38 - 0.095% - by reasons (%): [ 0.    48.255 51.65   0.     0.   ]
+iter15500 : active: 37 - 0.0925% - by reasons (%): [ 0.     48.255  51.6525  0.      0.    ]
+iter16000 : active: 37 - 0.0925% - by reasons (%): [ 0.     48.255  51.6525  0.      0.    ]
+iter16500 : active: 37 - 0.0925% - by reasons (%): [ 0.     48.255  51.6525  0.      0.    ]
+iter17000 : active: 34 - 0.085% - by reasons (%): [ 0.     48.2575 51.6575  0.      0.    ]
+iter17500 : active: 34 - 0.085% - by reasons (%): [ 0.     48.2575 51.6575  0.      0.    ]
+iter18000 : active: 33 - 0.0825% - by reasons (%): [ 0.     48.2575 51.66    0.      0.    ]
+iter18500 : active: 32 - 0.08% - by reasons (%): [ 0.   48.26 51.66  0.    0.  ]
+iter19000 : active: 30 - 0.075% - by reasons (%): [ 0.    48.26  51.665  0.     0.   ]
+iter19500 : active: 29 - 0.0725% - by reasons (%): [ 0.     48.26   51.6675  0.      0.    ]
+iter20000 : active: 28 - 0.07% - by reasons (%): [ 0.     48.2625 51.6675  0.      0.    ]
+iter20500 : active: 27 - 0.0675% - by reasons (%): [ 0.     48.2625 51.67    0.      0.    ]
+iter21000 : active: 27 - 0.0675% - by reasons (%): [ 0.     48.2625 51.67    0.      0.    ]
+iter21500 : active: 26 - 0.065% - by reasons (%): [ 0.     48.2625 51.6725  0.      0.    ]
+iter22000 : active: 25 - 0.0625% - by reasons (%): [ 0.     48.2625 51.675   0.      0.    ]
+iter22500 : active: 24 - 0.06% - by reasons (%): [ 0.     48.2625 51.6775  0.      0.    ]
+iter23000 : active: 24 - 0.06% - by reasons (%): [ 0.     48.2625 51.6775  0.      0.    ]
+iter23500 : active: 23 - 0.0575% - by reasons (%): [ 0.     48.2625 51.68    0.      0.    ]
+iter24000 : active: 23 - 0.0575% - by reasons (%): [ 0.     48.2625 51.68    0.      0.    ]
+iter24500 : active: 23 - 0.0575% - by reasons (%): [ 0.     48.2625 51.68    0.      0.    ]
+iter25000 : active: 23 - 0.0575% - by reasons (%): [ 0.     48.2625 51.68    0.      0.    ]
+iter25500 : active: 23 - 0.0575% - by reasons (%): [ 0.     48.2625 51.68    0.      0.    ]
+iter26000 : active: 21 - 0.0525% - by reasons (%): [ 0.     48.265  51.6825  0.      0.    ]
+iter26500 : active: 20 - 0.05% - by reasons (%): [ 0.    48.265 51.685  0.     0.   ]
+iter27000 : active: 19 - 0.0475% - by reasons (%): [ 0.     48.2675 51.685   0.      0.    ]
+iter27500 : active: 19 - 0.0475% - by reasons (%): [ 0.     48.2675 51.685   0.      0.    ]
+iter28000 : active: 19 - 0.0475% - by reasons (%): [ 0.     48.2675 51.685   0.      0.    ]
+iter28500 : active: 19 - 0.0475% - by reasons (%): [ 0.     48.2675 51.685   0.      0.    ]
+iter29000 : active: 18 - 0.045% - by reasons (%): [ 0.     48.2675 51.6875  0.      0.    ]
+iter29500 : active: 18 - 0.045% - by reasons (%): [ 0.     48.2675 51.6875  0.      0.    ]
+iter30000 : active: 18 - 0.045% - by reasons (%): [ 0.     48.2675 51.6875  0.      0.    ]
+iter30500 : active: 18 - 0.045% - by reasons (%): [ 0.     48.2675 51.6875  0.      0.    ]
+iter31000 : active: 18 - 0.045% - by reasons (%): [ 0.     48.2675 51.6875  0.      0.    ]
+iter31500 : active: 18 - 0.045% - by reasons (%): [ 0.     48.2675 51.6875  0.      0.    ]
+iter32000 : active: 18 - 0.045% - by reasons (%): [ 0.     48.2675 51.6875  0.      0.    ]
+iter32500 : active: 17 - 0.0425% - by reasons (%): [ 0.     48.2675 51.69    0.      0.    ]
+iter33000 : active: 17 - 0.0425% - by reasons (%): [ 0.     48.2675 51.69    0.      0.    ]
+iter33500 : active: 17 - 0.0425% - by reasons (%): [ 0.     48.2675 51.69    0.      0.    ]
+iter34000 : active: 17 - 0.0425% - by reasons (%): [ 0.     48.2675 51.69    0.      0.    ]
+iter34500 : active: 17 - 0.0425% - by reasons (%): [ 0.     48.2675 51.69    0.      0.    ]
+iter35000 : active: 17 - 0.0425% - by reasons (%): [ 0.     48.2675 51.69    0.      0.    ]
+iter35500 : active: 17 - 0.0425% - by reasons (%): [ 0.     48.2675 51.69    0.      0.    ]
+iter36000 : active: 17 - 0.0425% - by reasons (%): [ 0.     48.2675 51.69    0.      0.    ]
+iter36500 : active: 17 - 0.0425% - by reasons (%): [ 0.     48.2675 51.69    0.      0.    ]
+iter37000 : active: 17 - 0.0425% - by reasons (%): [ 0.     48.2675 51.69    0.      0.    ]
+iter37500 : active: 16 - 0.04% - by reasons (%): [ 0.     48.2675 51.6925  0.      0.    ]
+iter38000 : active: 15 - 0.0375% - by reasons (%): [ 0.     48.2675 51.695   0.      0.    ]
+iter38500 : active: 15 - 0.0375% - by reasons (%): [ 0.     48.2675 51.695   0.      0.    ]
+iter39000 : active: 15 - 0.0375% - by reasons (%): [ 0.     48.2675 51.695   0.      0.    ]
+iter39500 : active: 14 - 0.035% - by reasons (%): [ 0.     48.2675 51.6975  0.      0.    ]
+iter40000 : active: 13 - 0.0325% - by reasons (%): [ 0.     48.2675 51.7     0.      0.    ]
+iter40500 : active: 12 - 0.03% - by reasons (%): [ 0.     48.2675 51.7025  0.      0.    ]
+iter41000 : active: 12 - 0.03% - by reasons (%): [ 0.     48.2675 51.7025  0.      0.    ]
+iter41500 : active: 12 - 0.03% - by reasons (%): [ 0.     48.2675 51.7025  0.      0.    ]
+iter42000 : active: 12 - 0.03% - by reasons (%): [ 0.     48.2675 51.7025  0.      0.    ]
+iter42500 : active: 12 - 0.03% - by reasons (%): [ 0.     48.2675 51.7025  0.      0.    ]
+iter43000 : active: 12 - 0.03% - by reasons (%): [ 0.     48.2675 51.7025  0.      0.    ]
+iter43500 : active: 11 - 0.0275% - by reasons (%): [ 0.     48.2675 51.705   0.      0.    ]
+iter44000 : active: 11 - 0.0275% - by reasons (%): [ 0.     48.2675 51.705   0.      0.    ]
+iter44500 : active: 11 - 0.0275% - by reasons (%): [ 0.     48.2675 51.705   0.      0.    ]
+iter45000 : active: 11 - 0.0275% - by reasons (%): [ 0.     48.2675 51.705   0.      0.    ]
+iter45500 : active: 11 - 0.0275% - by reasons (%): [ 0.     48.2675 51.705   0.      0.    ]
+iter46000 : active: 11 - 0.0275% - by reasons (%): [ 0.     48.2675 51.705   0.      0.    ]
+iter46500 : active: 11 - 0.0275% - by reasons (%): [ 0.     48.2675 51.705   0.      0.    ]
+iter47000 : active: 11 - 0.0275% - by reasons (%): [ 0.     48.2675 51.705   0.      0.    ]
+iter47500 : active: 11 - 0.0275% - by reasons (%): [ 0.     48.2675 51.705   0.      0.    ]
+iter48000 : active: 11 - 0.0275% - by reasons (%): [ 0.     48.2675 51.705   0.      0.    ]
+iter48500 : active: 11 - 0.0275% - by reasons (%): [ 0.     48.2675 51.705   0.      0.    ]
+iter49000 : active: 11 - 0.0275% - by reasons (%): [ 0.     48.2675 51.705   0.      0.    ]
+iter49500 : active: 11 - 0.0275% - by reasons (%): [ 0.     48.2675 51.705   0.      0.    ]
+Trigger hit at 50000
+will exit at most at 62500
+iter50000 : active: 0 - 0% - by reasons (%): [2.75000e-02 4.82675e+01 5.17050e+01 0.00000e+00 0.00000e+00]
+iter50000 : active: 0 - 0% - by reasons (%): [2.75000e-02 4.82675e+01 5.17050e+01 0.00000e+00 0.00000e+00]
+Data computed, saving /home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/dev/im_dev0/dev_M2_E0/data/complex128_800-1000_600-800.tmp
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.07106781e+00
+**/CALLING cycles 
+Unable to find data_file, computing
+DIFF c_chunk Shifting c with respect to iref 0 (0.0 + 0.0j)
+Shift in pc 0.0 0.0
+DIFF c_chunk Shifting c with respect to iref 0 (0.0 + 0.0j)
+Shift in pc 0.0 0.0
+c_chunk (1400, 1600, 1000, 1200) :
+ [[1.87730808+0.62835027j 1.8784555 +0.63068795j 1.87917054+0.63359141j
+  ... 1.87688406+1.24451479j 1.8762415 +1.24596775j
+  1.87745524+1.25019921j]
+ [1.88142653+0.62618982j 1.88183958+0.63055144j 1.88032389+0.63401151j
+  ... 1.88215466+1.24268801j 1.88109474+1.24661885j
+  1.88118569+1.24903516j]
+ [1.88492072+0.62801845j 1.88262154+0.62995047j 1.88525632+0.63411541j
+  ... 1.88456131+1.24256167j 1.88277166+1.24634558j
+  1.88472216+1.25061244j]
+ ...
+ [2.49514833+0.62721427j 2.49258741+0.63121927j 2.49302091+0.6337094j
+  ... 2.49240883+1.24171646j 2.49263238+1.24633993j
+  2.49478948+1.24813747j]
+ [2.49542411+0.625623j   2.49760851+0.63139514j 2.49775811+0.63366765j
+  ... 2.49826035+1.24343009j 2.49675781+1.2456272j
+  2.4965243 +1.24907329j]
+ [2.4985697 +0.62700808j 2.50019168+0.63109014j 2.49850244+0.63398502j
+  ... 2.50084203+1.24399958j 2.49979503+1.24665639j
+  2.49850982+1.2498054j ]]
+in cycles, ref point maxiter 9223372036854775807 ref_point (0.0 + 0.0j)
+bool_SA_shift False
+**/CALLING cycles looping,  n_stop 5
+Data computed, saving /home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/dev/im_dev0/dev_M2_E0/data/complex128_1400-1600_1000-1200.tmp
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.07106781e+00
+**/CALLING cycles 
+Unable to find data_file, computing
+DIFF c_chunk Shifting c with respect to iref 0 (0.0 + 0.0j)
+Shift in pc 0.0 0.0
+DIFF c_chunk Shifting c with respect to iref 0 (0.0 + 0.0j)
+Shift in pc 0.0 0.0
+c_chunk (1400, 1600, 1400, 1600) :
+ [[1.87730808+1.87913201j 1.8784555 +1.88146969j 1.87917054+1.88437314j
+  ... 1.87688406+2.49529653j 1.8762415 +2.49674949j
+  1.87745524+2.50098095j]
+ [1.88142653+1.87697156j 1.88183958+1.88133318j 1.88032389+1.88479325j
+  ... 1.88215466+2.49346975j 1.88109474+2.49740059j
+  1.88118569+2.4998169j ]
+ [1.88492072+1.87880018j 1.88262154+1.88073221j 1.88525632+1.88489714j
+  ... 1.88456131+2.4933434j  1.88277166+2.49712732j
+  1.88472216+2.50139418j]
+ ...
+ [2.49514833+1.87799601j 2.49258741+1.88200101j 2.49302091+1.88449114j
+  ... 2.49240883+2.4924982j  2.49263238+2.49712167j
+  2.49478948+2.49891921j]
+ [2.49542411+1.87640474j 2.49760851+1.88217688j 2.49775811+1.88444939j
+  ... 2.49826035+2.49421183j 2.49675781+2.49640894j
+  2.4965243 +2.49985503j]
+ [2.4985697 +1.87778981j 2.50019168+1.88187188j 2.49850244+1.88476676j
+  ... 2.50084203+2.49478132j 2.49979503+2.49743812j
+  2.49850982+2.50058714j]]
+in cycles, ref point maxiter 9223372036854775807 ref_point (0.0 + 0.0j)
+bool_SA_shift False
+**/CALLING cycles looping,  n_stop 5
+Data computed, saving /home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/dev/im_dev0/dev_M2_E0/data/complex128_1400-1600_1400-1600.tmp

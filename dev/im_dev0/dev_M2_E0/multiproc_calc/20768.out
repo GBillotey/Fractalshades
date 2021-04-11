@@ -1,0 +1,7 @@
+**CALLING cycles 
+iref 0
+SA_params cutdeg 64
+SA_params iref 0
+SA_params kc  7.07106781e+00
+**/CALLING cycles 
+Data found, skipping calc:  (1400, 1600, 1200, 1400)

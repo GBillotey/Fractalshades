@@ -1,0 +1,10 @@
+/home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/src/fractal.py:2445: RuntimeWarning: divide by zero encountered in log
+  nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(N * k))
+/home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/src/fractal.py:2445: RuntimeWarning: invalid value encountered in log
+  nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(N * k))
+/home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/src/fractal.py:2512: RuntimeWarning: invalid value encountered in true_divide
+  normal = zn / dzndc# zn / dzndc
+/home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/src/fractal.py:2513: RuntimeWarning: invalid value encountered in true_divide
+  normal = normal / np.abs(normal)
+/home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/src/fractal.py:2582: RuntimeWarning: invalid value encountered in arcsin
+  # val = np.arcsin(((((val / valk) + 1) * 0.5) % 1.) * 2. - 1.)

@@ -1,0 +1,13 @@
+FP_codes ['zn', 'dzndz']
+ref_array not found
+U[int_dic["iref"]] [0 0 0 ... 0 0 0]
+stop_iter [541 541 541 ... 537 537 537]
+FP_codes ['zn', 'dzndz']
+U[int_dic["iref"]] [0 0 0 ... 0 0 0]
+stop_iter [584 582 579 ... 541 541 541]
+FP_codes ['zn', 'dzndz']
+U[int_dic["iref"]] [0 0 0 ... 0 0 0]
+stop_iter [945 942 942 ... 554 553 552]
+FP_codes ['zn', 'dzndz']
+U[int_dic["iref"]] [0 0 0 ... 0 0 0]
+stop_iter [552 551 551 ... 510 510 510]

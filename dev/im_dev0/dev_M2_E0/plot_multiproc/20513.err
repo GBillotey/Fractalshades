@@ -1,0 +1,2 @@
+/home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/src/fractal.py:2458: RuntimeWarning: invalid value encountered in log
+  #                    print("nu_frac", type(nu_frac), nu_frac.dtype)

@@ -1,0 +1,8 @@
+/home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/src/fractal.py:2534: RuntimeWarning: invalid value encountered in true_divide
+  normal = zn / dzndc# zn / dzndc
+/home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/src/fractal.py:2535: RuntimeWarning: invalid value encountered in true_divide
+  normal = normal / np.abs(normal)
+/home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/src/fractal.py:339: RuntimeWarning: All-NaN slice encountered
+  np.putmask(res, normal == 0., np.nanmin(res) + 0.5 * (np.nanmax(res) - np.nanmin(res)))
+/home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/src/fractal.py:2467: RuntimeWarning: invalid value encountered in log
+  nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(N * k))

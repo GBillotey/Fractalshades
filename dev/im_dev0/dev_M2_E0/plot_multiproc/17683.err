@@ -1,0 +1,6 @@
+/home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/src/fractal.py:2582: RuntimeWarning: invalid value encountered in arcsin
+  val += di * (np.sin(t[i-1] + dphi) + (
+/home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/src/fractal.py:2445: RuntimeWarning: divide by zero encountered in log
+  nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(N * k))
+/home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/src/fractal.py:2445: RuntimeWarning: invalid value encountered in log
+  nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(N * k))

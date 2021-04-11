@@ -1,0 +1,2 @@
+/home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/src/fractal.py:2445: RuntimeWarning: invalid value encountered in log
+  nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(N * k))
