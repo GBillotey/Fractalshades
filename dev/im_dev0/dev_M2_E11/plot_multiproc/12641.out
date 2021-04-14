@@ -1,7 +1,0 @@
-FP_codes ['zn', 'dzndz', 'dzndc', 'd2zndc2']
-ref_array not found
-U[int_dic["iref"]] [0 0 0 ... 0 0 0]
-stop_iter [ 406  406  406 ...  606  703 1007]
-FP_codes ['zn', 'dzndz', 'dzndc', 'd2zndc2']
-U[int_dic["iref"]] [0 0 0 ... 0 0 0]
-stop_iter [544 523 522 ... 697 558 552]

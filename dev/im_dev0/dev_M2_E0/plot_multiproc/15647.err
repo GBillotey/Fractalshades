@@ -1,4 +1,0 @@
-/home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/src/fractal.py:2581: RuntimeWarning: invalid value encountered in true_divide
-  val = np.arcsin(((((val / valk) + 1) * 0.5) % 1.) * 2. - 1.)
-/home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/src/fractal.py:2581: RuntimeWarning: invalid value encountered in remainder
-  val = np.arcsin(((((val / valk) + 1) * 0.5) % 1.) * 2. - 1.)
