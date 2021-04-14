@@ -34,7 +34,6 @@ def suppress_stdout():
         finally:
             sys.stdout = old_stdout
 
-
 def no_stdout(func):
     @wraps(func)
     def wrapper(*args, **kwargs):

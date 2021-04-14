@@ -7,18 +7,17 @@ import PIL
 
 # Allows relative imports when run locally as script
 # https://docs.python-guide.org/writing/structure/
-if __name__ == "__main__":
-    import sys
-    sys.path.insert(0, os.path.abspath(
-            os.path.join(os.path.dirname(__file__), '..')))
+#if __name__ == "__main__":
+#    import sys
+#    sys.path.insert(0, os.path.abspath(
+#            os.path.join(os.path.dirname(__file__), '..')))
 
-import tests
-from src.perturbation import Perturbation_mandelbrot
-from src.fractal import (Color_tools,
-                         Fractal_colormap,
-                         Fractal_plotter,
-                         Fractal_Data_array,
-                         mkdir_p)
+from fractalshades.core import (Color_tools, Fractal_colormap, Fractal_plotter,
+                                Fractal_Data_array,mkdir_p)
+from fractalshades.perturbation import Perturbation_mandelbrot
+
+
+import test_config
 
 
 def compare_png(ref_file, test_file):
@@ -36,13 +35,13 @@ def compare_png(ref_file, test_file):
 class Test_Perturbation_mandelbrot(unittest.TestCase):
         
     def setUp(self):
-        image_dir = os.path.join(tests.test_dir, "images_comparison")
+        image_dir = os.path.join(test_config.test_dir, "images_comparison")
 #        if os.path.exists(image_dir):
 #            shutil.rmtree(image_dir)
         mkdir_p(image_dir)
         self.image_dir = image_dir
 
-        image_dir_ref = os.path.join(tests.test_dir, "images_REF")
+        image_dir_ref = os.path.join(test_config.test_dir, "images_REF")
         mkdir_p(image_dir_ref)
         self.image_dir_ref = image_dir_ref
 
@@ -52,7 +51,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         self.colormap = Fractal_colormap(color_gradient)
         self.colormap.extent = "mirror"
 
-    @tests.no_stdout
+    @test_config.no_stdout
     def test_M2_E20(self):
         """
         Testing all datatype options, 5e-20 test case.
@@ -79,7 +78,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 err = compare_png(ref_file, test_file)
                 self.assertTrue(err < 0.01)
     
-    @tests.no_stdout
+    @test_config.no_stdout
     def test_M2_int_E11(self):
         """
         Testing interior detection, 5e-12 test case.
@@ -104,7 +103,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 self.assertTrue(err < 0.01)
                 
 
-    @tests.no_stdout
+    @test_config.no_stdout
     def test_M2_antialias_E0(self):
         """
         Testing field lines, and antialiasing. Full Mandelbrot
@@ -125,8 +124,20 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         test_file = self.make_M2_img(x, y, dx, precision, nx,
             complex_type, test_name, prefix, interior_detect=True,
             mask_codes=[2], antialiasing=True, colormap=colormap,
-            layer="field_lines", probes_val=[0., 0.1],)
+            layer="field_lines", probes_val=[0., 0.1])
         ref_file = os.path.join(self.image_dir_ref, test_name + ".png")
+        err = compare_png(ref_file, test_file)
+        self.assertTrue(err < 0.01)
+        
+        x, y = "-0.1", "0.975"
+        dx = "0.8e0"
+        prefix = "antialiasing_2"
+        test_file = self.make_M2_img(x, y, dx, precision, nx,
+            complex_type, test_name, prefix, interior_detect=True,
+            mask_codes=[2], antialiasing=True, colormap=colormap,
+            layer="field_lines", probes_val=[0., 0.1],
+            field_lines=("field_lines", {"n_iter": 5, "swirl": 1.}))
+        ref_file = os.path.join(self.image_dir_ref, test_name + "_2.png")
         err = compare_png(ref_file, test_file)
         self.assertTrue(err < 0.01)
 
@@ -135,7 +146,8 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                     prefix, interior_detect=False, mask_codes=[3, 4], 
                     SA_params={"cutdeg": 64, "cutdeg_glitch": 8},
                     antialiasing=False, colormap=None, layer="shade",
-                    probes_val=[0., 0.25]):
+                    probes_val=[0., 0.25], 
+                    field_lines=("field_lines", {"n_iter": 10, "swirl": 1.})):
         """
         """
         test_dir = os.path.join(self.image_dir, test_name)
@@ -172,7 +184,6 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                   "phi_LS": 40.,
                   "shininess": 40.,
                   "ratio_specular": 8.})
-        field_lines = ("field_lines", {"n_iter": 10, "swirl": 1.})
 
         if colormap is None:
             colormap = self.colormap
@@ -211,9 +222,9 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 if __name__ == "__main__":
     runner = unittest.TextTestRunner(verbosity=2)
 
-    full_test = True
+    full_test = False
     if full_test:
-        runner.run(tests.suite([Test_Perturbation_mandelbrot]))
+        runner.run(test_config.suite([Test_Perturbation_mandelbrot]))
     else:
         suite = unittest.TestSuite()
         suite.addTest(Test_Perturbation_mandelbrot("test_M2_antialias_E0"))

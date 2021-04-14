@@ -1,19 +1,20 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import time
-import os
-import sys
 import unittest
 
 # Allows relative imports when run locally as script
 # https://docs.python-guide.org/writing/structure/
-if __name__ == "__main__":
-    sys.path.insert(0, os.path.abspath(
-            os.path.join(os.path.dirname(__file__), '..')))
+#if __name__ == "__main__":
+#    sys.path.insert(0, os.path.abspath(
+#            os.path.join(os.path.dirname(__file__), '..')))
 
-from src.numpy_utils.xrange import (Xrange_array,
-                                    Xrange_polynomial,
-                                    Xrange_SA)
+
+#import fractalshades.numpy_utils.xrange as fsx
+from fractalshades.numpy_utils.xrange import (
+        Xrange_array,
+        Xrange_polynomial,
+        Xrange_SA)
 
 
 def _matching(res, expected, almost=False, dtype=None, cmp_op=False, ktol=1.5):
@@ -846,9 +847,9 @@ class Test_Xrange_SA(unittest.TestCase):
                               almost=True, ktol=10., dtype=dtype)
                 
 if __name__ == "__main__":
-    import tests
+    import test_config 
     runner = unittest.TextTestRunner(verbosity=2)
-    runner.run(tests.suite([Test_Xrange_array,
+    runner.run(test_config.suite([Test_Xrange_array,
                             Test_Xrange_timing,
                             Test_Xrange_polynomial,
                             Test_Xrange_SA]))
