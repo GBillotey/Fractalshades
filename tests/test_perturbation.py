@@ -16,7 +16,7 @@ import PIL
 #                                Fractal_Data_array,mkdir_p)
 import fractalshades as fs
 #from fractalshades.perturbation import Perturbation_mandelbrot
-import fractalshades.model as fsmodel
+import fractalshades.models as fsmodels
 
 import test_config
 
@@ -153,7 +153,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         """
         test_dir = os.path.join(self.image_dir, test_name)
 
-        mandelbrot = fsmodel.Perturbation_mandelbrot(test_dir, x, y, dx, nx,
+        mandelbrot = fsmodels.Perturbation_mandelbrot(test_dir, x, y, dx, nx,
              xy_ratio=1.,
              theta_deg=0.,
              chunk_size=200,
