@@ -18,7 +18,7 @@ def plot():
     dx = "1.1e-157"
     precision = 200
     
-    nx = 800
+    nx = 1600
     xy_ratio = 0.5 
     theta_deg = 0.
     complex_type = ("Xrange", np.complex64)
@@ -57,37 +57,27 @@ def plot():
 
     def wave(x):
         return 0.5 + (0.4 * (x - 0.5) - 0.6 * 0.5 * np.cos(x * np.pi * 3.))
-        
-    color_gradient1 = fs.Color_tools.Lch_gradient(wheat1, wheat2, 200,
-                                              f= lambda x: wave(x))#x**2 * (3. - 2.*x))
-    color_gradient2 = fs.Color_tools.Lch_gradient(wheat2, wheat1,  200,
-                                              f= lambda x: wave(x))
-    color_gradient3 = fs.Color_tools.Lch_gradient(wheat1, wheat2, 200,
-                                              f= lambda x: wave(x))
+
     color_gradient4 = fs.Color_tools.Lch_gradient(wheat1, wheat2,  200,
-                                              f= lambda x: wave(x)) #**1.)
+                                              f= lambda x: wave(x))
     color_gradient5 = fs.Color_tools.Lch_gradient(wheat2, wheat1,  200,
-                                              f= lambda x: wave(x)) #**1.)
+                                              f= lambda x: wave(x))
     color_gradient6 = fs.Color_tools.Lch_gradient(wheat1, wheat2,  200,
-                                              f= lambda x: wave(x)) #**1.)
+                                              f= lambda x: wave(x))
     color_gradient7 = fs.Color_tools.Lch_gradient(wheat2, wheat1,  200,
-                                              f= lambda x: wave(x)) #**1.)
+                                              f= lambda x: wave(x))
     color_gradient8 = fs.Color_tools.Lch_gradient(wheat1, wheat2, 200,
-                                              f= lambda x: wave(x)) #**1.)
-    
+                                              f= lambda x: wave(x))
     color_gradient9 = fs.Color_tools.Lch_gradient(wheat2, wheat3, 200,
-                                              f= lambda x: wave(x)) #**1.)
-    
+                                              f= lambda x: wave(x))
     color_gradient10 = fs.Color_tools.Lch_gradient(wheat3, wheat1,  200,
-                                              f= lambda x: wave(x)) #**1.)
+                                              f= lambda x: wave(x))
     color_gradient11 = fs.Color_tools.Lch_gradient(wheat1, lavender2,  200,
-                                              f= lambda x: wave(x)) #**1.)
+                                              f= lambda x: wave(x))
     color_gradient12 = fs.Color_tools.Lch_gradient(lavender2, wheat1,  200,
-                                              f= lambda x: wave(x)) #**1.)
+                                              f= lambda x: wave(x))
     color_gradient13 = fs.Color_tools.Lch_gradient(wheat1, wheat2,  200,
-                                              f= lambda x: wave(x)) #**1.)
-    
-    
+                                              f= lambda x: wave(x))
     color_gradient14 = fs.Color_tools.Lch_gradient(wheat2, wheat3, 200,
                                               f= lambda x: wave(x))
     color_gradient15 = fs.Color_tools.Lch_gradient(wheat3, wheat1, 200,
@@ -95,24 +85,24 @@ def plot():
     color_gradient16 = fs.Color_tools.Lch_gradient(wheat1, lavender1, 200,
                                               f=  lambda x: wave(x))
     color_gradient17 = fs.Color_tools.Lch_gradient(lavender1, wheat1, 200,
-                                              f= lambda x: wave(x)) #**1.)
+                                              f= lambda x: wave(x))
     color_gradient18 = fs.Color_tools.Lch_gradient(wheat1, lavender3, 200,
-                                              f= lambda x: wave(x)) #**1.)
+                                              f= lambda x: wave(x))
     color_gradient19 = fs.Color_tools.Lch_gradient(lavender3, lavender2, 200,
-                                              f= lambda x: wave(x)) #**1.)
+                                              f= lambda x: wave(x))
     color_gradient20 = fs.Color_tools.Lch_gradient(lavender2, lavender3, 200,
-                                              f= lambda x: wave(x)) #**1.)
+                                              f= lambda x: wave(x))
     color_gradient21 = fs.Color_tools.Lch_gradient(lavender3, lavender1, 200,
-                                              f= lambda x: wave(x)) #**1.)
+                                              f= lambda x: wave(x))
     color_gradient22 = fs.Color_tools.Lch_gradient(lavender1, lavender3, 200,
-                                              f= lambda x: wave(x)) #**1.)
+                                              f= lambda x: wave(x))
     color_gradient23 = fs.Color_tools.Lch_gradient(lavender3, lavender2, 200,
-                                              f= lambda x: wave(x)) #**1.)
+                                              f= lambda x: wave(x))
     color_gradient24 = fs.Color_tools.Lch_gradient(lavender2, citrus2, 200,
-                                              f= lambda x: wave(x)) #**1.)
+                                              f= lambda x: wave(x))
 
     
-    colormap = (fs.Fractal_colormap(color_gradient4)+#, plt.get_cmap("magma")) + Fractal_colormap((0.1, 1.0, 200), plt.get_cmap("magma"))
+    colormap = (fs.Fractal_colormap(color_gradient4)+
                 fs.Fractal_colormap(color_gradient5) + 
                 fs.Fractal_colormap(color_gradient6) + 
                 fs.Fractal_colormap(color_gradient7) + 
@@ -133,9 +123,7 @@ def plot():
                 fs.Fractal_colormap(color_gradient22) + 
                 fs.Fractal_colormap(color_gradient23) + 
                 fs.Fractal_colormap(color_gradient24) )
-    
-#    colormap = Fractal_colormap((0.95, 0.15, 200), plt.get_cmap("magma"))
-#    colormap = Fractal_colormap(color_gradient2c)
+
     colormap.extent = "mirror" #"repeat"
 
     plotter = fs.Fractal_plotter(

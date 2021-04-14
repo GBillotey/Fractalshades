@@ -1,5 +1,6 @@
 # Fractal-shades
 The pupose of this python package is to propose standard or deep-zoom exploration of a few fractals.
+[Screenshot](examples/flake/dev.png)
 
 ## Prerequisites
 This Python package relies on the following dependencies:
