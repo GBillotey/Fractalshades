@@ -12,10 +12,11 @@ import PIL
 #    sys.path.insert(0, os.path.abspath(
 #            os.path.join(os.path.dirname(__file__), '..')))
 
-from fractalshades.core import (Color_tools, Fractal_colormap, Fractal_plotter,
-                                Fractal_Data_array,mkdir_p)
-from fractalshades.perturbation import Perturbation_mandelbrot
-
+#from fractalshades import (Color_tools, Fractal_colormap, Fractal_plotter,
+#                                Fractal_Data_array,mkdir_p)
+import fractalshades as fs
+#from fractalshades.perturbation import Perturbation_mandelbrot
+import fractalshades.model as fsmodel
 
 import test_config
 
@@ -38,17 +39,17 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         image_dir = os.path.join(test_config.test_dir, "images_comparison")
 #        if os.path.exists(image_dir):
 #            shutil.rmtree(image_dir)
-        mkdir_p(image_dir)
+        fs.mkdir_p(image_dir)
         self.image_dir = image_dir
 
         image_dir_ref = os.path.join(test_config.test_dir, "images_REF")
-        mkdir_p(image_dir_ref)
+        fs.mkdir_p(image_dir_ref)
         self.image_dir_ref = image_dir_ref
 
         purple = np.array([181, 40, 99]) / 255.
         gold = np.array([255, 210, 66]) / 255.
-        color_gradient = Color_tools.Lch_gradient(purple, gold,  200)
-        self.colormap = Fractal_colormap(color_gradient)
+        color_gradient = fs.Color_tools.Lch_gradient(purple, gold,  200)
+        self.colormap = fs.Fractal_colormap(color_gradient)
         self.colormap.extent = "mirror"
 
     @test_config.no_stdout
@@ -118,8 +119,8 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
         gold = np.array([255, 210, 66]) / 255.
         black = np.array([0, 0, 0]) / 255.
-        color_gradient = Color_tools.Lch_gradient(gold, black, 200)
-        colormap = Fractal_colormap(color_gradient)
+        color_gradient = fs.Color_tools.Lch_gradient(gold, black, 200)
+        colormap = fs.Fractal_colormap(color_gradient)
 
         test_file = self.make_M2_img(x, y, dx, precision, nx,
             complex_type, test_name, prefix, interior_detect=True,
@@ -152,7 +153,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         """
         test_dir = os.path.join(self.image_dir, test_name)
 
-        mandelbrot = Perturbation_mandelbrot(test_dir, x, y, dx, nx,
+        mandelbrot = fsmodel.Perturbation_mandelbrot(test_dir, x, y, dx, nx,
              xy_ratio=1.,
              theta_deg=0.,
              chunk_size=200,
@@ -172,7 +173,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
             glitch_eps=1.e-6,
             interior_detect=interior_detect)
 
-        mask = Fractal_Data_array(mandelbrot, file_prefix=prefix,
+        mask = fs.Fractal_Data_array(mandelbrot, file_prefix=prefix,
             postproc_keys=('stop_reason', lambda x: np.isin(x, mask_codes)),
             mode="r+raw")
 
@@ -187,7 +188,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
         if colormap is None:
             colormap = self.colormap
-        plotter = Fractal_plotter(
+        plotter = fs.Fractal_plotter(
             fractal=mandelbrot,
             base_data_key=potential,
             base_data_prefix=prefix,

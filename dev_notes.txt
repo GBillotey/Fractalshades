@@ -1,0 +1,10 @@
+
+Programme structure
+https://blog.ionelmc.ro/2014/05/25/python-packaging/
+
+Packaging
+https://packaging.python.org/tutorials/packaging-projects/
+
+Requirement
+wx.python
+pip install wxPython==4.1.1

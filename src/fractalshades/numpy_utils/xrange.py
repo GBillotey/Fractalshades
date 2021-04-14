@@ -3,6 +3,7 @@ import numpy as np
 import numbers
 import re
 
+
 def mpc_to_Xrange(mpc, dtype=np.complex128):
     """ Convert a mpc complex to a Xrange array"""
     import mpmath
