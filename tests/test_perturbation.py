@@ -178,7 +178,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
             mode="r+raw")
 
         potential = ("potential", 
-                     {"kind": "infinity", "d": 2, "a_d": 1., "N": 1e3})
+                     {"kind": "infinity", "d": 2, "a_d": 1., "M": 1e3})
         shade = ("DEM_shade", 
                  {"kind": "potential",
                   "theta_LS": 50.,

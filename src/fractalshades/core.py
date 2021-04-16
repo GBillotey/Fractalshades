@@ -25,7 +25,7 @@ import fractalshades.numpy_utils.xrange as fsx
 #import fsxrange.mpf_to_Xrange as mpf_to_Xrange
 
 enable_multiprocessing = True
-no_compute = False
+no_compute = True
 
 def mkdir_p(path):
     """ Creates directory ; if exists does nothing """
@@ -2369,6 +2369,37 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         return self.reshape2d(post_array, chunk_mask, chunk_slice)
 
 
+    @staticmethod
+    def codes_mapping(complex_codes, int_codes, termination_codes):
+        """
+        Utility function, returns the inverse mapping code  -> int
+        """
+        complex_dic, int_dic, termination_dic = [dict(
+            zip(tab, range(len(tab)))) for tab in [
+            complex_codes, int_codes, termination_codes]]
+        return complex_dic, int_dic, termination_dic
+
+
+    @staticmethod
+    def subsubset(bool_set, bool_subset_of_set):
+        """
+        Returns boolean array for a subset
+        Parameters    
+         - *bool_set* bool array of shape N, defines a set 
+         - *bool_subset_of_set* bool array of shape Card(set)
+        Returns
+         - *bool_subset* bool array of shape N
+        """
+        set_count = np.sum(bool_set)
+        Card_set, = np.shape(bool_subset_of_set)
+        if Card_set != set_count:
+            raise ValueError("Expected bool_subset_of_set of shape"
+                             " [Card(set)]")
+        bool_subset = np.copy(bool_set)
+        bool_subset[bool_set] = bool_subset_of_set
+        return bool_subset
+
+
     def postproc(self, postproc_keys, codes, raw_data, chunk_slice,
                  dtype=None):
         """
@@ -2390,7 +2421,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         [potential]       | {"kind": "infinity",
                           | "d": degree of polynome d >= 2,
                           |  "a_d": coeff of higher order monome
-                          |  "N": High number defining a boundary of \infty}
+                          |  "M": High number defining a boundary of \infty}
                           | {"kind": "convergent",
                           |  "epsilon_cv": Small number defining boundary of 0}
                           |  {"kind": "transcendent" in this cas we just return n}
@@ -2408,7 +2439,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         [raw]             | {"source": "raw_code"}
         [phase]           | {"source": "raw_code"}
         [minibrot_phase]  | {"source": "raw_code"}  same than *phase* but with
-                          |                        smoothing around 0
+                          |                         smoothing around 0
         [abs]             | {"source": "raw_code"}
                             
         """
@@ -2442,6 +2473,13 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
             if post_name == "potential": # In fact the 'real iteration number'
                 has_potential = True
                 potential_dic = post_dic
+                # instanciate potential dic with relevant values unless 
+                # user imposed
+                try:
+                    potential_d = self.potential_d
+                except AttributeError:
+                    potential_d = None
+                potential_dic["d"] = potential_dic.get("d", potential_d)
                 n = stop_iter[0, :]
                 zn = Z[complex_dic["zn"], :]
 #                print("zn", type(zn), zn.dtype)
@@ -2449,12 +2487,12 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                 if potential_dic["kind"] == "infinity":
                     d = potential_dic["d"]
                     a_d = potential_dic["a_d"]
-                    N = potential_dic["N"]
+                    M = potential_dic["M"]
                     k = np.abs(a_d) ** (1. / (d - 1.))
                     # k normaliszation corefficient, because the formula given
                     # in https://en.wikipedia.org/wiki/Julia_set                    
                     # suppose the highest order monome is normalized
-                    nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(N * k))
+                    nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(M * k))
                                 / np.log(d))
 #                    print("nu_frac", type(nu_frac), nu_frac.dtype)
 
@@ -2887,32 +2925,4 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         return post_array, chunk_mask
 
 
-    @staticmethod
-    def codes_mapping(complex_codes, int_codes, termination_codes):
-        """
-        Utility function, returns the inverse mapping code  -> int
-        """
-        complex_dic, int_dic, termination_dic = [dict(
-            zip(tab, range(len(tab)))) for tab in [
-            complex_codes, int_codes, termination_codes]]
-        return complex_dic, int_dic, termination_dic
 
-
-    @staticmethod
-    def subsubset(bool_set, bool_subset_of_set):
-        """
-        Returns boolean array for a subset
-        Parameters    
-         - *bool_set* bool array of shape N, defines a set 
-         - *bool_subset_of_set* bool array of shape Card(set)
-        Returns
-         - *bool_subset* bool array of shape N
-        """
-        set_count = np.sum(bool_set)
-        Card_set, = np.shape(bool_subset_of_set)
-        if Card_set != set_count:
-            raise ValueError("Expected bool_subset_of_set of shape"
-                             " [Card(set)]")
-        bool_subset = np.copy(bool_set)
-        bool_subset[bool_set] = bool_subset_of_set
-        return bool_subset

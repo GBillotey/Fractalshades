@@ -15,13 +15,13 @@ def plot():
     # Ball method 1 found period: 7884
     x = "-1.99996619445037030418434688506350579675531241540724851511761922944801584242342684381376129778868913812287046406560949864353810575744772166485672496092803920095332"
     y = "0.00000000000000000000000000000000030013824367909383240724973039775924987346831190773335270174257280120474975614823581185647299288414075519224186504978181625478529"
-    dx = "1.1e-157"
+    dx = "1.8e-157"
     precision = 200
     
-    nx = 1600
+    nx = 3200
     xy_ratio = 0.5 
     theta_deg = 0.
-    complex_type = ("Xrange", np.complex64)
+    complex_type = ("Xrange", np.complex128)
 
     mandelbrot = fsm.Perturbation_mandelbrot(
                  directory, x, y, dx, nx, xy_ratio, theta_deg, chunk_size=200,
@@ -35,15 +35,16 @@ def plot():
             epsilon_stationnary=1.e-3,
             pc_threshold=0.1,
             SA_params={"cutdeg": 64, "cutdeg_glitch": 8},
-            glitch_eps=1.e-6,
-            interior_detect=False)
+            glitch_eps=1.e-3,
+            interior_detect=False,
+            glitch_max_attempt=0)
 
     glitched = fs.Fractal_Data_array(mandelbrot, file_prefix="dev",
                 postproc_keys=('stop_reason', lambda x: x >= 3), mode="r+raw")
 
     potential_data_key = ("potential", 
                      {"kind": "infinity", "d": 2, "a_d": 1., "N": 1e3})
-    
+
 
     
 
@@ -101,6 +102,8 @@ def plot():
     color_gradient24 = fs.Color_tools.Lch_gradient(lavender2, citrus2, 200,
                                               f= lambda x: wave(x))
 
+
+
     
     colormap = (fs.Fractal_colormap(color_gradient4)+
                 fs.Fractal_colormap(color_gradient5) + 
@@ -132,7 +135,7 @@ def plot():
         base_data_prefix="dev",
         base_data_function=lambda x:x,# np.sin(x*0.0001),
         colormap=colormap,
-        probes_val=np.linspace(0., 1., 22)**0.8, #* 428  - 00.,#[0., 0.5, 1.], #phi * k * 2. + k * np.array([0., 1., 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]) / 3.5,
+        probes_val=np.linspace(0., 1., 22)**0.165, #* 428  - 00.,#[0., 0.5, 1.], #phi * k * 2. + k * np.array([0., 1., 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]) / 3.5,
         probes_kind="qt",#"z",
         mask=glitched)
     
@@ -140,21 +143,21 @@ def plot():
     #plotter.add_calculation_layer(postproc_key=potential_data_key)
     
     layer1_key = ("DEM_shade", {"kind": "potential",
-                                "theta_LS": 50.,
-                                "phi_LS": 40.,
+                                "theta_LS": 30.,
+                                "phi_LS": 10.,
                                 "shininess": 40.,
-                                "ratio_specular": 4000.})
+                                "ratio_specular": 80.})
     plotter.add_grey_layer(postproc_key=layer1_key, intensity=0.95, 
                          blur_ranges=[],#[[0.99, 0.999, 1.0]],
                         disp_layer=False,
-                         normalized=False, hardness=0.15,  
-            skewness=0.0, shade_type={"Lch": 1.0, "overlay": 0., "pegtop": 4.})
+                         normalized=False, hardness=0.35,  
+            skewness=0.0, shade_type={"Lch": 1.0, "overlay": 0., "pegtop": 3.})
     
     layer2_key = ("field_lines", {})
     plotter.add_grey_layer(postproc_key=layer2_key,
-                         hardness=0.5, intensity=0.38,
+                         hardness=0.75, intensity=0.38,
                          blur_ranges=[],#[[0.99, 0.99, 1.0]], 
-                         shade_type={"Lch": 0., "overlay": 2., "pegtop": 0.}) 
+                         shade_type={"Lch": 0., "overlay": 2., "pegtop": 1.}) 
 #
 
 #
