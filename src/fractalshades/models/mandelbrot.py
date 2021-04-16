@@ -11,6 +11,12 @@ import fractalshades.models as fsmodels
 
 
 class Classical_mandelbrot(fs.Fractal):
+    def __init__(self, *args, **kwargs):
+        # default values used for postprocessing (potential)
+        self.potential_kind = "infinity"
+        self.potential_d = 2
+        self.potential_a_d = 1.
+        super().__init__(*args, **kwargs)
 
     def explore(self, x, y, dx, max_iter, M_divergence, epsilon_stationnary,
                 pc_threshold, px_ball):
@@ -527,6 +533,13 @@ https://fractalforums.org/fractal-mathematics-and-new-theories/28/interior-color
 
 class Perturbation_mandelbrot(fs.PerturbationFractal):
     
+    def __init__(self, *args, **kwargs):
+        # default values used for postprocessing (potential)
+        self.potential_kind = "infinity"
+        self.potential_d = 2
+        self.potential_a_d = 1.
+        super().__init__(*args, **kwargs)
+    
 #    @classmethod
 #    gui_default_data_dic = super().gui_default_data_dic
     
@@ -534,40 +547,40 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
 #    directory, x, y, dx, nx, xy_ratio, theta_deg, projection,
 #    complex_type, M_divergence, epsilon_stationnary, pc_threshold
     
-    def explore(self, x, y, dx, max_iter, M_divergence, epsilon_stationnary,
-                pc_threshold):
-        """
-        Produces "explore.png" image for GUI navigation
-        """
-        self.x = x
-        self.y = y
-        self.dx = dx
-        self.xy_ratio = 1.#xy_ratio
-        self.theta_deg = 0.# theta_deg
-
-        # clean-up the *.tmp files to force recalculation
-        self.clean_up("explore")
-
-        self.explore_loop(
-            file_prefix="explore",
-            subset=None,
-            max_iter=max_iter,
-            M_divergence =M_divergence,
-            epsilon_stationnary=epsilon_stationnary,
-            pc_threshold=pc_threshold)
-
-        plotter = fs.Fractal_plotter(
-            fractal=self,
-            base_data_key=("potential", 
-                     {"kind": "infinity", "d": 2, "a_d": 1., "N": 1e3}),
-            base_data_prefix="explore",
-            base_data_function=lambda x: x,
-            colormap=-fs.Fractal_colormap((0.1, 1.0, 200), plt.get_cmap("magma")),
-            probes_val=[0., 1.],
-            probes_kind="qt",
-            mask=None)
-
-        plotter.plot("explore")
+#    def explore(self, x, y, dx, max_iter, M_divergence, epsilon_stationnary,
+#                pc_threshold):
+#        """
+#        Produces "explore.png" image for GUI navigation
+#        """
+#        self.x = x
+#        self.y = y
+#        self.dx = dx
+#        self.xy_ratio = 1.#xy_ratio
+#        self.theta_deg = 0.# theta_deg
+#
+#        # clean-up the *.tmp files to force recalculation
+#        self.clean_up("explore")
+#
+#        self.explore_loop(
+#            file_prefix="explore",
+#            subset=None,
+#            max_iter=max_iter,
+#            M_divergence =M_divergence,
+#            epsilon_stationnary=epsilon_stationnary,
+#            pc_threshold=pc_threshold)
+#
+#        plotter = fs.Fractal_plotter(
+#            fractal=self,
+#            base_data_key=("potential", 
+#                     {"kind": "infinity", "d": 2, "a_d": 1., "N": 1e3}),
+#            base_data_prefix="explore",
+#            base_data_function=lambda x: x,
+#            colormap=-fs.Fractal_colormap((0.1, 1.0, 200), plt.get_cmap("magma")),
+#            probes_val=[0., 1.],
+#            probes_kind="qt",
+#            mask=None)
+#
+#        plotter.plot("explore")
     
 #    @property
 #    def tag_dict(self):
@@ -631,7 +644,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             dzrdc = mpmath.mp.zero
             h = mpmath.mp.one
             dh = mpmath.mp.zero
-            for i in range(1, order + 1):
+            for i in range(1, order + 1):# + 1):
                 dzrdc = mpmath.mpf("2.") * dzrdc * zr + 1.
                 zr = zr * zr + c_loop
                 # divide by unwanted periods
@@ -751,8 +764,8 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
 
 
     def full_loop(self, file_prefix, subset, max_iter, M_divergence,
-                   epsilon_stationnary, pc_threshold=1.0, 
-                   SA_params=None, glitch_eps=1.e-3, interior_detect=False,
+                   epsilon_stationnary, pc_threshold=1.0,
+                   SA_params=None, glitch_eps=None, interior_detect=False,
                    glitch_max_attempt=0):
         """
         Computes the full data and derivatives
@@ -762,9 +775,17 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         
         Note: if *interior_detect* is false we still allocate the arrays for
         *dzndz* but we do not iterate.
-        """ 
+        """
+        # used for potential post-processing
+        self.potential_M = M_divergence
+
+        if glitch_eps is None:
+            glitch_eps = (1.e-6 if self.base_complex_type == np.float64
+                          else 1.e-3)
+
         M_divergence_sq = M_divergence**2
         epsilon_stationnary_sq = epsilon_stationnary**2
+        glitch_eps_sq = glitch_eps**2
 
         complex_codes = ["zn", "dzndz", "dzndc"]
         int_codes = ["iref"]
@@ -888,7 +909,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             ref_sq_norm = ref_path_next[0].real**2 + ref_path_next[0].imag**2
 
             # Flagged as "dynamic glitch"
-            bool_glitched = (full_sq_norm  < (ref_sq_norm * glitch_eps))
+            bool_glitched = (full_sq_norm  < (ref_sq_norm * glitch_eps_sq))
             stop_reason[0, bool_glitched] = 3
             # We generate a glitch_sort_key based on 'close to secondary
             # nucleus' criteria

@@ -8,16 +8,9 @@ import mpmath
 import fractalshades as fs
 import fractalshades.numpy_utils.xrange as fsx
 
-#from fsxrange import (Xrange_array, Xrange_polynomial, Xrange_SA,
-#                      Xrange_to_mpfc, mpc_to_Xrange, mpf_to_Xrange)
-
 
 class PerturbationFractal(fs.Fractal):
-    #    https://mrob.com/pub/muency/reversebifurcation.html
-#       http://www.fractalforums.com/announcements-and-news/pertubation-theory-glitches-improvement/
-  
-    # -1.74928893611435556407228 + 0 i 
-    # 
+
     def __init__(self, directory, x, y, dx, nx, xy_ratio, theta_deg, **kwargs):
         """
         Sames args and kwargs as Fractal except :
@@ -442,7 +435,7 @@ class PerturbationFractal(fs.Fractal):
                     print("*** Relauch with shifted ref point, ", diff)
                     return self.ensure_ref_point(FP_loop, FP_params, max_iter, file_prefix,
                                           iref, c0=c_shifted)
-        
+
                 pt = nucleus
 
             print("compute ref_point", iref, pt, "\ncenter:\n",
