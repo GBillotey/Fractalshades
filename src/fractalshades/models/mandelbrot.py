@@ -11,6 +11,12 @@ import fractalshades.models as fsmodels
 
 
 class Classical_mandelbrot(fs.Fractal):
+    def __init__(self, *args, **kwargs):
+        # default values used for postprocessing (potential)
+        self.potential_kind = "infinity"
+        self.potential_d = 2
+        self.potential_a_d = 1.
+        super().__init__(*args, **kwargs)
 
     def explore(self, x, y, dx, max_iter, M_divergence, epsilon_stationnary,
                 pc_threshold, px_ball):
@@ -527,9 +533,12 @@ https://fractalforums.org/fractal-mathematics-and-new-theories/28/interior-color
 
 class Perturbation_mandelbrot(fs.PerturbationFractal):
     
-#    def __init__(self, *args, **kwargs):
-#        self.potential_d = 2
-#        self.potential_a_d = 2
+    def __init__(self, *args, **kwargs):
+        # default values used for postprocessing (potential)
+        self.potential_kind = "infinity"
+        self.potential_d = 2
+        self.potential_a_d = 1.
+        super().__init__(*args, **kwargs)
     
 #    @classmethod
 #    gui_default_data_dic = super().gui_default_data_dic
@@ -766,12 +775,14 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         
         Note: if *interior_detect* is false we still allocate the arrays for
         *dzndz* but we do not iterate.
-        """ 
+        """
+        # used for potential post-processing
+        self.potential_M = M_divergence
+
         if glitch_eps is None:
             glitch_eps = (1.e-6 if self.base_complex_type == np.float64
                           else 1.e-3)
-        
-        self.potential_M = M_divergence
+
         M_divergence_sq = M_divergence**2
         epsilon_stationnary_sq = epsilon_stationnary**2
         glitch_eps_sq = glitch_eps**2

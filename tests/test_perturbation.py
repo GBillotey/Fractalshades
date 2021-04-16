@@ -5,17 +5,10 @@ import os
 import shutil
 import PIL
 
-# Allows relative imports when run locally as script
-# https://docs.python-guide.org/writing/structure/
-#if __name__ == "__main__":
-#    import sys
-#    sys.path.insert(0, os.path.abspath(
-#            os.path.join(os.path.dirname(__file__), '..')))
 
-#from fractalshades import (Color_tools, Fractal_colormap, Fractal_plotter,
-#                                Fractal_Data_array,mkdir_p)
+
+
 import fractalshades as fs
-#from fractalshades.perturbation import Perturbation_mandelbrot
 import fractalshades.models as fsmodels
 
 import test_config
@@ -104,7 +97,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 self.assertTrue(err < 0.01)
                 
 
-    @test_config.no_stdout
+    #@test_config.no_stdout
     def test_M2_antialias_E0(self):
         """
         Testing field lines, and antialiasing. Full Mandelbrot
@@ -177,8 +170,8 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
             postproc_keys=('stop_reason', lambda x: np.isin(x, mask_codes)),
             mode="r+raw")
 
-        potential = ("potential", 
-                     {"kind": "infinity", "d": 2, "a_d": 1., "M": 1e3})
+        potential = ("potential", {})
+                     #{"kind": "infinity", "d": 2, "a_d": 1., "M": 1e3})
         shade = ("DEM_shade", 
                  {"kind": "potential",
                   "theta_LS": 50.,
@@ -221,9 +214,8 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    runner = unittest.TextTestRunner(verbosity=2)
-
     full_test = False
+    runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_Perturbation_mandelbrot]))
     else:

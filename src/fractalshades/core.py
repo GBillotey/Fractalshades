@@ -25,7 +25,7 @@ import fractalshades.numpy_utils.xrange as fsx
 #import fsxrange.mpf_to_Xrange as mpf_to_Xrange
 
 enable_multiprocessing = True
-no_compute = True
+no_compute = False
 
 def mkdir_p(path):
     """ Creates directory ; if exists does nothing """
@@ -2469,20 +2469,17 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
 #            print("postproc_keys", postproc_keys)
 #            print("i_key, postproc_key", i_key, postproc_key)
             post_name, post_dic = postproc_key
-
             if post_name == "potential": # In fact the 'real iteration number'
                 has_potential = True
-                potential_dic = post_dic
-                # instanciate potential dic with relevant values unless 
-                # user imposed
-                try:
-                    potential_d = self.potential_d
-                except AttributeError:
-                    potential_d = None
-                potential_dic["d"] = potential_dic.get("d", potential_d)
                 n = stop_iter[0, :]
                 zn = Z[complex_dic["zn"], :]
-#                print("zn", type(zn), zn.dtype)
+                # instanciate potential dic with relevant values depending on 
+                # fractal type unless user imposed
+                potential_dic = {}
+                for prop in ["kind", "d", "a_d", "M"]:
+                    potential_dic[prop] =  post_dic.get(prop, getattr(
+                            self, "potential_" + prop, None))
+                print("€€DEBUG, potential_dic", potential_dic)
 
                 if potential_dic["kind"] == "infinity":
                     d = potential_dic["d"]
