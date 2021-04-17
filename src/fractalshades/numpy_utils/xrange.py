@@ -760,13 +760,22 @@ Reference:
             m0, exp0, m1, exp1, -> ufunc(co_m0, co_m1), co_exp
    
         """
+#        print("in _coexp_ufunc(m0, exp0, m1, exp1")
+#        print("m0", m0, m0.shape, m0.dtype, type(m0))
+#        print("m1", m1, m1.shape, m1.dtype, type(m1))
+#        print("exp0", exp0, exp0.shape, exp0.dtype, type(exp0))
+#        print("exp1", exp1, exp1.shape, exp1.dtype, type(exp1))
         co_m0, co_m1 = np.copy(np.broadcast_arrays(m0, m1))
+#        print("co_m0", co_m0, co_m0.shape, co_m0.dtype, type(co_m0))
+#        print("co_m1", co_m1, co_m1.shape, co_m1.dtype, type(co_m1))
+        
         exp0 = np.broadcast_to(exp0, co_m0.shape)
         exp1 = np.broadcast_to(exp1, co_m0.shape)
 
         m0_null = (m0 == 0.)
         m1_null = (m1 == 0.)
         d_exp = exp0 - exp1
+#        print("d_exp", d_exp, d_exp.shape, d_exp.dtype, type(d_exp))
 
         if (co_m0.shape == ()):
             if ((exp1 > exp0) & ~m1_null):
@@ -780,6 +789,7 @@ Reference:
                 exp = exp0
         else:
             bool0 = ((exp1 > exp0) & ~m1_null)
+#            print("bool0", bool0, bool0.shape, bool0.dtype, type(bool0))
             co_m0[bool0] = Xrange_array._exp2_shift(
                     co_m0[bool0], d_exp[bool0])
             bool1 = ((exp0 > exp1) & ~m0_null)
@@ -984,15 +994,18 @@ Reference:
         dtype = m.dtype
         if dtype == np.float32:
             bits = m.view(np.int32)
-            exp = np.clip(((bits >> np.int32(23)) & np.int32(0xff)) + shift,
-                          np.int32(0), None)
-            return np.copysign(((exp << np.int32(23))
-                    + (bits & np.int32(0x7fffff))).view(np.float32), m)
+            # Need to take special care as casting to int32 a 0d array is only
+            # supported if the itemsize is unchanged. So we impose the res 
+            # dtype
+            res_32 = np.empty_like(bits)
+            exp = np.clip(((bits >> 23) & 0xff) + shift, 0, None)
+            np.add((exp << 23), bits & 0x7fffff, out=res_32)
+            return np.copysign(res_32.view(np.float32), m)
+
         elif dtype == np.float64:
             bits = m.view(np.int64)
-            exp = np.clip(((bits >> 52) & 0x7ff) + shift,
-                          0, None)
-            return np.copysign(((exp << 52)  + (bits & 0xfffffffffffff)
+            exp = np.clip(((bits >> 52) & 0x7ff) + shift, 0, None)
+            return np.copysign(((exp << 52) + (bits & 0xfffffffffffff)
                                 ).view(np.float64) , m)
         else:
             raise ValueError("Unsupported dtype {}".format(dtype))
@@ -1165,9 +1178,12 @@ Reference:
         """ Can be given either a Xrange_array or a complex of float array-like
         (See 'supported types')
         """
-        if type(val) is not Xrange_array:
+        if type(val) is Xrange_array:
+            np.ndarray.__setitem__(self, key, val)
+        else:
             val = np.asarray(val).view(Xrange_array)
-        np.ndarray.__setitem__(self, key, val)
+            np.ndarray.__setitem__(self._mantissa, key, val._mantissa)
+            np.ndarray.__setitem__(self._exp, key, val._exp)
 
     def __getitem__(self, key):
         """ For single item, return array of empty shape rather than a scalar,
@@ -1349,46 +1365,61 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
 
     def taylor_shift(self, x0):
         """
-        Returns of polynomial Q so that
-        P(x + x0) == Q(x)
-        
+        Parameter
+        x0 : Xrange_array of shape (1,)
+
+        Returns        
+        Q : Xrange_polynomial so that
+            Q(X) = P(X + x0) 
+
+        Implementation
+        Q(X) = P(X + x0) transformation is accomplished by the three simpler
+        transformation:
+            g(X) = p(x0 * X)
+            f(X) = g(X + 1)
+            q(X) = f(1./x0 * X)
+
         References
         [1] Joachim von zur Gathen, Jürgen Gerhard Fast Algorithms for Taylor
         Shifts and Certain Difference Equations.
         [2] Mary Shaw, J.F. Traub On the number of multiplications for the
         evaluation of a polynomial and some of its derivatives.
-        
-        https://planetcalc.com/7726/
-        
-        q(x) = p(x+x0) transformation is accomplished by the three simpler transformation:
-
-    g(x) = p(x0x)
-    f(x) = g(x+1)
-    q(x) = f(x/x0)
-        
-        Given the n-degree polynomial: p(x) = anxn+an-1xn-1+...+a1x+a0
-We must obtain new polynomial coefficients qi, by Taylor shift q(x) = p(x+ x0).
-We'll use the matrix t of dimensions m x m, m=n+1 to store data.
-
-    Compute ti,0 = an-i-1x0n-i-1 for i=0..n-1
-    Store ti,i+1 = anx0n for i=0..n-1
-    Compute ti,j+1 = ti-1,j+ti-1,j+1 for j=0..n-1, i=j+1..n
-    Compute the coefficients: qi = tn,i+1/x0i for i=0..n-1
-    The highest degree coefficient is the same: qn = an
-
         """
-        cutdeg = self.cutdeg
-        t = Xrange_array.zeros([cutdeg + 1, cutdeg + 1],
-                               dtype=self.coeffs.dtype)
-        
-        
-        t[:, 0] = np.cumprod()
-        # Based on Q(x) = P(x + h) = SUM P{k}(x) / k! x^k
-        Q_coeffs = Xrange_array.zeros([cutdeg + 1], dtype=self.coeffs.dtype) 
-        deriv = self
-        for i in range(cutdeg + 1):
-            Q_coeffs[i] = deriv(x0)
+#        Q = self.scale_shift(x0)
+#        Q = Q._taylor_shift_one()
+#        Q = Q.scale_shift(1. / x0)
+        return self.scale_shift(x0)._taylor_shift_one().scale_shift(1. / x0)
+            
+    def _taylor_shift_one(self):
+        """
+        private auxilliary function, shift by 1.0 : return Q so that
+        Q(X) = P(X + 1.0) where P is self
+        """
+        dtype = self.coeffs._mantissa.dtype
+        pascalT = Xrange_array.zeros([self.coeffs.size], dtype)
+        tmp = pascalT.copy()
+        pascalT[0] = self.coeffs[-1]
+        for i in range(2, self.coeffs.size + 1):
+            # at each step P -> P + (ai + X P)
+            tmp[1:] = pascalT[:-1]
+            tmp[0] = self.coeffs[-i]
+            pascalT += tmp
+        return Xrange_polynomial(pascalT, cutdeg=self.cutdeg)
 
+    def scale_shift(self, a):
+        """
+        Parameter
+        a : Xrange_array of shape (1,)
+        
+        Returns  
+        Q : Xrange_polynomial so that :
+            Q(X) = P(a * X) where P is 'self'
+        """
+        dtype = self.coeffs._mantissa.dtype
+        scaled = Xrange_array.ones([self.coeffs.size], dtype)
+        scaled[1:] = a
+        scaled = np.cumprod(scaled) * self.coeffs
+        return Xrange_polynomial(scaled, cutdeg=self.cutdeg)
 
     def __repr__(self):
         return ("Xrange_polynomial(cutdeg="+ str(self.cutdeg) +",\n" +
