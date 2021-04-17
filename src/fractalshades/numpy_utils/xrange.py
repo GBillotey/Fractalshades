@@ -467,7 +467,7 @@ Reference:
                 out = self._mul(ufunc, casted_inputs)
             elif ufunc in [np.greater, np.greater_equal, np.less,
                            np.less_equal, np.equal, np.not_equal]:
-                # Not a Xrange array, simply returns bool array
+                # Not a Xrange array, returns bool array
                 return self._compare(ufunc, casted_inputs, out=out)
             elif ufunc is np.maximum:
                 out = self._maximum(casted_inputs, out=out)
@@ -482,14 +482,19 @@ Reference:
             elif ufunc is np.log:
                 out = self._log(casted_inputs, out=out)
             elif ufunc is np.arctan2:
-                # Not a Xrange array, simply returns a float array
+                # Not a Xrange array, returns a float array
                 return self._arctan2(casted_inputs, out=out)
             else:
                 out = None
-        elif method == "reduce" and ufunc is np.add:
-            out = self._add_reduce(casted_inputs, out=out, **kwargs)
-        else:
-            out = None
+        elif method in ["reduce", "accumulate"]:
+            if ufunc is np.add:
+                out = self._add_method(casted_inputs, method, out=out,
+                                       **kwargs)
+            elif ufunc is np.multiply:
+                out = self._mul_method(casted_inputs, method, out=out,
+                                       **kwargs)
+            else:
+                out = None
 
         if out is None:
             raise NotImplementedError("ufunc {} method {} not implemented for "
@@ -755,13 +760,22 @@ Reference:
             m0, exp0, m1, exp1, -> ufunc(co_m0, co_m1), co_exp
    
         """
+#        print("in _coexp_ufunc(m0, exp0, m1, exp1")
+#        print("m0", m0, m0.shape, m0.dtype, type(m0))
+#        print("m1", m1, m1.shape, m1.dtype, type(m1))
+#        print("exp0", exp0, exp0.shape, exp0.dtype, type(exp0))
+#        print("exp1", exp1, exp1.shape, exp1.dtype, type(exp1))
         co_m0, co_m1 = np.copy(np.broadcast_arrays(m0, m1))
+#        print("co_m0", co_m0, co_m0.shape, co_m0.dtype, type(co_m0))
+#        print("co_m1", co_m1, co_m1.shape, co_m1.dtype, type(co_m1))
+        
         exp0 = np.broadcast_to(exp0, co_m0.shape)
         exp1 = np.broadcast_to(exp1, co_m0.shape)
 
         m0_null = (m0 == 0.)
         m1_null = (m1 == 0.)
         d_exp = exp0 - exp1
+#        print("d_exp", d_exp, d_exp.shape, d_exp.dtype, type(d_exp))
 
         if (co_m0.shape == ()):
             if ((exp1 > exp0) & ~m1_null):
@@ -775,6 +789,7 @@ Reference:
                 exp = exp0
         else:
             bool0 = ((exp1 > exp0) & ~m1_null)
+#            print("bool0", bool0, bool0.shape, bool0.dtype, type(bool0))
             co_m0[bool0] = Xrange_array._exp2_shift(
                     co_m0[bool0], d_exp[bool0])
             bool1 = ((exp0 > exp1) & ~m0_null)
@@ -838,9 +853,12 @@ Reference:
             return (co_m0, co_m1, exp)
 
     @staticmethod
-    def _add_reduce(inputs, out=None, **kwargs):
+    def _add_method(inputs, method, out=None, **kwargs):
         """
         """
+        if method == "accumulate":
+            raise NotImplementedError("ufunc {} method {} not implemented for "
+                                      "Xrange_array".format(np.add, method))
         if out is not None:
             raise NotImplementedError("`out` keyword not immplemented "
                 "for ufunc {} method {} of Xrange_array".format(
@@ -849,26 +867,50 @@ Reference:
         op, = inputs
 
         axis = kwargs.get("axis", 0)
-        co_exp_acc = getattr(np.maximum, "reduce")(op._exp, axis=axis)
-
-        brodcast_co_exp_acc = (np.expand_dims(co_exp_acc, axis)
-                if axis is not None else co_exp_acc)
+        broadcast_co_exp_acc = np.maximum.reduce(op._exp, axis=axis, 
+                                                 keepdims=True)
 
         if op.is_complex:
             re = Xrange_array._exp2_shift(op._mantissa.real, 
-                                        op._exp - brodcast_co_exp_acc)
+                                        op._exp - broadcast_co_exp_acc)
             im = Xrange_array._exp2_shift(op._mantissa.imag, 
-                                        op._exp - brodcast_co_exp_acc)
+                                        op._exp - broadcast_co_exp_acc)
             co_m = re + 1.j * im
         else:
             co_m = Xrange_array._exp2_shift(op._mantissa, 
-                                        op._exp - brodcast_co_exp_acc)
-        
+                                        op._exp - broadcast_co_exp_acc)
 
         res = Xrange_array(*Xrange_array._normalize(
-                    getattr(np.add, "reduce")(co_m, axis=axis), co_exp_acc))#,
+                    np.add.reduce(co_m, axis=axis),
+                    np.squeeze(broadcast_co_exp_acc, axis=axis)))
         return res
 
+    @staticmethod
+    def _mul_method(inputs, method, out=None, **kwargs):
+        """
+        methods implemented are reduce or accumulate
+        """
+        if out is not None:
+            raise NotImplementedError("`out` keyword not immplemented "
+                "for ufunc {} method {} of Xrange_array".format(
+                        np.multiply, method))
+
+        op, = inputs
+        m0, exp0 = Xrange_array._normalize(op._mantissa, op._exp)
+        # np.multiply.reduce(m0, axis=axis) shall remains bounded
+        # Set m m between sqrt(0.5) and sqrt(2)
+        # With float64,
+        # This is only guaranteed not to overflow for arrays of less than 2000 
+        # (1.41**2000 = 2.742996861934711e+298)
+        is_below = m0 < np.sqrt(0.5)
+        m0[is_below] *= 2.
+        exp0[is_below] -= 1 
+
+        axis = kwargs.get("axis", 0)
+        res = Xrange_array(*Xrange_array._normalize(
+                    getattr(np.multiply, method)(m0, axis=axis),
+                    getattr(np.add, method)(exp0, axis=axis)))
+        return res
 
     @staticmethod
     def _need_renorm(val):
@@ -952,15 +994,18 @@ Reference:
         dtype = m.dtype
         if dtype == np.float32:
             bits = m.view(np.int32)
-            exp = np.clip(((bits >> np.int32(23)) & np.int32(0xff)) + shift,
-                          np.int32(0), None)
-            return np.copysign(((exp << np.int32(23))
-                    + (bits & np.int32(0x7fffff))).view(np.float32), m)
+            # Need to take special care as casting to int32 a 0d array is only
+            # supported if the itemsize is unchanged. So we impose the res 
+            # dtype
+            res_32 = np.empty_like(bits)
+            exp = np.clip(((bits >> 23) & 0xff) + shift, 0, None)
+            np.add((exp << 23), bits & 0x7fffff, out=res_32)
+            return np.copysign(res_32.view(np.float32), m)
+
         elif dtype == np.float64:
             bits = m.view(np.int64)
-            exp = np.clip(((bits >> 52) & 0x7ff) + shift,
-                          0, None)
-            return np.copysign(((exp << 52)  + (bits & 0xfffffffffffff)
+            exp = np.clip(((bits >> 52) & 0x7ff) + shift, 0, None)
+            return np.copysign(((exp << 52) + (bits & 0xfffffffffffff)
                                 ).view(np.float64) , m)
         else:
             raise ValueError("Unsupported dtype {}".format(dtype))
@@ -1133,9 +1178,12 @@ Reference:
         """ Can be given either a Xrange_array or a complex of float array-like
         (See 'supported types')
         """
-        if type(val) is not Xrange_array:
+        if type(val) is Xrange_array:
+            np.ndarray.__setitem__(self, key, val)
+        else:
             val = np.asarray(val).view(Xrange_array)
-        np.ndarray.__setitem__(self, key, val)
+            np.ndarray.__setitem__(self._mantissa, key, val._mantissa)
+            np.ndarray.__setitem__(self._exp, key, val._exp)
 
     def __getitem__(self, key):
         """ For single item, return array of empty shape rather than a scalar,
@@ -1314,6 +1362,64 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
                 coeffs[i] *= mul
                 mul *= k
         return Xrange_polynomial(coeffs, cutdeg=self.cutdeg)
+
+    def taylor_shift(self, x0):
+        """
+        Parameter
+        x0 : Xrange_array of shape (1,)
+
+        Returns        
+        Q : Xrange_polynomial so that
+            Q(X) = P(X + x0) 
+
+        Implementation
+        Q(X) = P(X + x0) transformation is accomplished by the three simpler
+        transformation:
+            g(X) = p(x0 * X)
+            f(X) = g(X + 1)
+            q(X) = f(1./x0 * X)
+
+        References
+        [1] Joachim von zur Gathen, Jürgen Gerhard Fast Algorithms for Taylor
+        Shifts and Certain Difference Equations.
+        [2] Mary Shaw, J.F. Traub On the number of multiplications for the
+        evaluation of a polynomial and some of its derivatives.
+        """
+#        Q = self.scale_shift(x0)
+#        Q = Q._taylor_shift_one()
+#        Q = Q.scale_shift(1. / x0)
+        return self.scale_shift(x0)._taylor_shift_one().scale_shift(1. / x0)
+            
+    def _taylor_shift_one(self):
+        """
+        private auxilliary function, shift by 1.0 : return Q so that
+        Q(X) = P(X + 1.0) where P is self
+        """
+        dtype = self.coeffs._mantissa.dtype
+        pascalT = Xrange_array.zeros([self.coeffs.size], dtype)
+        tmp = pascalT.copy()
+        pascalT[0] = self.coeffs[-1]
+        for i in range(2, self.coeffs.size + 1):
+            # at each step P -> P + (ai + X P)
+            tmp[1:] = pascalT[:-1]
+            tmp[0] = self.coeffs[-i]
+            pascalT += tmp
+        return Xrange_polynomial(pascalT, cutdeg=self.cutdeg)
+
+    def scale_shift(self, a):
+        """
+        Parameter
+        a : Xrange_array of shape (1,)
+        
+        Returns  
+        Q : Xrange_polynomial so that :
+            Q(X) = P(a * X) where P is 'self'
+        """
+        dtype = self.coeffs._mantissa.dtype
+        scaled = Xrange_array.ones([self.coeffs.size], dtype)
+        scaled[1:] = a
+        scaled = np.cumprod(scaled) * self.coeffs
+        return Xrange_polynomial(scaled, cutdeg=self.cutdeg)
 
     def __repr__(self):
         return ("Xrange_polynomial(cutdeg="+ str(self.cutdeg) +",\n" +

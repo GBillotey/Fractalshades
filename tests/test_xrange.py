@@ -666,6 +666,10 @@ class Test_Xrange_timing(unittest.TestCase):
         t1 += time.time()
     
         np.testing.assert_array_equal(e_res.to_standard(), expected)
+        print("\ntiming", ufunc, dtype, t0, t1, t0 / t1)
+        # timing <ufunc 'add'> <class 'numpy.float64'> 18.667709
+        # timing <ufunc 'multiply'> <class 'numpy.float64'>  12.814323
+
         return t0/t1
 
 
@@ -751,6 +755,53 @@ class Test_Xrange_polynomial(unittest.TestCase):
         _P * coeff
         #_matching((coeff * _P).coeffs, (_P * coeff).coeffs)
 
+    def test_shift(self):
+        p_arr = [[0., 0., 0., 0., 1.],
+                 [1., 0., 0., -7., 1., 21.]
+                 ]
+        q_arr = [[1., 4., 6., 4., 1.],
+                 [16., 88., 195., 207., 106., 21.]
+                 ]
+
+        # testing _taylor_shift_one
+        for dtype in [np.float32, np.float64, np.complex64, np.complex128]:
+            for i in range(len(p_arr)):
+                P = Xrange_polynomial(np.array(p_arr[i], dtype), cutdeg=100)
+                Q = P._taylor_shift_one()
+                # print("\nQ", Q)
+                _matching(Q.coeffs, q_arr[i], almost=True, ktol=3.,
+                          dtype=dtype)
+
+        p_arr = [[0., 0., 0., 0., 1.],
+                 [1., 0., 0., -7., 1., 21.]
+                 ]
+        sc_arr = [10., -2.]
+        q_arr = [[0., 0., 0., 0., 1.e4],
+                 [1., 0., 0., 56., 16., -672.]
+                 ]
+
+        # testing scale_shift
+        for dtype in [np.float32, np.float64, np.complex64, np.complex128]:
+            for i in range(len(p_arr)):
+                P = Xrange_polynomial(np.array(p_arr[i], dtype), cutdeg=100)
+                Q = P.scale_shift(sc_arr[i])
+                _matching(Q.coeffs, q_arr[i], almost=True, ktol=3.,
+                          dtype=dtype)
+
+        # testing general taylor_shift
+        p_arr = [[0., 0., 0., 0., 1.],
+                 [1., 0., 0., -7., 1., 21.]
+                 ]
+        sc_arr = [10., -7.]
+        q_arr = [[10000., 4000., 600., 40., 1.],
+                 [-348144., 249704., -71589., 10255., -734., 21.]
+                 ]
+        for dtype in [np.float32, np.float64, np.complex64, np.complex128]:
+            for i in range(len(p_arr)):
+                P = Xrange_polynomial(np.array(p_arr[i], dtype), cutdeg=100)
+                Q = P.taylor_shift(sc_arr[i])
+                _matching(Q.coeffs, q_arr[i], almost=True, ktol=3.,
+                          dtype=dtype)
 
             
             
