@@ -789,14 +789,20 @@ class Test_Xrange_polynomial(unittest.TestCase):
                           dtype=dtype)
 
         # testing general taylor_shift
-        p_arr = [[0., 0., 0., 0., 1.],
-                 [1., 0., 0., -7., 1., 21.]
-                 ]
-        sc_arr = [10., -7.]
-        q_arr = [[10000., 4000., 600., 40., 1.],
-                 [-348144., 249704., -71589., 10255., -734., 21.]
-                 ]
         for dtype in [np.float32, np.float64, np.complex64, np.complex128]:
+            p_arr = [[0., 0., 0., 0., 1.],
+                     [1., 0., 0., -7., 1., 21.]
+                     ]
+            sc_arr = [10., -7.]
+            q_arr = [[10000., 4000., 600., 40., 1.],
+                     [-348144., 249704., -71589., 10255., -734., 21.]
+                     ]
+            if dtype in [np.complex64, np.complex128]:
+                p_arr += [[0., 0., 0., 0., 1. + 1.j]]
+                sc_arr += [10.j]
+                q_arr += [[10000. + 10000.j, (4000. - 4000.j), (-600. - 600.j),
+                           (-40. + 40.j), (1. + 1.j)]]
+
             for i in range(len(p_arr)):
                 P = Xrange_polynomial(np.array(p_arr[i], dtype), cutdeg=100)
                 Q = P.taylor_shift(sc_arr[i])

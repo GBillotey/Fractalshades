@@ -760,14 +760,7 @@ Reference:
             m0, exp0, m1, exp1, -> ufunc(co_m0, co_m1), co_exp
    
         """
-#        print("in _coexp_ufunc(m0, exp0, m1, exp1")
-#        print("m0", m0, m0.shape, m0.dtype, type(m0))
-#        print("m1", m1, m1.shape, m1.dtype, type(m1))
-#        print("exp0", exp0, exp0.shape, exp0.dtype, type(exp0))
-#        print("exp1", exp1, exp1.shape, exp1.dtype, type(exp1))
         co_m0, co_m1 = np.copy(np.broadcast_arrays(m0, m1))
-#        print("co_m0", co_m0, co_m0.shape, co_m0.dtype, type(co_m0))
-#        print("co_m1", co_m1, co_m1.shape, co_m1.dtype, type(co_m1))
         
         exp0 = np.broadcast_to(exp0, co_m0.shape)
         exp1 = np.broadcast_to(exp1, co_m0.shape)
@@ -775,7 +768,6 @@ Reference:
         m0_null = (m0 == 0.)
         m1_null = (m1 == 0.)
         d_exp = exp0 - exp1
-#        print("d_exp", d_exp, d_exp.shape, d_exp.dtype, type(d_exp))
 
         if (co_m0.shape == ()):
             if ((exp1 > exp0) & ~m1_null):
@@ -789,7 +781,6 @@ Reference:
                 exp = exp0
         else:
             bool0 = ((exp1 > exp0) & ~m1_null)
-#            print("bool0", bool0, bool0.shape, bool0.dtype, type(bool0))
             co_m0[bool0] = Xrange_array._exp2_shift(
                     co_m0[bool0], d_exp[bool0])
             bool1 = ((exp0 > exp1) & ~m0_null)
@@ -899,9 +890,9 @@ Reference:
         m0, exp0 = Xrange_array._normalize(op._mantissa, op._exp)
         # np.multiply.reduce(m0, axis=axis) shall remains bounded
         # Set m m between sqrt(0.5) and sqrt(2)
-        # With float64,
-        # This is only guaranteed not to overflow for arrays of less than 2000 
-        # (1.41**2000 = 2.742996861934711e+298)
+        # With float64 mantissa, in current implementation, mantissa is only
+        # guaranteed to not overflow for arrays of less than 2000 elements
+        # (because 1.41**2000 = 2.742996861934711e+298 < max float64)
         is_below = m0 < np.sqrt(0.5)
         m0[is_below] *= 2.
         exp0[is_below] -= 1 
@@ -932,7 +923,6 @@ Reference:
         else:
             raise ValueError("Unsupported dtype {}".format(val.dtype))
 
-
     @staticmethod
     def _xlog2(val):
         """
@@ -953,7 +943,6 @@ Reference:
         else:
             raise ValueError("Unsupported dtype {}".format(val.dtype))
 
-
     @staticmethod
     def _exp2(exp, dtype):
         """
@@ -967,7 +956,6 @@ Reference:
             return (_exp << 52).view(np.float64)
         else:
             raise ValueError("Unsupported dtype {}".format(dtype))
-
 
     @staticmethod
     def _exp2_shift(m, shift):
@@ -1179,6 +1167,8 @@ Reference:
         (See 'supported types')
         """
         if type(val) is Xrange_array:
+            if val.is_complex and not(self.is_complex):
+                raise ValueError("Cant cast complex values to real")
             np.ndarray.__setitem__(self, key, val)
         else:
             val = np.asarray(val).view(Xrange_array)
@@ -1355,7 +1345,7 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
     
     def deriv(self, k=1.):
         l = self.coeffs.size
-        coeffs = self.coeffs[1:] * np.arange(1, l)#, dtype=self.co)
+        coeffs = self.coeffs[1:] * np.arange(1, l)
         if k != 1.:
             mul = 1.
             for i in range(l-1):
@@ -1365,10 +1355,12 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
 
     def taylor_shift(self, x0):
         """
-        Parameter
+        Parameters
+        ----------
         x0 : Xrange_array of shape (1,)
 
-        Returns        
+        Returns
+        -------
         Q : Xrange_polynomial so that
             Q(X) = P(X + x0) 
 
@@ -1385,9 +1377,8 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
         [2] Mary Shaw, J.F. Traub On the number of multiplications for the
         evaluation of a polynomial and some of its derivatives.
         """
-#        Q = self.scale_shift(x0)
-#        Q = Q._taylor_shift_one()
-#        Q = Q.scale_shift(1. / x0)
+        if x0 == 0.:
+            return Xrange_polynomial(self.coeffs, cutdeg=self.cutdeg)
         return self.scale_shift(x0)._taylor_shift_one().scale_shift(1. / x0)
             
     def _taylor_shift_one(self):
@@ -1408,15 +1399,17 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
 
     def scale_shift(self, a):
         """
-        Parameter
+        Parameters
+        ----------
         a : Xrange_array of shape (1,)
         
-        Returns  
+        Returns
+        -------
         Q : Xrange_polynomial so that :
             Q(X) = P(a * X) where P is 'self'
         """
         dtype = self.coeffs._mantissa.dtype
-        scaled = Xrange_array.ones([self.coeffs.size], dtype)
+        scaled = Xrange_array.ones([self.coeffs.size], dtype=dtype)
         scaled[1:] = a
         scaled = np.cumprod(scaled) * self.coeffs
         return Xrange_polynomial(scaled, cutdeg=self.cutdeg)
@@ -1487,8 +1480,6 @@ class Xrange_SA(Xrange_polynomial):
     cutdeg: see Xrange_polynomial (Monomes of degree above cutoff will be 
             disregarded.)
     err : truncature error term, in X**(cutoff + 1). Default to 0.
-    
-    
     """  
 
     def __init__(self, coeffs, cutdeg, err=Xrange_array(0.)):

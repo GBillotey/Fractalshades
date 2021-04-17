@@ -8,6 +8,7 @@ import mpmath
 import fractalshades as fs
 import fractalshades.numpy_utils.xrange as fsx
 
+force_recompute_SA = False
 
 class PerturbationFractal(fs.Fractal):
 
@@ -111,15 +112,16 @@ class PerturbationFractal(fs.Fractal):
         kc: full precision, scaling coefficient
         """
         c0 = self.x + 1.j * self.y
-        corner_a = c0 + self.dx + 1.j * self.dy
-        corner_b = c0 - self.dx + 1.j * self.dy
-        corner_c = c0 - self.dx - 1.j * self.dy
-        corner_d = c0 + self.dx - 1.j * self.dy
+        corner_a = c0 + 0.5 * (self.dx + 1.j * self.dy)
+        corner_b = c0 + 0.5 * (- self.dx + 1.j * self.dy)
+        corner_c = c0 + 0.5 * (- self.dx - 1.j * self.dy)
+        corner_d = c0 + 0.5 * (self.dx - 1.j * self.dy)
         ref = self.reload_ref_point(
                 iref, file_prefix,scan_only=True)["ref_point"]
         print("ref point for SA", ref)
+        # Let take some margin
         kc = max(abs(ref - corner_a), abs(ref - corner_b),
-                 abs(ref - corner_c), abs(ref - corner_d)) # * 1.5
+                 abs(ref - corner_c), abs(ref - corner_d)) * 2.0
         return kc
 
     def save_ref_point(self, FP_params, Z_path, iref, file_prefix):
@@ -233,8 +235,13 @@ class PerturbationFractal(fs.Fractal):
         glitch_sort_key : the complex (Z array) field where is stored our
             'priority value' to select the next reference pixel.
         """
-        _, ref_path = self.ensure_ref_point(FP_loop, FP_params, max_iter,
-                file_prefix, iref=iref, c0=None)
+        if iref != 0:
+            raise ValueError()
+            
+        FP_params0 = self.reload_ref_point(0, file_prefix, scan_only=True)
+
+        FP_params, ref_path = self.ensure_ref_point(FP_loop, FP_params,
+                max_iter, file_prefix, iref=iref, c0=None)
 
         # If SA is activated :
         # Reload SA coefficient, otherwise compute them.
@@ -269,6 +276,7 @@ class PerturbationFractal(fs.Fractal):
         
         # This looping is for dynamic glitches, we loop the largest glitches
         # first, a glitch being defined as 'same stop iteration'
+        print("ANY glitched ? ", glitched.nanmax())
         while (_gcc < _gcc_max) and glitched.nanmax():
             _gcc += 1
             irefs = fs.Fractal_Data_array(self, file_prefix=file_prefix,
@@ -277,9 +285,9 @@ class PerturbationFractal(fs.Fractal):
             print("Launching glitch correction cycle, iref = ", iref)
 
             # We need to define c0
-            glitched = fs.Fractal_Data_array(self, file_prefix=file_prefix,
-                    postproc_keys=('stop_reason',
-                    lambda x: x == glitch_stop_index), mode="r+raw")
+#            glitched = fs.Fractal_Data_array(self, file_prefix=file_prefix,
+#                    postproc_keys=('stop_reason',
+#                    lambda x: x == glitch_stop_index), mode="r+raw")
             escaped_or_glitched = fs.Fractal_Data_array(self, file_prefix=file_prefix,
                     postproc_keys=('stop_reason',
                     lambda x: x >= glitch_stop_index), mode="r+raw")
@@ -308,10 +316,14 @@ class PerturbationFractal(fs.Fractal):
             indices = np.arange(max_iter)
             print('non null glitch iter', indices[glitch_bincount != 0])
             print('non null glitch counts', glitch_bincount[glitch_bincount != 0])
+            first_glitch_iter = (indices[glitch_bincount != 0])[0]
+            first_glitch_size = glitch_bincount[first_glitch_iter]
             
             del glitch_bincount
             print("Largest glitch (pts: {}, iter: {})".format(
                     glitch_size, glitch_iter))
+            print("First glitch (pts: {}, iter: {})".format(
+                    first_glitch_size, first_glitch_iter))
 
             # Minimize sort criteria over the selected glitch
             min_glitch = np.inf
@@ -338,10 +350,9 @@ class PerturbationFractal(fs.Fractal):
                     min_glitch_chunk = chunk_slice
                     min_glitch_arg = chunk_argmin
             print("Minimal criteria reached at", min_glitch_chunk, min_glitch_arg)
-            
 
             # Now lets define ci. offset from image center is known
-            offset_x, offset_y = self.offset_chunk(min_glitch_chunk) # wrt center... # however, 
+            offset_x, offset_y = self.offset_chunk(min_glitch_chunk)
             offset_x = np.ravel(offset_x)
             offset_y = np.ravel(offset_y)
             if subset is not None:
@@ -364,6 +375,8 @@ class PerturbationFractal(fs.Fractal):
             else:
                 ci = (self.x + offset_x[min_glitch_arg] + 1.j
                       * (self.y + offset_y[min_glitch_arg]))
+            # Overall slightly counter-productive to add a Newton step here
+            # (less robust), we keep the raw selected point
             FP_params, Z_path = self.ensure_ref_point(FP_loop, FP_params, max_iter,
                 file_prefix, iref=iref, c0=ci, newton="step", order=glitch_iter)
 
@@ -374,19 +387,51 @@ class PerturbationFractal(fs.Fractal):
             if cutdeg_glitch is not None:
                 SA_params["cutdeg"] = cutdeg_glitch
 
-            recompute_SA = True
-            if (SA_params is not None) and recompute_SA:
+            if (SA_params is not None):
                 try:
                     SA_params = self.reload_SA(iref, file_prefix)
                 except FileNotFoundError:
-                    SA_params = self.series_approx(SA_init, SA_loop, SA_params, iref, file_prefix)
-                    self.save_SA(SA_params, iref, file_prefix)
+                    if force_recompute_SA:
+                        SA_params = self.series_approx(SA_init, SA_loop,
+                                SA_params, iref, file_prefix)
+                        self.save_SA(SA_params, iref, file_prefix)
+                    else:
+                        # We will shift the SA params coefficient from the first
+                        # reference point
+                        print("Shifting SA wrt new reference point")
+                        SA_params0 = self.reload_SA(0, file_prefix)
+                        P0 = SA_params0["P"]
+                        dc_ref = (fsx.mpc_to_Xrange(FP_params["ref_point"]
+                            - FP_params0["ref_point"], self.base_complex_type)
+                            / SA_params0["kc"])
+#                        print("P0", P0)
+#                        print("dc_ref", dc_ref)
+                        P_shifted = []
+                        for P0i in P0:
+                            P_shifted += [P0i.taylor_shift(dc_ref)]
+#                            print("P0i shifted", P0i.taylor_shift(dc_ref))
+                        # For fields known at FP, we have to correct the 1st 
+                        # coeff which  is by definition 0 (due to the FP ref
+                        # point shift.
+                        P_shifted[0].coeffs[0] = 0.
+                        SA_params = {"cutdeg": SA_params0["cutdeg"],
+                                     "iref": iref,
+                                     "kc": SA_params0["kc"],
+                                     "n_iter": SA_params0["n_iter"],
+                                     "P": P_shifted}
+                        self.save_SA(SA_params, iref, file_prefix)
+#                        raise ValueError()
 
             super().cycles(initialize, iterate, subset, codes,
                 file_prefix, chunk_slice=None, pc_threshold=pc_threshold,
                 iref=iref, ref_path=Z_path, SA_params=SA_params,
                 glitched=escaped_or_glitched, irefs=irefs)
-
+            
+            glitched = fs.Fractal_Data_array(self, file_prefix=file_prefix,
+                    postproc_keys=('stop_reason',
+                    lambda x: x == glitch_stop_index), mode="r+raw")
+            # Recomputing the exit condition
+            print("ANY glitched ? ", glitched.nanmax())
 
 
     def ensure_ref_point(self, FP_loop, FP_params, max_iter, file_prefix,
@@ -403,7 +448,7 @@ class PerturbationFractal(fs.Fractal):
             pt = c0
             print("Proposed ref point:\n", c0)
                 
-            if newton is not None:# and (iref == 0):
+            if (newton is not None) and (newton != "None"):
                 if order is None:
                     k_ball = 0.5
                     order = self.ball_method(c0,
@@ -435,7 +480,6 @@ class PerturbationFractal(fs.Fractal):
                     print("*** Relauch with shifted ref point, ", diff)
                     return self.ensure_ref_point(FP_loop, FP_params, max_iter, file_prefix,
                                           iref, c0=c_shifted)
-
                 pt = nucleus
 
             print("compute ref_point", iref, pt, "\ncenter:\n",
@@ -491,10 +535,3 @@ class PerturbationFractal(fs.Fractal):
             return self._ball_method1(c, px, maxiter, M_divergence)
         elif order == 2:
             return self._ball_method2(c, px, maxiter, M_divergence)
-
-
-
-
-if __name__ == "__main__":
-    pass
-    #Perturbation_mandelbrot.series_approx(None, 0, 64)

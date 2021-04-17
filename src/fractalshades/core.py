@@ -10,19 +10,13 @@ import fnmatch
 import functools
 import copy
 import PIL
-#from PIL.PngImagePlugin import PngInfo
-#from perturbation import PerturbationFractal
 
 import multiprocessing
 import tempfile
 import datetime
 import pickle
 
-#import fractalshades as fs
 import fractalshades.numpy_utils.xrange as fsx
-#import fsxrange.Xrange_array as Xrange_array
-#import fsxrange.mpc_to_Xrange as mpc_to_Xrange
-#import fsxrange.mpf_to_Xrange as mpf_to_Xrange
 
 enable_multiprocessing = True
 no_compute = False
@@ -1942,10 +1936,6 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
             *stop_reason*   Byte codes -> reasons for termination [:]  np.int8
             *stop_iter*     Numbers of iterations when stopped [:]     np.int32
         """
-        # LEGACY dev
-#      *terminate*   function (stop_reason, Z, U, c, n) modifiy in place
-#      stop_reason (return None); if stop reason in range(nstop)
-#     -> stopping iteration of this point.
         print("**CALLING cycles ")
         print("iref", iref)
         if SA_params is not None:
@@ -1974,8 +1964,8 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
             # if any pixel in this chunk is glitched with iref_pix < iref
             else:
                 glitch_loop =True
-                glitched_chunk = np.ravel(glitched[chunk_slice])  # TODO: mask ??? Non because all gliched necessarly unmasked
-                #glitched_chunk[...] = True #debug
+                glitched_chunk = np.ravel(glitched[chunk_slice])
+                # glitched_chunk[...] = True #debug
                 irefs_chunk = np.ravel(irefs[chunk_slice])
                 if subset is not None:
                     glitched_chunk = glitched_chunk[chunk_mask]
@@ -1992,7 +1982,6 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
             print("Unable to find data_file, computing")
 
 
-
         # We didn't find, we need to compute
         if iref is not None: # Using perturbation
             c = self.diff_c_chunk(chunk_slice, iref, file_prefix)
@@ -2003,18 +1992,10 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                 Xrc = self.diff_c_chunk(chunk_slice, iref, file_prefix,
                                         ensure_Xr=True)
         else:
-            c = self.c_chunk(chunk_slice)#            else:
-#                # warning, this time we do have complex...
-#                m_re, exp_re = zip(*[mpmath.frexp(item.real) for item in FP_array])
-#                m_im, exp_im = zip(*[mpmath.frexp(item.imag) for item in FP_array])
-#
-#                Z_path[n_iter, :] = Xrange_array._build_complex(
-#                        Xrange_array(np.array(m_re, dtype=self.base_float_type),
-#                                     np.array(exp_re, dtype=np.int32)),
-#                        Xrange_array(np.array(m_im, dtype=self.base_float_type),
-#                                     np.array(exp_im, dtype=np.int32)))
+            c = self.c_chunk(chunk_slice)
+
         (ix, ixx, iy, iyy) = chunk_slice
-        print("c_chunk", chunk_slice, ":\n", c)
+        # print("c_chunk", chunk_slice, ":\n", c)
 
         c = np.ravel(c)
         if subset is not None:
@@ -2037,11 +2018,9 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
 
         if iref is not None:
             initialize(Z, U, c, chunk_slice, iref)
-            # check is ref point had a early exit ??
+            # check if ref point had a early exit
             FP_params = self.reload_ref_point(iref, file_prefix, scan_only=True)
             ref_div_iter = FP_params.get("div_iter", 2**63 - 1) # max int64
-            print("in cycles, ref point maxiter", ref_div_iter,
-                  "ref_point", FP_params["ref_point"])
         else:
             initialize(Z, U, c, chunk_slice)
 
@@ -2066,23 +2045,22 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
             stop_reason[:, keep] =  k_stop_reason[:, keep]
             stop_iter[:, keep] = k_stop_iter[:, keep]
 
-            
             index_active = index_active[glitched_chunk]
-            Z_act = (Z[:, glitched_chunk]).copy() # ok for ndarray subclass
+            # avoid np.copy(c), use c.copy() for ndarray subclasses
+            Z_act = (Z[:, glitched_chunk]).copy() 
             U_act = np.copy(U[:, glitched_chunk])
             stop_reason_act = np.copy(stop_reason[:, glitched_chunk])
-            c_act = (c[glitched_chunk]).copy() # np.copy(c)
+            c_act = (c[glitched_chunk]).copy() 
             if Xrc_needed:
                 Xrc = Xrc[glitched_chunk]
             bool_active = glitched_chunk[glitched_chunk]
 
-            
         else:
             # No glitch correction, every pixel active...
-            Z_act = Z.copy() # ok for ndarray subclass
+            Z_act = Z.copy()
             U_act = np.copy(U)
             stop_reason_act = np.copy(stop_reason)
-            c_act = c.copy() # np.copy(c)
+            c_act = c.copy()
 
 
         n_iter = 0
@@ -2091,59 +2069,22 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         if SA_params is not None:# and False:
             # Check if SA given is from another ref point in this case it will
             # need to be translated
-            bool_SA_shift = (SA_params["iref"] != iref)
-            print("bool_SA_shift", bool_SA_shift)
-            # Seems that even if SA_params["iref"] != iref we do not need
-            # to shift ??? How comes ???
-            
+            SA_shift = (SA_params["iref"] != iref)
+            if SA_shift:
+                raise RuntimeError("SA should be shifted 'before' cycling:" + 
+                                   "use taylor_shift")
+
             n_iter = SA_params["n_iter"]
             SA_iter = n_iter
             kc = SA_params["kc"]
             P = SA_params["P"]
-#            if bool_SA_shift:
-#                raise ValueError()
-#                # Need to correct Z etc. by ref point shift
-#                ref_array = self.get_ref_array(file_prefix)[:, :, :]
-#                FP_params0 = self.reload_ref_point(SA_params["iref"], file_prefix,
-#                                                   scan_only=True)
-#                FP_paramsi = self.reload_ref_point(iref, file_prefix,
-#                                                   scan_only=True)
-#                dc_ref = (FP_paramsi["ref_point"] - FP_params0["ref_point"])
-#                
-#                print("refSA", SA_params["iref"], FP_params0["ref_point"])
-#                print("ref1", iref, FP_paramsi["ref_point"])
-#                
-#                if self.Xrange_complex_type:
-#                    dc_ref = mpc_to_Xrange(dc_ref, self.base_complex_type)
-#                else:
-#                    dc_ref = complex(dc_ref)#, self.base_complex_type)
-#                    
-#            else:
-#                dc_ref = 0.
-            
-            
+
             for i_z in range(n_Z):
                 if self.Xrange_complex_type:
-#                    if bool_SA_shift:
-#                        print("c shifted\n:", c_act - dc_ref)  # OK with return diff - drift_rp
-#                        Z_act[i_z, :] = ((P[i_z])((c_act + dc_ref) / kc) 
-#                                - ref_array[iref, n_iter, i_z]
-#                                + ref_array[SA_params["iref"], n_iter, i_z])
-#                    else:
                     Z_act[i_z, :] = (P[i_z])(c_act / kc)
-#                    if bool_SA_shift and False:
                 else:
-#                    if bool_SA_shift:
-#                        Z_act[i_z, :] = ((P[i_z])((c_act + dc_ref) / kc)
-#                                - ref_array[iref, n_iter, i_z]
-#                                + ref_array[SA_params["iref"], n_iter, i_z]
-#                                 ).to_standard()
-#                    else:
                     Z_act[i_z, :] = ((P[i_z])(Xrc / kc)).to_standard()
-#                    if bool_SA_shift:
-#                        Z_act[i_z, :] += (ref_array[iref, n_iter, i_z] - 
-#                                ref_array[SA_params["iref"], n_iter, i_z]
-#                                ).to_standard()
+
 
         pc_trigger = [False, 0, 0]   #  flag, counter, count_trigger
         
@@ -2153,28 +2094,20 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
 
             # 1) Reduce of all arrays to the active part at n_iter
             if not(np.all(bool_active)):
-                #print "select"
                 c_act = c_act[bool_active]
                 Z_act = Z_act[:, bool_active]
-#                print(type(Z_act), Z_act.dtype)
                 U_act = U_act[:, bool_active]
                 stop_reason_act = stop_reason_act[:, bool_active]
                 index_active = index_active[bool_active]
 
             # 2) Iterate all active parts vec, delegate to *iterate*
             if iref is not None:
-#                iterate(Z_act, U_act, c_act, n_iter, ref_path[n_iter - 1, :])
                 iterate(Z_act, U_act, c_act, stop_reason_act, n_iter, SA_iter,
-                        ref_div_iter, ref_path[n_iter - 1 , :], ref_path[n_iter, :])
+                        ref_div_iter, ref_path[n_iter - 1 , :],
+                        ref_path[n_iter, :])
             else:
                 iterate(Z_act, U_act, c_act, stop_reason_act, n_iter)
 
-            # 3) Partial loop ends, delegate to *terminate*
-#            if iref is not None:
-#                terminate(stop_reason_act, Z_act, U_act, c_act, n_iter,
-#                          ref_path[n_iter, :])
-#            else:
-#                terminate(stop_reason_act, Z_act, U_act, c_act, n_iter)
             stopped = (stop_reason_act[0, :] >= 0)
             index_stopped = index_active[stopped]
             stop_iter[0, index_stopped] = n_iter
@@ -2182,25 +2115,6 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
             Z[:, index_stopped] = Z_act[:, stopped]
             U[:, index_stopped] = U_act[:, stopped]
             bool_active = ~stopped
-            
-            
-#            for stop in range(n_stop):
-#                stopped = (stop_reason_act[0, :] == stop)
-#                index_stopped = index_active[stopped]
-#                stop_iter[0, index_stopped] = n_iter
-#                stop_reason[0, index_stopped] = stop
-#                Z[:, index_stopped] = Z_act[:, stopped]
-#                U[:, index_stopped] = U_act[:, stopped]
-#                if stop == 0:
-#                    bool_active = ~stopped
-#                else:
-#                    bool_active[stopped] = False
-#                    # debug
-#                if np.any(stopped) and stop == 3:
-#                    print("dyn glitch µµµ")
-#                    #print(Z_act[3, stopped])
-#                    print(Z[3, index_stopped])
-                    
 
             count_active = np.count_nonzero(bool_active)
             pc = 0 if(count_active == 0) else count_active / (c.size *.01)
@@ -2237,9 +2151,6 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                 print(status)
                 sys.stdout.flush()
 
-
-            
-
         # Don't save temporary codes - i.e. those which startwith "_"
         # inside Z and U arrays
         select = {0: Z, 1: U}
@@ -2254,22 +2165,8 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
             for index in to_del[::-1]:
                 del code[index]
         save_Z, save_U = target
-
-
-        
-#        params = self.params + 
-#        if (iref is not None) and iref > 0:
-#            # Glich correction engaged - shall only modify in place
-#            # glitched pixels
-#            for icode, code in enumerate(save_codes):
-#                pass
-#            raise NotImplementedError()
-            
             
         raw_data = [chunk_mask, save_Z, save_U, stop_reason, stop_iter]
-        
-        
-
         
         self.save_data_chunk(chunk_slice, file_prefix, self.params,
                              save_codes, raw_data)
