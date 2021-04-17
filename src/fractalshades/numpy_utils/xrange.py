@@ -467,7 +467,7 @@ Reference:
                 out = self._mul(ufunc, casted_inputs)
             elif ufunc in [np.greater, np.greater_equal, np.less,
                            np.less_equal, np.equal, np.not_equal]:
-                # Not a Xrange array, simply returns bool array
+                # Not a Xrange array, returns bool array
                 return self._compare(ufunc, casted_inputs, out=out)
             elif ufunc is np.maximum:
                 out = self._maximum(casted_inputs, out=out)
@@ -482,14 +482,19 @@ Reference:
             elif ufunc is np.log:
                 out = self._log(casted_inputs, out=out)
             elif ufunc is np.arctan2:
-                # Not a Xrange array, simply returns a float array
+                # Not a Xrange array, returns a float array
                 return self._arctan2(casted_inputs, out=out)
             else:
                 out = None
-        elif method == "reduce" and ufunc is np.add:
-            out = self._add_reduce(casted_inputs, out=out, **kwargs)
-        else:
-            out = None
+        elif method in ["reduce", "accumulate"]:
+            if ufunc is np.add:
+                out = self._add_method(casted_inputs, method, out=out,
+                                       **kwargs)
+            elif ufunc is np.multiply:
+                out = self._mul_method(casted_inputs, method, out=out,
+                                       **kwargs)
+            else:
+                out = None
 
         if out is None:
             raise NotImplementedError("ufunc {} method {} not implemented for "
@@ -838,9 +843,12 @@ Reference:
             return (co_m0, co_m1, exp)
 
     @staticmethod
-    def _add_reduce(inputs, out=None, **kwargs):
+    def _add_method(inputs, method, out=None, **kwargs):
         """
         """
+        if method == "accumulate":
+            raise NotImplementedError("ufunc {} method {} not implemented for "
+                                      "Xrange_array".format(np.add, method))
         if out is not None:
             raise NotImplementedError("`out` keyword not immplemented "
                 "for ufunc {} method {} of Xrange_array".format(
@@ -849,26 +857,50 @@ Reference:
         op, = inputs
 
         axis = kwargs.get("axis", 0)
-        co_exp_acc = getattr(np.maximum, "reduce")(op._exp, axis=axis)
-
-        brodcast_co_exp_acc = (np.expand_dims(co_exp_acc, axis)
-                if axis is not None else co_exp_acc)
+        broadcast_co_exp_acc = np.maximum.reduce(op._exp, axis=axis, 
+                                                 keepdims=True)
 
         if op.is_complex:
             re = Xrange_array._exp2_shift(op._mantissa.real, 
-                                        op._exp - brodcast_co_exp_acc)
+                                        op._exp - broadcast_co_exp_acc)
             im = Xrange_array._exp2_shift(op._mantissa.imag, 
-                                        op._exp - brodcast_co_exp_acc)
+                                        op._exp - broadcast_co_exp_acc)
             co_m = re + 1.j * im
         else:
             co_m = Xrange_array._exp2_shift(op._mantissa, 
-                                        op._exp - brodcast_co_exp_acc)
-        
+                                        op._exp - broadcast_co_exp_acc)
 
         res = Xrange_array(*Xrange_array._normalize(
-                    getattr(np.add, "reduce")(co_m, axis=axis), co_exp_acc))#,
+                    np.add.reduce(co_m, axis=axis),
+                    np.squeeze(broadcast_co_exp_acc, axis=axis)))
         return res
 
+    @staticmethod
+    def _mul_method(inputs, method, out=None, **kwargs):
+        """
+        methods implemented are reduce or accumulate
+        """
+        if out is not None:
+            raise NotImplementedError("`out` keyword not immplemented "
+                "for ufunc {} method {} of Xrange_array".format(
+                        np.multiply, method))
+
+        op, = inputs
+        m0, exp0 = Xrange_array._normalize(op._mantissa, op._exp)
+        # np.multiply.reduce(m0, axis=axis) shall remains bounded
+        # Set m m between sqrt(0.5) and sqrt(2)
+        # With float64,
+        # This is only guaranteed not to overflow for arrays of less than 2000 
+        # (1.41**2000 = 2.742996861934711e+298)
+        is_below = m0 < np.sqrt(0.5)
+        m0[is_below] *= 2.
+        exp0[is_below] -= 1 
+
+        axis = kwargs.get("axis", 0)
+        res = Xrange_array(*Xrange_array._normalize(
+                    getattr(np.multiply, method)(m0, axis=axis),
+                    getattr(np.add, method)(exp0, axis=axis)))
+        return res
 
     @staticmethod
     def _need_renorm(val):
@@ -1314,6 +1346,49 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
                 coeffs[i] *= mul
                 mul *= k
         return Xrange_polynomial(coeffs, cutdeg=self.cutdeg)
+
+    def taylor_shift(self, x0):
+        """
+        Returns of polynomial Q so that
+        P(x + x0) == Q(x)
+        
+        References
+        [1] Joachim von zur Gathen, Jürgen Gerhard Fast Algorithms for Taylor
+        Shifts and Certain Difference Equations.
+        [2] Mary Shaw, J.F. Traub On the number of multiplications for the
+        evaluation of a polynomial and some of its derivatives.
+        
+        https://planetcalc.com/7726/
+        
+        q(x) = p(x+x0) transformation is accomplished by the three simpler transformation:
+
+    g(x) = p(x0x)
+    f(x) = g(x+1)
+    q(x) = f(x/x0)
+        
+        Given the n-degree polynomial: p(x) = anxn+an-1xn-1+...+a1x+a0
+We must obtain new polynomial coefficients qi, by Taylor shift q(x) = p(x+ x0).
+We'll use the matrix t of dimensions m x m, m=n+1 to store data.
+
+    Compute ti,0 = an-i-1x0n-i-1 for i=0..n-1
+    Store ti,i+1 = anx0n for i=0..n-1
+    Compute ti,j+1 = ti-1,j+ti-1,j+1 for j=0..n-1, i=j+1..n
+    Compute the coefficients: qi = tn,i+1/x0i for i=0..n-1
+    The highest degree coefficient is the same: qn = an
+
+        """
+        cutdeg = self.cutdeg
+        t = Xrange_array.zeros([cutdeg + 1, cutdeg + 1],
+                               dtype=self.coeffs.dtype)
+        
+        
+        t[:, 0] = np.cumprod()
+        # Based on Q(x) = P(x + h) = SUM P{k}(x) / k! x^k
+        Q_coeffs = Xrange_array.zeros([cutdeg + 1], dtype=self.coeffs.dtype) 
+        deriv = self
+        for i in range(cutdeg + 1):
+            Q_coeffs[i] = deriv(x0)
+
 
     def __repr__(self):
         return ("Xrange_polynomial(cutdeg="+ str(self.cutdeg) +",\n" +

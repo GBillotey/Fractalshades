@@ -4,3 +4,5 @@ __pycache__
 build
 dist
 dev
+*.egg-info
+/tests/image_comparison
