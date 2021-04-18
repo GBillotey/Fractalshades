@@ -24,3 +24,8 @@ calc = mandelbrot.full_calc(*calc_args, **calc_kwargs)
 plotter = fs.Fractal_plotter(calc, ****)
 
 plotter.explore()
+
+________________________________________
+Compile
+https://nuitka.net/pages/download.html
+https://sametmax.com/vive-setup-cfg-et-mort-a-pyproject-toml/
