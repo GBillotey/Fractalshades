@@ -17,9 +17,7 @@ import datetime
 import pickle
 
 import fractalshades.numpy_utils.xrange as fsx
-
-enable_multiprocessing = True
-no_compute = False
+import fractalshades.settings as settings
 
 def mkdir_p(path):
     """ Creates directory ; if exists does nothing """
@@ -404,7 +402,7 @@ class Multiprocess_filler():
                 kwargs[self.iter_kwargs] = key
                 return method(instance, *args, **kwargs)
 
-            if enable_multiprocessing and not(self.veto_multiprocess):
+            if settings.enable_multiprocessing and not(self.veto_multiprocess):
                 print("Launch Multiprocess_filler of ", method.__name__)
                 print("cpu count:", multiprocessing.cpu_count())
                 redirect_path = getattr(instance, self.redirect_path_attr)
@@ -1097,7 +1095,11 @@ the array returned by base_data_key
         chunk_2d = self.apply_mask(chunk_2d, chunk_slice)
         base_data = self.base_data_function(
                 chunk_2d[len(self.calc_layers), :, :])
-        lmin, lmax = np.nanmin(base_data), np.nanmax(base_data)
+
+        # Avoid + inf values also
+        bd_finite = np.isfinite(base_data)
+        lmin = np.nanmin(base_data[bd_finite])
+        lmax = np.nanmax(base_data[bd_finite])
 
         self.base_min = np.nanmin([lmin, self.base_min])
         self.base_max = np.nanmax([lmax, self.base_max])
@@ -1166,7 +1168,7 @@ the array returned by base_data_key
         base_data = self.base_data_function(
                 chunk_2d[len(self.calc_layers), :, :])
 
-        loc_count_nonzero = np.count_nonzero(~np.isnan(base_data))
+        loc_count_nonzero = np.count_nonzero(np.isfinite(base_data))
         if loc_count_nonzero == 0:
             return
 
@@ -1683,7 +1685,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         
         # If no_compute ...
         except FileNotFoundError:
-            if not(no_compute):
+            if not(settings.skip_calc):
                 raise
             
             # Else: no_compute selected, return empty fields
@@ -1852,9 +1854,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         """
         Local size of pixel for different projections
         """
-#        select = {np.complex64: np.float32,
-#                  np.complex128: np.float64}
-        data_type = self.base_float_type# select[self.base_complex_type]
+        data_type = self.base_float_type
 
         xy_ratio  = self.xy_ratio
         (nx, ny, dx, dy) = (self.nx, self.ny, self.dx, self.dy)
@@ -1875,7 +1875,6 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         dy_grid = dy * np.linspace(-0.5, 0.5, num=ny, dtype=data_type)
         dy_vec, dx_vec  = np.meshgrid(dy_grid[iy:iyy], dx_grid[ix:ixx])
 
-#        dy_vec, dx_vec  = np.meshgrid(dy_grid[iy:iyy], dx_grid[ix:ixx])
         if self.projection == "cartesian":
             px = (dx / (nx - 1.)) #* np.ones_like(dx_vec)
 
@@ -1965,6 +1964,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
             else:
                 glitch_loop =True
                 glitched_chunk = np.ravel(glitched[chunk_slice])
+                print("glitched count", np.count_nonzero(glitched[chunk_slice]))
                 # glitched_chunk[...] = True #debug
                 irefs_chunk = np.ravel(irefs[chunk_slice])
                 if subset is not None:
@@ -2388,6 +2388,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                     # suppose the highest order monome is normalized
                     nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(M * k))
                                 / np.log(d))
+                    print("€€DEBUG, nu_frac", nu_frac)
 #                    print("nu_frac", type(nu_frac), nu_frac.dtype)
 
                 elif potential_dic["kind"] == "convergent":
@@ -2411,6 +2412,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                     nu_frac = nu_frac.to_standard()
                 nu = n + nu_frac
                 val = nu
+                print("€€DEBUG, val", val)
 
 
             elif post_name == "DEM_shade":
@@ -2784,8 +2786,8 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                     print("**abs raw of ", chunk_slice)
                     print("field ", code, complex_dic[code])
                     print("abs print", val[glitched][:100])
-                    print("Z0 glitched shape", ((Z[3, :])[glitched]).shape)
-                    print("Z0 glitched", (Z[3, :])[glitched][:100])
+#                    print("Z0 glitched shape", ((Z[3, :])[glitched]).shape)
+#                    print("Z0 glitched", (Z[3, :])[glitched][:100])
                     val = np.log(val)
                     #raise ValueError
     

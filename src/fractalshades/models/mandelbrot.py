@@ -3,11 +3,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import mpmath
 
-#import fractalshades.fractal as fractal
-#from fractal import Fractal, Fractal_plotter, Fractal_colormap
+
 import fractalshades as fs
 import fractalshades.numpy_utils.xrange as fsx
-import fractalshades.models as fsmodels
 
 
 class Classical_mandelbrot(fs.Fractal):
@@ -712,6 +710,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             P
         """
         SA_err = SA_params.get("SA_err", 1.e-4)
+        print("SA_err", SA_err)
         SA_err_sq = SA_err**2
 
         P = SA_init(SA_params["cutdeg"])

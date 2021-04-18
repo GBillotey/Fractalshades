@@ -8,3 +8,19 @@ https://packaging.python.org/tutorials/packaging-projects/
 Requirement
 wx.python
 pip install wxPython==4.1.1
+
+Introspecting callables with the Signature object
+https://docs.python.org/3.5/library/inspect.html#inspect.signature
+
+_______________________________________________
+Template
+
+import fractalshades as fs
+import fractalshades.models as fsm
+
+mandelbrot = fsm.Perturbation_mandelbrot( *****)
+calc = mandelbrot.full_calc(*calc_args, **calc_kwargs)
+
+plotter = fs.Fractal_plotter(calc, ****)
+
+plotter.explore()
