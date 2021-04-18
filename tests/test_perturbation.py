@@ -71,7 +71,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 ref_file = os.path.join(self.image_dir_ref, test_name + ".png")
                 err = compare_png(ref_file, test_file)
                 self.assertTrue(err < 0.01)
-    
+
     @test_config.no_stdout
     def test_M2_int_E11(self):
         """
@@ -95,9 +95,9 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 ref_file = os.path.join(self.image_dir_ref, test_name + ".png")
                 err = compare_png(ref_file, test_file)
                 self.assertTrue(err < 0.01)
-                
 
-    #@test_config.no_stdout
+
+    @test_config.no_stdout
     def test_M2_antialias_E0(self):
         """
         Testing field lines, and antialiasing. Full Mandelbrot
