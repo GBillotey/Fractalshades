@@ -1,4 +1,4 @@
-# <img alt="Flake" src="examples/flake/dev.png" height="400">
+# <img alt="Flake" src="examples/flake/flake.jpg" height="400">
 
 # Fractal-shades
 The pupose of this python package is to propose standard or deep-zoom exploration (under 1.e-300) of a few fractals.

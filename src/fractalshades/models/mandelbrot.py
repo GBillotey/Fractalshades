@@ -3,11 +3,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import mpmath
 
-#import fractalshades.fractal as fractal
-#from fractal import Fractal, Fractal_plotter, Fractal_colormap
+
 import fractalshades as fs
 import fractalshades.numpy_utils.xrange as fsx
-import fractalshades.models as fsmodels
 
 
 class Classical_mandelbrot(fs.Fractal):
@@ -711,6 +709,10 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             n_iter
             P
         """
+        SA_err = SA_params.get("SA_err", 1.e-4)
+        print("SA_err", SA_err)
+        SA_err_sq = SA_err**2
+
         P = SA_init(SA_params["cutdeg"])
         SA_params["iref"] = iref
         
@@ -735,8 +737,8 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             # P_old1 = P[1].coeffs.copy()
             SA_loop(P, n_iter, ref_path[n_iter - 1, :], kcX)
             coeffs_sum = np.sum(P[0].coeffs.abs2())
-            SA_valid = ((P[0].err.abs2()  <= 1.e-6 * coeffs_sum) # 1e-6
-                        & (coeffs_sum <= 1.e6))
+            SA_valid = ((P[0].err.abs2()  <= SA_err_sq * coeffs_sum)
+                        & (coeffs_sum <= 1.e6)) # 1e6 to allow 
             if not(SA_valid):
                 P[0].coeffs = P_old0
                 # P[1].coeffs = P_old1
@@ -745,17 +747,18 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                 deriv_scale = fsx.mpc_to_Xrange(self.dx) / SA_params["kc"]
                 if not(self.Xrange_complex_type):
                     deriv_scale = deriv_scale.to_standard()
-                P1 = fsx.Xrange_polynomial([1.], cutdeg=SA_params["cutdeg"])
-                # We derive the polynomial wrt to c. However the constant coeff
-                # Shall be set to null as we already know it with FP...
-                # (or to the contrary should we use it to evaluate the FP iter
-                # ????)
-                P_deriv = P[0].deriv() * deriv_scale # (1. / SA_params["kc"])
+                P1 = fsx.Xrange_polynomial([complex(1.)],
+                                           cutdeg=SA_params["cutdeg"])
+                # We derive the polynomial wrt to c. Note the 1st coefficent
+                # should be set to 0 if we compute these with FP...
+                # Here, to the contrary we use it to skip the FP iter for all 
+                # derivatives.
+                P_deriv = P[0].deriv() * deriv_scale
                 # P_deriv.coeffs[0] = 0.
-                P_deriv2 = P_deriv.deriv() * deriv_scale # (1. / SA_params["kc"])
+                P_deriv2 = P_deriv.deriv() * deriv_scale
                 # P_deriv2.coeffs[0] = 0.
                 P += [P1, P_deriv, P_deriv2]
-            if n_iter%500 == 0:
+            if n_iter % 500 == 0:
                 print("SA running", n_iter, "err: ", P[0].err, "<<", np.sqrt(np.sum(P[0].coeffs.abs2())))
         SA_params["n_iter"] = n_iter
         SA_params["P"] = P
@@ -904,8 +907,8 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             stop_reason[0, bool_infty] = 1
 
             # Glitch detection
-            if glitch_max_attempt == 0:
-                return
+#            if glitch_max_attempt == 0:
+#                return
             ref_sq_norm = ref_path_next[0].real**2 + ref_path_next[0].imag**2
 
             # Flagged as "dynamic glitch"
