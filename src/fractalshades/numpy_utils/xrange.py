@@ -1400,30 +1400,30 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
             pascalT += tmp
         return Xrange_polynomial(pascalT, cutdeg=self.cutdeg)
     
-    def _quad_precision_taylor_shift_one(self):
-        import mpmath
-        # save previous dps
-        current_dps = mpmath.mp.dps
-        # do the calculation in quad prec
-        mpmath.mp.dps = 32
-        pascalT = [mpmath.mpc(0.) for i in range(self.coeffs.size)]
-        tmp = [mpmath.mpc(0.) for i in range(self.coeffs.size)]
-        pascalT[0] = Xrange_to_mpfc(self.coeffs[-1])
-        for i in range(2, self.coeffs.size + 1):
-            # at each step P -> P + (ai + X P)
-            tmp[0] = Xrange_to_mpfc(self.coeffs[-i])
-            for j in range(1, self.coeffs.size):
-                tmp[j] = pascalT[j - 1]
-            for j in range(self.coeffs.size):
-                pascalT[j] += tmp[j]
-        # Storing the coeffs
-        dtype = self.coeffs._mantissa.dtype
-        Xr_pascalT = Xrange_array.zeros([self.coeffs.size], dtype)
-        for i in range(self.coeffs.size):
-            Xr_pascalT[i] = mpc_to_Xrange(pascalT[i], dtype=dtype)
-        # restore whatever previous dps
-        mpmath.mp.dps = current_dps
-        return Xrange_polynomial(Xr_pascalT, cutdeg=self.cutdeg)
+#    def _quad_precision_taylor_shift_one(self):
+#        import mpmath
+#        # save previous dps
+#        current_dps = mpmath.mp.dps
+#        # do the calculation in quad prec
+#        mpmath.mp.dps = 32
+#        pascalT = [mpmath.mpc(0.) for i in range(self.coeffs.size)]
+#        tmp = [mpmath.mpc(0.) for i in range(self.coeffs.size)]
+#        pascalT[0] = Xrange_to_mpfc(self.coeffs[-1])
+#        for i in range(2, self.coeffs.size + 1):
+#            # at each step P -> P + (ai + X P)
+#            tmp[0] = Xrange_to_mpfc(self.coeffs[-i])
+#            for j in range(1, self.coeffs.size):
+#                tmp[j] = pascalT[j - 1]
+#            for j in range(self.coeffs.size):
+#                pascalT[j] += tmp[j]
+#        # Storing the coeffs
+#        dtype = self.coeffs._mantissa.dtype
+#        Xr_pascalT = Xrange_array.zeros([self.coeffs.size], dtype)
+#        for i in range(self.coeffs.size):
+#            Xr_pascalT[i] = mpc_to_Xrange(pascalT[i], dtype=dtype)
+#        # restore whatever previous dps
+#        mpmath.mp.dps = current_dps
+#        return Xrange_polynomial(Xr_pascalT, cutdeg=self.cutdeg)
 
     def scale_shift(self, a):
         """

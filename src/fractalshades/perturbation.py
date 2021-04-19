@@ -400,7 +400,7 @@ class PerturbationFractal(fs.Fractal):
                         print("##### dc_ref", dc_ref)
                         P_shifted = []
                         for P0i in P0:
-                            P_shifted += [P0i.taylor_shift(dc_ref, quad_prec=False)]
+                            P_shifted += [P0i.taylor_shift(dc_ref)]
                         # For fields known at FP, we have to correct the 1st 
                         # coeff which  is by definition 0 (due to the FP ref
                         # point shift)

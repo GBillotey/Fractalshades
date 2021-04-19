@@ -544,7 +544,7 @@ class Fractal_Data_array():
     
     def nanmin(self):
         """ extension of np.nanmin """
-        return max([np.nanmin(chunk) for chunk in self])
+        return min([np.nanmin(chunk) for chunk in self])
     
     def nansum(self):
         """ extension of np.nansum """
