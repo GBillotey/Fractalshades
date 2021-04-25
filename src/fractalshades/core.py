@@ -805,7 +805,7 @@ the array returned by base_data_key
                           (post_name, post_dic) for just 1 key here.
         veto_blend:  Boolean, if true the layer will be output to a greyscale
             image but NOT blended with the rgb base image to give the final
-            image. Note that irrelative to veto_blend, a displacement layer
+            image. Note that irrespective to veto_blend, a displacement layer
             (see doc for disp_layer param) is intended for further
             post-processing and never blended to the final image.
         Fourrier, skewness, hardness, intensity, blur_ranges : arguments passed
@@ -844,7 +844,6 @@ the array returned by base_data_key
                 # Clipping in case of imposed min max range
                 data = np.where(data < -1., -1., data)
                 data = np.where(data > 1., 1., data)
-
 
             if skewness is not None:
                 data = self.skew(skewness, data)
@@ -1224,6 +1223,7 @@ the array returned by base_data_key
         # now we render the layers
         i_grey_img = 0  # here the first...
         for i_layer, layer_options in enumerate(self.grey_layers):
+
             shade = chunk_2d[i_layer + 1 + i_base, :, :]
             shade_function = layer_options["layer_func"]
             data_min, data_max = layers_minmax[i_layer]
@@ -1238,9 +1238,6 @@ the array returned by base_data_key
 
             if layer_options["disp_layer"]:
                 shade = np.where(np.isnan(shade), 0.0, shade)
-
-#            if layer_options["output"]:
-#                if layer_options["disp_layer"]:
                 layer_mask_color = layer_options["layer_mask_color"]
                 paste_layer = PIL.Image.fromarray(self.np2PIL(
                         np.int32(shade * 65535))) # 2**16-1
@@ -1478,59 +1475,7 @@ the array returned by base_data_key
             im = PIL.Image.composite(im1, im2, mask).convert(output_mode)
 
         im.save(im_path)
-        
-#    def to_cartesian(self, exp_img_file, zooms):
-#        """
-#        """
-#        im_path_source = os.path.join(self.plot_dir, exp_img_file)
-#        exp_img = PIL.Image.open(im_path_source)
-#        for zoom in zooms:
-#            map_nx, map_ny = exp_img.size
-#            h_max =  2 * np.pi * map_nx / map_ny
-#            res_nx = map_ny / np.pi
-#            res_ny = res_nx
-#            # define y_loc, xloc in 0..1 x 0..1
-#            x_loc, y_loc = np.meshgrid(np.linspace(-1., 1., res_nx),
-#                                       np.linspace(-1., 1., res_ny))
-#            rho = np.sqrt(y_loc, x_loc) * zoom
-#            phi = np.arctan2(y_loc, x_loc)
-#            xbar = np.where(rho < 1., rho, np.log(rho) + 1.)
-#            ybar = phi * (np.arctan(xbar * np.pi / 2.) / np.pi * 2.)
-#            rgb_zoom = np.array([res_nx, res_ny, 3], dtype= np.float32)
-#            
-#            h_chunk = (100. / map_nx) * h_max
-#            xbar_min = np.min(xbar)
-#            xbar_max = np.max(xbar)
-#
-#            # loop by steps of 1h
-#            for ih in range(int((xbar_max - xbar_min) / h_chunk + 1)):
-#                crop_h = (xbar_max + ih * h_chunk, 
-#                          xbar_max + (ih + 1) * h_chunk )
-#                self.to_cartesian_cropped(self, crop_h, xbar, ybar, rgb_zoom)
-#            # now look in the original pic in terms of xbar ybar
-#            
-#        
-##    @Multiprocess_filler(iterable_attr="chunk_slices",
-##        iter_kwargs="zoom_slice", veto_multiprocess=True)
-#    def to_cartesian_cropped(self, zoom_img, crop_h, xbar, ybar, rgb_zoom):
-#        in_crop = (xbar >= crop_h) & (xbar < crop_h + 1.)
-#        h_loc = np.log(zoom)
-#        numpy.array(zoom_img.)
-    
-#        elif self.projection == "exp_map":
-#            h_max = 2. * np.pi / self.xy_ratio # max h reached on the picture
-#            xbar = (dx_vec / dx + 0.5) * h_max  # 0 .. hmax
-#            ybar = dy_vec / dy * 2. * np.pi     # -pi .. +pi
-#
-#            phi = ybar / (np.arctan(xbar * np.pi / 2.) / np.pi * 2.)
-#            phi = np.where(np.abs(phi) > np.pi, np.nan, phi) # outside
-#            rho = np.where(xbar < 1., xbar, np.exp(xbar - 1.))
-#            rho = rho * dx
-#
-#            x_vec = x + rho * np.cos(phi)
-#            y_vec = y + rho * np.sin(phi) 
-#    
-    
+
 
 class Fractal():
     """
@@ -1542,14 +1487,13 @@ class Fractal():
 https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbrot_set
     """
 
-    def __init__(self, directory):#, complex_type):#, chunk_size=200):
+    def __init__(self, directory):
         """
         Parameters
     *directory*   The working base directory
     *complex_type*  numpy type or ("Xrange", numpy type)
         """
         self.directory = directory
-        #self.chunk_size = chunk_size
 
     def init_data_types(self, complex_type):
         if type(complex_type) is tuple:
@@ -1618,7 +1562,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
     def base_complex_type(self):
         complex_type = self.complex_type
         if type(complex_type) is tuple:
-            complex_type, _ = complex_type
+            _, complex_type = complex_type
         return complex_type
 
     @property
@@ -2138,8 +2082,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
     def kind_from_code(self, code, codes):
         """
         codes as returned by 
-        (params, codes) = self.reload_data_chunk(chunk_slice,
-                                                   file_prefix, scan_only=True)
+        (params, codes) = self.reload_data_chunk(chunk_slice, file_prefix)
         """
         complex_codes, int_codes, _ = codes
         if code in complex_codes:
@@ -2291,8 +2234,8 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                           | "ratio_specular":}
                           |
         [attr_shade]      | {"theta_LS":, "phi_LS":, "shininess":, 
-                          | "ratio_specular":, "LS_coords"} 
-        [power_attr_shade]| As for ["attr_shade"] 
+                          | "ratio_specular":, "LS_coords"}
+        [power_attr_shade]| As for ["attr_shade"]
                           |
         [field_lines]     | {"n_iter", "swirl"}
         [Lyapounov]       | {"n_iter": [field / None]}
@@ -2350,8 +2293,6 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                     # suppose the highest order monome is normalized
                     nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(M * k))
                                 / np.log(d))
-                    print("€€DEBUG, nu_frac", nu_frac)
-#                    print("nu_frac", type(nu_frac), nu_frac.dtype)
 
                 elif potential_dic["kind"] == "convergent":
                     eps = potential_dic["epsilon_cv"]
@@ -2362,30 +2303,32 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
 
                 elif potential_dic["kind"] == "transcendent":
                     # Not possible to define a proper potential for a 
-                    # transcencdent fonction
+                    # transcendental fonction
                     nu_frac = 0.
 
                 else:
                     raise NotImplementedError("Potential 'kind' unsupported")
-#                print("nu_frac", type(nu_frac), nu_frac.dtype, nu_frac.shape)
-#                print("n", type(n), n.dtype, n.shape)
-                #nu = n[].astype(self.base_complex_type) + nu_frac
+
                 if type(nu_frac) == fsx.Xrange_array:
                     nu_frac = nu_frac.to_standard()
+
+                # We need to take care of special cases to ensure that
+                # -1 < nu_frac <= 0. 
+                # This happen e.g. when the pixel hasn't reach the limit circle
+                # at current max_iter, so its status is undefined.
+                nu_div, nu_mod = np.divmod(-nu_frac, 1.)
+                nu_frac = - nu_mod
+                n -= nu_div.astype(n.dtype) # need explicit casting to int
+
                 nu = n + nu_frac
                 val = nu
-                print("€€DEBUG, val", val)
 
 
             elif post_name == "DEM_shade":
                 if not has_potential:
                     raise ValueError("Potential shall be defined before shade")
                 dzndc = Z[complex_dic["dzndc"], :]
-                color_tool_dic = fill_color_tool_dic() #post_dic.copy()
-#                color_tool_dic["chunk_slice"] = chunk_slice
-#                color_tool_dic["chunk_mask"] = chunk_mask
-#                color_tool_dic["nx"] = self.nx
-#                color_tool_dic["ny"] = self.ny
+                color_tool_dic = fill_color_tool_dic()
                 shade_kind = color_tool_dic.pop("kind")
 
                 if shade_kind == "Milnor":   # use only for z -> z**2 + c
@@ -2475,7 +2418,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                     t = [np.angle(z_norm)]
                     val = np.zeros_like(t)
                     # Convergence of a geometric serie at 1 percent
-                    damping = 0.01 ** (1 / (n_iter_fl + 1))
+                    damping = 0.01 ** (1. / (n_iter_fl + 1))
                     di = 1.
                     rg = np.random.default_rng(0)
                     dphi_arr = rg.random(n_iter_fl) * swirl_fl * np.pi * 0.25
@@ -2496,6 +2439,10 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                     val = np.angle(z_star - zn) + nu_frac * beta
                     # We have an issue if z_star == zn...
                     val = val * 2.
+                else:
+                    raise ValueError(
+                        "Unsupported potential '{}' for field lines".format(
+                                potential_dic["kind"]))
 
 
             elif post_name == "Lyapounov":

@@ -598,13 +598,14 @@ class PerturbationFractal(fs.Fractal):
         self.initialize()(Z_act, U_act, c_act, chunk_slice, iref)
         U[:, bool_active] = U_act
         
+        n_iter = SA_iter = 0
         if SA_params is not None:
             SA_shift = (SA_params["iref"] != self.iref)
             if SA_shift:
                 raise RuntimeError("SA should be shifted 'before' cycling:" + 
                                    "use taylor_shift")
-            n_iter = SA_params["n_iter"]
-            SA_iter = n_iter
+            # n_iter = SA_params["n_iter"]
+            n_iter = SA_iter = SA_params["n_iter"]
             kc = SA_params["kc"]
             P = SA_params["P"]
             for i_z in range(n_Z):

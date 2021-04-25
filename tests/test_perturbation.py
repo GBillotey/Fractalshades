@@ -5,14 +5,10 @@ import os
 import shutil
 import PIL
 
-
-
-
 import fractalshades as fs
 import fractalshades.models as fsmodels
 
 import test_config
-
 
 def compare_png(ref_file, test_file):
     ref_image = PIL.Image.open(ref_file)
@@ -30,8 +26,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         
     def setUp(self):
         image_dir = os.path.join(test_config.test_dir, "images_comparison")
-#        if os.path.exists(image_dir):
-#            shutil.rmtree(image_dir)
+
         fs.mkdir_p(image_dir)
         self.image_dir = image_dir
 
@@ -56,7 +51,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         nx = 600
         test_name = self.test_M2_E20.__name__
         #with tests.suppress_stdout():
-        for complex_type in [#np.complex64, np.complex128,
+        for complex_type in [np.complex64, np.complex128,
                 ("Xrange", np.complex64), ("Xrange", np.complex128)]:
             if type(complex_type) is tuple:
                 _, base_complex_type = complex_type
@@ -83,6 +78,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         nx = 600
         test_name = self.test_M2_int_E11.__name__
         complex_type = np.complex128
+
         for SA_params in [{"cutdeg": 64, "cutdeg_glitch": 8}, None]:
             with self.subTest(SA_params=SA_params):
                 if SA_params is None:
@@ -95,7 +91,6 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 ref_file = os.path.join(self.image_dir_ref, test_name + ".png")
                 err = compare_png(ref_file, test_file)
                 self.assertTrue(err < 0.01)
-
 
     @test_config.no_stdout
     def test_M2_antialias_E0(self):
@@ -118,7 +113,9 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         test_file = self.make_M2_img(x, y, dx, precision, nx,
             complex_type, test_name, prefix, interior_detect=True,
             mask_codes=[2], antialiasing=True, colormap=colormap,
-            layer="field_lines", probes_val=[0., 0.1])
+            probes_val=[0., 0.1], grey_layer_key=
+                    ("field_lines", {"n_iter": 10, "swirl": 1.}),
+            blur_ranges=[[0.8, 0.95, 1.0]], hardness=0.9, intensity=0.8)
         ref_file = os.path.join(self.image_dir_ref, test_name + ".png")
         err = compare_png(ref_file, test_file)
         self.assertTrue(err < 0.01)
@@ -129,8 +126,8 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         test_file = self.make_M2_img(x, y, dx, precision, nx,
             complex_type, test_name, prefix, interior_detect=True,
             mask_codes=[2], antialiasing=True, colormap=colormap,
-            layer="field_lines", probes_val=[0., 0.1],
-            field_lines=("field_lines", {"n_iter": 5, "swirl": 1.}))
+            probes_val=[0., 0.1], grey_layer_key=("field_lines", {}),
+            blur_ranges=[[0.8, 0.95, 1.0]], hardness=0.9, intensity=0.8)
         ref_file = os.path.join(self.image_dir_ref, test_name + "_2.png")
         err = compare_png(ref_file, test_file)
         self.assertTrue(err < 0.01)
@@ -139,23 +136,30 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
     def make_M2_img(self, x, y, dx, precision, nx, complex_type, test_name,
                     prefix, interior_detect=False, mask_codes=[3, 4], 
                     SA_params={"cutdeg": 64, "cutdeg_glitch": 8},
-                    antialiasing=False, colormap=None, layer="shade",
-                    probes_val=[0., 0.25], 
-                    field_lines=("field_lines", {"n_iter": 10, "swirl": 1.})):
+                    antialiasing=False, colormap=None, hardness=0.75,
+                    intensity=0.95,
+                    probes_val=[0., 0.25], blur_ranges=[],
+                    grey_layer_key=None):
         """
+        
         """
         test_dir = os.path.join(self.image_dir, test_name)
 
-        mandelbrot = fsmodels.Perturbation_mandelbrot(test_dir, x, y, dx, nx,
+        mandelbrot = fsmodels.Perturbation_mandelbrot(test_dir)
+        mandelbrot.zoom(
+             precision=precision,
+             x=x,
+             y=y,
+             dx=dx,
+             nx=nx,
              xy_ratio=1.,
              theta_deg=0.,
-             chunk_size=200,
-             complex_type=complex_type,
              projection="cartesian",
-             precision=precision,
              antialiasing=antialiasing)
 
-        mandelbrot.full_loop(
+        mandelbrot.prepare_calc(
+            kind="calc_std_div",
+            complex_type=complex_type,
             file_prefix=prefix,
             subset=None,
             max_iter=50000,
@@ -164,23 +168,23 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
             pc_threshold=0.1,
             SA_params=SA_params,
             glitch_eps=1.e-6,
-            interior_detect=interior_detect)
+            interior_detect=interior_detect,
+            glitch_max_attempt=1)
+
+        mandelbrot.run()
 
         mask = fs.Fractal_Data_array(mandelbrot, file_prefix=prefix,
             postproc_keys=('stop_reason', lambda x: np.isin(x, mask_codes)),
             mode="r+raw")
 
         potential = ("potential", {})
-                     #{"kind": "infinity", "d": 2, "a_d": 1., "M": 1e3})
-        shade = ("DEM_shade", 
-                 {"kind": "potential",
-                  "theta_LS": 50.,
-                  "phi_LS": 40.,
-                  "shininess": 40.,
-                  "ratio_specular": 8.})
-
         if colormap is None:
             colormap = self.colormap
+        if grey_layer_key is None:
+            grey_layer_key = ("DEM_shade", 
+                {"kind": "potential", "theta_LS": 50., "phi_LS": 40.,
+                 "shininess": 40., "ratio_specular": 8.})
+
         plotter = fs.Fractal_plotter(
             fractal=mandelbrot,
             base_data_key=potential,
@@ -191,19 +195,12 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
             probes_kind="qt",
             mask=mask)
 
-        if layer == "shade":
-            plotter.add_grey_layer(
-                    postproc_key=shade,
-                    intensity=0.95, 
-                    blur_ranges=[],
-                    hardness=0.75,  
-                    shade_type={"Lch": 1.0, "overlay": 0., "pegtop": 4.})
-        elif layer == "field_lines":
-            plotter.add_grey_layer(
-                    postproc_key=field_lines,
-                    hardness=0.9, intensity=0.8,
-                    blur_ranges=[[0.8, 0.95, 1.0]], 
-                    shade_type={"Lch": 1., "overlay": 0., "pegtop": 4.})
+        plotter.add_grey_layer(
+                postproc_key=grey_layer_key,
+                blur_ranges=blur_ranges,
+                hardness=hardness,
+                intensity=intensity,
+                shade_type={"Lch": 1.0, "overlay": 0., "pegtop": 4.})
 
         plotter.plot(prefix, mask_color=(0., 0., 1.))
         new_file = os.path.join(self.image_dir,
