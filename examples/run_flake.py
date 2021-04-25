@@ -25,16 +25,25 @@ def plot():
     # Set to True to enable multi-processing
     settings.enable_multiprocessing = True
 
-    nx = 800
+    nx = 3200
     xy_ratio = 0.5
     theta_deg = 0.
     complex_type = np.complex128
 
-    mandelbrot = fsm.Perturbation_mandelbrot(
-                 directory, x, y, dx, nx, xy_ratio, theta_deg, chunk_size=200,
-                 complex_type=complex_type, projection="cartesian",
-                 precision=precision)
-    mandelbrot.full_loop(
+    mandelbrot = fsm.Perturbation_mandelbrot(directory)
+    mandelbrot.zoom(
+            precision=precision,
+            x=x,
+            y=y,
+            dx=dx,
+            nx=nx,
+            xy_ratio=xy_ratio,
+            theta_deg=theta_deg,
+            projection="cartesian",
+            antialiasing=False)
+
+    mandelbrot.calc_std_div(
+            complex_type=complex_type,
             file_prefix="dev",
             subset=None,
             max_iter=50000,
@@ -48,6 +57,8 @@ def plot():
             glitch_eps=1.e-6,
             interior_detect=False,
             glitch_max_attempt=20)
+
+    mandelbrot.run()
 
     glitched = fs.Fractal_Data_array(mandelbrot, file_prefix="dev",
                 postproc_keys=('stop_reason', lambda x: x == 3), mode="r+raw")

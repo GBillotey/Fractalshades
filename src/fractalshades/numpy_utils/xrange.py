@@ -106,9 +106,9 @@ Implementation details:
         as numpy unfunc : abs, sqrt, square, conj, log, angle (through arctan2)
         as instance method : abs2 (square of abs)
 
-    Xrange_array silently over/underflow, due to the implementation of its
+    Xrange_array may silently over/underflow, due to the implementation of its
     exponent as a np.int32 array. If needed, checks for overflow shall be
-    done in user code.
+    implemented downstream in user code.
         >>> np.int32(2**31)
         -2147483648
 

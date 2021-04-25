@@ -6,7 +6,7 @@ import mpmath
 
 import fractalshades as fs
 import fractalshades.numpy_utils.xrange as fsx
-
+import fractalshades.utils as fsutils
 
 class Classical_mandelbrot(fs.Fractal):
     def __init__(self, *args, **kwargs):
@@ -532,7 +532,7 @@ https://fractalforums.org/fractal-mathematics-and-new-theories/28/interior-color
 class Perturbation_mandelbrot(fs.PerturbationFractal):
     
     def __init__(self, *args, **kwargs):
-        # default values used for postprocessing (potential)
+        # Sets default values used for postprocessing (potential)
         self.potential_kind = "infinity"
         self.potential_d = 2
         self.potential_a_d = 1.
@@ -766,10 +766,45 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         return SA_params
 
 
-    def full_loop(self, file_prefix, subset, max_iter, M_divergence,
-                   epsilon_stationnary, pc_threshold=1.0,
-                   SA_params=None, glitch_eps=None, interior_detect=False,
-                   glitch_max_attempt=0):
+    def prepare_calc(self, *, kind: str, **kwargs):
+        """
+        Prepare the fractal parameters for a calculation run
+        Should at least
+
+        call init_data_types with relevant parameters
+
+        Define the following attibutes :
+        self.codes
+        self.FP_codes
+        self.FP_init
+        self.FP_loop
+        self.SA_init
+        self.SA_loop
+        self.initialize
+        self.iterate
+        self.glitch_stop_index
+        self.glitch_sort_key
+        
+        It is recommended that it should define
+        define useful postproc potential keys
+        """
+        self.kind=kind
+        return getattr(self, kind)(**kwargs)
+
+
+    @fsutils.store_kwargs("calc_options")
+    def calc_std_div(self, *,
+        file_prefix: str,
+        complex_type,
+        subset,
+        max_iter: int,
+        M_divergence: float,
+        epsilon_stationnary: float,
+        pc_threshold: float=0.1,
+        SA_params=None,
+        glitch_eps=None,
+        interior_detect: bool=False,
+        glitch_max_attempt: int=0):
         """
         Computes the full data and derivatives
         - "zn"
@@ -779,153 +814,174 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         Note: if *interior_detect* is false we still allocate the arrays for
         *dzndz* but we do not iterate.
         """
+        self.init_data_types(complex_type)
+        
         # used for potential post-processing
         self.potential_M = M_divergence
 
         if glitch_eps is None:
             glitch_eps = (1.e-6 if self.base_complex_type == np.float64
                           else 1.e-3)
+        self.glitch_eps = glitch_eps
 
-        M_divergence_sq = M_divergence**2
-        epsilon_stationnary_sq = epsilon_stationnary**2
-        glitch_eps_sq = glitch_eps**2
 
         complex_codes = ["zn", "dzndz", "dzndc"]
-        int_codes = ["iref"]
+        int_codes = ["iref"]  # reference FP
         stop_codes = ["max_iter", "divergence", "stationnary",
                       "dyn_glitch", "divref_glitch"]
-        codes = (complex_codes, int_codes, stop_codes)
+        self.codes = (complex_codes, int_codes, stop_codes)
         
+
         if SA_params is None:
             FP_fields = [0, 1, 2]
-            FP_params = {"FP_codes": [complex_codes[f] for f in FP_fields],
-                         "init_array": [mpmath.mp.zero, mpmath.mp.zero,
-                                        mpmath.mp.zero]}
         else:
-            # If SA activated, derivatives will be deduced.
+            # If SA activated, derivatives will be deduced - no need to compute
+            # with FP.
             FP_fields = [0]
-            FP_params = {"FP_codes": [complex_codes[f] for f in FP_fields],
-                         "init_array": [mpmath.mp.zero]}#, mpmath.mp.zero]}
+        self.FP_codes = [complex_codes[f] for f in FP_fields]
 
-#        if SA_params is not None:
-##            cutdeg = SA_params["cutdeg"]
-#            #SA_params["iref"] = 0 #iref
-#            # Initialize with SA(zn), SA(dzndc) (dzndz & dzndz2 deduced 
-#            # by polynomial derivation in method `series_approx`)
-#            def init_P(cutdeg):
-#                return [Xrange_SA([0.], cutdeg=cutdeg),
-#                        Xrange_polynomial([0.], cutdeg=cutdeg)]
-#            SA_params["init_P"] = init_P
+        # Defines FP_init via a function factory
+        def FP_init():
+            SA_params = self.SA_params
+            def func():
+                if SA_params is None:
+                    return [mpmath.mp.zero, mpmath.mp.zero, mpmath.mp.zero]
+                else:
+                    return [mpmath.mp.zero]
+            return func
+        self.FP_init = FP_init
 
-        def FP_loop(FP_array, c0, n_iter):
-            """ Full precision loop
-            derivatives corrected by lenght kc
-            """
-            if SA_params is None:
-                    FP_array[2] = 2. * FP_array[2] * FP_array[0] + 1.
-            FP_array[0] = FP_array[0]**2 + c0
+        # Defines FP_loop via a function factory
+        def FP_loop():
+            SA_params = self.SA_params
+            M_divergence = self.M_divergence
+            def func(FP_array, c0, n_iter):
+                """ Full precision loop
+                derivatives corrected by lenght kc
+                """
+                if SA_params is None:
+                        FP_array[2] = 2. * FP_array[2] * FP_array[0] + 1.
+                FP_array[0] = FP_array[0]**2 + c0
+                # If FP iteration is divergent, raise the semaphore n_iter
+                # We use the sqare not the disc for obvious calc saving
+                if ((abs((FP_array[0]).real) > M_divergence)
+                    or (abs((FP_array[0]).imag) > M_divergence)):
+                    print("Reference point FP iterations escaping at", n_iter)
+                    return n_iter
+            return func
+        self.FP_loop = FP_loop
 
-            # If FP iteration is divergent, raise the semaphore n_iter
-            # We use the sqare not the disc for obvious saving
-            if ((abs((FP_array[0]).real) > M_divergence)
-                or (abs((FP_array[0]).imag) > M_divergence)):
-                print("Reference point FP iterations escaping at", n_iter)
-                return n_iter
+        # Defines SA_init via a function factory
+        def SA_init():
+            # cutdeg = self.SA_params["cutdeg"]
+            def func(cutdeg):
+                return [fsx.Xrange_SA([0.], cutdeg=cutdeg)]
+            return func
+        self.SA_init = SA_init
 
-        def SA_init(cutdeg):
-            return [fsx.Xrange_SA([0.], cutdeg=cutdeg)]
+        # Defines SA_loop via a function factory
+        def SA_loop():
+            def func(P, n_iter, ref_path, kcX):
+                """ Series Approximation loop
+                Note that derivatives w.r.t dc will be deduced directly from the
+                S.A polynomial.
+                """
+                P[0] = P[0] * (P[0] + 2. * ref_path[0]) + kcX
+            return func
+        self.SA_loop = SA_loop
 
-        def SA_loop(P, n_iter, ref_path, kcX):
-            """ Series Approximation loop
-            Note that derivatives w.r.t dc will be deduced directly from the
-            S.A polynomial.
-            """
-            P[0] = P[0] * (P[0] + 2. * ref_path[0]) + kcX
+        # Defines initialize via a function factory
+        def initialize():
+            def func(Z, U, c, chunk_slice, iref):
+                Z[2, :] = 0.
+                Z[1, :] = 1.
+                Z[0, :] = 0.
+                U[0, :] = iref
+            return func
+        self.initialize = initialize
 
-        def initialize(Z, U, c, chunk_slice, iref):
-            Z[2, :] = 0.
-            Z[1, :] = 1.
-            Z[0, :] = 0.
-            U[0, :] = iref
-
-        def iterate(Z, U, c, stop_reason, n_iter, SA_iter,
-                    ref_div_iter, ref_path, ref_path_next):
-            """
-            dz(n+1)dc   <- 2. * dzndc * zn + 1.
-            dz(n+1)dz   <- 2. * dzndz * zn
-            z(n+1)      <- zn**2 + c 
+        # Defines iterate via a function factory
+        def iterate():
+            M_divergence_sq = self.M_divergence ** 2
+            epsilon_stationnary_sq = self.epsilon_stationnary ** 2
+            glitch_eps_sq = self.glitch_eps ** 2
             
-            Termination codes
-            0 -> max_iter reached ('interior')
-            1 -> M_divergence reached by np.abs(zn)
-            2 -> dzn stationnary ('interior early detection')
-            3 -> glitched (Dynamic glitches...)
-            4 -> glitched (Ref point diverging  ...)
-            """
-            if SA_params is None:
-                Z[2, :] = 2. * (ref_path[2] * Z[0, :] + ref_path[0] * Z[2, :]
-                                + Z[0, :] * Z[2, :])
-            else:
-                Z[2, :] = 2. * (ref_path[0] * Z[2, :] + Z[0, :] * Z[2, :])
+            def func(Z, U, c, stop_reason, n_iter, SA_iter,
+                        ref_div_iter, ref_path, ref_path_next):
+                """
+                dz(n+1)dc   <- 2. * dzndc * zn + 1.
+                dz(n+1)dz   <- 2. * dzndz * zn
+                z(n+1)      <- zn**2 + c 
+                
+                Termination codes
+                0 -> max_iter reached ('interior')
+                1 -> M_divergence reached by np.abs(zn)
+                2 -> dzn stationnary ('interior early detection')
+                3 -> glitched (Dynamic glitches...)
+                4 -> glitched (Ref point diverging  ...)
+                """
+                if SA_params is None:
+                    Z[2, :] = 2. * (ref_path[2] * Z[0, :]
+                                    + ref_path[0] * Z[2, :]
+                                    + Z[0, :] * Z[2, :])
+                else:
+                    Z[2, :] = 2. * (ref_path[0] * Z[2, :] + Z[0, :] * Z[2, :])
+    
+                if interior_detect and (n_iter > SA_iter + 1):
+                    Z[1, :] = 2. * (ref_path[0] * Z[1, :] + Z[0, :] * Z[1, :])
+    
+                Z[0, :] = Z[0, :] * (Z[0, :] + 2. * ref_path[0]) + c
+    
+                if n_iter >= max_iter:
+                    # Flagged as 'non-diverging point'
+                    stop_reason[0, :] = 0
+                    return
+    
+                if n_iter >= ref_div_iter:
+                    # Flagged as 'ref point diverging' glitch
+                    stop_reason[0, :] = 4 
+                    return
 
-            if interior_detect and (n_iter > SA_iter + 1):
-                Z[1, :] = 2. * (ref_path[0] * Z[1, :] + Z[0, :] * Z[1, :])
+                # Interior points detection
+                if interior_detect and (n_iter > SA_iter):
+                    bool_stationnary = (
+                            (Z[1, :].real)**2 +  # + ref_path_next[1].real
+                            (Z[1, :].imag)**2 < # + ref_path_next[1].imag
+                            epsilon_stationnary_sq)
+                    stop_reason[0, bool_stationnary] = 2
 
-            Z[0, :] = Z[0, :] * (Z[0, :] + 2. * ref_path[0]) + c
 
-            if n_iter >= max_iter:
-                # Flagged as 'non-diverging point'
-                stop_reason[0, :] = 0
-                return
+                ZZ = Z[0, :] + ref_path_next[0]
+                # full_sq_norm = np.maximum(np.abs(ZZ.real), np.abs(ZZ.imag))
+                if self.Xrange_complex_type:
+                    full_sq_norm = ZZ.abs2()
+                else:
+                    full_sq_norm = ZZ.real**2 + ZZ.imag**2
+    
+                # Flagged as 'diverging'
+                bool_infty = (full_sq_norm > M_divergence_sq)
+                stop_reason[0, bool_infty] = 1
+    
+                # Glitch detection
+    #            if glitch_max_attempt == 0:
+    #                return
+                ref_sq_norm = ref_path_next[0].real**2 + ref_path_next[0].imag**2
+    
+                # Flagged as "dynamic glitch"
+                bool_glitched = (full_sq_norm  < (ref_sq_norm * glitch_eps_sq))
+                stop_reason[0, bool_glitched] = 3
+                # We generate a glitch_sort_key based on 'close to secondary
+                # nucleus' criteria
+                # We use d2zndc2 field to save it, as specified by glitch_sort_key
+                # parameter of self.cycles call.
+                Z[1, bool_glitched] = full_sq_norm[bool_glitched]
 
-            if n_iter >= ref_div_iter:
-                # Flagged as 'ref point diverging' glitch
-                # This cannot occur during "final glitch correction loop"
-                # as ref 0 point is non-escaping.
-                stop_reason[0, :] = 4 
-                return
+            return func
+        self.iterate = iterate
 
-            # Interior points detection
-            if interior_detect and (n_iter > SA_iter):
-                bool_stationnary = (
-                        (Z[1, :].real)**2 +  # + ref_path_next[1].real
-                        (Z[1, :].imag)**2 < # + ref_path_next[1].imag
-                        epsilon_stationnary_sq)
-                stop_reason[0, bool_stationnary] = 2
+        # Parameters for glitch detection and solving
+        self.glitch_stop_index = 3
+        self.glitch_sort_key = "dzndz"
 
-            
-
-            ZZ = Z[0, :] + ref_path_next[0]
-            # full_sq_norm = np.maximum(np.abs(ZZ.real), np.abs(ZZ.imag))
-            if self.Xrange_complex_type:
-                full_sq_norm = ZZ.abs2()
-            else:
-                full_sq_norm = ZZ.real**2 + ZZ.imag**2
-
-            # Flagged as 'diverging'
-            bool_infty = (full_sq_norm > M_divergence_sq)
-            stop_reason[0, bool_infty] = 1
-
-            # Glitch detection
-#            if glitch_max_attempt == 0:
-#                return
-            ref_sq_norm = ref_path_next[0].real**2 + ref_path_next[0].imag**2
-
-            # Flagged as "dynamic glitch"
-            bool_glitched = (full_sq_norm  < (ref_sq_norm * glitch_eps_sq))
-            stop_reason[0, bool_glitched] = 3
-            # We generate a glitch_sort_key based on 'close to secondary
-            # nucleus' criteria
-            # We use d2zndc2 field to save it, as specified by glitch_sort_key
-            # parameter of self.cycles call.
-            Z[1, bool_glitched] = full_sq_norm[bool_glitched]
-
-        # Lauching cycles, with glitch correction 'ON'
-        self.cycles(FP_loop, FP_params, SA_init, SA_loop, SA_params, max_iter,
-               initialize, iterate, subset, codes,
-               file_prefix, pc_threshold,
-               glitch_stop_index=3,
-               glitch_sort_key="dzndz",
-               glitch_max_attempt=glitch_max_attempt)
 
 

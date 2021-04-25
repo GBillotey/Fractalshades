@@ -17,7 +17,8 @@ import datetime
 import pickle
 
 import fractalshades.numpy_utils.xrange as fsx
-import fractalshades.settings as settings
+import fractalshades.settings as fssettings
+import fractalshades.utils as fsutils
 
 def mkdir_p(path):
     """ Creates directory ; if exists does nothing """
@@ -402,7 +403,8 @@ class Multiprocess_filler():
                 kwargs[self.iter_kwargs] = key
                 return method(instance, *args, **kwargs)
 
-            if settings.enable_multiprocessing and not(self.veto_multiprocess):
+            if (fssettings.enable_multiprocessing
+                and not(self.veto_multiprocess)):
                 print("Launch Multiprocess_filler of ", method.__name__)
                 print("cpu count:", multiprocessing.cpu_count())
                 redirect_path = getattr(instance, self.redirect_path_attr)
@@ -487,8 +489,6 @@ class Fractal_Data_array():
         elif mode == "rw+temp":
             subarray_file = self._ref[chunk_slice]
             _ = subarray_file.seek(0)
-            # Note : no "extended_range" magic... to be handled downstream
-            # if accessing raw Z values
             return np.load(subarray_file)
         else:
             raise ValueError("Unexpected read call for mode : " + 
@@ -805,7 +805,7 @@ the array returned by base_data_key
                           (post_name, post_dic) for just 1 key here.
         veto_blend:  Boolean, if true the layer will be output to a greyscale
             image but NOT blended with the rgb base image to give the final
-            image. Note that irrelative to veto_blend, a displacement layer
+            image. Note that irrespective to veto_blend, a displacement layer
             (see doc for disp_layer param) is intended for further
             post-processing and never blended to the final image.
         Fourrier, skewness, hardness, intensity, blur_ranges : arguments passed
@@ -844,7 +844,6 @@ the array returned by base_data_key
                 # Clipping in case of imposed min max range
                 data = np.where(data < -1., -1., data)
                 data = np.where(data > 1., 1., data)
-
 
             if skewness is not None:
                 data = self.skew(skewness, data)
@@ -1098,11 +1097,12 @@ the array returned by base_data_key
 
         # Avoid + inf values also
         bd_finite = np.isfinite(base_data)
-        lmin = np.nanmin(base_data[bd_finite])
-        lmax = np.nanmax(base_data[bd_finite])
 
-        self.base_min = np.nanmin([lmin, self.base_min])
-        self.base_max = np.nanmax([lmax, self.base_max])
+        if np.any(bd_finite):
+            lmin = np.nanmin(base_data[bd_finite])
+            lmax = np.nanmax(base_data[bd_finite])
+            self.base_min = np.nanmin([lmin, self.base_min])
+            self.base_max = np.nanmax([lmax, self.base_max])
 
 
     def compute_baselayer_hist(self):
@@ -1223,6 +1223,7 @@ the array returned by base_data_key
         # now we render the layers
         i_grey_img = 0  # here the first...
         for i_layer, layer_options in enumerate(self.grey_layers):
+
             shade = chunk_2d[i_layer + 1 + i_base, :, :]
             shade_function = layer_options["layer_func"]
             data_min, data_max = layers_minmax[i_layer]
@@ -1237,9 +1238,6 @@ the array returned by base_data_key
 
             if layer_options["disp_layer"]:
                 shade = np.where(np.isnan(shade), 0.0, shade)
-
-#            if layer_options["output"]:
-#                if layer_options["disp_layer"]:
                 layer_mask_color = layer_options["layer_mask_color"]
                 paste_layer = PIL.Image.fromarray(self.np2PIL(
                         np.int32(shade * 65535))) # 2**16-1
@@ -1477,59 +1475,7 @@ the array returned by base_data_key
             im = PIL.Image.composite(im1, im2, mask).convert(output_mode)
 
         im.save(im_path)
-        
-#    def to_cartesian(self, exp_img_file, zooms):
-#        """
-#        """
-#        im_path_source = os.path.join(self.plot_dir, exp_img_file)
-#        exp_img = PIL.Image.open(im_path_source)
-#        for zoom in zooms:
-#            map_nx, map_ny = exp_img.size
-#            h_max =  2 * np.pi * map_nx / map_ny
-#            res_nx = map_ny / np.pi
-#            res_ny = res_nx
-#            # define y_loc, xloc in 0..1 x 0..1
-#            x_loc, y_loc = np.meshgrid(np.linspace(-1., 1., res_nx),
-#                                       np.linspace(-1., 1., res_ny))
-#            rho = np.sqrt(y_loc, x_loc) * zoom
-#            phi = np.arctan2(y_loc, x_loc)
-#            xbar = np.where(rho < 1., rho, np.log(rho) + 1.)
-#            ybar = phi * (np.arctan(xbar * np.pi / 2.) / np.pi * 2.)
-#            rgb_zoom = np.array([res_nx, res_ny, 3], dtype= np.float32)
-#            
-#            h_chunk = (100. / map_nx) * h_max
-#            xbar_min = np.min(xbar)
-#            xbar_max = np.max(xbar)
-#
-#            # loop by steps of 1h
-#            for ih in range(int((xbar_max - xbar_min) / h_chunk + 1)):
-#                crop_h = (xbar_max + ih * h_chunk, 
-#                          xbar_max + (ih + 1) * h_chunk )
-#                self.to_cartesian_cropped(self, crop_h, xbar, ybar, rgb_zoom)
-#            # now look in the original pic in terms of xbar ybar
-#            
-#        
-##    @Multiprocess_filler(iterable_attr="chunk_slices",
-##        iter_kwargs="zoom_slice", veto_multiprocess=True)
-#    def to_cartesian_cropped(self, zoom_img, crop_h, xbar, ybar, rgb_zoom):
-#        in_crop = (xbar >= crop_h) & (xbar < crop_h + 1.)
-#        h_loc = np.log(zoom)
-#        numpy.array(zoom_img.)
-    
-#        elif self.projection == "exp_map":
-#            h_max = 2. * np.pi / self.xy_ratio # max h reached on the picture
-#            xbar = (dx_vec / dx + 0.5) * h_max  # 0 .. hmax
-#            ybar = dy_vec / dy * 2. * np.pi     # -pi .. +pi
-#
-#            phi = ybar / (np.arctan(xbar * np.pi / 2.) / np.pi * 2.)
-#            phi = np.where(np.abs(phi) > np.pi, np.nan, phi) # outside
-#            rho = np.where(xbar < 1., xbar, np.exp(xbar - 1.))
-#            rho = rho * dx
-#
-#            x_vec = x + rho * np.cos(phi)
-#            y_vec = y + rho * np.sin(phi) 
-#    
-    
+
 
 class Fractal():
     """
@@ -1541,56 +1487,54 @@ class Fractal():
 https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbrot_set
     """
 
-    def __init__(self, directory, x, y, dx, nx, xy_ratio, theta_deg,
-                 chunk_size=200, complex_type=np.complex128,
-                 projection="cartesian", antialiasing=False):
+    def __init__(self, directory):
         """
         Parameters
     *directory*   The working base directory
+    *complex_type*  numpy type or ("Xrange", numpy type)
+        """
+        self.directory = directory
+
+    def init_data_types(self, complex_type):
+        if type(complex_type) is tuple:
+            type_modifier, _ = complex_type
+            if type_modifier != "Xrange":
+                raise ValueError(type_modifier)
+        self.complex_type = complex_type
+        self.float_postproc_type = np.float32
+        self.termination_type = np.int8
+        self.int_type = np.int32
+
+    @fsutils.store_kwargs("zoom_options")
+    def zoom(self, *,
+             x: float,
+             y: float,
+             dx: float,
+             nx: int,
+             xy_ratio: float,
+             theta_deg: float,
+             projection: str="cartesian",
+             antialiasing: bool=False):
+        """
+        Parameters
     *x* *y*  coordinates of the central point
     *dx*     reference data range (on x axis). Definition depends of the
         projection selected, for 'cartesian' (default) this is the total span.
     *nx*     number of pixels of the image along x axis
     *xy_ratio*  ratio of dy / dx and ny / nx
     *theta_deg*    Pre-rotation of the calculation domain
-    *chunk_size*   size of the basic calculation 'tile' is chunk_size x chunk_size
     *complex_type*  numpy type or ("Xrange", numpy type)
     *projection*   "cartesian" "spherical" "exp_map"
         """
-        self.x = x
-        self.y = y
-        self.nx = nx
-        self.dx = dx
-        self.xy_ratio = xy_ratio
-        self.theta_deg = theta_deg
-        self.directory = directory
-        self.chunk_size = chunk_size
-        self.projection = projection
-        self.multiprocess_dir = os.path.join(self.directory, "multiproc_calc")
+        # We're all set, job is done by the wrapper...
 
-        # Data types
-        self.complex_type = complex_type
-        self.Xrange_complex_type = False
-        self.base_complex_type = complex_type
-        if type(self.complex_type) is tuple:
-            type_modifier, base_complex_type = self.complex_type
-            if type_modifier != "Xrange":
-                raise ValueError(type_modifier)
-            self.Xrange_complex_type = True
-            self.base_complex_type = base_complex_type
+    def run(self):
+        """
+        Lauch a full calculation
+        """
+        self.iref = None
+        self.cycles()
 
-        select = {np.complex64: np.float32,
-                  np.complex128: np.float64}
-        self.base_float_type = select[self.base_complex_type]
-
-        # self.complex_store_type = self.base_complex_type # unused
-        self.float_postproc_type = np.float32
-        self.termination_type = np.int8
-        self.int_type = np.int32
-        
-        self.antialiasing = antialiasing
-        
-        
 
     @property
     def ny(self):
@@ -1606,25 +1550,49 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
             self._px = self.dx / self.nx
         return self._px
 
+    @property
+    def multiprocess_dir(self):
+        return os.path.join(self.directory, "multiproc_calc")
+
+    @property
+    def Xrange_complex_type(self):
+        return type(self.complex_type) is tuple
+
+    @property
+    def base_complex_type(self):
+        complex_type = self.complex_type
+        if type(complex_type) is tuple:
+            _, complex_type = complex_type
+        return complex_type
+
+    @property
+    def base_float_type(self):
+        select = {np.dtype(np.complex64): np.dtype(np.float32),
+                  np.dtype(np.complex128): np.dtype(np.float64)}
+        return select[np.dtype(self.base_complex_type)]
+
     @property    
     def params(self):
         """ Used for tagging a data chunk
         """
-        return {"Software": "py-fractal",
+        software_params = {
+                "Software": "fractalshades",
                 "fractal": type(self).__name__,
                 "datetime": datetime.datetime.today().strftime(
-                        '%Y-%m-%d_%H:%M:%S'),
-                "x": self.x,
-                "y": self.y,
-                "nx": self.nx,
-                "ny": self.ny,
-                "dx": self.dx,
-                "dy": self.dy,
-                "theta_deg": self.theta_deg,
-                "projection": self.projection}
-#                "max_iter": self.max_iter,
-#                "M_divergence": self.M_divergence,
-#                "epsilon_stationnary": self.epsilon_stationnary}
+                        '%Y-%m-%d_%H:%M:%S')}
+        zoom_params = self.zoom_options
+        calc_params = self.calc_options
+        
+        print("software_params", software_params)
+        print("zoom_params", zoom_params)
+        print("calc_params", calc_params)
+
+        res = dict(software_params)
+        res.update(zoom_params)
+        res.update(calc_params)
+        print("res", res)
+        
+        return res
 
     def data_file(self, chunk_slice, file_prefix):
         """
@@ -1634,7 +1602,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         return os.path.join(self.directory, "data",
                 file_prefix + "_{0:d}-{1:d}_{2:d}-{3:d}.tmp".format(
                 *chunk_slice))
-        
+
     def clean_up(self, file_prefix):
         """ Deletes all data files associated with a given file_prefix
         """
@@ -1685,35 +1653,31 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         
         # If no_compute ...
         except FileNotFoundError:
-            if not(settings.skip_calc):
+            if not(fssettings.skip_calc):
                 raise
             
             # Else: no_compute selected, return empty fields
-            # Except: first chunk will be computed (maybe more if
-            # multiprocessing)
             for ref_chunk_slice in self.chunk_slices():
-                ref_path = self.data_file(ref_chunk_slice, file_prefix)
-                with open(ref_path, 'rb') as tmpfile:
-                    params = pickle.load(tmpfile)
-                    codes = pickle.load(tmpfile)
-                    if scan_only:
-                        return params, codes
-                    raw_data = pickle.load(tmpfile)
+#                ref_path = self.data_file(ref_chunk_slice, file_prefix)
+#                with open(ref_path, 'rb') as tmpfile:
+                params = copy.deepcopy(self.calc_options)#pickle.load(tmpfile)
+                codes = self.codes #pickle.load(tmpfile)
+                if scan_only:
+                    return params, codes
+                n_Z, n_U, n_stop = (len(code) for code in codes)
+                (ix, ixx, iy, iyy) = chunk_slice
+                nxy = (ixx - ix) * (iyy - iy)
+                chunk_mask = np.zeros([nxy], dtype=np.bool)
+                if not(self.Xrange_complex_type):
+                    Z = np.zeros([n_Z, 0], dtype=self.base_complex_type)
+                else:
+                    Z = fsx.Xrange_array.zeros([n_Z, 0],
+                                           dtype=self.base_complex_type)
+                U = np.zeros([n_U, 0], dtype=self.int_type)
+                stop_reason = -np.ones([1, 0], dtype=self.termination_type)
+                stop_iter = np.zeros([1, 0], dtype=self.int_type)
 
-                    n_Z, n_U, n_stop = (len(code) for code in codes)
-                    (ix, ixx, iy, iyy) = chunk_slice
-                    nxy = (ixx - ix) * (iyy - iy)
-                    chunk_mask = np.zeros([nxy], dtype=np.bool)
-                    if not(self.Xrange_complex_type):
-                        Z = np.zeros([n_Z, 0], dtype=self.base_complex_type)
-                    else:
-                        Z = fsx.Xrange_array.zeros([n_Z, 0],
-                                               dtype=self.base_complex_type)
-                    U = np.zeros([n_U, 0], dtype=self.int_type)
-                    stop_reason = -np.ones([1, 0], dtype=self.termination_type)
-                    stop_iter = np.zeros([1, 0], dtype=self.int_type)
-
-                    raw_data = (chunk_mask, Z, U, stop_reason, stop_iter)
+                raw_data = (chunk_mask, Z, U, stop_reason, stop_iter)
                 return params, codes, raw_data
             
 
@@ -1726,14 +1690,14 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         """
         return
 
-    def chunk_slices(self, chunk_size=None):
+    def chunk_slices(self): #, chunk_size=None):
         """
         Genrator function
         Yields the chunks spans (ix, ixx, iy, iyy)
         with each chunk of size chunk_size x chunk_size
         """
-        if chunk_size is None:
-            chunk_size = self.chunk_size
+        # if chunk_size is None:
+        chunk_size = fssettings.chunk_size
 
         for ix in range(0, self.nx, chunk_size):
             ixx = min(ix + chunk_size, self.nx)
@@ -1742,7 +1706,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                 yield  (ix, ixx, iy, iyy)
 
 
-    def c_chunk(self, chunk_slice):#, data_type=None):
+    def c_chunk(self, chunk_slice):
         """
         Returns a chunk of c_vec for the calculation
         Parameters
@@ -1895,13 +1859,29 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         return px
 
 
+    def res_available(self, chunk_slice):
+        """  Returns True if chunkslice is already computed with current
+        parameters
+        (Otherwise False)
+        """
+        try:
+            (dparams, dcodes) = self.reload_data_chunk(chunk_slice,
+                self.file_prefix, scan_only=True)
+        except IOError:
+            return False
+        
+        return True
+        # TODO: If we want to be more restrictive
+        # return self.dic_matching(dparams, self.calc_params)
+
+
     @Multiprocess_filler(iterable_attr="chunk_slices",
                          redirect_path_attr="multiprocess_dir",
                          iter_kwargs="chunk_slice")
-    def cycles(self, initialize, iterate, subset, codes, file_prefix,
-               chunk_slice=None, pc_threshold=0.2,
-               iref=None, ref_path=None, SA_params=None,
-               glitched=None, irefs=None):
+    def cycles(self, chunk_slice=None, SA_params=None):#initialize, iterate, subset, codes, file_prefix,
+              # , pc_threshold=0.2,
+              # iref=None, ref_path=None, SA_params=None,
+              # glitched=None, irefs=None):
         """
         Fast-looping for Julia and Mandelbrot sets computation.
 
@@ -1936,160 +1916,42 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
             *stop_iter*     Numbers of iterations when stopped [:]     np.int32
         """
         print("**CALLING cycles ")
-        print("iref", iref)
-        if SA_params is not None:
-            print("SA_params cutdeg", SA_params["cutdeg"])
-            print("SA_params iref", SA_params["iref"])
-            print("SA_params kc", SA_params["kc"])
-        print("**/CALLING cycles ")
+#        print("iref", iref)
+#        if SA_params is not None:
+#            print("SA_params cutdeg", SA_params["cutdeg"])
+#            print("SA_params iref", SA_params["iref"])
+#            print("SA_params kc", SA_params["kc"])
+#        print("**/CALLING cycles ")
         
+        if self.res_available(chunk_slice):
+            return
         
-        if subset is not None:
-            chunk_mask = np.ravel(subset[chunk_slice])
+
+#        initialize = self.initialize()
+        print("init_cycling_arrays", type(self))
+        if self.iref is None:
+            (c, Z, U, stop_reason, stop_iter, n_stop, bool_active,
+             index_active, n_iter) = self.init_cycling_arrays(chunk_slice)
         else:
-            chunk_mask = None
-        
-        # First tries to reload the data :
-        try:
-            (dparams, dcodes) = self.reload_data_chunk(chunk_slice,
-                                                   file_prefix, scan_only=True)
-            self.dic_matching(dparams, self.params)
-            self.dic_matching(dcodes, codes)
+            (c, Z, U, stop_reason, stop_iter, n_stop, bool_active,
+             index_active, n_iter, SA_iter, ref_div_iter, ref_path
+             ) = self.init_cycling_arrays(chunk_slice, SA_params)
+            
 
-            if (iref is None) or iref == 0:
-                print("Data found, skipping calc: ", chunk_slice)
-                return
-            # Now if this is a glitch correction iteration... we should check
-            # if any pixel in this chunk is glitched with iref_pix < iref
-            else:
-                glitch_loop =True
-                glitched_chunk = np.ravel(glitched[chunk_slice])
-                print("glitched count", np.count_nonzero(glitched[chunk_slice]))
-                # glitched_chunk[...] = True #debug
-                irefs_chunk = np.ravel(irefs[chunk_slice])
-                if subset is not None:
-                    glitched_chunk = glitched_chunk[chunk_mask]
-                    irefs_chunk = irefs_chunk[chunk_mask]
-                if (np.any(glitched_chunk) and
-                    (np.min(irefs_chunk[glitched_chunk]) < iref)):
-                    print("Glitch correction triggered, computing: ", iref)
-                else:
-                    print("Data found in glitch correction loop, "
-                          "skipping calc: ", chunk_slice)        
-                    return
-        except IOError:
-            glitch_loop = False # File not found, nothing to 'unglitch'
-            print("Unable to find data_file, computing")
+        c_act = c.copy()
+        Z_act = Z.copy()
+        U_act = U.copy()
+        stop_reason_act = stop_reason.copy()
 
-
-        # We didn't find, we need to compute
-        if iref is not None: # Using perturbation
-            c = self.diff_c_chunk(chunk_slice, iref, file_prefix)
-            Xrc_needed = False
-            if not(self.Xrange_complex_type) and (SA_params is not None):
-                # We still need a Xrange version, to evaluate...
-                Xrc_needed = True
-                Xrc = self.diff_c_chunk(chunk_slice, iref, file_prefix,
-                                        ensure_Xr=True)
-        else:
-            c = self.c_chunk(chunk_slice)
-
-        (ix, ixx, iy, iyy) = chunk_slice
-        # print("c_chunk", chunk_slice, ":\n", c)
-
-        c = np.ravel(c)
-        if subset is not None:
-            c = c[chunk_mask]
-
-        if Xrc_needed:
-            Xrc = np.ravel(Xrc)
-            if subset is not None:
-                Xrc = Xrc[chunk_mask]
-
-        (n_pts,) = c.shape
-        n_Z, n_U, n_stop = (len(code) for code in codes)
-        if self.Xrange_complex_type:
-            Z = fsx.Xrange_array.zeros([n_Z, n_pts], dtype=self.base_complex_type)
-        else:
-            Z = np.zeros([n_Z, n_pts], dtype=self.complex_type)
-        U = np.zeros([n_U, n_pts], dtype=self.int_type)
-        stop_reason = -np.ones([1, n_pts], dtype=self.termination_type) # np.int8 -> -128 to 127
-        stop_iter = np.zeros([1, n_pts], dtype=self.int_type)
-
-        if iref is not None:
-            initialize(Z, U, c, chunk_slice, iref)
-            # check if ref point had a early exit
-            FP_params = self.reload_ref_point(iref, file_prefix, scan_only=True)
-            ref_div_iter = FP_params.get("div_iter", 2**63 - 1) # max int64
-        else:
-            initialize(Z, U, c, chunk_slice)
-
-        #  temporary array for looping
-        index_active = np.arange(c.size, dtype=self.int_type)
-        bool_active = np.ones(c.size, dtype=np.bool)
-        looping = True
-
-        if glitch_loop:
-            # Glitch correction engaged - we will only loop the glitched pixel
-            # and keep the other 'as is'. We reload "raw data"
-            (dparams, dcodes, raw_data) = self.reload_data_chunk(chunk_slice,
-                                       file_prefix, scan_only=False)
-            k_chunk_mask, k_Z, k_U, k_stop_reason, k_stop_iter = raw_data
-
-            keep = ~glitched_chunk
-            if k_chunk_mask is not None: # Safeguard
-                np.testing.assert_equal(k_chunk_mask, chunk_mask)
-
-            Z[:, keep] = k_Z[:, keep]
-            U[:, keep] = k_U[:, keep]
-            stop_reason[:, keep] =  k_stop_reason[:, keep]
-            stop_iter[:, keep] = k_stop_iter[:, keep]
-
-            index_active = index_active[glitched_chunk]
-            # avoid np.copy(c), use c.copy() for ndarray subclasses
-            Z_act = (Z[:, glitched_chunk]).copy() 
-            U_act = np.copy(U[:, glitched_chunk])
-            stop_reason_act = np.copy(stop_reason[:, glitched_chunk])
-            c_act = (c[glitched_chunk]).copy() 
-            if Xrc_needed:
-                Xrc = Xrc[glitched_chunk]
-            bool_active = glitched_chunk[glitched_chunk]
-
-        else:
-            # No glitch correction, every pixel active...
-            Z_act = Z.copy()
-            U_act = np.copy(U)
-            stop_reason_act = np.copy(stop_reason)
-            c_act = c.copy()
-
-
-        n_iter = 0
-        SA_iter = 0
-        # Skipping first iterations if Series approximation activated
-        if SA_params is not None:# and False:
-            # Check if SA given is from another ref point in this case it will
-            # need to be translated
-            SA_shift = (SA_params["iref"] != iref)
-            if SA_shift:
-                raise RuntimeError("SA should be shifted 'before' cycling:" + 
-                                   "use taylor_shift")
-
-            n_iter = SA_params["n_iter"]
-            SA_iter = n_iter
-            kc = SA_params["kc"]
-            P = SA_params["P"]
-
-            for i_z in range(n_Z):
-                if self.Xrange_complex_type:
-                    Z_act[i_z, :] = (P[i_z])(c_act / kc)
-                else:
-                    Z_act[i_z, :] = ((P[i_z])(Xrc / kc)).to_standard()
-
-
+        iterate = self.iterate()
         pc_trigger = [False, 0, 0]   #  flag, counter, count_trigger
+        pc_threshold = self.pc_threshold
         
         print("**/CALLING cycles looping,  n_stop", n_stop)
-        while looping:
+        print("**/active: ", np.count_nonzero(bool_active), np.shape(bool_active))
+        cycling = True
+        
+        while cycling:
             n_iter += 1
 
             # 1) Reduce of all arrays to the active part at n_iter
@@ -2101,12 +1963,12 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                 index_active = index_active[bool_active]
 
             # 2) Iterate all active parts vec, delegate to *iterate*
-            if iref is not None:
+            if self.iref is None:
+                iterate(Z_act, U_act, c_act, stop_reason_act, n_iter)
+            else:
                 iterate(Z_act, U_act, c_act, stop_reason_act, n_iter, SA_iter,
                         ref_div_iter, ref_path[n_iter - 1 , :],
                         ref_path[n_iter, :])
-            else:
-                iterate(Z_act, U_act, c_act, stop_reason_act, n_iter)
 
             stopped = (stop_reason_act[0, :] >= 0)
             index_stopped = index_active[stopped]
@@ -2117,45 +1979,89 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
             bool_active = ~stopped
 
             count_active = np.count_nonzero(bool_active)
-            pc = 0 if(count_active == 0) else count_active / (c.size *.01)
+            pc = 0 if (count_active == 0) else count_active / (c.size *.01)
 
             if (count_active < 3 or pc < pc_threshold) and n_iter > 5000:
                 if pc_trigger[0]:
                     pc_trigger[1] += 1   # increment counter
                 else:
                     pc_trigger[0] = True # start couting
-                    pc_trigger[2] = int(n_iter * 0.25) # set_trigger to 125%
+                    pc_trigger[2] = int(n_iter + 0.25 * (n_iter - SA_iter)) # set_trigger to 125%
                     print("Trigger hit at", n_iter)
                     print("will exit at most at", pc_trigger[2] + n_iter)
-                    sys.stdout.flush()
-                    
-                    reasons_pc = np.zeros([n_stop], dtype=np.float32)
-                    for stop in range(n_stop):
-                        reasons_pc[stop] = np.count_nonzero(
-                            stop_reason[0, :] == stop) /(c.size *.01)
-                    status = ("iter{0} : active: {1} - {2}% " +
-                              "- by reasons (%): {3}").format(
-                              n_iter, count_active, pc, reasons_pc)
-                    print(status)
+                    self.print_cycling_status(n_iter, count_active, pc,
+                        stop_reason, c.size, n_stop)
 
-            looping = (count_active != 0 and
-                       (pc_trigger[1] <= pc_trigger[2]))
-            if n_iter%500 == 0: # 5000
-                reasons_pc = np.zeros([n_stop], dtype=np.float32)
-                for stop in range(n_stop):
-                    reasons_pc[stop] = np.count_nonzero(
-                        stop_reason[0, :] == stop) /(c.size *.01)
-                status = ("iter{0} : active: {1} - {2}% " +
-                          "- by reasons (%): {3}").format(
-                          n_iter, count_active, pc, reasons_pc)
-                print(status)
-                sys.stdout.flush()
+            if n_iter % 500 == 0: # 5000
+                self.print_cycling_status(n_iter, count_active, pc,
+                    stop_reason, c.size, n_stop)
 
-        # Don't save temporary codes - i.e. those which startwith "_"
-        # inside Z and U arrays
+            cycling = (count_active != 0 and (pc_trigger[1] <= pc_trigger[2]))
+        
+        # Saving the results
+        self.save_cycling_arrays(chunk_slice, Z, U, stop_reason, stop_iter)
+
+
+    def chunk_mask(self, chunk_slice):
+        subset = self.subset
+        if subset is not None:
+            return np.ravel(subset[chunk_slice])
+        else:
+            return None
+
+    def print_cycling_status(self, n_iter, count_active, pc, stop_reason,
+                             ref_100, n_stop):
+        reasons_pc = np.zeros([n_stop], dtype=np.float32)
+        for stop in range(n_stop):
+            reasons_pc[stop] = np.count_nonzero(
+                stop_reason[0, :] == stop) / (ref_100 * .01)
+        status = ("iter{0} : active: {1} - {2}% " +
+                  "- by reasons (%): {3}").format(
+                  n_iter, count_active, pc, reasons_pc)
+        print(status)
+        # Likely to be called from a subprocess, so flush stdout to avoid lag
+        sys.stdout.flush()
+
+
+    def init_cycling_arrays(self, chunk_slice):
+        """
+        Prepared the chunk arrays for subsequent looping
+        """
+        c = np.ravel(self.c_chunk(chunk_slice))
+        if self.subset is not None:
+            c = c[self.chunk_mask(chunk_slice)]
+
+        (n_pts,) = c.shape
+        n_Z, n_U, n_stop = (len(code) for code in self.codes)
+
+        if self.Xrange_complex_type:
+            Z = fsx.Xrange_array.zeros([n_Z, n_pts],
+                                       dtype=self.base_complex_type)
+        else:
+            Z = np.zeros([n_Z, n_pts], dtype=self.complex_type)
+        U = np.zeros([n_U, n_pts], dtype=self.int_type)
+        stop_reason = -np.ones([1, n_pts], dtype=self.termination_type)
+        stop_iter = np.zeros([1, n_pts], dtype=self.int_type)
+
+        self.initialize()(Z, U, c, chunk_slice)
+
+        # We start at 0 with all index active
+        n_iter = 0
+        index_active = np.arange(c.size, dtype=self.int_type)
+        bool_active = np.ones(c.size, dtype=np.bool)
+
+        return (c, Z, U, stop_reason, stop_iter, n_stop, bool_active,
+                index_active, n_iter)
+
+
+    def save_cycling_arrays(self, chunk_slice, Z, U, stop_reason, stop_iter):
+        """
+        Save in data file,
+        Don't save temporary codes - i.e. those which startwith "_"
+        """
         select = {0: Z, 1: U}
         target = [None, None]
-        save_codes = copy.copy(codes) # deepcopy
+        save_codes = copy.deepcopy(self.codes)
         for icode, code in enumerate(save_codes):
             if icode == 2:
                 break
@@ -2166,17 +2072,17 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                 del code[index]
         save_Z, save_U = target
             
+        chunk_mask = self.chunk_mask(chunk_slice)
         raw_data = [chunk_mask, save_Z, save_U, stop_reason, stop_iter]
-        
-        self.save_data_chunk(chunk_slice, file_prefix, self.params,
+
+        self.save_data_chunk(chunk_slice, self.file_prefix, self.params,
                              save_codes, raw_data)
 
 
     def kind_from_code(self, code, codes):
         """
         codes as returned by 
-        (params, codes) = self.reload_data_chunk(chunk_slice,
-                                                   file_prefix, scan_only=True)
+        (params, codes) = self.reload_data_chunk(chunk_slice, file_prefix)
         """
         complex_codes, int_codes, _ = codes
         if code in complex_codes:
@@ -2328,8 +2234,8 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                           | "ratio_specular":}
                           |
         [attr_shade]      | {"theta_LS":, "phi_LS":, "shininess":, 
-                          | "ratio_specular":, "LS_coords"} 
-        [power_attr_shade]| As for ["attr_shade"] 
+                          | "ratio_specular":, "LS_coords"}
+        [power_attr_shade]| As for ["attr_shade"]
                           |
         [field_lines]     | {"n_iter", "swirl"}
         [Lyapounov]       | {"n_iter": [field / None]}
@@ -2376,7 +2282,6 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                 for prop in ["kind", "d", "a_d", "M"]:
                     potential_dic[prop] =  post_dic.get(prop, getattr(
                             self, "potential_" + prop, None))
-                print("€€DEBUG, potential_dic", potential_dic)
 
                 if potential_dic["kind"] == "infinity":
                     d = potential_dic["d"]
@@ -2388,8 +2293,6 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                     # suppose the highest order monome is normalized
                     nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(M * k))
                                 / np.log(d))
-                    print("€€DEBUG, nu_frac", nu_frac)
-#                    print("nu_frac", type(nu_frac), nu_frac.dtype)
 
                 elif potential_dic["kind"] == "convergent":
                     eps = potential_dic["epsilon_cv"]
@@ -2400,30 +2303,32 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
 
                 elif potential_dic["kind"] == "transcendent":
                     # Not possible to define a proper potential for a 
-                    # transcencdent fonction
+                    # transcendental fonction
                     nu_frac = 0.
 
                 else:
                     raise NotImplementedError("Potential 'kind' unsupported")
-#                print("nu_frac", type(nu_frac), nu_frac.dtype, nu_frac.shape)
-#                print("n", type(n), n.dtype, n.shape)
-                #nu = n[].astype(self.base_complex_type) + nu_frac
+
                 if type(nu_frac) == fsx.Xrange_array:
                     nu_frac = nu_frac.to_standard()
+
+                # We need to take care of special cases to ensure that
+                # -1 < nu_frac <= 0. 
+                # This happen e.g. when the pixel hasn't reach the limit circle
+                # at current max_iter, so its status is undefined.
+                nu_div, nu_mod = np.divmod(-nu_frac, 1.)
+                nu_frac = - nu_mod
+                n -= nu_div.astype(n.dtype) # need explicit casting to int
+
                 nu = n + nu_frac
                 val = nu
-                print("€€DEBUG, val", val)
 
 
             elif post_name == "DEM_shade":
                 if not has_potential:
                     raise ValueError("Potential shall be defined before shade")
                 dzndc = Z[complex_dic["dzndc"], :]
-                color_tool_dic = fill_color_tool_dic() #post_dic.copy()
-#                color_tool_dic["chunk_slice"] = chunk_slice
-#                color_tool_dic["chunk_mask"] = chunk_mask
-#                color_tool_dic["nx"] = self.nx
-#                color_tool_dic["ny"] = self.ny
+                color_tool_dic = fill_color_tool_dic()
                 shade_kind = color_tool_dic.pop("kind")
 
                 if shade_kind == "Milnor":   # use only for z -> z**2 + c
@@ -2513,7 +2418,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                     t = [np.angle(z_norm)]
                     val = np.zeros_like(t)
                     # Convergence of a geometric serie at 1 percent
-                    damping = 0.01 ** (1 / (n_iter_fl + 1))
+                    damping = 0.01 ** (1. / (n_iter_fl + 1))
                     di = 1.
                     rg = np.random.default_rng(0)
                     dphi_arr = rg.random(n_iter_fl) * swirl_fl * np.pi * 0.25
@@ -2534,6 +2439,10 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                     val = np.angle(z_star - zn) + nu_frac * beta
                     # We have an issue if z_star == zn...
                     val = val * 2.
+                else:
+                    raise ValueError(
+                        "Unsupported potential '{}' for field lines".format(
+                                potential_dic["kind"]))
 
 
             elif post_name == "Lyapounov":
