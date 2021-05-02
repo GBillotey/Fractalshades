@@ -792,7 +792,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         return getattr(self, kind)(**kwargs)
 
 
-    @fsutils.store_kwargs("calc_options")
+    @fsutils.calc_options
     def calc_std_div(self, *,
         file_prefix: str,
         complex_type,

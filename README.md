@@ -5,8 +5,7 @@ The pupose of this python package is to propose standard or deep-zoom exploratio
 
 ## Prerequisites
 This Python package relies on the following dependencies:
-numpy, mpmath, Pillow.
-The GUI-part uses wx.python 
+numpy, mpmath, Pillow, PyQt5.
 
 ## Getting started
 Section under rework - more to come
@@ -14,6 +13,14 @@ Section under rework - more to come
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
+## Credits
+The following online ressources have been incredibly useful:
+https://mathr.co.uk/blog/
+https://fractalforums.org/
+http://www.fractalforums.com/announcements-and-news
+https://www.math.univ-toulouse.fr/~cheritat/wiki-draw/index.php/Mandelbrot_set
+
 
 ## License
 BSD-3
+

@@ -27,8 +27,8 @@ class PerturbationFractal(fs.Fractal):
 #        self.ref_array = {}
         super().__init__(directory)#, x, y, dx, nx, xy_ratio, theta_deg,
              #**kwargs)
-    
-    @fsutils.store_kwargs("zoom_options")
+
+    @fsutils.zoom_options
     def zoom(self, *,
              precision: int,
              x: str,

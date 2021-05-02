@@ -11,7 +11,9 @@ pip install wxPython==4.1.1
 
 Introspecting callables with the Signature object
 https://docs.python.org/3.5/library/inspect.html#inspect.signature
-
+https://docs.python.org/3.10/library/typing.html#typing.ParamSpec
+https://docs.python.org/3.10/library/typing.html#typing.Callable
+https://www.python.org/dev/peps/pep-0589/
 _______________________________________________
 Template
 
@@ -19,7 +21,8 @@ import fractalshades as fs
 import fractalshades.models as fsm
 
 mandelbrot = fsm.Perturbation_mandelbrot( *****)
-calc = mandelbrot.full_calc(*calc_args, **calc_kwargs)
+calc = mandelbrot.set_calc()
+  -> factory method + inspection
 
 plotter = fs.Fractal_plotter(calc, ****)
 
@@ -29,3 +32,53 @@ ________________________________________
 Compile
 https://nuitka.net/pages/download.html
 https://sametmax.com/vive-setup-cfg-et-mort-a-pyproject-toml/
+
+________________________________________
+PyQt5
+https://www.riverbankcomputing.com/static/Docs/PyQt5/index.html
+https://www.mfitzp.com/tutorials/plotting-matplotlib/
+
+Great tutorial :
+https://www.tutorialspoint.com/pyqt5/index.htm
+
+https://codeloop.org/how-to-load-qt-designer-ui-file-in-pyqt5/
+Converting UI files to Python
+Both libraries provide identical scripts to generate Python importable modules from Qt Designer .ui files. For PyQt5 the script is named pyuic5 —
+https://www.mfitzp.com/news/pyqt5-vs-pyside2/
+pyuic5 mainwindow.ui -o MainWindow.py
+
+https://doc.qt.io/qt-5/qtwidgets-widgets-scribble-example.html
+with BSD3 License ? yes
+https://doc.qt.io/archives/3.3/faq.html#5-3
+https://opensource.org/licenses
+
+https://doc.qt.io/qt-5/qtwidgets-index.html
+__________________________________
+Refactoring call signature of loop
+def loop_xxxx(**
+              calc_params{loop_params:{M_divergence: xxx
+                                       epsilon_stationnary: 
+                                       pc_threshold: 
+
+
+f = Myfractal()
+f.zoom(**zoom_params)
+f.process(**process_params)  (including calc_kind ?)
+calc_params = FP_params
+              SA_params
+
+Then subsequent run runs everything
+f.run()
+
+zoom_params by inspection of zoom call parameters
+calc_params by inspection of calc call parameters
+FP_params by inspection of full_loop call parameters
+SA_params by inspection of full_loop call parameters
+dataype by inspection of ...
+etc...
+
+
+
+
+
+                                       
