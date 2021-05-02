@@ -1505,7 +1505,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         self.termination_type = np.int8
         self.int_type = np.int32
 
-    @fsutils.store_kwargs("zoom_options")
+    @fsutils.zoom_options
     def zoom(self, *,
              x: float,
              y: float,
@@ -1583,14 +1583,14 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         zoom_params = self.zoom_options
         calc_params = self.calc_options
         
-        print("software_params", software_params)
-        print("zoom_params", zoom_params)
-        print("calc_params", calc_params)
+#        print("software_params", software_params)
+#        print("zoom_params", zoom_params)
+#        print("calc_params", calc_params)
 
         res = dict(software_params)
         res.update(zoom_params)
         res.update(calc_params)
-        print("res", res)
+#        print("res", res)
         
         return res
 
