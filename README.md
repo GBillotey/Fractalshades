@@ -15,11 +15,11 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 
 ## Credits
 The following online ressources have been incredibly useful:
-https://mathr.co.uk/blog/
-https://fractalforums.org/
-http://www.fractalforums.com/announcements-and-news
-https://www.math.univ-toulouse.fr/~cheritat/wiki-draw/index.php/Mandelbrot_set
 
+* https://mathr.co.uk/blog/
+* https://fractalforums.org/
+* http://www.fractalforums.com/announcements-and-news
+* https://www.math.univ-toulouse.fr/~cheritat/wiki-draw/index.php/Mandelbrot_set
 
 ## License
 BSD-3
