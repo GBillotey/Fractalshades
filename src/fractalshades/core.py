@@ -147,7 +147,7 @@ class Color_tools():
 
     @staticmethod
     def customized_Lab_gradient(color_1, color_2, n, 
-        L = lambda t: t, ab = lambda t: t):
+        L=lambda t: t, ab=lambda t: t):
         """
         Idem Lab_gradient except we customize 2 functions L and a = b noted ab
         """
@@ -160,7 +160,7 @@ class Color_tools():
 
     @staticmethod
     def customized_Lch_gradient(color_1, color_2, n, long_path=False,
-        L = lambda t: t, c = lambda t: t, h = lambda t: t):
+        L=lambda t: t, c=lambda t: t, h=lambda t: t):
         """
         Idem Lch_gradient except we customize all 3 functions L, c, h
         """

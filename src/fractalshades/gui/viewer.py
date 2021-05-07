@@ -5,6 +5,7 @@
 #import os
 #import copy
 import math
+from collections import OrderedDict
 #
 #import inspect
 
@@ -54,9 +55,8 @@ class Image_widget(QWidget):
         self._view.setCursor(QtGui.QCursor(Qt.CrossCursor))
         
         # sets property widget
-        self._labels = QDict_viewer(self, {"px": None,
-                                           "py": None,
-                                           "zoom": 1.})
+        self._labels = QDict_viewer(self, OrderedDict([
+                ("px", None), ("py", None), ("zoom", 1.)]))
         
 
     
@@ -81,9 +81,11 @@ class Image_widget(QWidget):
         self._drawing_rect = False
         self._dragging_rect = False
 
-        # zooms anchors for wheel events
+        # zooms anchors for wheel events - note this is only active 
+        # when the 
         self._view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self._view.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
+        self._view.setAlignment(Qt.AlignCenter)
 
         # events filters
         self._view.viewport().installEventFilter(self)

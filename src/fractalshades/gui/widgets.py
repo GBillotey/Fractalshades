@@ -5,8 +5,8 @@ import sys
 import os
 import copy
 import math
-
-import inspect
+#
+#import inspect
 
 
 #from PyQt5.QtCore import QCoreApplication
@@ -46,6 +46,11 @@ from PyQt5.QtWidgets import (QApplication, qApp, QWidget, QMainWindow,
 
 class QDict_viewer(QWidget):
     def __init__(self, parent, qdict):
+        """
+        A Widget to view an ordered dict.
+        The ordered dict is not user-editable but can be programmatically
+        updated.
+        """
         super().__init__(parent)
         self._layout = QGridLayout(self)
         self.setLayout(self._layout)
@@ -87,3 +92,57 @@ class QDict_viewer(QWidget):
                 w.setParent(None)
                 # w.deleteLater()
 
+
+class Param_Widget(QWidget):
+    def __new__(cls, parent, ):
+        pass
+
+
+if __name__ == "__main__":
+    # https://mypy.readthedocs.io/en/stable/cheat_sheet_py3.html
+    # import inspect
+    import typing
+    
+    def a(*, i: float):
+        return i
+#    sgn = inspect.signature(a)
+#    print("sgn", sgn)
+#    ba = sgn.bind_partial(i=None)
+#    print(a.__annotations__)
+    var_type = a.__annotations__["i"]
+    print("var_type", var_type, var_type is float)
+    
+    t = typing.Union[str, int]
+    def a(*, i: t):
+        return i
+    var_type = a.__annotations__["i"]
+    print("var_type", var_type, var_type is t)
+    
+    Point = typing.Tuple[float, float]
+    def a(*, i: Point):
+            return i
+    var_type = a.__annotations__["i"]
+    print("var_type", var_type, var_type is typing.Tuple[float, float])
+    
+    
+#    Point = typing.TypedDict[float, float]
+#    def a(*, i: Point):
+#            return i
+#    var_type = a.__annotations__["i"]
+#    print("var_type", var_type, var_type is typing.Tuple[float, float])
+    
+    from dataclasses import dataclass, fields, MISSING
+    @dataclass
+    class Employee_dc:
+        name: str
+        id: int = 3
+    
+    print(Employee_dc.__annotations__)
+    print(Employee_dc.__init__.__annotations__)
+    print(fields(Employee_dc))
+    
+    for field in fields(Employee_dc):
+        print(field.type, field.default, field.default is MISSING)
+        
+    # defualt factory
+    # dataclasses.field(*, default=MISSING, default_factory=MISSING, repr=True, hash=None, init=True, compare=True, metadata=None)
