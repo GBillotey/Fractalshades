@@ -154,7 +154,7 @@ class PerturbationFractal(fs.Fractal):
            - arrays : [Z, U, stop_reason, stop_iter]
         """
         save_path = self.ref_point_file(iref, file_prefix)
-        fs.mkdir_p(os.path.dirname(save_path))
+        fsutils.mkdir_p(os.path.dirname(save_path))
         with open(save_path, 'wb+') as tmpfile:
             print("Path computed, saving", save_path)
             pickle.dump(FP_params, tmpfile, pickle.HIGHEST_PROTOCOL)
@@ -227,7 +227,7 @@ class PerturbationFractal(fs.Fractal):
            - arrays : [Z, U, stop_reason, stop_iter]
         """
         save_path = self.SA_file(iref, file_prefix)
-        fs.mkdir_p(os.path.dirname(save_path))
+        fsutils.mkdir_p(os.path.dirname(save_path))
         with open(save_path, 'wb+') as tmpfile:
             print("SA computed, saving", save_path)
             pickle.dump(SA_params, tmpfile, pickle.HIGHEST_PROTOCOL)
@@ -623,8 +623,7 @@ class PerturbationFractal(fs.Fractal):
              index_active, n_iter, SA_iter, ref_div_iter, ref_path)
 
 
-    def save_data_chunk(self, chunk_slice, file_prefix,
-                        params, codes, raw_data):
+    def save_data_chunk(self, save_path, params, codes, raw_data):
         """
         Write to a dat file the following data:
            - params = main parameters used for the calculation
@@ -633,8 +632,7 @@ class PerturbationFractal(fs.Fractal):
         """
         params = copy.deepcopy(params)
         params["iref"] = self.iref
-        return super().save_data_chunk(chunk_slice, file_prefix, params, codes,
-                    raw_data)
+        return super().save_data_chunk(save_path, params, codes, raw_data)
 
     def ensure_ref_point(self, FP_loop, max_iter, file_prefix,
                          iref=0, c0=None, newton="cv", order=None):
