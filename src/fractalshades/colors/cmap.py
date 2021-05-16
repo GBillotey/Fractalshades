@@ -381,8 +381,10 @@ class Fractal_colormap():
 
         fc = sum(tuple(_Fractal_colormap(Color_tools.color_gradient(
                        kinds[ipt], colors1[ipt, :], colors2[ipt, :], n[ipt],
-                       funcs[ipt])) for ipt in range(npts)),
-                 start=EMPTY_CMAP)
+                       funcs[ipt])) for ipt in range(1, npts)),
+                 start=_Fractal_colormap(Color_tools.color_gradient(
+                       kinds[0], colors1[0, :], colors2[0, :], n[0],
+                       funcs[0])))
         # Stores "constructor" vals
         fc.kinds = kinds
         fc.colors1 = colors1
@@ -434,7 +436,7 @@ n_colors) where xmi, xmax refer to this colormap (xmin xmax btw. 0 and 1).
         """
         self._colors = color_gradient
         n_colors, _ = color_gradient.shape
-        self._probes = np.array([0, n_colors-1])
+        self._probes = np.array([0, n_colors-1], dtype=np.float32)
 #        self.quantiles_ref = None
         self.extent = extent
 
@@ -460,8 +462,12 @@ n_colors) where xmi, xmax refer to this colormap (xmin xmax btw. 0 and 1).
     def __add__(self, other):
         """ Concatenates 2 Colormaps """
         fcm = _Fractal_colormap(np.vstack([self._colors, other._colors]))
+        print("self._probes", self._probes)
+        print("other._probes", other._probes)
+        print("other._probes + (self._probes[-1])", other._probes + (self._probes[-1]))
+        self._probes[-1] += 0.5
         fcm._probes = np.concatenate([self._probes,
-            (other._probes + self._probes[-1] + 1)[1:]])
+            (other._probes + (self._probes[-1] + 0.5))[1:]])
         return fcm
 
     def __sub__(self, other):
@@ -474,12 +480,9 @@ n_colors) where xmi, xmax refer to this colormap (xmin xmax btw. 0 and 1).
         ny_im = ny - 2 * margin
         img = np.repeat(np.linspace(0., 1., nx_im)[:, np.newaxis],
                         ny_im, axis=1)
-        print('img0', img.shape)
         img = self.colorize(img, np.linspace(0., 1., len(self._probes)))
-        print('img1', img.shape)
         img = np.uint8(img * 255.999)
-        print('img2', img.shape)
-        B = np.ones([nx, ny, 3], dtype=np.uint8) * 100 # 255
+        B = np.ones([nx, ny, 3], dtype=np.uint8) * 255
         B[margin:nx - margin, margin:ny - margin, :] = img
         return np.swapaxes(B, 0, 1)
 
@@ -577,6 +580,6 @@ Formula: https://en.wikipedia.org/wiki/Triangle_wave
         """
         return ext_min + ((x - ext_min) % (ext_max - ext_min))
 
-# Defines the neutral element for cmap addition
-EMPTY_CMAP = _Fractal_colormap(np.array([]).reshape([0, 3]))
-EMPTY_CMAP._probes = np.array([0])
+## Defines the neutral element for cmap addition
+#EMPTY_CMAP = _Fractal_colormap(np.array([]).reshape([0, 3]))
+#EMPTY_CMAP._probes = np.array([-1])

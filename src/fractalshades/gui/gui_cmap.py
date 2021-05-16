@@ -29,23 +29,24 @@ import tempfile
 import os
 
 
-class Qcmap_icone(QWidget):
-    def __init__(self, parent, cmap):
+class Qcmap_image(QWidget):
+    """
+    Wideget o a cmap image with expanding width, fixed height
+    """
+    def __init__(self, parent, cmap, minwidth=120, height=20):
         super().__init__(parent)
-        self.setMinimumWidth(100)
-        self.setMinimumHeight(20)
-        self.setMaximumHeight(20)
+        self._cmap = cmap
+        self.setMinimumWidth(minwidth)
+        self.setMinimumHeight(height)
+        self.setMaximumHeight(height)
         self.setSizePolicy(QtWidgets.QSizePolicy.Minimum,
                            QtWidgets.QSizePolicy.Expanding)
-        self._cmap = cmap
-        
-        
+
     def paintEvent(self, evt):
         size = self.size()
         nx, ny = size.width(), size.height()
-        image = self._cmap.output_ImageQt(nx, ny)
-        QtGui.QPainter(self).drawImage(0, 0, image)
-        
+        QtGui.QPainter(self).drawImage(0, 0, self._cmap.output_ImageQt(nx, ny))
+
 
 
 
@@ -71,6 +72,7 @@ def test_cmap_widget():
 
     colormap = fscolors.Fractal_colormap(
             kinds, colors1, colors2, n, funcs, extent="clip")
+    print("probes", colormap._probes)
     
     
     class Mywindow(QMainWindow):
@@ -86,7 +88,7 @@ def test_cmap_widget():
             tb.actionTriggered[QAction].connect(self.on_tb_action)
             #self.setWindowState(Qt.WindowMaximized)
             # And don't forget to call setCentralWidget to your main layout widget.
-            icone =  Qcmap_icone(self, colormap) # fsgui.
+            icone =  Qcmap_image(self, colormap) # fsgui.
             self.setCentralWidget(icone)
             self._icone = icone
 
