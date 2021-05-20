@@ -7,6 +7,14 @@ The pupose of this python package is to propose standard or deep-zoom exploratio
 This Python package relies on the following dependencies:
 numpy, mpmath, Pillow, PyQt5.
 
+Regarding mpmath, installing also gmpy gives a big performance, see 
+https://mpmath.org/doc/current/setup.html#using-gmpy-optional
+https://gmpy2.readthedocs.io/en/latest/
+
+Linux gmpy2 installation :
+apt install libgmp-dev libmpfr-dev libmpc-dev
+pip install gmpy2
+
 ## Getting started
 Section under rework - more to come
 

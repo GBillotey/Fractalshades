@@ -358,7 +358,7 @@ class Fractal_colormap():
         kinds: arrays of string [n] , "Lab" or "Lch"
         colors 1: rgb float np.array of shape [n, 3]
         colors 2: rgb float np.array shape [n, 3]
-        n: int np.array of size [n, 3] : number of internal points used, for
+        n: int np.array of size [n] : number of internal points used, for
             each gradient
         funcs : array of callables mapping [0, 1.] to [0., 1] passed to each
             gradient
@@ -371,7 +371,7 @@ class Fractal_colormap():
         if isinstance(kinds, str):
             kinds = [kinds] * npts
         if colors2 is None:
-            colors2 = np.roll(colors1, 1, axis=0)
+            colors2 = np.roll(colors1, -1, axis=0)
         if isinstance(n, int):
             n = [n] * npts
         if funcs is None:
@@ -462,9 +462,9 @@ n_colors) where xmi, xmax refer to this colormap (xmin xmax btw. 0 and 1).
     def __add__(self, other):
         """ Concatenates 2 Colormaps """
         fcm = _Fractal_colormap(np.vstack([self._colors, other._colors]))
-        print("self._probes", self._probes)
-        print("other._probes", other._probes)
-        print("other._probes + (self._probes[-1])", other._probes + (self._probes[-1]))
+#        print("self._probes", self._probes)
+#        print("other._probes", other._probes)
+#        print("other._probes + (self._probes[-1])", other._probes + (self._probes[-1]))
         self._probes[-1] += 0.5
         fcm._probes = np.concatenate([self._probes,
             (other._probes + (self._probes[-1] + 0.5))[1:]])

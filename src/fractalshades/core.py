@@ -14,6 +14,7 @@ import tempfile
 import datetime
 import pickle
 
+import fractalshades as fs
 import fractalshades.numpy_utils.xrange as fsx
 import fractalshades.settings as fssettings
 import fractalshades.utils as fsutils
@@ -433,15 +434,7 @@ the array returned by base_data_key
 
         base_img_path = os.path.join(self.plot_dir, file_name + ".png")
 #        tag_dicts = 
-        self.save_tagged(base_img, base_img_path,
-                          {"Software": "py-fractal",
-                           "fractal": type(self.fractal).__name__,
-                           "projection": self.fractal.projection,
-                           "x": repr(self.fractal.x),
-                           "y": repr(self.fractal.y),
-                           "dx": repr(self.fractal.dx),
-                           "theta_deg": repr(self.fractal.theta_deg)
-                           })
+        self.save_tagged(base_img, base_img_path, self.fractal.params)
 
         if self.plot_mask:
             mask_img.save(os.path.join(self.plot_dir, file_name + ".mask.png"))
@@ -491,7 +484,7 @@ the array returned by base_data_key
         """
         pnginfo = PIL.PngImagePlugin.PngInfo()
         for k, v in tag_dict.items():
-            pnginfo.add_text(k, v)
+            pnginfo.add_text(k, str(v))
         img.save(img_path, pnginfo=pnginfo)
 
 
@@ -1011,22 +1004,24 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         """ Used for tagging a data chunk
         """
         software_params = {
-                "Software": "fractalshades",
-                "fractal": type(self).__name__,
+                "Software": "fractalshades " + fs.__version__,
+                "fractal_type": type(self).__name__,
                 "datetime": datetime.datetime.today().strftime(
                         '%Y-%m-%d_%H:%M:%S')}
         zoom_params = self.zoom_options
+        calc_function = self.calc_options_lastcall
         calc_params = self.calc_options
-        
+
 #        print("software_params", software_params)
 #        print("zoom_params", zoom_params)
 #        print("calc_params", calc_params)
 
         res = dict(software_params)
         res.update(zoom_params)
-        res.update(calc_params)
+        res["calc-function"] = calc_function
+        res.update({"calc-param_" + k: v for (k, v) in calc_params.items()})
 #        print("res", res)
-        
+
         return res
 
     def data_file(self, chunk_slice, file_prefix):
@@ -1094,7 +1089,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
             for ref_chunk_slice in self.chunk_slices():
 #                ref_path = self.data_file(ref_chunk_slice, file_prefix)
 #                with open(ref_path, 'rb') as tmpfile:
-                params = copy.deepcopy(self.calc_options)#pickle.load(tmpfile)
+                params = copy.deepcopy(self.params)#pickle.load(tmpfile)
                 codes = self.codes #pickle.load(tmpfile)
                 if scan_only:
                     return params, codes
@@ -1513,7 +1508,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
             for index in to_del[::-1]:
                 del code[index]
         save_Z, save_U = target
-            
+
         chunk_mask = self.chunk_mask(chunk_slice)
         raw_data = [chunk_mask, save_Z, save_U, stop_reason, stop_iter]
 

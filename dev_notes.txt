@@ -115,4 +115,28 @@ SAFE EVAL ??
 ast.literal_eval()
 https://newville.github.io/asteval/motivation.html#how-safe-is-asteval     
 
-                  
+# Gui_launcher
+class GUI_Fractal(plot_func, plot_im, zoom_mapping(zoom_x="", zoom_y="", zoom_xy_ratio=""))
+GUI_Fractal.explore()
+
+
+# QIMAGE
+https://stackoverflow.com/questions/3041728/bug-when-drawing-a-qimage-on-a-widget-with-pil-and-pyqt
+
+# Model - view
+app-level class fQModel : nested dicts
+          
+to each Widget(self, parent, key)
+    responsible to send model_item_modified_event(key, val)
+
+ valueChanged = pyqtSignal(object)  
+Notice the signal has one argument of type object, which should allow anything to pass through. Then, you should be able to emit the signal from within the class using an argument of any data type:
+
+_____________________________________________________________
+
+https://mpmath.org/doc/current/setup.html#using-gmpy-optional
+>>> import mpmath.libmp
+>>> mpmath.libmp.BACKEND 
+should be .... currently 'python'
+'gmpy'
+ 

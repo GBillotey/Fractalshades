@@ -20,8 +20,8 @@ from PyQt5.QtWidgets import (QWidget, QAction,
                              )
 from PyQt5.QtWidgets import (QMainWindow, QApplication)
 
-from inspector import Func_inspector
-import functools
+#from inspector import Func_inspector
+#import functools
 
 import fractalshades.colors as fscolors
 import numpy as np
@@ -33,7 +33,7 @@ class Qcmap_image(QWidget):
     """
     Wideget o a cmap image with expanding width, fixed height
     """
-    def __init__(self, parent, cmap, minwidth=120, height=20):
+    def __init__(self, parent, cmap, minwidth=200, height=20):
         super().__init__(parent)
         self._cmap = cmap
         self.setMinimumWidth(minwidth)

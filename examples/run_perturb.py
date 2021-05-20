@@ -11,25 +11,21 @@ def plot():
     Example plot of "Dinkydau flake" location, classic test case for 
     perturbation techinque and glitch correction.
     """
-    directory = "./flake"
-
-    # Dinkydau flake
-    # http://www.fractalforums.com/announcements-and-news/pertubation-theory-glitches-improvement/msg73027/#msg73027
-    # Ball method 1 found period: 7884
-    x = "-1.99996619445037030418434688506350579675531241540724851511761922944801584242342684381376129778868913812287046406560949864353810575744772166485672496092803920095332"
-    y = "0.00000000000000000000000000000000030013824367909383240724973039775924987346831190773335270174257280120474975614823581185647299288414075519224186504978181625478529"
-    dx = "1.8e-157"
-    precision = 200
+    directory = "./perturb"
+    # A simple showcas using perturbation technique
+    x, y = "-1.74928893611435556407228", "0."
+    dx = "5.e-20"
+    precision = 30
+    nx = 600
 
     # Set to True if you only want to rerun the post-processing part
     settings.skip_calc = False
     # Set to True to enable multi-processing
     settings.enable_multiprocessing = True
 
-    nx = 3200
-    xy_ratio = 0.5
-    theta_deg = 0.
-    complex_type = np.complex128
+#    xy_ratio = 1.0
+#    theta_deg = 0.
+    # complex_type = np.complex128
 
     mandelbrot = fsm.Perturbation_mandelbrot(directory)
     mandelbrot.zoom(
@@ -38,13 +34,13 @@ def plot():
             y=y,
             dx=dx,
             nx=nx,
-            xy_ratio=xy_ratio,
-            theta_deg=theta_deg,
+            xy_ratio=1.0,
+            theta_deg=0., 
             projection="cartesian",
             antialiasing=False)
 
     mandelbrot.calc_std_div(
-            complex_type=complex_type,
+            complex_type=np.complex128,
             file_prefix="dev",
             subset=None,
             max_iter=50000,
@@ -82,7 +78,6 @@ def plot():
         return 0.5 + (0.4 * (x - 0.5) - 0.6 * 0.5 * np.cos(x * np.pi * 3.))
 
 
-
     colormap = fscolors.Fractal_colormap(
         kinds="Lch",
         colors1=np.vstack((citrus_white, wheat2, wheat1, wheat2, wheat1, wheat2, wheat3,
@@ -93,11 +88,7 @@ def plot():
         n = 100,
         funcs= lambda x: wave(x),
         extent="mirror")
-        
-            
 
-
-#    colormap.extent = "mirror" #"repeat"
 
     plotter = fs.Fractal_plotter(
         fractal=mandelbrot,
@@ -123,11 +114,11 @@ def plot():
                          normalized=False, hardness=0.35,  
             skewness=0.0, shade_type={"Lch": 1.0, "overlay": 1., "pegtop": 4.})
     
-    layer2_key = ("field_lines", {})
-    plotter.add_grey_layer(postproc_key=layer2_key,
-                         hardness=1.0, intensity=0.68, skewness=0.4,
-                         blur_ranges=[[0.50, 0.60, 1.0]], 
-                         shade_type={"Lch": 0., "overlay": 2., "pegtop": 1.}) 
+#    layer2_key = ("field_lines", {})
+#    plotter.add_grey_layer(postproc_key=layer2_key,
+#                         hardness=1.0, intensity=0.68, skewness=0.4,
+#                         blur_ranges=[[0.50, 0.60, 1.0]], 
+#                         shade_type={"Lch": 0., "overlay": 2., "pegtop": 1.}) 
 
 
     plotter.plot("dev", mask_color=(0., 0., 1.))
