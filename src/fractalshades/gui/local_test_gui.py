@@ -25,13 +25,9 @@ import fractalshades.gui as fsgui
 import typing
 #
 from model import Model, Func_submodel, Image_presenter
-from guimodel import Func_widget, Image_widget
+from guimodel import (Action_func_widget, Func_widget, Image_widget,
+                      Fractal_GUI, getapp)
 #
-def getapp():
-    app = QtCore.QCoreApplication.instance()
-    if app is None:
-        app = QApplication([])
-    return app
 
 
 def test_image_widget():
@@ -123,15 +119,21 @@ def test_func_widget():
                 option: typing.Optional[float]=12.354, option2: typing.Optional[float]=None,
                 listed: typing.Literal["a", "b", "c", 1, None]="c"):
         pass
-        
+    
+    import mpmath
+    mpmath.mp.dps = 12
     def f_listed2(x: int, yyyy: float, y: str, z: typing.Union[int, float, str],
+                  mpf: mpmath.mpf, dps: int=12,
                 option: typing.Optional[float]=12.354, option2: typing.Optional[float]=None,
                 listed: typing.Literal["a", "b", "c", 1, None]="c"):
         pass 
     
     func = f_listed2
     model = Model()
-    func_smodel = Func_submodel(model, tuple(["func"]), func)
+    func_smodel = Func_submodel(model, tuple(["func"]), func, dps_var="dps")
+#    print(model._model.keys())
+#    print("#######""")
+#    model.dps_key = tuple(["func", ])
     
     
     class Mywindow(QMainWindow):
@@ -150,8 +152,8 @@ def test_func_widget():
             # And don't forget to call setCentralWidget to your main layout widget.
              # fsgui.
 
-            wget = Func_widget(self, func_smodel)
-            self._wget = wget
+            wget = Action_func_widget(self, func_smodel)
+
             
 #            im = os.path.join("/home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/tests/images_REF",
 #                      "test_M2_antialias_E0_2.png")
@@ -163,8 +165,11 @@ def test_func_widget():
             dock_widget = QDockWidget(None, Qt.SubWindow)
             dock_widget.setWidget(wget)
             dock_widget.setWindowTitle(func.__name__)
-            dock_widget.setStyleSheet("QDockWidget {color: white; font: bold 14px; border: 3px solid  #4583b6;}"
-                                      "QDockWidget::title {text-align: left; background: #4583b6; padding-left: 5px;}");
+            dock_widget.setStyleSheet(
+                "QDockWidget {color: white; font: bold 14px;"
+                    + "border: 2px solid  #646464;}"
+                + "QDockWidget::title {text-align: left; background: #646464;"
+                    + "padding-left: 5px;}");
             
             # self.setCentralWidget(mw)
             
@@ -183,9 +188,78 @@ def test_func_widget():
     win = Mywindow()
     win.show()
     app.exec()
+
+
+def test_fractal_GUI():
+    import mpmath
+    import numpy as np
+    import fractalshades as fs
+    import fractalshades.models as fsm
+    import fractalshades.colors as fscolors
     
+    test_dir = os.path.dirname(__file__)
+    directory = os.path.join(test_dir, "localtest_GUI")
+    fractal = fsm.Perturbation_mandelbrot(directory)
+    
+    def func(fractal: fsm.Perturbation_mandelbrot= fractal,
+             file_prefix: str= "test",
+             x: mpmath.mpf= "0.",
+             y: mpmath.mpf= "0.",
+             dx: mpmath.mpf= "2.5",
+             xy_ratio: float=1.0,
+             dps: int= 50,
+             nx: int=800):
+
+        fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
+             theta_deg=0., projection="cartesian", antialiasing=False)
+        fractal.calc_std_div(complex_type=np.complex128, file_prefix=file_prefix,
+            subset=None, max_iter=50000, M_divergence=1.e3,
+            epsilon_stationnary=1.e-3, pc_threshold=0.1,
+            SA_params={"cutdeg": 64, "cutdeg_glitch": 8},
+            glitch_eps=1.e-6, interior_detect=True, glitch_max_attempt=1)
+        fractal.run()
+        
+        gold = np.array([255, 210, 66]) / 255.
+        black = np.array([0, 0, 0]) / 255.
+        colors1 = np.vstack((gold[np.newaxis, :]))
+        colors2 = np.vstack((black[np.newaxis, :]))
+        colormap = fscolors.Fractal_colormap(kinds="Lch", colors1=colors1,
+            colors2=colors2, n=200, funcs=None, extent="clip")
+        
+        mask_codes = [2, 3, 4]
+        mask = fs.Fractal_Data_array(fractal, file_prefix=file_prefix,
+            postproc_keys=('stop_reason', lambda x: np.isin(x, mask_codes)),
+            mode="r+raw")
+
+        plotter = fs.Fractal_plotter(fractal=fractal,
+            base_data_key=("potential", {}),
+            base_data_prefix=file_prefix,
+            base_data_function=lambda x:x,
+            colormap=colormap,
+            probes_val=[0., 0.25],
+            probes_kind="qt",
+            mask=mask)
+        plotter.add_grey_layer(
+                postproc_key=("field_lines", {}),
+                blur_ranges=[[0.8, 0.95, 1.0]],
+                hardness=0.9,
+                intensity=0.8,
+                shade_type={"Lch": 1.0, "overlay": 0., "pegtop": 4.})
+        plotter.plot(file_prefix, mask_color=(0., 0., 1.))
+#             x: =,
+#             y: =):
+        
+#    view = "test"
+    # func()
+    
+    gui = Fractal_GUI(func) #, fractal_param="fractal")
+    gui.connect_image(image_param="file_prefix")#=image_prefix)
+    gui.connect_mouse(x="x", y="y", dx="dx", xy_ratio="xy_ratio", dps="dps")
+    gui.show()
+
 
 if __name__ == "__main__":
-    # test_func_widget()
-    test_im_info()
-    test_image_widget()
+   # test_func_widget()
+#    test_im_info()
+#    test_image_widget()
+     test_fractal_GUI()

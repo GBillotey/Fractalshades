@@ -788,7 +788,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         It is recommended that it should define
         define useful postproc potential keys
         """
-        self.kind=kind
+        self.kind = kind
         return getattr(self, kind)(**kwargs)
 
 

@@ -9,7 +9,7 @@ import fractalshades.colors as fscolors
 def plot():
     """
     Example plot of "Dinkydau flake" location, classic test case for 
-    perturbation techinque and glitch correction.
+    perturbation technique and glitch correction.
     """
     directory = "./flake"
 

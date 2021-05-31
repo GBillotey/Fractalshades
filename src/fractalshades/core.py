@@ -1053,13 +1053,24 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                     os.unlink(entry.path)
 
 
-    def reload_data_param(self, chunk_slice, file_prefix, scan_only=False):
+    def reload_data_param(self, file_prefix):
         # TODO: implement this method
         # should be used preferably to 
         #   reload_data_chunk(self, chunk_slice, file_prefix, scan_only=False)
         # and return the same
         # (param, codes) to be stored as a .param file
-        pass
+        save_path = self.param_file(file_prefix)
+        try:
+            with open(save_path, 'rb') as tmpfile:
+                params = pickle.load(tmpfile)
+                codes = pickle.load(tmpfile)
+                return params, codes
+        
+        # If no_compute ...
+        except FileNotFoundError:
+            # if not(fssettings.skip_calc):
+            raise
+        
 
     def reload_data_chunk(self, chunk_slice, file_prefix, scan_only=False):
         """
@@ -1111,15 +1122,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
             
 
 
-    @staticmethod
-    def dic_matching(dic1, dic2):
-        """
-        If we want to do some clever sanity test (not implemented)
-        If not matching shall raise a ValueError
-        """
-        # TODO : note: when comparing iref should be disregarded ? 
-        # or subclass specific implementation
-        return
+
 
     def chunk_slices(self): #, chunk_size=None):
         """
@@ -1289,19 +1292,37 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                               self.projection))
         return px
 
+    def param_matching(self, dparams):
+        """
+        If we want to do some clever sanity test (not implemented)
+        If not matching shall raise a ValueError
+        """
+        print("**CALLING param_matching +++", self.params)
+        # TODO : note: when comparing iref should be disregarded ? 
+        # or subclass specific implementation
+        UNTRACKED = ["datetime"]
+        for key, val in self.params.items():
+            if not(key in UNTRACKED) and dparams[key] != val:
+                print("Unmatching", key, val, "-->", dparams[key])
+                return False
+            print("its a match", key, val, dparams[key] )
+        print("** all goog")
+        return True
+
 
     def res_available(self, chunk_slice):
         """  Returns True if chunkslice is already computed with current
         parameters
         (Otherwise False)
         """
+        print("**CALLING res_available +++")
         try:
             (dparams, dcodes) = self.reload_data_chunk(chunk_slice,
                 self.file_prefix, scan_only=True)
         except IOError:
             return False
         
-        return True
+        return self.param_matching(dparams)
         # TODO: If we want to be more restrictive
         # return self.dic_matching(dparams, self.calc_params)
 
@@ -1346,7 +1367,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
             *stop_reason*   Byte codes -> reasons for termination [:]  np.int8
             *stop_iter*     Numbers of iterations when stopped [:]     np.int32
         """
-        print("**CALLING cycles ")
+        print("**CALLING cycles +++")
 #        print("iref", iref)
 #        if SA_params is not None:
 #            print("SA_params cutdeg", SA_params["cutdeg"])
@@ -1822,6 +1843,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                     # Normal doesnt't mean anything when too close...
                     dist = abs_zn * lo / np.abs(dzndc)
                     px = self.px  #self.dx / float(self.nx)
+                    # TODO: use isinstance here
                     if type(px) == mpmath.ctx_mp_python.mpf:
                         m, exp = mpmath.frexp(px)
                         px = fsx.Xrange_array(float(m), int(exp))

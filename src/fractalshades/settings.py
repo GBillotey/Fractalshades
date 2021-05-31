@@ -2,7 +2,7 @@
 """
 General settings for the package
 """
-enable_multiprocessing = True
+enable_multiprocessing = False # True
 skip_calc = False
 
 # size of the basic calculation 'tile' is chunk_size x chunk_size

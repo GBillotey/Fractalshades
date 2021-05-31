@@ -31,22 +31,22 @@ class PerturbationFractal(fs.Fractal):
     @fsutils.zoom_options
     def zoom(self, *,
              precision: int,
-             x: str,
-             y: str,
-             dx: str,
+             x: mpmath.mpf,
+             y: mpmath.mpf,
+             dx: mpmath.mpf,
              nx: int,
              xy_ratio: float,
              theta_deg: float,
              projection: str="cartesian",
              antialiasing: bool=False):
         mpmath.mp.dps = precision
-        # We override the str user-input values with mpmath scalars
+        # In case the user inputs were strings, we override with mpmath scalars
         self.x = mpmath.mpf(x)   
         self.y = mpmath.mpf(y)
         self.dx = mpmath.mpf(dx)
         # Lazzy dictionary of reference point pathes
         self._ref_array = {}
-
+        
 
     def diff_c_chunk(self, chunk_slice, iref, file_prefix,
                      ensure_Xr=False):
@@ -460,6 +460,25 @@ class PerturbationFractal(fs.Fractal):
 
 
 
+    def param_matching(self, dparams):
+        """
+        If we want to do some clever sanity test (not implemented)
+        If not matching shall raise a ValueError
+        """
+        print("**CALLING param_matching +++", self.params)
+        # TODO : note: when comparing iref should be disregarded ? 
+        # or subclass specific implementation
+        UNTRACKED = ["SA_params", "datetime"]
+        for key, val in self.params.items():
+            if not(key in UNTRACKED) and dparams[key] != val:
+                print("Unmatching", key, val, "-->", dparams[key])
+                return False
+            print("its a match", key, val, dparams[key] )
+        print("** all goog")
+        return True
+
+
+
     def res_available(self, chunk_slice):
         """  Returns True if chunkslice is already computed with current
         parameters
@@ -472,7 +491,7 @@ class PerturbationFractal(fs.Fractal):
             return False
 
         if dparams["iref"] >= self.iref:
-            return True
+            return self.param_matching(dparams)
             # return self.dic_matching(dparams, self.calc_params)
         
         # We are in the case where a file exists but not updated to the irefs
@@ -483,7 +502,7 @@ class PerturbationFractal(fs.Fractal):
             return False
         else:
             print("No glitched pixels remaining: ")
-            return True
+            return self.param_matching(dparams)
             # return self.dic_matching(dparams, self.calc_params)
         
 #        subset = self.subset
