@@ -1006,6 +1006,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         software_params = {
                 "Software": "fractalshades " + fs.__version__,
                 "fractal_type": type(self).__name__,
+                "debug": ("1234567890" * 10), # tested 10000 chars ok
                 "datetime": datetime.datetime.today().strftime(
                         '%Y-%m-%d_%H:%M:%S')}
         zoom_params = self.zoom_options
@@ -1300,13 +1301,13 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         print("**CALLING param_matching +++", self.params)
         # TODO : note: when comparing iref should be disregarded ? 
         # or subclass specific implementation
-        UNTRACKED = ["datetime"]
+        UNTRACKED = ["datetime", "debug"]
         for key, val in self.params.items():
             if not(key in UNTRACKED) and dparams[key] != val:
                 print("Unmatching", key, val, "-->", dparams[key])
                 return False
-            print("its a match", key, val, dparams[key] )
-        print("** all goog")
+#            print("its a match", key, val, dparams[key] )
+        print("** all good")
         return True
 
 

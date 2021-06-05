@@ -23,6 +23,7 @@ from PyQt5.QtWidgets import (QMainWindow, QApplication)
 
 import fractalshades.gui as fsgui
 import typing
+
 #
 from model import Model, Func_submodel, Image_presenter
 from guimodel import (Action_func_widget, Func_widget, Image_widget,
@@ -208,12 +209,12 @@ def test_fractal_GUI():
              dx: mpmath.mpf= "2.5",
              xy_ratio: float=1.0,
              dps: int= 50,
-             nx: int=800):
+             nx: int=1600):
 
         fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
              theta_deg=0., projection="cartesian", antialiasing=False)
         fractal.calc_std_div(complex_type=np.complex128, file_prefix=file_prefix,
-            subset=None, max_iter=50000, M_divergence=1.e3,
+            subset=None, max_iter=5000, M_divergence=1.e3,
             epsilon_stationnary=1.e-3, pc_threshold=0.1,
             SA_params={"cutdeg": 64, "cutdeg_glitch": 8},
             glitch_eps=1.e-6, interior_detect=True, glitch_max_attempt=1)
@@ -224,7 +225,7 @@ def test_fractal_GUI():
         colors1 = np.vstack((gold[np.newaxis, :]))
         colors2 = np.vstack((black[np.newaxis, :]))
         colormap = fscolors.Fractal_colormap(kinds="Lch", colors1=colors1,
-            colors2=colors2, n=200, funcs=None, extent="clip")
+            colors2=colors2, n=200, funcs=None, extent="mirror")
         
         mask_codes = [2, 3, 4]
         mask = fs.Fractal_Data_array(fractal, file_prefix=file_prefix,
@@ -236,7 +237,7 @@ def test_fractal_GUI():
             base_data_prefix=file_prefix,
             base_data_function=lambda x:x,
             colormap=colormap,
-            probes_val=[0., 0.25],
+            probes_val=[0., 0.85],
             probes_kind="qt",
             mask=mask)
         plotter.add_grey_layer(

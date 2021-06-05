@@ -71,7 +71,9 @@ class Model(QtCore.QObject):
     @pyqtSlot(object)
     def setting_touched(self, setting_name):
         print("SETTING TOUCHED SIDE EFFECT", setting_name)
+        print("settings", self._settings)
         setting_val = self.setting(setting_name)
+        print("val, key", self._settings[setting_name], setting_val)
         self.model_changerequest_event.emit(
                 self._settings[setting_name], setting_val)
 
@@ -83,7 +85,8 @@ class Model(QtCore.QObject):
 
     @pyqtSlot(object, object, object)
     def model_notified_slot(self, keys, oldval, val):
-        """ A change has been done, need to notify the widgets """
+        """ A change has been done in a model / submodel,
+        need to notify the widgets (viewers) """
         print("Model widget_modified", keys, oldval, val)
         # Here we can implement UNDO / REDO stack
         self.model_event.emit(keys, val)
@@ -91,8 +94,8 @@ class Model(QtCore.QObject):
 
     @pyqtSlot(object, object, object)
     def model_changerequest_slot(self, keys, oldval, val):
-        """ A change has been requested by a widget,
-        connected to a presenter i.e not holding the data"""
+        """ A change has been requested by a widget (viewer),
+        connected to a presenter i.e not holding the data """
         print("Model widget_change request", keys, oldval, val)
         if len(keys) == 0:
             # This change can be handled at model level
@@ -128,6 +131,8 @@ class Submodel(QtCore.QObject):
         return getitem(self._dict, key)
 
     def __setitem__(self, key, val):
+        if key not in self._dict.keys():
+            raise KeyError(key)
         oldval = self[key]
         setitem(self._dict, key, val)
         self.model_notification.emit(self._keys + tuple([key]), oldval, val)  
@@ -314,12 +319,44 @@ class Func_submodel(Submodel):
             kwargs[iparam_name] = iparam_val
         return kwargs
     
+    def setkwarg(self, kwarg, val):
+        """ sets the current value of the kwarg specified by its name """
+        fd = self._dict
+        n_params = fd["n_params"]
+        for iparam in range(n_params):
+            if fd[(iparam, "name")] != kwarg:
+                continue
+            iunion = fd[(iparam, "type_sel")]
+            ichoices = fd[(iparam, "n_choices")]
+            # If typing.Literal we infer the val from the choice index
+            if ichoices == 0 and iunion == 0:
+                param_key = (iparam, iunion, "val")
+                self.func_user_modified_slot(param_key, val)
+            else:
+                raise NotImplementedError()
+            print("Setting param", param_key, kwarg, val)
+            
+
+    
     def __getitem__(self, key):
-        """ Returns the current value of a specific kwarg """
+        """ Adapted to also return the "current value" of a specific kwarg """
         try:
-            return getitem(self._dict, key)
+            return super().__getitem__(key)
+            # getitem(self._dict, key)
         except KeyError:
             return self.getkwargs()[key]
+
+    def __setitem__(self, key, val):
+        """ Adapted to also set the "current value" of a specific kwarg """
+        try:
+            super().__setitem__(key, val)
+        except KeyError:
+            oldval = self.getkwargs()[key]
+            self.setkwarg(key, val)
+            # Emit a model modification for the persenter that might be
+            # tracking
+            self.model_notification.emit(self._keys + tuple([key]),
+                                         oldval, val)
 
     def getsource(self):
         """ Returns the function source code """
@@ -333,8 +370,14 @@ class Func_submodel(Submodel):
     @pyqtSlot(object, object)
     def func_user_modified_slot(self, key, val):
         print("in submodel, widget_modified", key, val)
-        # self[key] = val
-        
+        if isinstance(key, str):
+            # Accessing directly a kwarg by its name
+            self[key] = val
+            return
+        elif not(isinstance(key, tuple)):
+            raise ValueError("Untracked key{}".format(key))
+        # From here we are dealing with a 'tuple' key ie directly pointing
+        # at the data structure
         keylen = len(key)
         if keylen == 1:
             raise ValueError("Untracked key{}".format(key))
@@ -395,7 +438,7 @@ class Presenter(QtCore.QObject):
         self._model.to_register(register_key, self)
 
     def __getitem__(self, key):
-        print(key, self._mapping[key])
+        # print("presenter", key, self._mapping[key])
         return self._model[self._mapping[key]]
         # return getitem(self._model, self._mapping[key])
 
@@ -447,9 +490,9 @@ class Image_presenter(Presenter):
         self.func_user_modified_slot(keys[-1], val)
 
     @pyqtSlot(object, object)
-    def func_user_modified_slot(self, key_list, val_list):
+    def param_user_modified_slot(self, key_list, val_list):
         """
-        An event consist in a list of keys fired simultaneously
+        
         """
         if key_list == ("px", "py"):
             px = val_list[0]

@@ -139,4 +139,25 @@ https://mpmath.org/doc/current/setup.html#using-gmpy-optional
 >>> mpmath.libmp.BACKEND 
 should be .... currently 'python'
 'gmpy'
+OK !
+
+API :
+
+gui = Fractal_GUI(func, view=image_prefix)
+gui.connect_mouse(out=("x", "y", "dx"), in=("xy_ratio",))
+gui.show()
+
+
+
+model = Model()
+func = Func_submodel(model, tuple(["func"]), func)
+image = Image_presenter(model, mapping)
+
+
+________________________________________________
+pretty print
+https://docs.python.org/2/library/tokenize.html
+
+
+
  

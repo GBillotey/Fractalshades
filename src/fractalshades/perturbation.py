@@ -468,12 +468,12 @@ class PerturbationFractal(fs.Fractal):
         print("**CALLING param_matching +++", self.params)
         # TODO : note: when comparing iref should be disregarded ? 
         # or subclass specific implementation
-        UNTRACKED = ["SA_params", "datetime"]
+        UNTRACKED = ["SA_params", "datetime", "debug"]
         for key, val in self.params.items():
             if not(key in UNTRACKED) and dparams[key] != val:
                 print("Unmatching", key, val, "-->", dparams[key])
                 return False
-            print("its a match", key, val, dparams[key] )
+#            print("its a match", key, val, dparams[key] )
         print("** all goog")
         return True
 
@@ -654,7 +654,8 @@ class PerturbationFractal(fs.Fractal):
         return super().save_data_chunk(save_path, params, codes, raw_data)
 
     def ensure_ref_point(self, FP_loop, max_iter, file_prefix,
-                         iref=0, c0=None, newton="cv", order=None):
+                         iref=0, c0=None, newton="cv", order=None,
+                         k_ball=1.):
         """
         # Check if we have at least one reference point stored, otherwise 
         # computes and stores it
@@ -669,12 +670,12 @@ class PerturbationFractal(fs.Fractal):
                 
             if (newton is not None) and (newton != "None"):
                 if order is None:
-                    k_ball = 0.5
+                    # k_ball = 0.5
                     order = self.ball_method(c0,
                             max(self.dx, self.dy) * k_ball, max_iter)
                     if order is None: # ball method escaped...
                         order = 1
-                max_newton = 1 if (newton == "step") else None
+                max_newton = 1 if (newton == "step") else 50 #None
                 print("newton ", newton, " with order: ", order)
                 print("max newton iter ", max_newton)
 
@@ -695,10 +696,11 @@ class PerturbationFractal(fs.Fractal):
                     diff = rg.random([2], dtype=data_type)
                     c_shifted = (c0 + self.dx * (diff[0] - 0.5) + 
                                       self.dy * (diff[1] - 0.5) * 1.j)
+                    k_ball *= 2.
                     print("*** Newton failed,")
-                    print("*** Relauch with shifted ref point, ", diff)
-                    return self.ensure_ref_point(FP_loop, max_iter, file_prefix,
-                                          iref, c0=c_shifted)
+                    print("*** Relauch with shifted ref point, ", diff, "k_ball", k_ball)
+                    return self.ensure_ref_point(FP_loop, max_iter,
+                        file_prefix, iref, c0=c_shifted, k_ball=k_ball)
                 pt = nucleus
 
             print("compute ref_point", iref, pt, "\ncenter:\n",

@@ -4,13 +4,15 @@ import typing
 import dataclasses
 import math
 import os
-import textwrap
+# import textwrap
+#import pprint
 
 import PIL
 import functools
 import copy
 from operator import getitem, setitem
 import mpmath
+
 
 from PyQt5 import QtCore
 from PyQt5.QtCore import Qt
@@ -32,10 +34,10 @@ from PyQt5.QtWidgets import (QMainWindow, QApplication)
 #
 
 import fractalshades as fs
-from model import (Model, Fractal_submodel, View_submodel, Func_submodel,
-                   type_name, Image_presenter)
+from fractalshades.gui.model import (Model, Fractal_submodel, View_submodel,
+    Func_submodel, type_name, Image_presenter)
 
-from QCodeEditor import QCodeEditor
+from fractalshades.gui.QCodeEditor import QCodeEditor
 
 
 
@@ -100,6 +102,7 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
         # adds a binding to the image modified
         if action_setting is not None:
             (setting, keys) = action_setting
+            print("*********************action_setting", action_setting)
             model = func_smodel._model
             model.declare_setting(setting, keys)
             self.func_performed.connect(functools.partial(
@@ -142,17 +145,20 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
 
     def run_func(self):
         sm = self._submodel
-        print(sm.getkwargs())
         sm._func(**sm.getkwargs())
         self.func_performed.emit()
 
     def show_func_params(self):
         sm = self._submodel
-        print(sm.getkwargs())
+        ce = QCodeEditor(DISPLAY_LINE_NUMBERS=True,
+            HIGHLIGHT_CURRENT_LINE=True, SyntaxHighlighter=None)
+        str_args = "\n".join([(k + " = " + repr(v)) for (k, v)
+                              in sm.getkwargs().items()])
+        ce.setPlainText(str_args)
+        ce.show()
 
     def show_func_source(self):
         sm = self._submodel
-        print(sm.getsource())
         ce = QCodeEditor(DISPLAY_LINE_NUMBERS=True,
             HIGHLIGHT_CURRENT_LINE=True, SyntaxHighlighter=None)
         ce.setPlainText(sm.getsource())
@@ -300,7 +306,11 @@ class Func_widget(QFrame):#Widget):#QWidget):
             return
         key = keys[-1]
         print("IN MY Wideget, I KNOW has been modified", key, val)
-        wget = self._widgets[key]
+        try:
+            wget = self._widgets[key]
+        except KeyError:
+            # Not a widget, could be a parameter notification
+            return
         print("with associated Widget", wget)
 
         # check first Atom_Mixin
@@ -507,14 +517,14 @@ class Atom_Text_Validator(QtGui.QValidator):
             return (valid[False], val, pos)
 
         if self._type is mpmath.ctx_mp_python.mpf:
-            needed_dps = len(val)
+#            needed_dps = len(val)
             # Trailing carriage return are invalid
             if val[-1] == "\n":
                 return (valid[False], val, pos)
             # Automatically correct the dps 'in the model' to hold at least
             # this value
-            if self._model.setting("dps") < needed_dps:
-                self.mp_dps_used.emit(needed_dps)
+#            if self._model.setting("dps") < needed_dps:
+#                self.mp_dps_used.emit(needed_dps)
 
         return (valid[isinstance(casted, self._type)], val, pos)
 
@@ -564,6 +574,9 @@ class QDict_viewer(QWidget):
 
 
 class Image_widget(QWidget):
+    param_user_modified = pyqtSignal(object) # (px1, py1, px2, px2)
+    # zoom_params = ["x", "y", "dx", "xy_ratio"]
+
     def __init__(self, parent, view_presenter): # im=None):#, xy_ratio=None):
         super().__init__(parent)
         # self.setWindowFlags(Qt.BypassGraphicsProxyWidget)
@@ -595,7 +608,7 @@ class Image_widget(QWidget):
         
         # sets property widget
         self._labels = QDict_viewer(self,
-                                    {"px": None, "py": None, "zoom": 1.})
+            {"Image metadata": None, "px": None, "py": None, "zoom": None})
 
         # sets layout
         self._layout = QVBoxLayout(self)
@@ -624,7 +637,9 @@ class Image_widget(QWidget):
         self._view.viewport().installEventFilter(self)
         self._scene.installEventFilter(self)
         
-        
+        # Publish / subscribe signals with the submodel
+        # self.zoom_user_modified.connect(self._model.)
+        self._model.model_event.connect(self.model_event_slot)
 
 #        self._view.setContextMenuPolicy(Qt.ActionsContextMenu)
 #        self._scene.customContextMenuRequested.connect(self.useless)
@@ -632,6 +647,9 @@ class Image_widget(QWidget):
 #        self._scene.addAction(useless_action)
 #        useless_action.triggered.connect(self.useless)
 
+
+        
+    
     def on_context_menu(self, event):
         menu = QMenu(self)
         NoAction = QAction("Does nothing", self)
@@ -658,56 +676,81 @@ class Image_widget(QWidget):
 
     def reset_im(self):
         image_file = os.path.join((self._presenter["fractal"]).directory, 
-                                  self._presenter["image"] + ".png")
+                                   self._presenter["image"] + ".png")
+        valid_image = True
         try:
             with PIL.Image.open(image_file) as im:
-                # im.load()
                 info = im.info
+                nx, ny = im.size
+                # print("info debug", info["debug"])
         except FileNotFoundError:
+            valid_image = False
             info = {"x": None, "y": None, "dx": None, "xy_ratio": None}
-            # This class is a subclass of QtGui.QImage, 
-            #imqt = PIL.ImageQt.ImageQt(im)
+            nx = None
+            ny = None
 
         # Storing the "initial" zoom info
-        self.x_init = info["x"]
-        self.y_init = info["y"]
-        self.dx_init = info["dx"]
-        self.xy_ratio_init = info["xy_ratio"]
+        self._fractal_zoom_init = {k: info[k] for k in 
+                                   ["x", "y", "dx", "xy_ratio"]}
+        self._fractal_zoom_init["nx"] = nx
+        self._fractal_zoom_init["ny"] = ny
         self.validate()
 
         if self._qim is not None:
             self._group.removeFromGroup(self._qim)
-        self._qim = QGraphicsPixmapItem(QtGui.QPixmap.fromImage(
-                QtGui.QImage(image_file)))#QtGui.QImage()))#imqt)) # QtGui.QImage(self._im)))
-        self._qim.setAcceptHoverEvents(True)
-        self._group.addToGroup(self._qim)
-        self.fit_image()
+        if valid_image:
+            self._qim = QGraphicsPixmapItem(QtGui.QPixmap.fromImage(
+                    QtGui.QImage(image_file)))#QtGui.QImage()))#imqt)) # QtGui.QImage(self._im)))
+            self._qim.setAcceptHoverEvents(True)
+            self._group.addToGroup(self._qim)
+            self.fit_image()
+        else:
+            self._qim = None
         
+        self._rect = None
+        self._drawing_rect = False
+
+    @staticmethod
+    def cast(val, example):
+        """ Casts value to the same type as example """
+        return type(example)(val)
+
     def check_zoom_init(self):
-        for (value, expected) in zip(
-                (self.x_init, self.y_init, self.dx_init, self.xy_ratio_init),
-                list(self._presenter[key] for key in [
-                        "x", "y", "dx", "xy_ratio"])):
-            if value != expected:
-                return False
-            print("check", value, expected)
-        return True
+        """ Checks if the image 'zoom init' matches the parameters ;
+        otherwise, updates """
+        ret = 0
+        for key in ["x", "y", "dx", "xy_ratio"]:
+            expected = self._presenter[key]
+            value = self._fractal_zoom_init[key]
+            if value is None:
+                ret = 2
+            else:
+                casted = self.cast(value, expected)
+                # Send a model modification request
+                self._presenter[key] = casted
+                if casted != str(expected) and (ret != 2):
+                    ret = 1
+                    self._fractal_zoom_init[key] = casted
+        return ret
 
     def validate(self):
-        """ Sets bg color according to bool"""
+        """ Sets Image metadata message """
         self.validated = self.check_zoom_init()
-        color = {True: (200, 200, 200),
-                 False: (220, 70, 70)}
-        self._view.setBackgroundBrush(
-                QtGui.QBrush(QtGui.QColor(*color[self.validated]),
-                Qt.SolidPattern))
-#        print(self.x_init, self.y_init, self.dx_init, self.xy_ratio_init)
-        
+        message = {0: "OK, matching",
+                   1: "OK, zoom params updated",
+                   2: "No image found"}
+        self._labels.values_update({"Image metadata": 
+            message[self.validated]})
+
     def fit_image(self):
         if self._qim is None:
             return
         rect = QtCore.QRectF(self._qim.pixmap().rect())
         if not rect.isNull():
+            #        # always scrollbars off
+            self._view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self._view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            
             view = self._view
             view.setSceneRect(rect)
             unity = view.transform().mapRect(QtCore.QRectF(0, 0, 1, 1))
@@ -717,6 +760,10 @@ class Image_widget(QWidget):
             factor = min(viewrect.width() / scenerect.width(),
                          viewrect.height() / scenerect.height())
             view.scale(factor, factor)
+            
+            self._view.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self._view.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            
             self._labels.values_update({"zoom": self.zoom})
 
     def eventFilter(self, source, event):
@@ -741,11 +788,11 @@ class Image_widget(QWidget):
         return False
 
     def on_enter(self, event):
-        print("enter")
+#        print("enter")
         return False
 
     def on_leave(self, event):
-        print("leave")
+#        print("leave")
         return False
 
     def on_wheel(self, event):
@@ -797,10 +844,89 @@ class Image_widget(QWidget):
             if (self._rect_pos0 == self._rect_pos1):
                 self._group.removeFromGroup(self._rect)
                 self._rect = None
+                print("cancel drawing RECT")
+                self.cancel_drawing_rect()
+            else:
+                print("finish drawing RECT", self._rect_pos0, self._rect_pos1)
+                self.publish_drawing_rect()
             self._drawing_rect = False
+            
+    def cancel_drawing_rect(self, dclick=False):
+        if self._qim is None:
+            return
+        keys = ["x", "y", "dx"]
+        if dclick:
+            keys = ["x", "y", "dx", "xy_ratio"]
+        # resets everything except the zoom ratio 
+        for key in keys: #, "xy_ratio"]:
+            value = self._fractal_zoom_init[key]
+            if value is not None:
+                # Send a model modification request
+                # TODO: avoid update cancel xy_ratio 1.0 <class 'str'>
+                print("update cancel", key, value, type(value))
+                self._presenter[key] = value
+
+    def publish_drawing_rect(self):
+        print("------*----- publish zoom")
+        if self._qim is None:
+            return
+#        print("publish", self._rect_pos0, self._rect_pos1)
+#        print("fractal", self._presenter["fractal"])
+#        print("fractal", self._presenter["image"])
+        nx = self._fractal_zoom_init["nx"]
+        ny = self._fractal_zoom_init["ny"]
+        # new center offet in pixel
+        center_off_px = 0.5 * (self._rect_pos0.x() + self._rect_pos1.x() - nx)
+        center_off_py = 0.5 * (ny - self._rect_pos0.y() - self._rect_pos1.y())
+        dx_pix = abs(self._rect_pos0.x() - self._rect_pos1.x())
+#        print("center px", center_off_px)
+#        print("center py", center_off_py)
+        ref_zoom = self._fractal_zoom_init.copy()
+        # str -> mpf as needed
+        to_mpf = {k: isinstance(self._fractal_zoom_init[k], str) for k in
+                  ["x", "y", "dx"]}
+        for (k, v) in to_mpf.items():
+            if v:
+                ref_zoom[k] = mpmath.mpf(ref_zoom[k])
+
+#        print("is_mpf", to_mpf, ref_zoom)
+        pix = ref_zoom["dx"] / float(ref_zoom["nx"])
+        ref_zoom["x"] += center_off_px * pix
+        ref_zoom["y"] += center_off_py * pix
+        ref_zoom["dx"] = dx_pix * pix
+        with mpmath.workdps(6):
+            # Sets the working dps to 10e-4 x pixel size
+            ref_zoom["dps"] = int(-mpmath.log10(pix * dx_pix / nx) + 4)
+        print("------*----- NEW dps from zoom", ref_zoom["dps"]  )
+        #  mpf -> str (back)
+        for (k, v) in to_mpf.items():
+            if v:
+                if k == "dx":
+                    ref_zoom[k] = mpmath.nstr(ref_zoom[k], 16)
+                else:
+                    ref_zoom[k] = str(ref_zoom[k])
+        for key in ["x", "y", "dx", "dps"]:
+            self._presenter[key] = ref_zoom[key]
+        
+
+        
+        
+#        keys = ["x", "y", "dx"]
+#        if dclick:
+#            keys = ["x", "y", "dx", "xy_ratio"]
+#        # resets everything except the zoom ratio 
+#        for key in keys: #, "xy_ratio"]:
+#            value = self._fractal_zoom_init[key]
+#            if value is not None:
+#                # Send a model modification request
+#                # TODO: avoid update cancel xy_ratio 1.0 <class 'str'>
+#                print("update cancel", key, value, type(value))
+#                self._presenter[key] = value
+
 
     def on_mouse_double_left_click(self, event):
         self.fit_image()
+        self.cancel_drawing_rect(dclick=True)
 
     def on_mouse_move(self, event):
         scene_pos = event.scenePos()
@@ -813,6 +939,7 @@ class Image_widget(QWidget):
             
 
     def draw_rect(self, pos0, pos1):
+        """ Draws the selection rectangle """
         # Enforce the correct ratio
         diffx = pos1.x() - pos0.x()
         diffy = pos1.y() - pos0.y()
@@ -834,6 +961,20 @@ class Image_widget(QWidget):
             self._rect = QGraphicsRectItem(rectF)
             self._rect.setPen(QtGui.QPen(QtGui.QColor("red"), 0, Qt.DashLine))
             self._group.addToGroup(self._rect)
+
+
+    def model_event_slot(self, keys, val):
+        """ A model item has been modified - will it impact the widget ? """
+        # Find the mathching "mapping" - None if no match
+        mapped = next((k for k, v in self._mapping.items() if v == keys), None)
+        if mapped in ["image", "fractal"]:
+            self.reset_im()
+        elif mapped in ["x", "y", "dx", "xy_ratio", "dps"]:
+            pass
+        else:
+            if mapped is not None:
+                raise NotImplementedError("Mapping event not implemented: " 
+                                          + "{}".format(mapped))
 
 
 
@@ -874,6 +1015,7 @@ class Fractal_MainWindow(QMainWindow):
                    "xy_ratio": ("func", gui._xy_ratio),
                    "dps": ("func", gui._dps)}
         Image_presenter(model, mapping, register_key="image")
+        
 
     def layout(self):
         self.add_func_wget()
@@ -881,8 +1023,8 @@ class Fractal_MainWindow(QMainWindow):
         
     def add_func_wget(self):
         func_wget = Action_func_widget(self, self.from_register(("func",)),
-            action_setting=("image_updated",
-                            self.from_register("image")["image"]))
+            action_setting=("image_updated", 
+                self.from_register("image")._mapping["image"]))
         dock_widget = QDockWidget(None, Qt.SubWindow)
         dock_widget.setWidget(func_wget)
         dock_widget.setWindowTitle("Parameters")

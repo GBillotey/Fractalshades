@@ -929,6 +929,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
     
                 if interior_detect and (n_iter > SA_iter + 1):
                     Z[1, :] = 2. * (ref_path[0] * Z[1, :] + Z[0, :] * Z[1, :])
+                    # Z[1, :] =  2. * (Z[1, :] * ref_path[0] + Z[0, :] * (Z[1, :] + ref_path[1]))
     
                 Z[0, :] = Z[0, :] * (Z[0, :] + 2. * ref_path[0]) + c
     
