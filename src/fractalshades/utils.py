@@ -16,7 +16,6 @@ def mkdir_p(path):
         else:
             raise exc
 
-
 def _store_kwargs(dic_name):
     """ Decorator for an instance method, 
     - stores the individual kwargs as instance attributes 

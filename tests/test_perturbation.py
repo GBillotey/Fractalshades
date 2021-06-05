@@ -6,7 +6,9 @@ import shutil
 import PIL
 
 import fractalshades as fs
+import fractalshades.utils as fsutils
 import fractalshades.models as fsmodels
+import fractalshades.colors as fscolors
 
 import test_config
 
@@ -27,18 +29,25 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
     def setUp(self):
         image_dir = os.path.join(test_config.test_dir, "images_comparison")
 
-        fs.mkdir_p(image_dir)
+        fsutils.mkdir_p(image_dir)
         self.image_dir = image_dir
 
         image_dir_ref = os.path.join(test_config.test_dir, "images_REF")
-        fs.mkdir_p(image_dir_ref)
+        fsutils.mkdir_p(image_dir_ref)
         self.image_dir_ref = image_dir_ref
 
         purple = np.array([181, 40, 99]) / 255.
         gold = np.array([255, 210, 66]) / 255.
-        color_gradient = fs.Color_tools.Lch_gradient(purple, gold,  200)
-        self.colormap = fs.Fractal_colormap(color_gradient)
-        self.colormap.extent = "mirror"
+
+        colors1 = np.vstack((purple[np.newaxis, :]))
+        colors2 = np.vstack((gold[np.newaxis, :]))
+        self.colormap = fscolors.Fractal_colormap(kinds="Lch", colors1=colors1,
+            colors2=colors2, n=200, funcs=None, extent="mirror")
+        
+
+#        color_gradient = fscolors.Color_tools.Lch_gradient(purple, gold,  200)
+#        self.colormap = fscolors.Fractal_colormap(color_gradient)
+#        self.colormap.extent = "mirror"
 
     @test_config.no_stdout
     def test_M2_E20(self):
@@ -107,8 +116,14 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
         gold = np.array([255, 210, 66]) / 255.
         black = np.array([0, 0, 0]) / 255.
-        color_gradient = fs.Color_tools.Lch_gradient(gold, black, 200)
-        colormap = fs.Fractal_colormap(color_gradient)
+        colors1 = np.vstack((gold[np.newaxis, :]))
+        colors2 = np.vstack((black[np.newaxis, :]))
+        colormap = fscolors.Fractal_colormap(kinds="Lch", colors1=colors1,
+            colors2=colors2, n=200, funcs=None, extent="clip")
+        
+        
+#        color_gradient = fscolors.Color_tools.Lch_gradient(gold, black, 200)
+#        colormap = fscolors.Fractal_colormap(color_gradient)
 
         test_file = self.make_M2_img(x, y, dx, precision, nx,
             complex_type, test_name, prefix, interior_detect=True,
@@ -211,7 +226,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    full_test = False
+    full_test = True
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_Perturbation_mandelbrot]))

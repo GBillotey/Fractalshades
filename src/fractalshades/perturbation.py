@@ -31,22 +31,22 @@ class PerturbationFractal(fs.Fractal):
     @fsutils.zoom_options
     def zoom(self, *,
              precision: int,
-             x: str,
-             y: str,
-             dx: str,
+             x: mpmath.mpf,
+             y: mpmath.mpf,
+             dx: mpmath.mpf,
              nx: int,
              xy_ratio: float,
              theta_deg: float,
              projection: str="cartesian",
              antialiasing: bool=False):
         mpmath.mp.dps = precision
-        # We override the str user-input values with mpmath scalars
+        # In case the user inputs were strings, we override with mpmath scalars
         self.x = mpmath.mpf(x)   
         self.y = mpmath.mpf(y)
         self.dx = mpmath.mpf(dx)
         # Lazzy dictionary of reference point pathes
         self._ref_array = {}
-
+        
 
     def diff_c_chunk(self, chunk_slice, iref, file_prefix,
                      ensure_Xr=False):
@@ -154,7 +154,7 @@ class PerturbationFractal(fs.Fractal):
            - arrays : [Z, U, stop_reason, stop_iter]
         """
         save_path = self.ref_point_file(iref, file_prefix)
-        fs.mkdir_p(os.path.dirname(save_path))
+        fsutils.mkdir_p(os.path.dirname(save_path))
         with open(save_path, 'wb+') as tmpfile:
             print("Path computed, saving", save_path)
             pickle.dump(FP_params, tmpfile, pickle.HIGHEST_PROTOCOL)
@@ -227,7 +227,7 @@ class PerturbationFractal(fs.Fractal):
            - arrays : [Z, U, stop_reason, stop_iter]
         """
         save_path = self.SA_file(iref, file_prefix)
-        fs.mkdir_p(os.path.dirname(save_path))
+        fsutils.mkdir_p(os.path.dirname(save_path))
         with open(save_path, 'wb+') as tmpfile:
             print("SA computed, saving", save_path)
             pickle.dump(SA_params, tmpfile, pickle.HIGHEST_PROTOCOL)
@@ -460,6 +460,25 @@ class PerturbationFractal(fs.Fractal):
 
 
 
+    def param_matching(self, dparams):
+        """
+        If we want to do some clever sanity test (not implemented)
+        If not matching shall raise a ValueError
+        """
+        print("**CALLING param_matching +++", self.params)
+        # TODO : note: when comparing iref should be disregarded ? 
+        # or subclass specific implementation
+        UNTRACKED = ["SA_params", "datetime", "debug"]
+        for key, val in self.params.items():
+            if not(key in UNTRACKED) and dparams[key] != val:
+                print("Unmatching", key, val, "-->", dparams[key])
+                return False
+#            print("its a match", key, val, dparams[key] )
+        print("** all goog")
+        return True
+
+
+
     def res_available(self, chunk_slice):
         """  Returns True if chunkslice is already computed with current
         parameters
@@ -472,7 +491,7 @@ class PerturbationFractal(fs.Fractal):
             return False
 
         if dparams["iref"] >= self.iref:
-            return True
+            return self.param_matching(dparams)
             # return self.dic_matching(dparams, self.calc_params)
         
         # We are in the case where a file exists but not updated to the irefs
@@ -483,7 +502,7 @@ class PerturbationFractal(fs.Fractal):
             return False
         else:
             print("No glitched pixels remaining: ")
-            return True
+            return self.param_matching(dparams)
             # return self.dic_matching(dparams, self.calc_params)
         
 #        subset = self.subset
@@ -623,8 +642,7 @@ class PerturbationFractal(fs.Fractal):
              index_active, n_iter, SA_iter, ref_div_iter, ref_path)
 
 
-    def save_data_chunk(self, chunk_slice, file_prefix,
-                        params, codes, raw_data):
+    def save_data_chunk(self, save_path, params, codes, raw_data):
         """
         Write to a dat file the following data:
            - params = main parameters used for the calculation
@@ -633,11 +651,11 @@ class PerturbationFractal(fs.Fractal):
         """
         params = copy.deepcopy(params)
         params["iref"] = self.iref
-        return super().save_data_chunk(chunk_slice, file_prefix, params, codes,
-                    raw_data)
+        return super().save_data_chunk(save_path, params, codes, raw_data)
 
     def ensure_ref_point(self, FP_loop, max_iter, file_prefix,
-                         iref=0, c0=None, newton="cv", order=None):
+                         iref=0, c0=None, newton="cv", order=None,
+                         k_ball=1.):
         """
         # Check if we have at least one reference point stored, otherwise 
         # computes and stores it
@@ -652,12 +670,12 @@ class PerturbationFractal(fs.Fractal):
                 
             if (newton is not None) and (newton != "None"):
                 if order is None:
-                    k_ball = 0.5
+                    # k_ball = 0.5
                     order = self.ball_method(c0,
                             max(self.dx, self.dy) * k_ball, max_iter)
                     if order is None: # ball method escaped...
                         order = 1
-                max_newton = 1 if (newton == "step") else None
+                max_newton = 1 if (newton == "step") else 50 #None
                 print("newton ", newton, " with order: ", order)
                 print("max newton iter ", max_newton)
 
@@ -678,10 +696,11 @@ class PerturbationFractal(fs.Fractal):
                     diff = rg.random([2], dtype=data_type)
                     c_shifted = (c0 + self.dx * (diff[0] - 0.5) + 
                                       self.dy * (diff[1] - 0.5) * 1.j)
+                    k_ball *= 2.
                     print("*** Newton failed,")
-                    print("*** Relauch with shifted ref point, ", diff)
-                    return self.ensure_ref_point(FP_loop, max_iter, file_prefix,
-                                          iref, c0=c_shifted)
+                    print("*** Relauch with shifted ref point, ", diff, "k_ball", k_ball)
+                    return self.ensure_ref_point(FP_loop, max_iter,
+                        file_prefix, iref, c0=c_shifted, k_ball=k_ball)
                 pt = nucleus
 
             print("compute ref_point", iref, pt, "\ncenter:\n",

@@ -1,432 +1,28 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import mpmath
-import matplotlib.colors
+#import matplotlib.colors
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 import os, errno, sys
 import fnmatch
-import functools
 import copy
 import PIL
 
-import multiprocessing
 import tempfile
 import datetime
 import pickle
 
+import fractalshades as fs
 import fractalshades.numpy_utils.xrange as fsx
 import fractalshades.settings as fssettings
 import fractalshades.utils as fsutils
 
-def mkdir_p(path):
-    """ Creates directory ; if exists does nothing """
-    try:
-        os.makedirs(path)
-    except OSError as exc:
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
-            pass
-        else:
-            raise exc
-
-class Color_tools():
-    """ A bunch of staticmethods
-    Color conversions from http://www.easyrgb.com/en/math.php#text7
-    All take as input and return arrays of size [n, 3]"""
-    # CIE LAB constants Illuminant= D65
-    Lab_ref_white = np.array([0.95047, 1., 1.08883])
-    # CIE LAB constants Illuminant= D50
-    D50_ref_white = np.array([0.964212, 1., .825188])
-
-    @staticmethod
-    def rgb_to_XYZ(rgb):
-        arr = np.swapaxes(rgb, 0, 1)
-        arr = np.where(arr > 0.04045, ((arr + 0.055) / 1.055) ** 2.4,
-                       arr / 12.92)
-        matrix = np.array([[0.4124, 0.3576, 0.1805],
-                           [0.2126, 0.7152, 0.0722],
-                           [0.0193, 0.1192, 0.9505]])
-        return np.swapaxes(np.dot(matrix, arr), 0, 1)
-    @staticmethod
-    def XYZ_to_rgb(XYZ):
-        arr = np.swapaxes(XYZ, 0, 1)
-        matrix_inv = np.array([[ 3.24062548, -1.53720797, -0.4986286 ],
-                               [-0.96893071,  1.87575606,  0.04151752],
-                               [ 0.05571012, -0.20402105,  1.05699594]])
-        arr = np.dot(matrix_inv, arr)
-        arr[arr < 0.] = 0.
-        arr = np.where(arr > 0.0031308,
-                       1.055 * np.power(arr, 1. / 2.4) - 0.055, arr * 12.92)
-        arr[arr > 1.] = 1.
-        return np.swapaxes(arr, 0, 1)
-
-    @staticmethod    
-    def XYZ_to_CIELab(XYZ, ref_white=Lab_ref_white):
-        arr = XYZ / ref_white
-        arr = np.where(arr > 0.008856, arr ** (1. / 3.),
-                       (7.787 * arr) + 16. / 116.)
-        x, y, z = arr[:, 0], arr[:, 1], arr[:, 2]
-        L, a , b = (116. * y) - 16. , 500.0 * (x - y) , 200.0 * (y - z)
-        return np.swapaxes(np.vstack([L, a, b]), 0, 1)
-    @staticmethod 
-    def CIELab_to_XYZ(Lab, ref_white=Lab_ref_white):
-        L, a, b = Lab[:, 0], Lab[:, 1], Lab[:, 2]
-        y = (L + 16.) / 116.
-        x = (a / 500.) + y
-        z = y - (b / 200.)
-        arr = np.vstack([x, y, z]) 
-        arr = np.where(arr > 0.2068966, arr ** 3.,
-                       (arr - 16. / 116.) / 7.787)
-        return np.swapaxes(arr, 0, 1) * ref_white
-
-    @staticmethod 
-    def CIELab_to_CIELch(Lab):
-        L, a, b = Lab[:, 0], Lab[:, 1], Lab[:, 2]
-        h = np.arctan2(b, a)
-        h = np.where(h > 0, h / np.pi * 180.,
-                     360. + h / np.pi * 180.)
-        c = np.sqrt(a**2 + b**2)
-        arr = np.vstack([L, c, h])
-        return np.swapaxes(arr, 0, 1)
-    @staticmethod 
-    def CIELch_to_CIELab(Lch):
-        L, c, h = Lch[:, 0], Lch[:, 1], Lch[:, 2]
-        h_rad = h * np.pi / 180.
-        a = c * np.cos(h_rad)
-        b = c * np.sin(h_rad)
-        arr = np.vstack([L, a, b])
-        return np.swapaxes(arr, 0, 1)
-
-    @staticmethod 
-    def rgb_to_CIELab(rgb):
-        return Color_tools.XYZ_to_CIELab(Color_tools.rgb_to_XYZ(rgb))
-    @staticmethod 
-    def rgb_to_CIELch(rgb):
-        return Color_tools.CIELab_to_CIELch(
-            Color_tools.XYZ_to_CIELab(Color_tools.rgb_to_XYZ(rgb)))
-    @staticmethod
-    def CIELab_to_rgb(Lab):
-        return Color_tools.XYZ_to_rgb(Color_tools.CIELab_to_XYZ(Lab))
-    @staticmethod
-    def CIELch_to_rgb(Lch):
-        return Color_tools.XYZ_to_rgb(
-            Color_tools.CIELab_to_XYZ(Color_tools.CIELch_to_CIELab(Lch)))
-
-    @staticmethod
-    def Lab_gradient(color_1, color_2, n, f=lambda t: t):
-        """
-        Return a color gradient between color_1 and color_2, default linear in 
-        Lab
-        *color1* and *color_2* in rgb coordinate
-        *n* integer number of color in gradient
-        *f* function default to linear, general case c1 + f * (c2 - c1)
-        """
-        return Color_tools.customized_Lab_gradient(color_1, color_2, n, f, f)
-
-    @staticmethod
-    def desaturated(color):
-        """
-        Return the grey tone of identical Luminance
-        """
-        L = Color_tools.rgb_to_CIELab(color[np.newaxis, :])[0, 0]
-        return Color_tools.CIELab_to_rgb(np.array([[L, 0., 0.]]))[0, :]
-
-    @staticmethod
-    def Lch_gradient(color_1, color_2, n, long_path=False, f=lambda t: t):
-        """
-        Return a color gradient between color_1 and color_2, default linear in
-        Lch
-        *color1* and *color_2* in rgb coordinate
-        *n* integer number of color in gradient
-        *long_path* boolean If True, select the path that is > 180° in hue
-        *f* function default to linear, general case c1 + f * (c2 - c1)
-        """
-        return Color_tools.customized_Lch_gradient(color_1, color_2, n,
-                                                   long_path, f, f, f)
-
-    @staticmethod
-    def customized_Lab_gradient(color_1, color_2, n, 
-        L = lambda t: t, ab = lambda t: t):
-        """
-        Idem Lab_gradient except we customize 2 functions L and a = b noted ab
-        """
-        Lab_1 = Color_tools.rgb_to_CIELab(color_1[np.newaxis, :])[0, :]
-        Lab_2 = Color_tools.rgb_to_CIELab(color_2[np.newaxis, :])[0, :]
-        arr = np.vstack([Lab_1[i] + 
-                         f(np.linspace(0., 1., n)) * (Lab_2[i] - Lab_1[i]) 
-                         for f, i in zip([L, ab, ab], [0, 1, 2])]).T
-        return Color_tools.CIELab_to_rgb(arr)
-
-    @staticmethod
-    def customized_Lch_gradient(color_1, color_2, n, long_path=False,
-        L = lambda t: t, c = lambda t: t, h = lambda t: t):
-        """
-        Idem Lch_gradient except we customize all 3 functions L, c, h
-        """
-        Lch_1 = Color_tools.rgb_to_CIELch(color_1[np.newaxis, :])[0, :]
-        Lch_2 = Color_tools.rgb_to_CIELch(color_2[np.newaxis, :])[0, :]
-        h1, h2 = Lch_1[2], Lch_2[2]
-        if np.abs(h2- h1) > 180. and (not long_path):
-            Lch_2[2] = h2 - np.sign(h2 - h1) * 360. # take the shortest path
-        if np.abs(h2- h1) < 180. and long_path:
-            Lch_2[2] = h2 - np.sign(h2 - h1) * 360. # take the longest path
-        arr = np.vstack([Lch_1[i] + 
-                         f(np.linspace(0., 1., n)) * (Lch_2[i] - Lch_1[i]) 
-                         for f, i in zip([L, c, h], [0, 1, 2])]).T
-        return Color_tools.CIELch_to_rgb(arr)
+from fractalshades.mprocessing import Multiprocess_filler
+from fractalshades.colors import Color_tools
 
 
-    @staticmethod
-    def blend(rgb, shade, shade_type=None):
-        """
-        Provides several "shading" options based on shade_type dict
-        *rgb* array of colors to 'shade', shape (nx, 3) or (nx, ny, 3)
-        *shade* N&B array shape similar to rgb but last dim is 1
-        *shade_type* {"Lch": x1, "overlay": x2, "pegtop": x3}
-            x1, x2, x3 positive scalars, the proportion of each shading method
-            in the final image.
-        """
-        if shade_type is None:
-            shade_type = {"Lch": 4., "overlay": 4., "pegtop": 1.}        
-        
-        blend_T = float(sum((shade_type.get(key, 0.)
-                        for key in["Lch", "overlay", "pegtop"])))
-
-        is_image = (len(rgb.shape) == 3)
-        if is_image:
-            imx, imy, ichannel = rgb.shape
-            if ichannel!= 3:
-                raise ValueError("expectd rgb array")
-            rgb = np.copy(rgb.reshape(imx * imy, 3))
-            shade = np.copy(shade.reshape(imx * imy, 1))
-        
-        XYZ = Color_tools.rgb_to_XYZ(rgb[:, 0:3])
-
-        XYZ_overlay = np.zeros([imx * imy, 3])
-        XYZ_pegtop = np.zeros([imx * imy, 3])
-        XYZ_Lch = np.zeros([imx * imy, 3])
-
-        ref_white = Color_tools.D50_ref_white
-
-
-        if shade_type.get("overlay", 0.) != 0:
-            low = 2. * shade * XYZ
-            high = ref_white * 100. - 2.  * (1. - shade) * (ref_white * 100. - XYZ)
-            XYZ_overlay =  np.where(XYZ <= 0.5 * ref_white * 100., low, high)            
-
-        if shade_type.get("pegtop", 0.) != 0:
-            XYZ_pegtop = 2. * shade * XYZ + (1. - 2. * shade) * XYZ**2 / ref_white
-
-        if shade_type.get("Lch", 0.) != 0:
-            shade = 2. * shade - 1.
-            Lab = Color_tools.XYZ_to_CIELab(XYZ)
-            L = Lab[:, 0, np.newaxis]
-            a = Lab[:, 1, np.newaxis]
-            b = Lab[:, 2, np.newaxis]
-            np.putmask(L, shade > 0, L  + shade * (100. - L))     # lighten
-            np.putmask(L, shade < 0, L * (1. +  shade ))          # darken
-            np.putmask(a, shade > 0, a  - shade**2 * a)           # lighten
-            np.putmask(a, shade < 0, a * (1. -  shade**2 ))       # darken
-            np.putmask(b, shade > 0, b  - shade**2 * b)           # lighten
-            np.putmask(b, shade < 0, b * (1. -  shade**2 ))       # darken
-            Lab[:, 0] = L[:, 0]
-            Lab[:, 1] = a[:, 0]
-            Lab[:, 2] = b[:, 0]
-            XYZ_Lch = Color_tools.CIELab_to_XYZ(Lab)
-
-        XYZ = (XYZ_overlay * shade_type["overlay"] +
-               XYZ_pegtop * shade_type["pegtop"] +
-               XYZ_Lch * shade_type["Lch"]) / blend_T
-
-        # Convert modified hsv back to rgb.
-        blend = Color_tools.XYZ_to_rgb(XYZ)
-        if is_image:
-            blend = blend.reshape([imx, imy, 3])
-        return blend
-
-    @staticmethod
-    def shade_layer(normal, theta_LS, phi_LS, shininess=0., ratio_specular=0.,
-                    **kwargs):
-        """
-        *normal* flat array of normal vect
-        shade_dict:
-            "theta_LS" angle of incoming light [0, 360]
-            "phi_LS"   azimuth of incoming light [0, 90] 90 is vertical
-            "shininess" material coefficient for specular
-            "ratio_specular" ratio of specular to lambert
-        Returns 
-        *shade* array of light intensity, greyscale image (value btwn 0 and 1)
-        https://en.wikipedia.org/wiki/Blinn%E2%80%93Phong_reflection_model
-        """
-        if "LS_coords" in kwargs.keys():
-            # LS is localized somewhere in the image computing theta_LS
-            # as a vector
-            LSx, LSy = kwargs["LS_coords"]
-            (ix, ixx, iy, iyy) = kwargs["chunk_slice"]
-            chunk_mask = kwargs["chunk_mask"]
-            nx = kwargs["nx"]
-            ny = kwargs["ny"]
-            nx_grid = (np.arange(ix, ixx, dtype=np.float32) / nx) - 0.5
-            ny_grid = (np.arange(iy, iyy, dtype=np.float32) / ny) - 0.5
-            ny_vec, nx_vec  = np.meshgrid(ny_grid, nx_grid)
-            theta_LS = - np.ravel(np.arctan2(LSy - ny_vec, nx_vec - LSx)) + np.pi
-            if chunk_mask is not None:
-                theta_LS = theta_LS[chunk_mask]
-        else:
-            # Default case LS at infinity incoming angle provided
-            theta_LS = theta_LS * np.pi / 180.
-        phi_LS = phi_LS * np.pi / 180.
-        
-        if "exp_map" in kwargs.keys():
-            raise ValueError() # debug
-            # Normal angle correction in case of exponential map
-            if kwargs["exp_map"]:
-                (ix, ixx, iy, iyy) = kwargs["chunk_slice"]
-                chunk_mask = kwargs["chunk_mask"]
-                nx = kwargs["nx"]
-                ny = kwargs["ny"]
-                nx_grid = (np.arange(ix, ixx, dtype=np.float32) / nx) - 0.5
-                ny_grid = (np.arange(iy, iyy, dtype=np.float32) / ny) - 0.5
-                ny_vec, nx_vec  = np.meshgrid(ny_grid, nx_grid)
-                expmap_angle = np.ravel(np.exp(-1j * (ny_vec) * np.pi * 2.))
-                if chunk_mask is not None:
-                    expmap_angle = expmap_angle[chunk_mask]
-                normal = normal * expmap_angle
-
-        # k_ambient = - 1. / (2. * ratio_specular + 1.)
-        k_lambert = 1. #- 2. * k_ambient
-        k_spec = ratio_specular * k_lambert
-
-        # Light source coordinates
-        LSx = np.cos(theta_LS) * np.cos(phi_LS)
-        LSy = np.sin(theta_LS) * np.cos(phi_LS)
-        LSz = np.sin(phi_LS) 
-
-        # Normal vector coordinates - Lambert shading
-        nx = normal.real
-        ny = normal.imag
-        nz = np.sqrt(1. - nx**2 - ny**2) 
-        if "inverse_n" in kwargs.keys():
-            if kwargs["inverse_n"]:
-                nx = -nx
-                ny = -ny
-                
-        lambert = LSx * nx + LSy * ny + LSz * nz
-        np.putmask(lambert, lambert < 0., 0.)
-
-        # half-way vector coordinates - Blinn Phong shading
-        specular = np.zeros_like(lambert)
-        if ratio_specular != 0.:
-            phi_half = (np.pi * 0.5 + phi_LS) * 0.5
-            half_x = np.cos(theta_LS) * np.sin(phi_half)
-            half_y = np.sin(theta_LS) * np.sin(phi_half)
-            half_z = np.cos(phi_half)
-            spec_angle = half_x * nx + half_y * ny + half_z * nz
-            np.putmask(spec_angle, spec_angle < 0., 0.)
-            specular = np.power(spec_angle, shininess)
-            
-        res =  k_lambert * lambert + k_spec * specular # + k_ambient
-        
-        #res[normal == 0.] = 0.5 * (np.nanmin(res) + np.nanmax(res))
-        try:
-            np.putmask(res, normal == 0., np.nanmin(res) + 0.5 * (np.nanmax(res) - np.nanmin(res)))
-        except ValueError:
-            pass
-
-        return res# k_ambient + k_lambert * lambert + k_spec * specular
-
-
-def process_init(job, redirect_path):
-    """
-    Save *job* as a global for the child-process ; redirects stdout and stderr.
-    -> 'On Unix a child process can make use of a shared resource created in a
-    parent process using a global resource. However, it is better to pass the
-    object as an argument to the constructor for the child process.'
-    """
-    global process_job
-    process_job = job
-    mkdir_p(redirect_path)
-    out_file = str(os.getpid())
-    sys.stdout = open(os.path.join(redirect_path, out_file + ".out"), "a")
-    sys.stderr = open(os.path.join(redirect_path, out_file + ".err"), "a")
-
-def job_proxy(key):
-    global process_job
-    return process_job(key)
-
-class Multiprocess_filler():
-    def __init__(self, iterable_attr, res_attr=None, redirect_path_attr=None,
-                 iter_kwargs="key", veto_multiprocess=False):
-        """
-        Decorator class for an instance-method *method*
-
-        *iterable_attr* : string, getattr(instance, iterable_attr) is an
-            iterable.
-        *res_attr* : string or None, if not None (instance, res_attr) is a
-            dict-like.
-        *redirect_path_attr* : string or None. If veto_multiprocess is False,
-            getattr(instance, redirect_path_attr) is the directory where
-            processes redirects sys.stdout and sys.stderr.
-        veto_multiprocess : if True, defaults to normal iteration without
-            multiprocessing
-
-        Usage :
-        @Multiprocess_filler(iterable_attr, res_attr, redirect_pathattr,
-                             iter_kwargs)
-        def method(self, *args, iter_kwargs=None, **otherkwargs):
-            (... CPU-intensive calculations ...)
-            return val
-
-        - iter_kwargs will be filled with successive values yield by *iterable*
-            and successive outputs calculated by multiprocessing.cpu_count()
-            child-processes,
-        - these outputs will be pushed in place to res in parent process:
-            res[key] = val
-        - the child-processes stdout and stderr are redirected to os.getpid()
-            files in subdir *redirect_path* (extensions .out, in)
-        """
-        self.iterable = iterable_attr
-        self.res = res_attr
-        self.redirect_path_attr = redirect_path_attr
-        self.iter_kwargs = iter_kwargs
-        self.veto_multiprocess = veto_multiprocess
-
-    def __call__(self, method):
-        @functools.wraps(method)
-        def wrapper(instance, *args, **kwargs):
-            iterable = getattr(instance, self.iterable)
-            res = None
-            if self.res is not None:
-                res = getattr(instance, self.res)
-            def job(key):
-                kwargs[self.iter_kwargs] = key
-                return method(instance, *args, **kwargs)
-
-            if (fssettings.enable_multiprocessing
-                and not(self.veto_multiprocess)):
-                print("Launch Multiprocess_filler of ", method.__name__)
-                print("cpu count:", multiprocessing.cpu_count())
-                redirect_path = getattr(instance, self.redirect_path_attr)
-                with multiprocessing.Pool(initializer=process_init,
-                        initargs=(job, redirect_path),
-                        processes=multiprocessing.cpu_count()) as pool:
-                    worker_res = {key: pool.apply_async(job_proxy, (key,))
-                                  for key in iterable()}
-                    for key, val in worker_res.items():
-                        if res is not None:
-                            res[key] = val.get()
-                        else:
-                            val.get()
-                    pool.close()
-                    pool.join()
-            else:
-                for key in iterable():
-                    if res is not None:
-                        res[key] = job(key)
-                    else:
-                        job(key)
-        return wrapper
 
 
 class Fractal_Data_array():
@@ -552,167 +148,7 @@ class Fractal_Data_array():
 
 
 
-class Fractal_colormap():
-    """
-    Class responsible for mapping a real array to a colors array.
-    Attributes :
-        *_colors* Internal list of possible colors, [0 to self.n_colors]
-        *_probes* list of indices in self._colors array, identifying the
-                  transitions between differrent sections of the colormap. Each
-                  of this probe is mapped to *_probe_value*, either given by the
-                  user or computed at plot time.
-    """
-    def __init__(self, color_gradient, colormap=None, extent="clip"):
-        """
-        Creates from : 
-            - Directly a color gradient array (as output by Color_tools
-              gradient functions, array of shape (n_colors, 3))
-            - A matplotlib colormap ; in this case color_gradient shall be a
-              list of the form (start, stop, n _colors)
-*color_gradient*  Either: a Color gradient array from COlortool class, or if a
-maltplotlib colormap is provided at second input, a tuple (xmin, xmax,
-n_colors) where xmi, xmax refer to this colormap (xmin xmax btw. 0 and 1).
-*colormap*  None or a matplotlib colormap
-*extent*    ["clip", "mirror", "repeat"] What to do with out of range Values. "clip" or "mirror"
-        """
-        if colormap is None:
-            self._colors = color_gradient
-            n_colors, _ = color_gradient.shape
-        elif isinstance(colormap, matplotlib.colors.Colormap):
-            x1, x2, n_colors = color_gradient
-            self._colors = colormap(np.linspace(x1, x2, n_colors))[:, :3]
-        else:
-            raise ValueError("Invalid *colormap* argument, expected a "
-                             "mpl.colors.Colormap or None")
-        self._probes = np.array([0, n_colors-1])
-        self.quantiles_ref = None
-        self.extent = extent
 
-    @property
-    def n_colors(self):
-        """ Total number of colors in the colormap. """
-        return self._colors.shape[0]
-
-    @property
-    def probes(self):
-        """ Position of the "probes" ie transitions between the different parts
-        of the colormap. Read-only. """
-        return np.copy(self._probes)
-
-    def __neg__(self):
-        """
-        Returns a reversed colormap
-        """
-        other = Fractal_colormap(self._colors[::-1, :])
-        other._probes = self._probes[-1] - self._probes[::-1]
-        return other
-    
-    def __add__(self, other):
-        """ Concatenates 2 Colormaps """
-        fcm = Fractal_colormap(np.vstack([self._colors, other._colors]))
-        fcm._probes = np.concatenate([self._probes,
-            (other._probes + self._probes[-1] + 1)[1:]])
-        return fcm
-
-    def __sub__(self, other):
-        """ Sbstract a colormap ie adds its reversed version """
-        return self.__add__(other.__neg__())
-
-    def output_png(self, dir_path, file_name):
-        """
-        Outputs the colorbar to a .png files:
-        dir_path/file_name.cbar.png
-        """
-        img = np.repeat(self._colors[: , np.newaxis, :],
-                        30 , axis=1)
-        img = np.uint8(img * 255.99)
-        ix, iy, _ = np.shape(img)
-        margin = 10
-        B = np.ones([ix + 2 * margin, iy + 2 * margin, 3], 
-                    dtype=np.uint8) * 255
-        B[margin:margin+ix, margin:margin+iy, :] = img
-        PIL.Image.fromarray(np.swapaxes(B, 0, 1)).save(
-            os.path.join(dir_path, file_name + ".cbar.png"))
-
-    def colorize(self, z, probes_z):
-        """
-        Returns a color array bazed on z values
-        """
-        nx, ny = z.shape
-        z = np.ravel(z)
-        z = self.normalize(z, probes_z)
-        # linear interpolation in sorted color array
-        indices = np.searchsorted(np.arange(self.n_colors), z)
-        alpha = indices - z
-        search_colors = np.vstack([self._colors[0, :],
-                                   self._colors,
-                                   self._colors[-1, :]])
-        z_colors = (alpha[:, np.newaxis] * search_colors[indices, :] + 
-             (1.-alpha[:, np.newaxis]) * search_colors[indices + 1, :])
-        return np.reshape(z_colors, [nx, ny, 3])  
-    
-    def greyscale(self, z, probes_z):
-        """
-        Returns a color array bazed on z values
-        """
-        z = self.normalize(z, probes_z)
-        # linear interpolation in sorted greyscale array
-        indices = np.searchsorted(np.arange(self.n_colors), z)
-        alpha = indices - z
-        search_colors = np.concatenate([
-            [0.], np.linspace(0., 1., self.n_colors),  [1.]])
-        z_greys = (alpha * search_colors[indices] +
-                   (1. - alpha) * search_colors[indices + 1])
-        return z_greys
-
-    def normalize(self, z, probes_z):
-        """
-        Normalise z , z -> z* so that z*min = 0 / z*max = self.n_colors
-        *z*  array to normalise
-        *probes_z* array of dim self.n_probes: values of z at probes
-        """
-        if np.any(probes_z.shape != self._probes.shape):
-            raise ValueError("Expected *probes_values* of shape {0}, "
-                "given {1}".format(self._probes.shape, probes_z.shape))        
-
-        # on over / under flow : clip or mirror
-        ext_min = np.min(probes_z)
-        ext_max = np.max(probes_z)
-        if self.extent == "clip":
-            z = self.clip(z, ext_min, ext_max)
-        elif self.extent == "mirror":
-            z = self.mirror(z, ext_min, ext_max)
-        elif self.extent == "repeat":
-            z = self.repeat(z, ext_min, ext_max)
-        else:
-            raise ValueError("Unexpected extent property {}".format(
-                    self.extent))
-
-        return np.interp(z, probes_z, self._probes)
-    
-    @staticmethod
-    def clip(x, ext_min, ext_max):
-        np.putmask(x, x < ext_min, ext_min)
-        np.putmask(x, x > ext_max, ext_max)
-        return x
-
-    @staticmethod
-    def mirror(x, ext_min, ext_max):
-        """ Mirroring of x on ext_min & ext_max
-Formula: https://en.wikipedia.org/wiki/Triangle_wave
-4/p * (t - p/2 * floor(2t/p + 1/2)) * (-1)**floor(2t/p + 1/2) where p = 4
-        """
-        t = (x - ext_min) / (ext_max - ext_min)  # btw. 0. and 1
-        e = np.floor((t + 1) / 2)
-        t = np.abs((t - 2. * np.floor(e)) * (-1)**e)
-        return ext_min + (t * (ext_max - ext_min))
-    
-    @staticmethod
-    def repeat(x, ext_min, ext_max):
-        """
-        Repeating x based on ext_min & ext_max (Sawtooth)
-        """
-        return ext_min + ((x - ext_min) % (ext_max - ext_min))
 
 
 class Fractal_plotter():
@@ -935,7 +371,7 @@ the array returned by base_data_key
         self.compute_baselayer_minmax()
         self.compute_baselayer_hist()
         
-        self.colormap.output_png(self.plot_dir, file_name)
+        self.colormap.output_png(self.plot_dir, file_name, nx=1000, ny=50)
 
         mode = "RGB"
         if (len(mask_color) > 3) and (self.mask is not None):
@@ -998,15 +434,7 @@ the array returned by base_data_key
 
         base_img_path = os.path.join(self.plot_dir, file_name + ".png")
 #        tag_dicts = 
-        self.save_tagged(base_img, base_img_path,
-                          {"Software": "py-fractal",
-                           "fractal": type(self.fractal).__name__,
-                           "projection": self.fractal.projection,
-                           "x": repr(self.fractal.x),
-                           "y": repr(self.fractal.y),
-                           "dx": repr(self.fractal.dx),
-                           "theta_deg": repr(self.fractal.theta_deg)
-                           })
+        self.save_tagged(base_img, base_img_path, self.fractal.params)
 
         if self.plot_mask:
             mask_img.save(os.path.join(self.plot_dir, file_name + ".mask.png"))
@@ -1056,7 +484,7 @@ the array returned by base_data_key
         """
         pnginfo = PIL.PngImagePlugin.PngInfo()
         for k, v in tag_dict.items():
-            pnginfo.add_text(k, v)
+            pnginfo.add_text(k, str(v))
         img.save(img_path, pnginfo=pnginfo)
 
 
@@ -1150,7 +578,7 @@ the array returned by base_data_key
         fig.savefig(os.path.join(
              self.plot_dir, self.file_prefix + "_hist.png"))
         # saving to a human-readable format
-        pc = np.linspace(0., 1., 101)
+        pc = np.linspace(0., 1., fssettings.HIST_BINS + 1)
         np.savetxt(os.path.join(
             self.plot_dir, self.file_prefix + ".hist_bins.csv"),
             np.vstack([self.bins, bins_qt, self.qt_to_z(pc), pc]).T,
@@ -1173,7 +601,7 @@ the array returned by base_data_key
             return
 
         count_nonzero[0] += loc_count_nonzero
-        loc_hist, loc_bins = np.histogram(base_data, bins=100,
+        loc_hist, loc_bins = np.histogram(base_data, bins=fssettings.HIST_BINS,
                                   range=(self.base_min, self.base_max))
         if self.bins is None:
             self.bins = loc_bins
@@ -1576,22 +1004,25 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         """ Used for tagging a data chunk
         """
         software_params = {
-                "Software": "fractalshades",
-                "fractal": type(self).__name__,
+                "Software": "fractalshades " + fs.__version__,
+                "fractal_type": type(self).__name__,
+                "debug": ("1234567890" * 10), # tested 10000 chars ok
                 "datetime": datetime.datetime.today().strftime(
                         '%Y-%m-%d_%H:%M:%S')}
         zoom_params = self.zoom_options
+        calc_function = self.calc_options_lastcall
         calc_params = self.calc_options
-        
+
 #        print("software_params", software_params)
 #        print("zoom_params", zoom_params)
 #        print("calc_params", calc_params)
 
         res = dict(software_params)
         res.update(zoom_params)
-        res.update(calc_params)
+        res["calc-function"] = calc_function
+        res.update({"calc-param_" + k: v for (k, v) in calc_params.items()})
 #        print("res", res)
-        
+
         return res
 
     def data_file(self, chunk_slice, file_prefix):
@@ -1602,6 +1033,13 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         return os.path.join(self.directory, "data",
                 file_prefix + "_{0:d}-{1:d}_{2:d}-{3:d}.tmp".format(
                 *chunk_slice))
+
+    def param_file(self, file_prefix):
+        """
+        Returns the file path to store or retrieve the parameters associated
+        with a given calc
+        """
+        return os.path.join(self.directory, "data", file_prefix + ".params")
 
     def clean_up(self, file_prefix):
         """ Deletes all data files associated with a given file_prefix
@@ -1615,22 +1053,25 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                 if (fnmatch.fnmatch(entry.name, pattern)):
                     os.unlink(entry.path)
 
-    def save_data_chunk(self, chunk_slice, file_prefix,
-                        params, codes, raw_data):
-        """
-        Write to a dat file the following data:
-           - params = main parameters used for the calculation
-           - codes = complex_codes, int_codes, termination_codes
-           - arrays : [Z, U, stop_reason, stop_iter]
-        """
-        save_path = self.data_file(chunk_slice, file_prefix)
-        mkdir_p(os.path.dirname(save_path))
-        with open(save_path, 'wb+') as tmpfile:
-            print("Data computed, saving", save_path)
-            pickle.dump(params, tmpfile, pickle.HIGHEST_PROTOCOL)
-            pickle.dump(codes, tmpfile, pickle.HIGHEST_PROTOCOL)
-            pickle.dump(raw_data, tmpfile, pickle.HIGHEST_PROTOCOL)
-            
+
+    def reload_data_param(self, file_prefix):
+        # TODO: implement this method
+        # should be used preferably to 
+        #   reload_data_chunk(self, chunk_slice, file_prefix, scan_only=False)
+        # and return the same
+        # (param, codes) to be stored as a .param file
+        save_path = self.param_file(file_prefix)
+        try:
+            with open(save_path, 'rb') as tmpfile:
+                params = pickle.load(tmpfile)
+                codes = pickle.load(tmpfile)
+                return params, codes
+        
+        # If no_compute ...
+        except FileNotFoundError:
+            # if not(fssettings.skip_calc):
+            raise
+        
 
     def reload_data_chunk(self, chunk_slice, file_prefix, scan_only=False):
         """
@@ -1660,7 +1101,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
             for ref_chunk_slice in self.chunk_slices():
 #                ref_path = self.data_file(ref_chunk_slice, file_prefix)
 #                with open(ref_path, 'rb') as tmpfile:
-                params = copy.deepcopy(self.calc_options)#pickle.load(tmpfile)
+                params = copy.deepcopy(self.params)#pickle.load(tmpfile)
                 codes = self.codes #pickle.load(tmpfile)
                 if scan_only:
                     return params, codes
@@ -1682,13 +1123,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
             
 
 
-    @staticmethod
-    def dic_matching(dic1, dic2):
-        """
-        If we want to do some clever sanity test (not implemented)
-        If not matching shall raise a ValueError
-        """
-        return
+
 
     def chunk_slices(self): #, chunk_size=None):
         """
@@ -1858,19 +1293,37 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                               self.projection))
         return px
 
+    def param_matching(self, dparams):
+        """
+        If we want to do some clever sanity test (not implemented)
+        If not matching shall raise a ValueError
+        """
+        print("**CALLING param_matching +++", self.params)
+        # TODO : note: when comparing iref should be disregarded ? 
+        # or subclass specific implementation
+        UNTRACKED = ["datetime", "debug"]
+        for key, val in self.params.items():
+            if not(key in UNTRACKED) and dparams[key] != val:
+                print("Unmatching", key, val, "-->", dparams[key])
+                return False
+#            print("its a match", key, val, dparams[key] )
+        print("** all good")
+        return True
+
 
     def res_available(self, chunk_slice):
         """  Returns True if chunkslice is already computed with current
         parameters
         (Otherwise False)
         """
+        print("**CALLING res_available +++")
         try:
             (dparams, dcodes) = self.reload_data_chunk(chunk_slice,
                 self.file_prefix, scan_only=True)
         except IOError:
             return False
         
-        return True
+        return self.param_matching(dparams)
         # TODO: If we want to be more restrictive
         # return self.dic_matching(dparams, self.calc_params)
 
@@ -1915,16 +1368,21 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
             *stop_reason*   Byte codes -> reasons for termination [:]  np.int8
             *stop_iter*     Numbers of iterations when stopped [:]     np.int32
         """
-        print("**CALLING cycles ")
+        print("**CALLING cycles +++")
 #        print("iref", iref)
 #        if SA_params is not None:
 #            print("SA_params cutdeg", SA_params["cutdeg"])
 #            print("SA_params iref", SA_params["iref"])
 #            print("SA_params kc", SA_params["kc"])
 #        print("**/CALLING cycles ")
+            
         
         if self.res_available(chunk_slice):
             return
+        
+        # If first block: we write the '.param' file.
+        if chunk_slice == next(self.chunk_slices()):
+            self.save_cycling_params()
         
 
 #        initialize = self.initialize()
@@ -1932,6 +1390,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         if self.iref is None:
             (c, Z, U, stop_reason, stop_iter, n_stop, bool_active,
              index_active, n_iter) = self.init_cycling_arrays(chunk_slice)
+            SA_iter = 0
         else:
             (c, Z, U, stop_reason, stop_iter, n_stop, bool_active,
              index_active, n_iter, SA_iter, ref_div_iter, ref_path
@@ -2071,12 +1530,54 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
             for index in to_del[::-1]:
                 del code[index]
         save_Z, save_U = target
-            
+
         chunk_mask = self.chunk_mask(chunk_slice)
         raw_data = [chunk_mask, save_Z, save_U, stop_reason, stop_iter]
 
-        self.save_data_chunk(chunk_slice, self.file_prefix, self.params,
-                             save_codes, raw_data)
+        save_path = self.data_file(chunk_slice, self.file_prefix)
+        self.save_data_chunk(save_path, self.params, save_codes, raw_data)
+    
+    def save_cycling_params(self):
+        """
+        Save parameters in data file,
+        Don't save temporary codes - i.e. those which startwith "_"
+        """
+#        params = self.params
+        save_codes = copy.deepcopy(self.codes)
+        for icode, code in enumerate(save_codes):
+            if icode == 2:
+                break
+            to_del = [ifield for ifield, field in enumerate(code)
+                      if field[0] == "_"]
+            for index in to_del[::-1]:
+                del code[index]
+
+        save_path = self.param_file(self.file_prefix)
+        self.save_data_chunk(save_path, self.params, save_codes, raw_data=None)
+#        fsutils.mkdir_p(os.path.dirname(save_path))
+#        with open(save_path, 'wb+') as tmpfile:
+#            print("Data computed, saving", save_path)
+#            pickle.dump(params, tmpfile, pickle.HIGHEST_PROTOCOL)
+#            pickle.dump(save_codes, tmpfile, pickle.HIGHEST_PROTOCOL)
+
+#save_data_chunk(self, chunk_slice, file_prefix,
+#                        params, codes, raw_data):
+    def save_data_chunk(self, save_path, params, codes, raw_data):
+        """
+        Write to a dat file the following data:
+           - params = main parameters used for the calculation
+           - codes = complex_codes, int_codes, termination_codes
+           - raw_data : [Z, U, stop_reason, stop_iter]
+           
+        If raw data is None, skip it ("param only" file)
+        """
+        fsutils.mkdir_p(os.path.dirname(save_path))
+        with open(save_path, 'wb+') as tmpfile:
+            print("Data computed, saving", save_path)
+            pickle.dump(params, tmpfile, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(codes, tmpfile, pickle.HIGHEST_PROTOCOL)
+            if raw_data is not None:
+                pickle.dump(raw_data, tmpfile, pickle.HIGHEST_PROTOCOL)
 
 
     def kind_from_code(self, code, codes):
@@ -2343,6 +1844,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
                     # Normal doesnt't mean anything when too close...
                     dist = abs_zn * lo / np.abs(dzndc)
                     px = self.px  #self.dx / float(self.nx)
+                    # TODO: use isinstance here
                     if type(px) == mpmath.ctx_mp_python.mpf:
                         m, exp = mpmath.frexp(px)
                         px = fsx.Xrange_array(float(m), int(exp))

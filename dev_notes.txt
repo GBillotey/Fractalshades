@@ -77,8 +77,87 @@ SA_params by inspection of full_loop call parameters
 dataype by inspection of ...
 etc...
 
+THE MODEL-VIEW
+https://doc.qt.io/archives/qq/qq21-datawidgetmapper.html
+
+___________________________________________________________
+new in 3.8 ...
+
+class point2D(typing.TypedDict, total=False):
+    x: int
+    y: int
+    
+
+point2D
+Out[11]: __main__.point2D
+
+point2D.__dict__
+Out[12]: 
+mappingproxy({'__module__': '__main__',
+              '__annotations__': {'x': int, 'y': int},
+              '__new__': <staticmethod at 0x7f584c200e80>,
+              '__dict__': <attribute '__dict__' of 'point2D' objects>,
+              '__weakref__': <attribute '__weakref__' of 'point2D' objects>,
+              '__doc__': None,
+              '__total__': False})
+
+point2D.__annotations__
+Out[13]: {'x': int, 'y': int}
+
+Better : (Python > 3.8)
+from typing import Union, get_origin, get_args
+
+https://stackoverflow.com/questions/31221391/how-to-use-qdatawidgetmapper-in-qt-or-pyqt
+https://doc.qt.io/qt-5/qdatawidgetmapper.html
+
+
+SAFE EVAL ??
+ast.literal_eval()
+https://newville.github.io/asteval/motivation.html#how-safe-is-asteval     
+
+# Gui_launcher
+class GUI_Fractal(plot_func, plot_im, zoom_mapping(zoom_x="", zoom_y="", zoom_xy_ratio=""))
+GUI_Fractal.explore()
+
+
+# QIMAGE
+https://stackoverflow.com/questions/3041728/bug-when-drawing-a-qimage-on-a-widget-with-pil-and-pyqt
+
+# Model - view
+app-level class fQModel : nested dicts
+          
+to each Widget(self, parent, key)
+    responsible to send model_item_modified_event(key, val)
+
+ valueChanged = pyqtSignal(object)  
+Notice the signal has one argument of type object, which should allow anything to pass through. Then, you should be able to emit the signal from within the class using an argument of any data type:
+
+_____________________________________________________________
+
+https://mpmath.org/doc/current/setup.html#using-gmpy-optional
+>>> import mpmath.libmp
+>>> mpmath.libmp.BACKEND 
+should be .... currently 'python'
+'gmpy'
+OK !
+
+API :
+
+gui = Fractal_GUI(func, view=image_prefix)
+gui.connect_mouse(out=("x", "y", "dx"), in=("xy_ratio",))
+gui.show()
 
 
 
+model = Model()
+func = Func_submodel(model, tuple(["func"]), func)
+image = Image_presenter(model, mapping)
 
-                                       
+
+________________________________________________
+pretty print
+https://docs.python.org/2/library/tokenize.html
+
+
+
+ 
