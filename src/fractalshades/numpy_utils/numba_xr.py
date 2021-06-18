@@ -37,7 +37,7 @@ level (in numba langage, for our specific numba.types.Record types). User code
 in jitted function should fully expand the loops to work on individual array
 elements - indeed numba is made for this.
 
-As the added complexity is not woth it, we drop support for float32, complex64
+As the extra complexity is not worth it, we drop support for float32, complex64
 in numba: only float64, complex128 mantissa are currently supported.
 """
 
@@ -60,12 +60,13 @@ xr_type0 = np.dtype([("mantissa", np.float64), ("exp", np.int32)],
 
 np_base_types = (np.float64, np.complex128)
 numba_base_types = (numba.float64, numba.complex128)
-numba_xr_types = {dtype: numba_xr_type(dtype) for dtype in np_base_types}
+numba_xr_types = tuple(numba_xr_type(dtype) for dtype in np_base_types)
+#numba_xr_types = numba_xr_type(np.float64) # for dtype in np_base_types)
 
 np_float_types = (np.float64,)
-np_complex_types = (np.complex128,)
-
 numba_float_types = (numba.float64,)
+
+np_complex_types = (np.complex128,)
 numba_complex_types = (numba.complex128,)
 
 
@@ -120,66 +121,64 @@ def is_complex(rec):
 
 @overload(operator.neg)
 def extended_neg(op0):
-    """
-    _RecordField = collections.namedtuple(
-    '_RecordField',
-    'type,offset,alignment,title',
-)
-    # https://github.com/numba/numba/blob/39271156a52c58ca18b15aebcb1c85e4a07e49ed/numba/np/numpy_support.py
-    """
-    dtype0 = op0.fields["mantissa"][0]
-    # implementation for real & complex
-    if (dtype0 in numba_base_types):
+    """ Change sign of a Record field """
+    if (op0 in numba_xr_types):
         def impl(op0):
             return (-op0.mantissa, op0.exp)
         return impl
     else:
         raise TypingError("datatype not accepted {}".format(
-            dtype0))
+            op0))
 
 @overload(operator.add)
 def extended_add(op0, op1):
-    """
-    _RecordField = collections.namedtuple(
-    '_RecordField',
-    'type,offset,alignment,title',
-)
-    # https://github.com/numba/numba/blob/39271156a52c58ca18b15aebcb1c85e4a07e49ed/numba/np/numpy_support.py
-    """
-    dtype0 = op0.fields["mantissa"][0]
-    dtype1 = op1.fields["mantissa"][0]
-    # implementation for real & complex
-    if (dtype0 in numba_base_types) and (dtype1 in numba_base_types):
+    """ Add 2 Record fields """
+    if (op0 in numba_xr_types) and (op1 in numba_xr_types):
         def impl(op0, op1):
             m0_out, m1_out, exp_out = _coexp_ufunc(
                 op0.mantissa, op0.exp, op1.mantissa, op1.exp)
             return (m0_out + m1_out, exp_out)
         return impl
+    elif (op0 in numba_xr_types) and (op1 in numba_base_types):
+        def impl(op0, op1):
+            m0_out, m1_out, exp_out = _coexp_ufunc(
+                op0.mantissa, op0.exp, op1, 0)
+            return (m0_out + m1_out, exp_out)
+        return impl
+    elif (op0 in numba_base_types) and (op1 in numba_xr_types):
+        def impl(op0, op1):
+            m0_out, m1_out, exp_out = _coexp_ufunc(
+                op0, 0, op1.mantissa, op1.exp)
+            return (m0_out + m1_out, exp_out)
+        return impl
     else:
         raise TypingError("datatype not accepted xr_add({}, {})".format(
-            dtype0, dtype1))
+            op0, op1))
 
 @overload(operator.sub)
 def extended_sub(op0, op1):
-    """
-    _RecordField = collections.namedtuple(
-    '_RecordField',
-    'type,offset,alignment,title',
-)
-    # https://github.com/numba/numba/blob/39271156a52c58ca18b15aebcb1c85e4a07e49ed/numba/np/numpy_support.py
-    """
-    dtype0 = op0.fields["mantissa"][0]
-    dtype1 = op1.fields["mantissa"][0]
-    # implementation for real & complex
-    if (dtype0 in numba_base_types) and (dtype1 in numba_base_types):
+    """ Substract 2 Record fields """
+    if (op0 in numba_xr_types) and (op1 in numba_xr_types):
         def impl(op0, op1):
             m0_out, m1_out, exp_out = _coexp_ufunc(
                 op0.mantissa, op0.exp, op1.mantissa, op1.exp)
             return (m0_out - m1_out, exp_out)
         return impl
+    elif (op0 in numba_xr_types) and (op1 in numba_base_types):
+        def impl(op0, op1):
+            m0_out, m1_out, exp_out = _coexp_ufunc(
+                op0.mantissa, op0.exp, op1, 0)
+            return (m0_out - m1_out, exp_out)
+        return impl
+    elif (op0 in numba_base_types) and (op1 in numba_xr_types):
+        def impl(op0, op1):
+            m0_out, m1_out, exp_out = _coexp_ufunc(
+                op0, 0, op1.mantissa, op1.exp)
+            return (m0_out - m1_out, exp_out)
+        return impl
     else:
         raise TypingError("datatype not accepted xr_sub({}, {})".format(
-            dtype0, dtype1))
+            op0, op1))
 
 # @njit((numba.float64,))#, numba.int32))
 @generated_jit(nopython=True)
@@ -204,52 +203,61 @@ def _need_renorm(m):
     else:
         raise TypingError("datatype not accepted {}".format(m))
 
-
 @overload(operator.mul)
 def extended_mul(op0, op1):
-    """
-    _RecordField = collections.namedtuple(
-    '_RecordField',
-    'type,offset,alignment,title',
-)
-    # https://github.com/numba/numba/blob/39271156a52c58ca18b15aebcb1c85e4a07e49ed/numba/np/numpy_support.py
-    """
-    dtype0 = op0.fields["mantissa"][0]
-    dtype1 = op1.fields["mantissa"][0]
-    # implementation for real & complex
-    if (dtype0 in numba_base_types) and (dtype1 in numba_base_types):
+    """ Multiply 2 Record fields """
+    if (op0 in numba_xr_types) and (op1 in numba_xr_types):
         def impl(op0, op1):
             mul = op0.mantissa * op1.mantissa
             if _need_renorm(mul):
                 return _normalize(mul, op0.exp + op1.exp)
             return (mul, op0.exp + op1.exp)
         return impl
+    elif (op0 in numba_xr_types) and (op1 in numba_base_types):
+        def impl(op0, op1):
+            mul = op0.mantissa * op1
+            if _need_renorm(mul):
+                return _normalize(mul, op0.exp)
+            return (mul, op0.exp)
+        return impl
+    elif (op0 in numba_base_types) and (op1 in numba_xr_types):
+        def impl(op0, op1):
+            mul = op0 * op1.mantissa
+            if _need_renorm(mul):
+                return _normalize(mul, op1.exp)
+            return (mul, op1.exp)
+        return impl
     else:
         raise TypingError("datatype not accepted xr_mul({}, {})".format(
-            dtype0, dtype1))
+            op0, op1))
 
 @overload(operator.truediv)
 def extended_truediv(op0, op1):
-    """
-    _RecordField = collections.namedtuple(
-    '_RecordField',
-    'type,offset,alignment,title',
-)
-    # https://github.com/numba/numba/blob/39271156a52c58ca18b15aebcb1c85e4a07e49ed/numba/np/numpy_support.py
-    """
-    dtype0 = op0.fields["mantissa"][0]
-    dtype1 = op1.fields["mantissa"][0]
-    # implementation for real & complex
-    if (dtype0 in numba_base_types) and (dtype1 in numba_base_types):
+    """ Divide 2 Record fields """
+    if (op0 in numba_xr_types) and (op1 in numba_xr_types):
         def impl(op0, op1):
             mul = op0.mantissa / op1.mantissa
             if _need_renorm(mul):
                 return _normalize(mul, op0.exp - op1.exp)
             return (mul, op0.exp - op1.exp)
         return impl
+    elif (op0 in numba_xr_types) and (op1 in numba_base_types):
+        def impl(op0, op1):
+            mul = op0.mantissa / op1
+            if _need_renorm(mul):
+                return _normalize(mul, op0.exp)
+            return (mul, op0.exp)
+        return impl
+    elif (op0 in numba_base_types) and (op1 in numba_xr_types):
+        def impl(op0, op1):
+            mul = op0 / op1.mantissa
+            if _need_renorm(mul):
+                return _normalize(mul, -op1.exp)
+            return (mul, op1.exp)
+        return impl
     else:
         raise TypingError("datatype not accepted xr_mul({}, {})".format(
-            dtype0, dtype1))
+            op0, op1))
 
 
 
@@ -275,7 +283,7 @@ def _normalize(m, exp):
 
 @njit((numba.float64,))#, numba.int32))
 def _frexp(m):
-    """ faster equivalent for math.frexp(m) """
+    """ Faster equivalent for math.frexp(m) """
     # https://github.com/numba/numba/issues/3763
     # https://llvm.org/docs/LangRef.html#bitcast-to-instruction
     bits = numba.cpython.unsafe.numbers.viewer(m, numba.int64)
@@ -520,6 +528,9 @@ def numba_test_setitem(arr, idx, val_tuple):
     arr[idx] = val_tuple
 
 #def test_add_xr():
+@numba.njit
+def numba_test_add2(arr):
+    arr[2] = arr[0] + 1.# arr[1]
 
 if __name__ == "__main__":
 #    print("numba_xr_types", numba_xr_types)
@@ -550,9 +561,12 @@ if __name__ == "__main__":
 #    test_2_xr()
 #    test_add_xr()
     
-#    arr = fsx.Xrange_array(["1.e1", "3.14"])
+    arr = fsx.Xrange_array(["1.e1", "3.14", "0.0"])
 #    numba_test_setitem(arr, 0, (1., 8))
-#    print("arr", arr)
+    print("arr", arr)
+    # arr[2] = arr[0] + arr[1]
+    numba_test_add2(arr)
+    print("sum", arr[2])
 #    
 #    print("is xr", numba_test_is_xr(arr))
     

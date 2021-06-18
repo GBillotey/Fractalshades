@@ -27,9 +27,15 @@ import numba_xr
 
 from_complex = {np.complex64: np.float32,
                 np.complex128: np.float64}
+crossed_dtypes = [
+    (np.float64, np.float64),
+    (np.complex128, np.complex128),
+    (np.float64, np.complex128),
+    (np.float64, np.complex128)
+]
 
 # testing binary operation of reals extended arrays
-def generate_random_xr(dtype, nvec=500, max_bin_exp=20, seed=100):
+def generate_random_xr(dtype, nvec=500, max_bin_exp=200, seed=100):
     """
     Generates a random Xrange array
     dtype: mantissa dtype
@@ -115,7 +121,7 @@ class Test_numba_xr(unittest.TestCase):
                     val_tuple = xr._mantissa[i], xr._exp[i]
                     numba_test_setitem(xr2, i, val_tuple)
                 _matching(xr2, std)
-    
+
     def test_ldexp(self):
         dtype = np.float64
         nvec = 5000
@@ -126,7 +132,7 @@ class Test_numba_xr(unittest.TestCase):
         np.testing.assert_array_equal(out, np.ldexp(std, exp))
         numba_test_ldexp(std, -exp, out)
         np.testing.assert_array_equal(out, np.ldexp(std, -exp))
-    
+
     def test_frexp(self):
         dtype = np.float64
         nvec = 5000
@@ -142,12 +148,13 @@ class Test_numba_xr(unittest.TestCase):
         # np.testing.assert_array_equal(out, np.ldexp(std, -exp))
 
     def test_add(self):
-        for dtype in [np.float64, np.complex128]: #, np.complex128]: # np.complex64 np.float32
-            with self.subTest(dtype=dtype):
+        for (dtypea, dtypeb) in crossed_dtypes:# [(np.float64, np.float64), np.complex128]: #, np.complex128]: # np.complex64 np.float32
+            with self.subTest(dtypea=dtypea, dtypeb=dtypeb):
                 nvec = 10000
-                xa, stda = generate_random_xr(dtype, nvec=nvec)
-                xb, stdb = generate_random_xr(dtype, nvec=nvec, seed=800)
-                res = Xrange_array.empty(xa.shape, dtype)
+                xa, stda = generate_random_xr(dtypea, nvec=nvec)
+                xb, stdb = generate_random_xr(dtypeb, nvec=nvec, seed=800)
+                res = Xrange_array.empty(xa.shape,
+                    dtype=np.result_type(dtypea, dtypeb))
                 expected = stda + stdb
                 numba_test_add(xa, xb, res)
                 # Numba timing without compilation
@@ -168,12 +175,13 @@ class Test_numba_xr(unittest.TestCase):
                 self.assertTrue(expr, msg="Numba speed below numpy")
 
     def test_sub(self):
-        for dtype in [np.float64, np.complex128]: #, np.complex128]: # np.complex64 np.float32
-            with self.subTest(dtype=dtype):
+        for (dtypea, dtypeb) in crossed_dtypes: #, np.complex128]: # np.complex64 np.float32
+            with self.subTest(dtypea=dtypea, dtypeb=dtypeb):
                 nvec = 10000
-                xa, stda = generate_random_xr(dtype, nvec=nvec)
-                xb, stdb = generate_random_xr(dtype, nvec=nvec, seed=800)
-                res = Xrange_array.empty(xa.shape, dtype)
+                xa, stda = generate_random_xr(dtypea, nvec=nvec)
+                xb, stdb = generate_random_xr(dtypeb, nvec=nvec, seed=800)
+                res = Xrange_array.empty(xa.shape, 
+                    dtype=np.result_type(dtypea, dtypeb))
                 expected = stda - stdb
                 numba_test_sub(xa, xb, res)
                 # Numba timing without compilation
@@ -195,12 +203,13 @@ class Test_numba_xr(unittest.TestCase):
     
     
     def test_mul(self):
-        for dtype in [np.float64, np.complex128]: #, np.complex128]: # np.complex64 np.float32
-            with self.subTest(dtype=dtype):
+        for (dtypea, dtypeb) in crossed_dtypes: #, np.complex128]: # np.complex64 np.float32
+            with self.subTest(dtypea=dtypea, dtypeb=dtypeb):
                 nvec = 100000
-                xa, stda = generate_random_xr(dtype, nvec=nvec)
-                xb, stdb = generate_random_xr(dtype, nvec=nvec, seed=7800)
-                res = Xrange_array.empty(xa.shape, dtype)
+                xa, stda = generate_random_xr(dtypea, nvec=nvec)
+                xb, stdb = generate_random_xr(dtypeb, nvec=nvec, seed=7800)
+                res = Xrange_array.empty(xa.shape,
+                    dtype=np.result_type(dtypea, dtypeb))
                 expected = stda * stdb
                 numba_test_mul(xa, xb, res)
                 # Numba timing without compilation
@@ -221,12 +230,13 @@ class Test_numba_xr(unittest.TestCase):
                 self.assertTrue(expr, msg="Numba speed below numpy")
     
     def test_div(self):
-        for dtype in [np.float64, np.complex128]: #, np.complex128]: # np.complex64 np.float32
-            with self.subTest(dtype=dtype):
+        for (dtypea, dtypeb) in crossed_dtypes: #, np.complex128]: # np.complex64 np.float32
+            with self.subTest(dtypea=dtypea, dtypeb=dtypeb):
                 nvec = 100000
-                xa, stda = generate_random_xr(dtype, nvec=nvec)
-                xb, stdb = generate_random_xr(dtype, nvec=nvec, seed=7800)
-                res = Xrange_array.empty(xa.shape, dtype)
+                xa, stda = generate_random_xr(dtypea, nvec=nvec)
+                xb, stdb = generate_random_xr(dtypeb, nvec=nvec, seed=7800)
+                res = Xrange_array.empty(xa.shape, 
+                    dtype=np.result_type(dtypea, dtypeb))
                 expected = stda / stdb
                 numba_test_div(xa, xb, res)
                 # Numba timing without compilation
@@ -248,15 +258,41 @@ class Test_numba_xr(unittest.TestCase):
                 expr = (t_numba <  t_np)
                 self.assertTrue(expr, msg="Numba speed below numpy")
         
-        
+#    def test_op_with_scalar(self):
+#        for dtype in [np.float64, np.complex128]: #, np.complex128]: # np.complex64 np.float32
+#            with self.subTest(dtype=dtype):
+#                nvec = 100000
+#                xa, stda = generate_random_xr(dtype, nvec=nvec)
+#                xb, stdb = generate_random_xr(dtype, nvec=nvec, seed=7800)
+#                res = Xrange_array.empty(xa.shape, dtype)
+#                expected = stda / stdb
+#                numba_test_div(xa, xb, res)
+#                # Numba timing without compilation
+#                t_numba = - time.time()
+#                numba_test_div(xa, xb, res)
+#                t_numba += time.time()
+#                # numpy timing 
+#                t_np = - time.time()
+#                res_np = xa / xb
+#                t_np += time.time()
+#                
+#                _matching(res, expected, almost=True, dtype=np.float64,
+#                          ktol=2.)
+#                _matching(res_np, expected, almost=True, dtype=np.float64,
+#                          ktol=2.)
+#                
+#                print("t_numba", t_numba)
+#                print("t_numpy", t_np, t_numba/t_np)
+#                expr = (t_numba <  t_np)
+#                self.assertTrue(expr, msg="Numba speed below numpy")
         
 if __name__ == "__main__":
     import test_config
-    full_test = False
+    full_test = True
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_numba_xr,]))
     else:
         suite = unittest.TestSuite()
-        suite.addTest(Test_numba_xr("test_div"))
+        suite.addTest(Test_numba_xr("test_mul"))
         runner.run(suite)
