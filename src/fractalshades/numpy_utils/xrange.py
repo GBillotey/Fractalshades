@@ -1236,7 +1236,7 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
         "8": "⁸",
         "9": "⁹"
     })
-    
+
     def __init__(self, coeffs, cutdeg):
         if isinstance(coeffs, Xrange_array):
             self.coeffs = coeffs[0:cutdeg+1]
@@ -1353,7 +1353,7 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
                 mul *= k
         return Xrange_polynomial(coeffs, cutdeg=self.cutdeg)
 
-    def taylor_shift(self, x0, quad_prec=False):
+    def taylor_shift(self, x0):#, quad_prec=False):
         """
         Parameters
         ----------
@@ -1379,9 +1379,9 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
         """
         if x0 == 0.:
             return Xrange_polynomial(self.coeffs, cutdeg=self.cutdeg)
-        if quad_prec:
-            return self.scale_shift(x0)._quad_precision_taylor_shift_one(
-                    ).scale_shift(1. / x0)
+#        if quad_prec:
+#            return self.scale_shift(x0)._quad_precision_taylor_shift_one(
+#                    ).scale_shift(1. / x0)
         return self.scale_shift(x0)._taylor_shift_one().scale_shift(1. / x0)
             
     def _taylor_shift_one(self):

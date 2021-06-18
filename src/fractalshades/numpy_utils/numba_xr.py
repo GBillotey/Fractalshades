@@ -253,13 +253,47 @@ def extended_truediv(op0, op1):
             mul = op0 / op1.mantissa
             if _need_renorm(mul):
                 return _normalize(mul, -op1.exp)
-            return (mul, op1.exp)
+            return (mul, -op1.exp)
         return impl
     else:
         raise TypingError("datatype not accepted xr_mul({}, {})".format(
             op0, op1))
 
-
+def extended_overload(compare_operator):
+    @overload(compare_operator)
+    def extended_compare(op0, op1): 
+        """ Add 2 Record fields """
+        if (op0 in numba_xr_types) and (op1 in numba_xr_types):
+            def impl(op0, op1):
+                m0_out, m1_out, exp_out = _coexp_ufunc(
+                    op0.mantissa, op0.exp, op1.mantissa, op1.exp)
+                return compare_operator(m0_out, m1_out)
+            return impl
+        elif (op0 in numba_xr_types) and (op1 in numba_base_types):
+            def impl(op0, op1):
+                m0_out, m1_out, exp_out = _coexp_ufunc(
+                    op0.mantissa, op0.exp, op1, 0)
+                return compare_operator(m0_out, m1_out)
+            return impl
+        elif (op0 in numba_base_types) and (op1 in numba_xr_types):
+            def impl(op0, op1):
+                m0_out, m1_out, exp_out = _coexp_ufunc(
+                    op0, 0, op1.mantissa, op1.exp)
+                return compare_operator(m0_out, m1_out)
+            return impl
+        else:
+            raise TypingError("datatype not accepted xr_add({}, {})".format(
+                op0, op1))
+            
+for compare_operator in (
+        operator.lt,
+        operator.le,
+        operator.eq,
+        operator.ne,
+        operator.ge,
+        operator.gt
+        ):
+    extended_overload(compare_operator)
 
 @generated_jit(nopython=True) #(_normalize)
 def _normalize(m, exp):
@@ -292,7 +326,7 @@ def _frexp(m):
         (bits & 0x8000000000000000) # signe
         + (0x3ff << 52) # exposant (bias) hex(1023) = 0x3ff
         + (bits & 0xfffffffffffff), numba.float64)
-    exp = numba.int32(((bits >> 52)) & 0x7ff) - numba.int32(1022)
+    exp = numba.int32(((bits >> 52)) & 0x7ff) - numba.int32(1023)
     return m, exp
 
 
@@ -532,6 +566,15 @@ def numba_test_setitem(arr, idx, val_tuple):
 def numba_test_add2(arr):
     arr[2] = arr[0] + 1.# arr[1]
 
+#def test_add_xr():
+@numba.njit
+def numba_test_mul2(arr):
+    arr[2] = arr[0] * 1.e-31# arr[1]
+
+@numba.njit
+def numba_test_lt(arr):
+    return arr[0] < arr[1]
+
 if __name__ == "__main__":
 #    print("numba_xr_types", numba_xr_types)
 #    print("numba_xr_types", numba_xr_types[np.float32])
@@ -561,12 +604,18 @@ if __name__ == "__main__":
 #    test_2_xr()
 #    test_add_xr()
     
-    arr = fsx.Xrange_array(["1.e1", "3.14", "0.0"])
+    arr = fsx.Xrange_array(["1.e70", "3.14", "0.0"])
 #    numba_test_setitem(arr, 0, (1., 8))
     print("arr", arr)
     # arr[2] = arr[0] + arr[1]
     numba_test_add2(arr)
     print("sum", arr[2])
+    
+    numba_test_mul2(arr)
+    print("prod", arr[2])
+    
+    val = numba_test_lt(arr)
+    print("lt", val)
 #    
 #    print("is xr", numba_test_is_xr(arr))
     
