@@ -349,7 +349,6 @@ Reference:
         obviously, may overflow. """
         return self._mantissa * (2.**self._exp)
 
-
     @staticmethod
     def _build_complex(re, im):
         """ Build a complex Xrange_array from 2 similar shaped and typed
@@ -524,7 +523,6 @@ Reference:
                 m0, op0._exp, m1, op1._exp, ufunc=np.arctan2)
         return out
 
-
     def abs2(self, out=None):
         """
         Return the square of np.abs(self) (for optimisation purpose).
@@ -676,7 +674,7 @@ Reference:
             out = Xrange_array._coexp_ufunc(m0, op0._exp, m1,
                                             op1._exp, ufunc)[0]
         return out
-    
+
     @staticmethod
     def _maximum(inputs, out=None):
         op0, op1 = inputs

@@ -14,7 +14,14 @@ from numba.np import numpy_support
 from numba.extending import (
     overload,
     overload_attribute,
-    overload_method
+    overload_method,
+    lower_builtin,
+    typeof_impl,
+    type_callable,
+    models,
+    register_model,
+    make_attribute_wrapper, 
+    unbox
 )
 
 import fractalshades.numpy_utils.xrange as fsx
@@ -39,37 +46,74 @@ elements - indeed numba is made for this.
 
 As the extra complexity is not worth it, we drop support for float32, complex64
 in numba: only float64, complex128 mantissa are currently supported.
+
+NOte:
+    https://numba.pydata.org/numba-doc/latest/proposals/extension-points.html
 """
 
-def np_xr_type(base_type):
-    """ return the numba type for th 4 implemented base type
-    float32 float64 complex64, complex128 """
-    xr_type = np.dtype([("mantissa", base_type), ("exp", np.int32)],
-                        align=False)
-    return xr_type
+# Implementation of 
+
+numba_float_types = (numba.float64,)
+numba_complex_types = (numba.complex128,)
+numba_base_types = numba_float_types + numba_complex_types
 
 def numba_xr_type(base_type):
-    """ return the numba type for th 2 implemented base type
-     float64, complex128 """
+    """ Return the numba "extended" Record type for the 2 implemented base type
+    float64, complex128 """
     xr_type = np.dtype([("mantissa", base_type), ("exp", np.int32)],
                         align=False)
     return numba.from_dtype(xr_type)
 
-xr_type0 = np.dtype([("mantissa", np.float64), ("exp", np.int32)],
-                    align=False)
-
-np_base_types = (np.float64, np.complex128)
-numba_base_types = (numba.float64, numba.complex128)
-numba_xr_types = tuple(numba_xr_type(dtype) for dtype in np_base_types)
-#numba_xr_types = numba_xr_type(np.float64) # for dtype in np_base_types)
-
-np_float_types = (np.float64,)
-numba_float_types = (numba.float64,)
-
-np_complex_types = (np.complex128,)
-numba_complex_types = (numba.complex128,)
+numba_xr_types = tuple(numba_xr_type(dt) for dt in (np.float64, np.complex128))
 
 
+
+# Create a datatype for Records 
+# This datatype will only be used in numba jitted functions, so we do not
+# expose a python implementation (class, boxing, unboxing)
+
+class XrangeScalar():
+    pass
+
+class XrangeScalarType(types.Type):
+    def __init__(self, base_type):
+        super().__init__(name="{}_XrangeScalar".format(base_type))
+        self.base_type = base_type
+
+@type_callable(XrangeScalar)
+def type_extended_item(context):
+    def typer(mantissa, exp):
+        if (mantissa in numba_base_types) and (exp == numba.int32):
+            return XrangeScalarType(mantissa)
+    return typer
+
+@register_model(XrangeScalarType)
+class XrangeScalar_Model(models.StructModel):
+    def __init__(self, dmm, fe_type):
+        members = [
+            ('mantissa', fe_type.base_type),
+            ('exp', numba.int32),
+            ]
+        models.StructModel.__init__(self, dmm, fe_type, members)
+
+for attr in ('mantissa', 'exp'):
+    make_attribute_wrapper(XrangeScalarType, attr, attr)
+
+@lower_builtin(XrangeScalar, types.Number, types.Integer)
+def impl_xrange_scalar(context, builder, sig, args):
+    typ = sig.return_type
+    mantissa, exp = args
+    xrange_scalar = cgutils.create_struct_proxy(typ)(context, builder)
+    xrange_scalar.mantissa = mantissa
+    xrange_scalar.exp = exp
+    return xrange_scalar._getvalue()
+
+# We will support operation between numba_xr_types and XrangeScalar instances
+scalar_xr_types = tuple(XrangeScalarType(dt) for dt in numba_base_types)
+xr_types = numba_xr_types + scalar_xr_types
+
+
+        
 
 @overload_attribute(numba.types.Record, "is_xr")
 def is_xr(rec):
@@ -79,77 +123,134 @@ def is_xr(rec):
     return impl
 
 
+# Dedicated typing for Xrange_array adds some overhead with little benefit
+# -> not implemented by default (passthrough as types.Array)
+xrange_typing = False
+xrange_type = types.Array
+
+class XrangeArray(types.Array):
+    # Array type source code
+    # https://github.com/numba/numba/blob/39271156a52c58ca18b15aebcb1c85e4a07e49ed/numba/core/types/npytypes.py#L413
+    # pd-like use case
+    # https://github.com/numba/numba/blob/39271156a52c58ca18b15aebcb1c85e4a07e49ed/numba/tests/pdlike_usecase.py
+    def __init__(self, dtype, ndim, layout, aligned):
+        layout = 'C'
+        type_name = "Xrange_array"
+        name = "%s(%s, %sd, %s)" % (type_name, dtype, ndim, layout)
+        super().__init__(dtype, ndim, layout, readonly=False, name=name,
+                 aligned=aligned)
+
+if xrange_typing:
+    numba.extending.register_model(XrangeArray)(
+        numba.extending.models.ArrayModel)
+
+    @numba.extending.typeof_impl.register(fsx.Xrange_array)
+    def typeof_xrangearray(val, c):
+        arrty = numba.extending.typeof_impl(np.asarray(val), c)
+        return XrangeArray(arrty.dtype, arrty.ndim, arrty.layout, arrty.aligned)
+    xrange_type = XrangeArray
+
+
+# Default typing for integer addition is int64(int32, int32)
+# see https://numba.pydata.org/numba-doc/latest/proposals/integer-typing.html
+# The typing of Python int values used as function arguments doesn’t change,
+# as it works satisfyingly and doesn’t surprise the user.
+# Here we need proper int32 addition, substraction...
+
+@numba.extending.intrinsic
+def add_int32(typingctx, src1, src2):
+    # check for accepted types
+    if (src1 == numba.int32) and (src2 == numba.int32):
+        # create the expected type signature
+        # result_type = types.int32
+        sig = types.int32(types.int32, types.int32)
+        # defines the custom code generation
+        def codegen(context, builder, signature, args):
+            # llvm IRBuilder code here
+            # https://llvmlite.readthedocs.io/en/latest/
+            (a ,b) = args
+            return builder.add(a, b)
+        return sig, codegen
+
+@numba.extending.intrinsic
+def neg_int32(typingctx, src1):
+    if (src1 == numba.int32):
+        sig = types.int32(types.int32)
+        def codegen(context, builder, signature, args):
+            (a,) = args
+            return builder.neg(a)
+        return sig, codegen
+
+@numba.extending.intrinsic
+def sub_int32(typingctx, src1, src2):
+    if (src1 == numba.int32) and (src2 == numba.int32):
+        sig = types.int32(types.int32, types.int32)
+        def codegen(context, builder, signature, args):
+            (a, b) = args
+            return builder.sub(a, b)
+        return sig, codegen
+
+@numba.extending.intrinsic
+def sdiv_int32(typingctx, src1, src2):
+    if (src1 == numba.int32) and (src2 == numba.int32):
+        sig = types.int32(types.int32, types.int32)
+        def codegen(context, builder, signature, args):
+            (a, b) = args
+            return builder.sdiv(a, b)
+        return sig, codegen
+
+
 @overload(operator.setitem)
-def extended_setitem_tuple(arr, idx, val_tuple):
+def extended_setitem_tuple(arr, idx, val):
     """
     Usage : if arr is an Xrange_array, then one will be able to do
-        arr[i] = (mantissa, exp)
+        arr[i] = XrangeScalarType(mantissa, exp)
     """
-    if (
-        isinstance(val_tuple, types.Tuple)
-        and isinstance(idx, types.Integer)
-        and isinstance(arr, types.Array)
-    ):
-        if tuple(arr.dtype.fields.keys()) != ("mantissa", "exp"):
-            raise TypingError("Only xrange dtype accepted")
-        def impl(arr, idx, val_tuple):
-            arr[idx]["mantissa"], arr[idx]["exp"] = val_tuple
+    if (isinstance(val, XrangeScalarType) and isinstance(arr, xrange_type)):
+        def impl(arr, idx, val):
+            arr[idx]["mantissa"] = val.mantissa
+            arr[idx]["exp"] = val.exp
         return impl
-
-
-# https://github.com/numba/numba/blob/e314821f48bfc1678c9662584eef166fb9d5469c/numba/np/arrayobj.py
-
-
-
-
-
 
 @overload_attribute(numba.types.Record, "is_complex")
 def is_complex(rec):
-    # _RecordField(type=, offset=, alignment=, title=)]
     dtype = rec.fields["mantissa"][0]
     is_complex = (dtype in numba_complex_types)
     def impl(rec):
         return is_complex
     return impl
 
-# @overload_method(numba.types.Record, "_normalize")
-# @numba.njit #((numba.float64, numba.int32))# ()
-#def _normalize():
-#    return None
-
-
 @overload(operator.neg)
 def extended_neg(op0):
     """ Change sign of a Record field """
-    if (op0 in numba_xr_types):
+    if (op0 in xr_types):
         def impl(op0):
-            return (-op0.mantissa, op0.exp)
+            return XrangeScalar(-op0.mantissa, op0.exp)
         return impl
     else:
         raise TypingError("datatype not accepted {}".format(
             op0))
 
-@overload(operator.add)
+@overload(operator.add)#, debug=True)
 def extended_add(op0, op1):
     """ Add 2 Record fields """
-    if (op0 in numba_xr_types) and (op1 in numba_xr_types):
+    if (op0 in xr_types) and (op1 in xr_types):
         def impl(op0, op1):
             m0_out, m1_out, exp_out = _coexp_ufunc(
                 op0.mantissa, op0.exp, op1.mantissa, op1.exp)
-            return (m0_out + m1_out, exp_out)
+            return XrangeScalar(m0_out + m1_out, exp_out)
         return impl
-    elif (op0 in numba_xr_types) and (op1 in numba_base_types):
+    elif (op0 in xr_types) and (op1 in numba_base_types):
         def impl(op0, op1):
             m0_out, m1_out, exp_out = _coexp_ufunc(
-                op0.mantissa, op0.exp, op1, 0)
-            return (m0_out + m1_out, exp_out)
+                op0.mantissa, op0.exp, op1, numba.int32(0))
+            return XrangeScalar(m0_out + m1_out, exp_out)
         return impl
-    elif (op0 in numba_base_types) and (op1 in numba_xr_types):
+    elif (op0 in numba_base_types) and (op1 in xr_types):
         def impl(op0, op1):
             m0_out, m1_out, exp_out = _coexp_ufunc(
-                op0, 0, op1.mantissa, op1.exp)
-            return (m0_out + m1_out, exp_out)
+                op0, numba.int32(0), op1.mantissa, op1.exp)
+            return XrangeScalar(m0_out + m1_out, exp_out)
         return impl
     else:
         raise TypingError("datatype not accepted xr_add({}, {})".format(
@@ -158,35 +259,34 @@ def extended_add(op0, op1):
 @overload(operator.sub)
 def extended_sub(op0, op1):
     """ Substract 2 Record fields """
-    if (op0 in numba_xr_types) and (op1 in numba_xr_types):
+    if (op0 in xr_types) and (op1 in xr_types):
         def impl(op0, op1):
             m0_out, m1_out, exp_out = _coexp_ufunc(
                 op0.mantissa, op0.exp, op1.mantissa, op1.exp)
-            return (m0_out - m1_out, exp_out)
+            return XrangeScalar(m0_out - m1_out, exp_out)
         return impl
-    elif (op0 in numba_xr_types) and (op1 in numba_base_types):
+    elif (op0 in xr_types) and (op1 in numba_base_types):
         def impl(op0, op1):
             m0_out, m1_out, exp_out = _coexp_ufunc(
-                op0.mantissa, op0.exp, op1, 0)
-            return (m0_out - m1_out, exp_out)
+                op0.mantissa, op0.exp, op1, numba.int32(0))
+            return XrangeScalar(m0_out - m1_out, exp_out)
         return impl
-    elif (op0 in numba_base_types) and (op1 in numba_xr_types):
+    elif (op0 in numba_base_types) and (op1 in xr_types):
         def impl(op0, op1):
             m0_out, m1_out, exp_out = _coexp_ufunc(
-                op0, 0, op1.mantissa, op1.exp)
-            return (m0_out - m1_out, exp_out)
+                op0, numba.int32(0), op1.mantissa, op1.exp)
+            return XrangeScalar(m0_out - m1_out, exp_out)
         return impl
     else:
         raise TypingError("datatype not accepted xr_sub({}, {})".format(
             op0, op1))
 
-# @njit((numba.float64,))#, numba.int32))
 @generated_jit(nopython=True)
 def _need_renorm(m):
     """
     Returns True if abs(exponent) is above a given threshold
     """
-    threshold = 100  # 2.**100 = 1.e30
+    threshold = 100  # as 2.**100 = 1.e30
     if (m in numba_float_types):
         def impl(m):
             bits = numba.cpython.unsafe.numbers.viewer(m, numba.int64)
@@ -206,26 +306,28 @@ def _need_renorm(m):
 @overload(operator.mul)
 def extended_mul(op0, op1):
     """ Multiply 2 Record fields """
-    if (op0 in numba_xr_types) and (op1 in numba_xr_types):
+    if (op0 in xr_types) and (op1 in xr_types):
         def impl(op0, op1):
             mul = op0.mantissa * op1.mantissa
+            # Need to avoid casting to int64... ! 
+            exp = add_int32(op0.exp, op1.exp)
             if _need_renorm(mul):
-                return _normalize(mul, op0.exp + op1.exp)
-            return (mul, op0.exp + op1.exp)
+                return XrangeScalar(*_normalize(mul, exp))
+            return XrangeScalar(mul, exp)
         return impl
-    elif (op0 in numba_xr_types) and (op1 in numba_base_types):
+    elif (op0 in xr_types) and (op1 in numba_base_types):
         def impl(op0, op1):
             mul = op0.mantissa * op1
             if _need_renorm(mul):
-                return _normalize(mul, op0.exp)
-            return (mul, op0.exp)
+                return XrangeScalar(*_normalize(mul, op0.exp))
+            return XrangeScalar(mul, op0.exp)
         return impl
-    elif (op0 in numba_base_types) and (op1 in numba_xr_types):
+    elif (op0 in numba_base_types) and (op1 in xr_types):
         def impl(op0, op1):
             mul = op0 * op1.mantissa
             if _need_renorm(mul):
-                return _normalize(mul, op1.exp)
-            return (mul, op1.exp)
+                return XrangeScalar(*_normalize(mul, op1.exp))
+            return XrangeScalar(mul, op1.exp)
         return impl
     else:
         raise TypingError("datatype not accepted xr_mul({}, {})".format(
@@ -234,26 +336,28 @@ def extended_mul(op0, op1):
 @overload(operator.truediv)
 def extended_truediv(op0, op1):
     """ Divide 2 Record fields """
-    if (op0 in numba_xr_types) and (op1 in numba_xr_types):
+    if (op0 in xr_types) and (op1 in xr_types):
         def impl(op0, op1):
             mul = op0.mantissa / op1.mantissa
+            exp = sub_int32(op0.exp, op1.exp)
             if _need_renorm(mul):
-                return _normalize(mul, op0.exp - op1.exp)
-            return (mul, op0.exp - op1.exp)
+                return XrangeScalar(*_normalize(mul, exp))
+            return XrangeScalar(mul, exp)
         return impl
-    elif (op0 in numba_xr_types) and (op1 in numba_base_types):
+    elif (op0 in xr_types) and (op1 in numba_base_types):
         def impl(op0, op1):
             mul = op0.mantissa / op1
             if _need_renorm(mul):
-                return _normalize(mul, op0.exp)
-            return (mul, op0.exp)
+                return XrangeScalar(*_normalize(mul, op0.exp))
+            return XrangeScalar(mul, op0.exp)
         return impl
-    elif (op0 in numba_base_types) and (op1 in numba_xr_types):
+    elif (op0 in numba_base_types) and (op1 in xr_types):
         def impl(op0, op1):
             mul = op0 / op1.mantissa
+            exp = neg_int32(op1.exp)
             if _need_renorm(mul):
-                return _normalize(mul, -op1.exp)
-            return (mul, -op1.exp)
+                return XrangeScalar(*_normalize(mul, exp))
+            return XrangeScalar(mul, exp)
         return impl
     else:
         raise TypingError("datatype not accepted xr_mul({}, {})".format(
@@ -262,20 +366,20 @@ def extended_truediv(op0, op1):
 def extended_overload(compare_operator):
     @overload(compare_operator)
     def extended_compare(op0, op1): 
-        """ Add 2 Record fields """
-        if (op0 in numba_xr_types) and (op1 in numba_xr_types):
+        """ Compare 2 Record fields """
+        if (op0 in xr_types) and (op1 in xr_types):
             def impl(op0, op1):
                 m0_out, m1_out, exp_out = _coexp_ufunc(
                     op0.mantissa, op0.exp, op1.mantissa, op1.exp)
                 return compare_operator(m0_out, m1_out)
             return impl
-        elif (op0 in numba_xr_types) and (op1 in numba_base_types):
+        elif (op0 in xr_types) and (op1 in numba_base_types):
             def impl(op0, op1):
                 m0_out, m1_out, exp_out = _coexp_ufunc(
                     op0.mantissa, op0.exp, op1, 0)
                 return compare_operator(m0_out, m1_out)
             return impl
-        elif (op0 in numba_base_types) and (op1 in numba_xr_types):
+        elif (op0 in numba_base_types) and (op1 in xr_types):
             def impl(op0, op1):
                 m0_out, m1_out, exp_out = _coexp_ufunc(
                     op0, 0, op1.mantissa, op1.exp)
@@ -284,7 +388,7 @@ def extended_overload(compare_operator):
         else:
             raise TypingError("datatype not accepted xr_add({}, {})".format(
                 op0, op1))
-            
+
 for compare_operator in (
         operator.lt,
         operator.le,
@@ -295,11 +399,52 @@ for compare_operator in (
         ):
     extended_overload(compare_operator)
 
-@generated_jit(nopython=True) #(_normalize)
+@overload(np.sqrt)
+def extended_sqrt(op0):
+    """ sqrt of a Record fields """
+    if op0 in xr_types:
+        def impl(op0):
+            exp = op0.exp
+            if exp % 2:
+                exp = sdiv_int32(sub_int32(exp, numba.int32(1)),
+                                 numba.int32(2)) # // 2
+                m = np.sqrt(op0.mantissa * 2.)
+            else:
+                exp = sdiv_int32(exp, numba.int32(2)) # // 2
+                m = np.sqrt(op0.mantissa)
+            return XrangeScalar(m, exp)
+        return impl
+    else:
+        raise TypingError("Datatype not accepted xr_sqrt({})".format(
+            op0))
+
+@generated_jit(nopython=True)
+def extended_abs2(op0):
+    """ square of abs of a Record field """
+    if op0 in xr_types:
+        def impl(op0):
+            return XrangeScalar(np.square(op0.mantissa), 2 * op0.exp)
+        return impl
+    else:
+        raise TypingError("Datatype not accepted xr_sqrt({})".format(
+            op0))
+
+@overload(np.abs)
+def extended_abs(op0):
+    """ abs of a Record field """
+    if op0 in xr_types:
+        def impl(op0):
+            return XrangeScalar(np.abs(op0.mantissa), op0.exp)
+        return impl
+    else:
+        raise TypingError("Datatype not accepted xr_sqrt({})".format(
+            op0))
+
+
+@generated_jit(nopython=True)
 def _normalize(m, exp):
     """ Returns a normalized couple """
     # Implementation for float
-    # dtype = m.dtype
     if (m in numba_float_types):
         def impl(m, exp):
             return _normalize_real(m, exp)
@@ -315,78 +460,41 @@ def _normalize(m, exp):
         raise TypingError("datatype not accepted {}".format(m))
     return impl
 
-@njit((numba.float64,))#, numba.int32))
+@njit(types.Tuple((numba.float64, numba.int32))(numba.float64,))
 def _frexp(m):
-    """ Faster equivalent for math.frexp(m) """
+    """ Faster unsafe equivalent for math.frexp(m) """
     # https://github.com/numba/numba/issues/3763
     # https://llvm.org/docs/LangRef.html#bitcast-to-instruction
     bits = numba.cpython.unsafe.numbers.viewer(m, numba.int64)
-#    exp = ((bits >> 52) & 0x7ff)
     m = numba.cpython.unsafe.numbers.viewer(
         (bits & 0x8000000000000000) # signe
-        + (0x3ff << 52) # exposant (bias) hex(1023) = 0x3ff
+        + (0x3ff << 0x34) # exposant (bias) hex(1023) = 0x3ff hex(52) = 0x34
         + (bits & 0xfffffffffffff), numba.float64)
-    exp = numba.int32(((bits >> 52)) & 0x7ff) - numba.int32(1023)
+    exp = (((bits >> 52)) & 0x7ff) - 0x3ff # numba.int32 ??
     return m, exp
 
-
-
-#    val = np.asarray(val)
-#    if val.dtype == np.float32:
-#        bits = val.view(np.int32)
-#        return np.any((np.abs(((bits >> 23) & 0xff) - 127) > 31)
-#                      & (val != 0.))
-#    elif val.dtype == np.float64:
-#        bits = val.view(np.int64)
-#        return np.any((np.abs(((bits >> 52) & 0x7ff) - 1023) > 255)
-#                      & (val != 0.))
-
-
-# @generated_jit(nopython=True) #(_normalize)
-@njit((numba.float64, numba.int32))# ()
+@njit(types.Tuple((numba.float64, numba.int32))(numba.float64, numba.int32))
 def _normalize_real(m, exp):
     """ Returns a normalized couple """
-    # Implementation for float
-    # dtype = m.dtype
-#    if m in numba_float_types:
-#        def impl(m, exp):
     if m == 0.:
-        return (m, np.int32(0))
+        return (m, numba.int32(0))
     else:
-        nm, nexp = _frexp(m) # math.frexp(m) # 
+        nm, nexp = _frexp(m)
         return (nm, exp + nexp)
-#    else:
-#        raise TypingError("datatype not accepted {}".format(m))
-#    return impl
 
-
-
-@njit((numba.float64, numba.int32))
+@njit(numba.float64(numba.float64, numba.int32))
 def _exp2_shift(m, shift):
-    """ faster equivalent for math.ldexp(m, shift) """
+    """ Faster unsafe equivalent for math.ldexp(m, shift) """
     # https://github.com/numba/numba/issues/3763
     # https://llvm.org/docs/LangRef.html#bitcast-to-instruction
-    # math.
     bits = numba.cpython.unsafe.numbers.viewer(m, numba.int64)
-    exp = max(((bits >> 52) & 0x7ff) + shift, 0)
+    exp = max(((bits >> 0x34) & 0x7ff) + shift, 0)
     return numba.cpython.unsafe.numbers.viewer(
         (bits & 0x8000000000000000)
-        + (exp << 52)
+        + (exp << 0x34)
         + (bits & 0xfffffffffffff), numba.float64)
 
-#@njit((numba.float32, numba.int32))
-#def _exp2_shift(m, shift):
-#    # https://github.com/numba/numba/issues/3763
-#    # https://llvm.org/docs/LangRef.html#bitcast-to-instruction
-#    bits = numba.cpython.unsafe.numbers.viewer(m, numba.int32)
-#    exp = max(((bits >> 23) & 0xff) + shift, 0)  # (bits >> 23) & 0xff) - 127
-#    return numba.cpython.unsafe.numbers.viewer(
-#        (bits & 0x80000000)
-#        + (exp << 23)
-#        + (bits & 0xfffffffffffff), numba.float64)
-
-
-@generated_jit(nopython=True) #(_normalize)
+@generated_jit(nopython=True)
 def _coexp_ufunc(m0, exp0, m1, exp1):
     """ Returns a co-exp couple of couples """
     # Implementation for real
@@ -399,10 +507,10 @@ def _coexp_ufunc(m0, exp0, m1, exp1):
             elif m1 == 0.:
                 exp = exp0
             elif (exp1 > exp0):
-                co_m0 = _exp2_shift(co_m0, d_exp) # _exp2_shift(co_m0, d_exp) #_exp2_shift(co_m0, d_exp)
+                co_m0 = _exp2_shift(co_m0, d_exp)
                 exp = exp1
             elif (exp0 > exp1):
-                co_m1 = _exp2_shift(co_m1, -d_exp) #  _exp2_shift(co_m1, -d_exp) # _exp2_shift(co_m1, -d_exp)
+                co_m1 = _exp2_shift(co_m1, -d_exp)
                 exp = exp0
             else: # exp0 == exp1
                 exp = exp0
@@ -417,14 +525,12 @@ def _coexp_ufunc(m0, exp0, m1, exp1):
             elif m1 == 0.:
                 exp = exp0
             elif (exp1 > exp0):
-                co_m0 = (_exp2_shift(co_m0.real, d_exp) #_exp2_shift(co_m0, d_exp)
-                         + 1j * _exp2_shift(co_m0.imag, d_exp)) #_exp2_shift(co_m0, d_exp)
+                co_m0 = (_exp2_shift(co_m0.real, d_exp)
+                         + 1j * _exp2_shift(co_m0.imag, d_exp))
                 exp = exp1
             elif (exp0 > exp1):
                 co_m1 = (_exp2_shift(co_m1.real, -d_exp)
                          + 1j * _exp2_shift(co_m1.imag, -d_exp))
-                                # _exp2_shift(co_m1, -d_exp)
-                # co_m1.imag = math.ldexp(co_m1.imag, -d_exp) # _exp2_shift(co_m1, -d_exp)
                 exp = exp0
             else: # exp0 == exp1
                 exp = exp0
@@ -432,33 +538,6 @@ def _coexp_ufunc(m0, exp0, m1, exp1):
     else:
         raise TypingError("datatype not accepted {}{}".format(m0, m1))
     return impl
-
-
-
-
-#@generated_jit(nopython=True) #(_normalize)
-#def _exp2_shift(m, d_exp):
-#    # https://docs.python.org/3/library/math.html
-#    retrun math.ldexp(m, d_exp)
-#    dtype = m.dtype
-#    if m == numba.float32:# and (m in numba_float_types):
-#        bits = m.view(np.int32)
-#            # Need to take special care as casting to int32 a 0d array is only
-#            # supported if the itemsize is unchanged. So we impose the res 
-#            # dtype
-#            res_32 = np.empty_like(bits)
-#        exp = np.clip(((bits >> 23) & 0xff) + shift, 0, None)
-#        out = (exp << 23) + (bits & 0x7fffff)
-#        return np.copysign(res_32.view(np.float32), m)
-#
-#        elif dtype == np.float64:
-#            bits = m.view(np.int64)
-#            exp = np.clip(((bits >> 52) & 0x7ff) + shift, 0, None)
-#            return np.copysign(((exp << 52) + (bits & 0xfffffffffffff)
-#                                ).view(np.float64) , m)
-#        else:
-#            raise ValueError("Unsupported dtype {}".format(dtype))
-
 
 @overload_method(numba.types.Record, "normalize")
 def normalize(rec):
@@ -469,9 +548,9 @@ def normalize(rec):
         def impl(rec):
             m = rec.mantissa
             if m == 0.:
-                rec.exp = 0
+                rec.exp = numba.int32(0)
             else:
-                nm, nexp = math.frexp(rec.mantissa) 
+                nm, nexp = _frexp(rec.mantissa) 
                 rec.exp += nexp
                 rec.mantissa = nm
     # Implementation for complex
@@ -479,143 +558,80 @@ def normalize(rec):
         def impl(rec):
             m = rec.mantissa
             if m == 0.:
-                rec.exp = 0
+                rec.exp = numba.int32(0)
             else:
                 rec.mantissa, rec.exp = _normalize(m, rec.exp)
     else:
         raise TypingError("datatype not accepted {}".format(dtype))
     return impl
 
-#        else:
-#            nm, exp2 = np.frexp(m)
-#            if m == 0.:
-#                rec.exp = 0
-#                rec.mantissa = 0
-#            else:
-#                rec.exp = 
-#                rec.mantissa =
-#    return impl
+# Implementing the Xrange_polynomial class
+# https://numba.pydata.org/numba-doc/latest/proposals/extension-points.html
 
-@njit# (np.int32(np.float64))
-def frexp(my_float):
-    # def impl(my_float):
-#    bits = my_float.view(np.int64)
-#    print("bits", bits, bits >> 52)
-#    exp = (bits >> 52) & 0x7ff
-    return math.frexp(my_float)
-    # return impl
+class XrangePolynomialType(types.Type): # ArrayCompatible):
+    def __init__(self, coeff, cutdeg):
+        
+        super().__init__(name="XrangePolynomial")#.format(base_type))
 
+        
 
-@njit
-def numba_test1_xr(arr):
-    rec = arr[0]
-    return rec.is_complex
+@typeof_impl.register(fsx.Xrange_polynomial)
+def typeof_index(val, c):
+    return XrangePolynomialType()
 
-@njit
-def numba_test_is_xr(arr):
-    rec = arr[0]
-    return rec.is_xr
-    
-def test_1_xr():
-    arr = fsx.Xrange_array(["1.e12", "3.14"])
-    # arr = arr * (1. + 0.j)
-    print("arr1", arr)
-    ret = arr[0].is_complex
-    print("RET", ret)
-    retn = numba_test1_xr(arr)
-    print("RET", retn)
-    arr = arr * (1. + 0.j)
-    retn = numba_test1_xr(arr)
-    print("RET", retn)
-    
-@numba.njit
-def numba_test2_xr(arr):
-    rec = arr[0]
-    return _normalize(rec["mantissa"], rec["exp"])
+@register_model(fsx.Xrange_polynomial)
+class XrangePolynomialModel(models.StructModel):
+    def __init__(self, dmm, fe_type):
+        print("###", dmm, fe_type)
+        members = [
+            ('values', fe_type.as_array),
+            ('cutdeg', numba.int64) # Not that we need, but int32 is painful
+            ]
+        models.StructModel.__init__(self, dmm, fe_type, members)
 
-def test_2_xr():
-    arr = fsx.Xrange_array(["1.e12", "3.14"])
-    print("arr2", arr)
-    ret = numba_test2_xr(arr)
-    print("normalized", ret)
-    arr = arr * (1. + 1.j)
-    ret = numba_test2_xr(arr)
-    print("normalized", ret)
+make_attribute_wrapper(XrangePolynomialType, 'coeffs', 'coeffs')
+
+@lower_builtin(fsx.Xrange_polynomial, types.Array, types.Integer)
+def impl_xrange_polynomial(context, builder, sig, args):
+    typ = sig.return_type
+    coeff, cutdeg = args
+    xrange_polynomial = cgutils.create_struct_proxy(typ)(context, builder)
+    xrange_polynomial.coeff = coeff
+    xrange_polynomial.cutdeg = cutdeg
+    return xrange_polynomial._getvalue()
+
 
 @numba.njit
-def numba_test_add(arr0, arr1, out):
-    print(arr0[0] + arr1[0])
-    print(arr0[1] + arr1[1])
-    # need to implement setitem for array(Record), int, tuple
-    out[0] = arr0[0] + arr1[0]
-    out[1] = arr0[1] + arr1[1]
-
-def test_add_xr():
-    arr0 = fsx.Xrange_array(["1.e1", "3.14"])
-    arr1 = fsx.Xrange_array(["2.e2", "3.14159"])
-    out = fsx.Xrange_array(["0.", "0."])
-    numba_test_add(arr0, arr1, out)
-    print("add", out)
-
-@numba.njit
-def numba_test_setitem(arr, idx, val_tuple):
-    arr[idx] = val_tuple
-
-#def test_add_xr():
-@numba.njit
-def numba_test_add2(arr):
-    arr[2] = arr[0] + 1.# arr[1]
-
-#def test_add_xr():
-@numba.njit
-def numba_test_mul2(arr):
-    arr[2] = arr[0] * 1.e-31# arr[1]
-
-@numba.njit
-def numba_test_lt(arr):
-    return arr[0] < arr[1]
+def test_poly(pol):
+    p = fsx.Xrange_polynomial(pol, 2)
 
 if __name__ == "__main__":
-#    print("numba_xr_types", numba_xr_types)
-#    print("numba_xr_types", numba_xr_types[np.float32])
-#    print("numba_xr ##:\n", numba_xr_types.values())
-#    print("\n\n test1\n")
-#    test_1_xr()
-#    res = frexp(np.array(1.))
-    # print(res)
-#    res = frexp(np.array(5235532552.))
-    res = frexp(5235532552.)
-    # a = np.array([4235532552.]).view(np.int64)
-    # array([4751172963183624192])
-    a = np.array([2.], dtype=np.float64)
-    res = _exp2_shift(a[0], -2)
+    pol = fsx.Xrange_array(["1.e2", "3.14", "2.0"])
+#    tup = (1., numba.int32(1))
+#    numba_test_tup2(tup)
+##    print("numba_xr_types", numba_xr_types)
+#
 #    
-    print(res)
-    a[0] = -1.e-32
-    need = _need_renorm(a[0])
-    print(need)
-#    a = np.array([.25], dtype=np.float64)
-#    res = _frexp(a[0])
-#    print(_frexp.signatures[0]) #inspect_disasm_cfg(signature=_frexp.signatures[0]))
+#    arr = fsx.Xrange_array(["1.e70", "3.14", "2.0"])
+#    arr = arr * (1. + 1.j)
+#    out = arr.copy()
+#    numba_test_neg(arr, out)
+#    print("out", out)
 #    
-#    print(res) #, type(res[0]))
-    
-    
-#    test_2_xr()
-#    test_add_xr()
-    
-    arr = fsx.Xrange_array(["1.e70", "3.14", "0.0"])
-#    numba_test_setitem(arr, 0, (1., 8))
-    print("arr", arr)
-    # arr[2] = arr[0] + arr[1]
-    numba_test_add2(arr)
-    print("sum", arr[2])
-    
-    numba_test_mul2(arr)
-    print("prod", arr[2])
-    
-    val = numba_test_lt(arr)
-    print("lt", val)
+#    arr = fsx.Xrange_array(["1.e2", "3.14", "2.0"])
+#    numba_test_add2(arr)
+#    print("sum", arr[2])
+#    arr *= (1. + 1.j)
+#    numba_test_expr(arr)
+#    print("expr", arr[0])
 #    
-#    print("is xr", numba_test_is_xr(arr))
-    
+##    tup = (1.23, np.int32(7))
+##    numba_test_tup(tup)
+#
+#    
+##    print("is xr", numba_test_is_xr(arr))
+#    debug_code = False
+#    if debug_code:
+#        f = generated_jit(extended_mul)
+#        f(np.asarray(arr)[0], np.asarray(arr)[1])
+#        print(f.inspect_types(pretty=True))

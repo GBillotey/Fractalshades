@@ -13,7 +13,7 @@ import numba
 
 
 #import fractalshades.numpy_utils.xrange as fsx
-from xrange import (
+from fractalshades.numpy_utils.xrange import (
    Xrange_array,
    Xrange_polynomial,
    Xrange_SA
@@ -74,7 +74,7 @@ def _matching(res, expected, almost=False, dtype=None, cmp_op=False, ktol=1.5):
 
 @numba.njit
 def numba_test_setitem(arr, idx, val_tuple):
-    arr[idx] = val_tuple
+    arr[idx] = numba_xr.XrangeScalar(*val_tuple)
 
 @numba.njit
 def numba_test_add(a, b, out):
@@ -94,10 +94,10 @@ def numba_test_mul(a, b, out):
     for i in range(n):
         out[i] = a[i] * b[i]
 
-@numba.njit(parallel=True)
+@numba.njit#(parallel=True)
 def numba_test_div(a, b, out):
     n, = a.shape
-    for i in numba.prange(n):
+    for i in range(n):
         out[i] = a[i] / b[i]
 
 @numba.njit
@@ -117,17 +117,29 @@ def numba_test_normalize(m, exp, out_m, out_exp):
     n, = m.shape
     for i in range(n):
         out_m[i], out_exp[i] = numba_xr._normalize(m[i], exp[i])
+        
+@numba.njit
+def numba_test_sqrt(xa, out):
+    n, = xa.shape
+    for i in range(n):
+        out[i] = np.sqrt(xa[i])
+
+@numba.njit
+def numba_test_abs(xa, out):
+    n, = xa.shape
+    for i in range(n):
+        out[i] = np.abs(xa[i])
 
 class Test_numba_xr(unittest.TestCase):
 
     def test_setitem(self):
-        for dtype in [np.float32, np.float64, np.complex64, np.complex128]:
+        for dtype in [np.float64, np.complex128]:
             with self.subTest(dtype=dtype):
                 nvec = 500
                 xr, std = generate_random_xr(dtype, nvec=nvec)
                 xr2 = Xrange_array.zeros(xr.shape, dtype)
                 for i in range(nvec):
-                    val_tuple = xr._mantissa[i], xr._exp[i]
+                    val_tuple = (xr._mantissa[i], xr._exp[i])
                     numba_test_setitem(xr2, i, val_tuple)
                 _matching(xr2, std)
 
@@ -172,6 +184,8 @@ class Test_numba_xr(unittest.TestCase):
                 res = Xrange_array.empty(xa.shape,
                     dtype=np.result_type(dtypea, dtypeb))
                 expected = stda + stdb
+                
+                print("res", res.dtype, type(res))
                 numba_test_add(xa, xb, res)
                 # Numba timing without compilation
                 t_numba = - time.time()
@@ -201,7 +215,6 @@ class Test_numba_xr(unittest.TestCase):
             with self.subTest(dtypea=dtypea, dtypeb=dtypeb):
                 nvec = 10000
                 xa, stda = generate_random_xr(dtypea, nvec=nvec)# , max_bin_exp=250)
-                xa, stda = generate_random_xr(dtypea, nvec=nvec) #, max_bin_exp=100)
                 xb, stdb = generate_random_xr(dtypeb, nvec=nvec, seed=800)
                 res = Xrange_array.empty(xa.shape, 
                     dtype=np.result_type(dtypea, dtypeb))
@@ -288,6 +301,7 @@ class Test_numba_xr(unittest.TestCase):
                 res = Xrange_array.empty(xa.shape, 
                     dtype=np.result_type(dtypea, dtypeb))
                 expected = stda / stdb
+
                 numba_test_div(xa, xb, res)
                 # Numba timing without compilation
                 t_numba = - time.time()
@@ -297,7 +311,7 @@ class Test_numba_xr(unittest.TestCase):
                 t_np = - time.time()
                 res_np = xa / xb
                 t_np += time.time()
-                
+
                 _matching(res, expected, almost=True, dtype=np.float64,
                           ktol=2.)
                 _matching(res_np, expected, almost=True, dtype=np.float64,
@@ -387,6 +401,165 @@ class Test_numba_xr(unittest.TestCase):
                     numba_cmp(stda, xb, res)
                     np.testing.assert_array_equal(res, expected)
 
+    def test_sqrt(self):
+        for dtype in (np.float64, np.complex128): # np.complex64 np.float32
+            with self.subTest(dtype=dtype):
+                nvec = 10000
+                xa, stda = generate_random_xr(dtype, nvec=nvec, max_bin_exp=75)
+                # sqrt not defined for negative reals
+                if dtype == np.float64:
+                    xa = np.abs(xa)
+                    stda = np.abs(stda)
+                # Adjust the mantissa to be sure to trigger a renorm for some
+                # (around 30 %) cases
+                xa = np.asarray(xa)
+                exp = np.copy(xa["exp"])
+                xa["mantissa"] *= 2.**(2 * exp)
+                xa["exp"] = -exp
+                xa = xa.view(Xrange_array)
+                res = Xrange_array.empty(xa.shape, dtype=dtype)
+                expected = np.sqrt(stda)
+
+                numba_test_sqrt(xa, res)
+                # Numba timing without compilation
+                t_numba = - time.time()
+                numba_test_sqrt(xa, res)
+                t_numba += time.time()
+                # numpy timing 
+                t_np = - time.time()
+                res_np = np.sqrt(xa)
+                t_np += time.time()
+                
+                _matching(res, expected, almost=True, dtype=np.float64,
+                          ktol=2.)
+                _matching(res_np, expected, almost=True, dtype=np.float64,
+                          ktol=2.)
+                
+                print("t_numba", t_numba)
+                print("t_numpy", t_np, t_numba/t_np)
+                expr = (t_numba <  t_np)
+                self.assertTrue(expr, msg="Numba speed below numpy")
+                
+    def test_abs(self):
+        for dtype in (np.float64, np.complex128): # np.complex64 np.float32
+            with self.subTest(dtype=dtype):
+                nvec = 10000
+                xa, stda = generate_random_xr(dtype, nvec=nvec, max_bin_exp=75)
+                # Adjust the mantissa to be sure to trigger a renorm for some
+                # (around 30 %) cases
+                xa = np.asarray(xa)
+                exp = np.copy(xa["exp"])
+                xa["mantissa"] *= 2.**(2 * exp)
+                xa["exp"] = -exp
+                xa = xa.view(Xrange_array)
+                res = Xrange_array.empty(xa.shape, dtype=dtype)
+                expected = np.abs(stda)
+
+                numba_test_abs(xa, res)
+                # Numba timing without compilation
+                t_numba = - time.time()
+                numba_test_abs(xa, res)
+                t_numba += time.time()
+                # numpy timing 
+                t_np = - time.time()
+                res_np = np.abs(xa)
+                t_np += time.time()
+                
+                _matching(res, expected, almost=True, dtype=np.float64,
+                          ktol=2.)
+                _matching(res_np, expected, almost=True, dtype=np.float64,
+                          ktol=2.)
+
+                print("t_numba", t_numba)
+                print("t_numpy", t_np, t_numba/t_np)
+                expr = (t_numba <  t_np)
+                self.assertTrue(expr, msg="Numba speed below numpy")
+
+    def test_expr(self):
+        for (dtypea, dtypeb) in crossed_dtypes: #, np.complex128]: # np.complex64 np.float32
+
+            dtype_res = np.result_type(dtypea, dtypeb)
+            nvec = 10000
+            xa, stda = generate_random_xr(dtypea, nvec=nvec)# , max_bin_exp=250)
+            xb, stdb = generate_random_xr(dtypeb, nvec=nvec, seed=800)
+            res = Xrange_array.empty(xa.shape, dtype=dtype_res)
+            
+            
+            def get_numba_expr(case):
+                if case == 0:
+                    def numba_expr(xa, xb, out):
+                        n, = xa.shape
+                        for i in range(n):
+                            out[i] = xa[i] * xb[i] * xa[i]
+                elif case == 1:
+                    def numba_expr(xa, xb, out):
+                        n, = xa.shape
+                        for i in range(n):
+                            out[i] = xa[i] * xb[i] + xa[i] - 7.8
+                elif case == 2:
+                    def numba_expr(xa, xb, out):
+                        n, = xa.shape
+                        for i in range(n):
+                            out[i] = (xb[i] * 2.) * (xa[i] + xa[i] * xb[i])   + (xa[i] * xb[i] - 7.8 + xb[i])
+                elif case == 3:
+                    def numba_expr(xa, xb, out):
+                        n, = xa.shape
+                        for i in range(n):
+                            out[i] = ((xb[i] * 2.) * (xa[i] + np.abs(xa[i] * xb[i]) + 1.)
+                                      + (xa[i] * np.sqrt(np.abs(xb[i]) + 7.8) + xb[i]))
+                else:
+                    raise ValueError(case)
+                return numba.njit(numba_expr)
+
+            def get_std_expr(case):
+                if case == 0:
+                    def std_expr(xa, xb):
+                        return xa * xb * xa
+                elif case == 1:
+                    def std_expr(xa, xb):
+                        return xa * xb + xa - 7.8
+                elif case == 2:
+                    def std_expr(xa, xb):
+                        return (xb * 2.) * (xa + xa * xb)  + (xa * xb - 7.8 + xb)
+                elif case == 3:
+                    def std_expr(xa, xb):
+                        return ((xb * 2.) * (xa + np.abs(xa * xb) + 1.)
+                                + (xa * np.sqrt(np.abs(xb) + 7.8) + xb))
+                else:
+                    raise ValueError(case)
+                return std_expr
+            
+            n_case = 4
+            for case in range(n_case):
+                    
+                with self.subTest(dtypea=dtypea, dtypeb=dtypeb, expr=case):
+                    expected = get_std_expr(case)(stda, stdb)
+            
+                    # numpy timing 
+                    t_np = - time.time()
+                    res_np = get_std_expr(case)(xa, xb)
+                    t_np += time.time()
+                    
+                    numba_expr = get_numba_expr(case)
+                    numba_expr(xa, xb, res)
+                    # Numba timing without compilation
+                    t_numba = - time.time()
+                    numba_expr(xa, xb, res)
+                    t_numba += time.time()
+            
+                    _matching(res, expected, almost=True, dtype=np.float64,
+                              ktol=2.)
+                    _matching(res_np, expected, almost=True, dtype=np.float64,
+                              ktol=2.)
+                    
+                    print("t_numba", t_numba)
+                    print("t_numpy", t_np, t_numba/t_np)
+                    expr = (t_numba <  t_np)
+                    self.assertTrue(expr, msg="Numba speed below numpy")
+                    
+                
+
+                
 
 if __name__ == "__main__":
     import test_config
@@ -396,5 +569,5 @@ if __name__ == "__main__":
         runner.run(test_config.suite([Test_numba_xr,]))
     else:
         suite = unittest.TestSuite()
-        suite.addTest(Test_numba_xr("test_compare"))
+        suite.addTest(Test_numba_xr("test_expr"))
         runner.run(suite)
