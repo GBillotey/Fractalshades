@@ -74,7 +74,7 @@ def _matching(res, expected, almost=False, dtype=None, cmp_op=False, ktol=1.5):
 
 @numba.njit
 def numba_test_setitem(arr, idx, val_tuple):
-    arr[idx] = numba_xr.XrangeScalar(*val_tuple)
+    arr[idx] = numba_xr.Xrange_scalar(*val_tuple)
 
 @numba.njit
 def numba_test_add(a, b, out):

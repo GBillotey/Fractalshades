@@ -51,8 +51,6 @@ NOte:
     https://numba.pydata.org/numba-doc/latest/proposals/extension-points.html
 """
 
-# Implementation of 
-
 numba_float_types = (numba.float64,)
 numba_complex_types = (numba.complex128,)
 numba_base_types = numba_float_types + numba_complex_types
@@ -68,27 +66,27 @@ numba_xr_types = tuple(numba_xr_type(dt) for dt in (np.float64, np.complex128))
 
 
 
-# Create a datatype for Records 
+# Create a datatype for temporary manipulation of Xrange_array items. 
 # This datatype will only be used in numba jitted functions, so we do not
-# expose a python implementation (class, boxing, unboxing)
+# expose a full python implementation (class, boxing, unboxing)
 
-class XrangeScalar():
+class Xrange_scalar():
     pass
 
-class XrangeScalarType(types.Type):
+class Xrange_scalar_Type(types.Type):
     def __init__(self, base_type):
-        super().__init__(name="{}_XrangeScalar".format(base_type))
+        super().__init__(name="{}_Xrange_scalar".format(base_type))
         self.base_type = base_type
 
-@type_callable(XrangeScalar)
+@type_callable(Xrange_scalar)
 def type_extended_item(context):
     def typer(mantissa, exp):
         if (mantissa in numba_base_types) and (exp == numba.int32):
-            return XrangeScalarType(mantissa)
+            return Xrange_scalar_Type(mantissa)
     return typer
 
-@register_model(XrangeScalarType)
-class XrangeScalar_Model(models.StructModel):
+@register_model(Xrange_scalar_Type)
+class Xrange_scalar_Model(models.StructModel):
     def __init__(self, dmm, fe_type):
         members = [
             ('mantissa', fe_type.base_type),
@@ -97,9 +95,9 @@ class XrangeScalar_Model(models.StructModel):
         models.StructModel.__init__(self, dmm, fe_type, members)
 
 for attr in ('mantissa', 'exp'):
-    make_attribute_wrapper(XrangeScalarType, attr, attr)
+    make_attribute_wrapper(Xrange_scalar_Type, attr, attr)
 
-@lower_builtin(XrangeScalar, types.Number, types.Integer)
+@lower_builtin(Xrange_scalar, types.Number, types.Integer)
 def impl_xrange_scalar(context, builder, sig, args):
     typ = sig.return_type
     mantissa, exp = args
@@ -108,12 +106,10 @@ def impl_xrange_scalar(context, builder, sig, args):
     xrange_scalar.exp = exp
     return xrange_scalar._getvalue()
 
-# We will support operation between numba_xr_types and XrangeScalar instances
-scalar_xr_types = tuple(XrangeScalarType(dt) for dt in numba_base_types)
+# We will support operation between numba_xr_types and Xrange_scalar instances
+scalar_xr_types = tuple(Xrange_scalar_Type(dt) for dt in numba_base_types)
 xr_types = numba_xr_types + scalar_xr_types
 
-
-        
 
 @overload_attribute(numba.types.Record, "is_xr")
 def is_xr(rec):
@@ -151,11 +147,11 @@ if xrange_typing:
     xrange_type = XrangeArray
 
 
-# Default typing for integer addition is int64(int32, int32)
-# see https://numba.pydata.org/numba-doc/latest/proposals/integer-typing.html
-# The typing of Python int values used as function arguments doesn’t change,
-# as it works satisfyingly and doesn’t surprise the user.
-# Here we need proper int32 addition, substraction...
+# The default numba typing for integer addition is int64(int32, int32) (?? ...)
+# See https://numba.pydata.org/numba-doc/latest/proposals/integer-typing.html
+# 'The typing of Python int values used as function arguments doesn’t change,
+# as it works satisfyingly and doesn’t surprise the user.'
+# Here we will need proper int32 addition, substraction...
 
 @numba.extending.intrinsic
 def add_int32(typingctx, src1, src2):
@@ -204,9 +200,9 @@ def sdiv_int32(typingctx, src1, src2):
 def extended_setitem_tuple(arr, idx, val):
     """
     Usage : if arr is an Xrange_array, then one will be able to do
-        arr[i] = XrangeScalarType(mantissa, exp)
+        arr[i] = Xrange_scalar_Type(mantissa, exp)
     """
-    if (isinstance(val, XrangeScalarType) and isinstance(arr, xrange_type)):
+    if (isinstance(val, Xrange_scalar_Type) and isinstance(arr, xrange_type)):
         def impl(arr, idx, val):
             arr[idx]["mantissa"] = val.mantissa
             arr[idx]["exp"] = val.exp
@@ -225,7 +221,7 @@ def extended_neg(op0):
     """ Change sign of a Record field """
     if (op0 in xr_types):
         def impl(op0):
-            return XrangeScalar(-op0.mantissa, op0.exp)
+            return Xrange_scalar(-op0.mantissa, op0.exp)
         return impl
     else:
         raise TypingError("datatype not accepted {}".format(
@@ -238,19 +234,19 @@ def extended_add(op0, op1):
         def impl(op0, op1):
             m0_out, m1_out, exp_out = _coexp_ufunc(
                 op0.mantissa, op0.exp, op1.mantissa, op1.exp)
-            return XrangeScalar(m0_out + m1_out, exp_out)
+            return Xrange_scalar(m0_out + m1_out, exp_out)
         return impl
     elif (op0 in xr_types) and (op1 in numba_base_types):
         def impl(op0, op1):
             m0_out, m1_out, exp_out = _coexp_ufunc(
                 op0.mantissa, op0.exp, op1, numba.int32(0))
-            return XrangeScalar(m0_out + m1_out, exp_out)
+            return Xrange_scalar(m0_out + m1_out, exp_out)
         return impl
     elif (op0 in numba_base_types) and (op1 in xr_types):
         def impl(op0, op1):
             m0_out, m1_out, exp_out = _coexp_ufunc(
                 op0, numba.int32(0), op1.mantissa, op1.exp)
-            return XrangeScalar(m0_out + m1_out, exp_out)
+            return Xrange_scalar(m0_out + m1_out, exp_out)
         return impl
     else:
         raise TypingError("datatype not accepted xr_add({}, {})".format(
@@ -263,19 +259,19 @@ def extended_sub(op0, op1):
         def impl(op0, op1):
             m0_out, m1_out, exp_out = _coexp_ufunc(
                 op0.mantissa, op0.exp, op1.mantissa, op1.exp)
-            return XrangeScalar(m0_out - m1_out, exp_out)
+            return Xrange_scalar(m0_out - m1_out, exp_out)
         return impl
     elif (op0 in xr_types) and (op1 in numba_base_types):
         def impl(op0, op1):
             m0_out, m1_out, exp_out = _coexp_ufunc(
                 op0.mantissa, op0.exp, op1, numba.int32(0))
-            return XrangeScalar(m0_out - m1_out, exp_out)
+            return Xrange_scalar(m0_out - m1_out, exp_out)
         return impl
     elif (op0 in numba_base_types) and (op1 in xr_types):
         def impl(op0, op1):
             m0_out, m1_out, exp_out = _coexp_ufunc(
                 op0, numba.int32(0), op1.mantissa, op1.exp)
-            return XrangeScalar(m0_out - m1_out, exp_out)
+            return Xrange_scalar(m0_out - m1_out, exp_out)
         return impl
     else:
         raise TypingError("datatype not accepted xr_sub({}, {})".format(
@@ -312,22 +308,22 @@ def extended_mul(op0, op1):
             # Need to avoid casting to int64... ! 
             exp = add_int32(op0.exp, op1.exp)
             if _need_renorm(mul):
-                return XrangeScalar(*_normalize(mul, exp))
-            return XrangeScalar(mul, exp)
+                return Xrange_scalar(*_normalize(mul, exp))
+            return Xrange_scalar(mul, exp)
         return impl
     elif (op0 in xr_types) and (op1 in numba_base_types):
         def impl(op0, op1):
             mul = op0.mantissa * op1
             if _need_renorm(mul):
-                return XrangeScalar(*_normalize(mul, op0.exp))
-            return XrangeScalar(mul, op0.exp)
+                return Xrange_scalar(*_normalize(mul, op0.exp))
+            return Xrange_scalar(mul, op0.exp)
         return impl
     elif (op0 in numba_base_types) and (op1 in xr_types):
         def impl(op0, op1):
             mul = op0 * op1.mantissa
             if _need_renorm(mul):
-                return XrangeScalar(*_normalize(mul, op1.exp))
-            return XrangeScalar(mul, op1.exp)
+                return Xrange_scalar(*_normalize(mul, op1.exp))
+            return Xrange_scalar(mul, op1.exp)
         return impl
     else:
         raise TypingError("datatype not accepted xr_mul({}, {})".format(
@@ -341,23 +337,23 @@ def extended_truediv(op0, op1):
             mul = op0.mantissa / op1.mantissa
             exp = sub_int32(op0.exp, op1.exp)
             if _need_renorm(mul):
-                return XrangeScalar(*_normalize(mul, exp))
-            return XrangeScalar(mul, exp)
+                return Xrange_scalar(*_normalize(mul, exp))
+            return Xrange_scalar(mul, exp)
         return impl
     elif (op0 in xr_types) and (op1 in numba_base_types):
         def impl(op0, op1):
             mul = op0.mantissa / op1
             if _need_renorm(mul):
-                return XrangeScalar(*_normalize(mul, op0.exp))
-            return XrangeScalar(mul, op0.exp)
+                return Xrange_scalar(*_normalize(mul, op0.exp))
+            return Xrange_scalar(mul, op0.exp)
         return impl
     elif (op0 in numba_base_types) and (op1 in xr_types):
         def impl(op0, op1):
             mul = op0 / op1.mantissa
             exp = neg_int32(op1.exp)
             if _need_renorm(mul):
-                return XrangeScalar(*_normalize(mul, exp))
-            return XrangeScalar(mul, exp)
+                return Xrange_scalar(*_normalize(mul, exp))
+            return Xrange_scalar(mul, exp)
         return impl
     else:
         raise TypingError("datatype not accepted xr_mul({}, {})".format(
@@ -412,7 +408,7 @@ def extended_sqrt(op0):
             else:
                 exp = sdiv_int32(exp, numba.int32(2)) # // 2
                 m = np.sqrt(op0.mantissa)
-            return XrangeScalar(m, exp)
+            return Xrange_scalar(m, exp)
         return impl
     else:
         raise TypingError("Datatype not accepted xr_sqrt({})".format(
@@ -423,7 +419,7 @@ def extended_abs2(op0):
     """ square of abs of a Record field """
     if op0 in xr_types:
         def impl(op0):
-            return XrangeScalar(np.square(op0.mantissa), 2 * op0.exp)
+            return Xrange_scalar(np.square(op0.mantissa), 2 * op0.exp)
         return impl
     else:
         raise TypingError("Datatype not accepted xr_sqrt({})".format(
@@ -434,7 +430,7 @@ def extended_abs(op0):
     """ abs of a Record field """
     if op0 in xr_types:
         def impl(op0):
-            return XrangeScalar(np.abs(op0.mantissa), op0.exp)
+            return Xrange_scalar(np.abs(op0.mantissa), op0.exp)
         return impl
     else:
         raise TypingError("Datatype not accepted xr_sqrt({})".format(
@@ -568,45 +564,45 @@ def normalize(rec):
 # Implementing the Xrange_polynomial class
 # https://numba.pydata.org/numba-doc/latest/proposals/extension-points.html
 
-class XrangePolynomialType(types.Type): # ArrayCompatible):
-    def __init__(self, coeff, cutdeg):
-        
-        super().__init__(name="XrangePolynomial")#.format(base_type))
-
-        
-
-@typeof_impl.register(fsx.Xrange_polynomial)
-def typeof_index(val, c):
-    return XrangePolynomialType()
-
-@register_model(fsx.Xrange_polynomial)
-class XrangePolynomialModel(models.StructModel):
-    def __init__(self, dmm, fe_type):
-        print("###", dmm, fe_type)
-        members = [
-            ('values', fe_type.as_array),
-            ('cutdeg', numba.int64) # Not that we need, but int32 is painful
-            ]
-        models.StructModel.__init__(self, dmm, fe_type, members)
-
-make_attribute_wrapper(XrangePolynomialType, 'coeffs', 'coeffs')
-
-@lower_builtin(fsx.Xrange_polynomial, types.Array, types.Integer)
-def impl_xrange_polynomial(context, builder, sig, args):
-    typ = sig.return_type
-    coeff, cutdeg = args
-    xrange_polynomial = cgutils.create_struct_proxy(typ)(context, builder)
-    xrange_polynomial.coeff = coeff
-    xrange_polynomial.cutdeg = cutdeg
-    return xrange_polynomial._getvalue()
-
-
-@numba.njit
-def test_poly(pol):
-    p = fsx.Xrange_polynomial(pol, 2)
-
-if __name__ == "__main__":
-    pol = fsx.Xrange_array(["1.e2", "3.14", "2.0"])
+#class XrangePolynomialType(types.Type): # ArrayCompatible):
+#    def __init__(self, coeff, cutdeg):
+#        
+#        super().__init__(name="XrangePolynomial")#.format(base_type))
+#
+#        
+#
+#@typeof_impl.register(fsx.Xrange_polynomial)
+#def typeof_index(val, c):
+#    return XrangePolynomialType()
+#
+#@register_model(fsx.Xrange_polynomial)
+#class XrangePolynomialModel(models.StructModel):
+#    def __init__(self, dmm, fe_type):
+#        print("###", dmm, fe_type)
+#        members = [
+#            ('values', fe_type.as_array),
+#            ('cutdeg', numba.int64) # Not that we need, but int32 is painful
+#            ]
+#        models.StructModel.__init__(self, dmm, fe_type, members)
+#
+#make_attribute_wrapper(XrangePolynomialType, 'coeffs', 'coeffs')
+#
+#@lower_builtin(fsx.Xrange_polynomial, types.Array, types.Integer)
+#def impl_xrange_polynomial(context, builder, sig, args):
+#    typ = sig.return_type
+#    coeff, cutdeg = args
+#    xrange_polynomial = cgutils.create_struct_proxy(typ)(context, builder)
+#    xrange_polynomial.coeff = coeff
+#    xrange_polynomial.cutdeg = cutdeg
+#    return xrange_polynomial._getvalue()
+#
+#
+#@numba.njit
+#def test_poly(pol):
+#    p = fsx.Xrange_polynomial(pol, 2)
+#
+#if __name__ == "__main__":
+#    pol = fsx.Xrange_array(["1.e2", "3.14", "2.0"])
 #    tup = (1., numba.int32(1))
 #    numba_test_tup2(tup)
 ##    print("numba_xr_types", numba_xr_types)
