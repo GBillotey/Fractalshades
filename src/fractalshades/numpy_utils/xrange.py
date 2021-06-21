@@ -36,6 +36,10 @@ def Xrange_to_mpfc(arr):
         exp = arr._exp
         return mpmath.ldexp(float(m), int(exp))
 
+def get_xr_dtype(dtype):
+    return np.dtype([('mantissa', dtype),
+                     ('exp', np.int32)], align=False)
+
 class Xrange_array(np.ndarray):
     """
 Arrays class for "extended range" floats or complex numbers.
@@ -119,7 +123,7 @@ Reference:
     _FLOAT_DTYPES = [np.float32, np.float64]
     _COMPLEX_DTYPES = [np.complex64, np.complex128]
     _DTYPES = _FLOAT_DTYPES + _COMPLEX_DTYPES
-
+    _STRUCT_DTYPES = [get_xr_dtype(dt)  for dt in _DTYPES]
     # types that can be 'viewed' as Xrange_array:
     _HANDLED_TYPES = (np.ndarray, numbers.Number, list)
     #__array_priority__ =  20
@@ -196,6 +200,9 @@ Reference:
                     casted = True
                     break
             if not casted:
+                if (mantissa_dtype in Xrange_array._STRUCT_DTYPES
+                        ) and (exp is None):
+                    return mantissa # Pass-through
                 raise ValueError("Unsupported type for Xrange_array {}".format(
                     mantissa_dtype))
 
@@ -204,8 +211,9 @@ Reference:
         if exp is None:
             exp = np.zeros(sh, dtype=np.int32)
 
-        extended_dtype = np.dtype([('mantissa', mantissa_dtype),
-                                   ('exp', np.int32)], align=False)
+        extended_dtype = get_xr_dtype(mantissa_dtype)
+#        np.dtype([('mantissa', mantissa_dtype),
+#                                   ('exp', np.int32)], align=False)
 
         data = np.empty(sh, dtype=extended_dtype)
         data['mantissa'] = mantissa
@@ -348,7 +356,6 @@ Reference:
         """ Returns the Xrange_array downcasted to standard np.ndarray ;
         obviously, may overflow. """
         return self._mantissa * (2.**self._exp)
-
 
     @staticmethod
     def _build_complex(re, im):
@@ -524,7 +531,6 @@ Reference:
                 m0, op0._exp, m1, op1._exp, ufunc=np.arctan2)
         return out
 
-
     def abs2(self, out=None):
         """
         Return the square of np.abs(self) (for optimisation purpose).
@@ -676,7 +682,7 @@ Reference:
             out = Xrange_array._coexp_ufunc(m0, op0._exp, m1,
                                             op1._exp, ufunc)[0]
         return out
-    
+
     @staticmethod
     def _maximum(inputs, out=None):
         op0, op1 = inputs
@@ -1236,7 +1242,7 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
         "8": "⁸",
         "9": "⁹"
     })
-    
+
     def __init__(self, coeffs, cutdeg):
         if isinstance(coeffs, Xrange_array):
             self.coeffs = coeffs[0:cutdeg+1]
@@ -1245,6 +1251,21 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
         if self.coeffs.ndim != 1:
             raise ValueError("Only 1-d inputs for Xrange_polynomial")
         self.cutdeg = cutdeg
+        
+#        self.cutdeg = cutdeg
+#        if isinstance(coeffs, Xrange_array):
+#            coeffs = coeffs[0:cutdeg+1]
+#        else:
+#            coeffs = Xrange_array(np.asarray(coeffs)[0:cutdeg+1])#.view(Xrange_array)
+#        if (coeffs.size < cutdeg + 1):
+#            _coeffs = Xrange_array(np.zeros([cutdeg+1],
+#                                   dtype=coeffs._mantissa.dtype))
+#            _coeffs[0:coeffs.size] = coeffs
+#            coeffs = _coeffs
+#        if coeffs.ndim != 1:
+#            raise ValueError("Only 1-d inputs for Xrange_polynomial")
+#        self.coeffs = coeffs
+
 
     def  __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
         casted_inputs = ()
@@ -1353,7 +1374,7 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
                 mul *= k
         return Xrange_polynomial(coeffs, cutdeg=self.cutdeg)
 
-    def taylor_shift(self, x0, quad_prec=False):
+    def taylor_shift(self, x0):#, quad_prec=False):
         """
         Parameters
         ----------
@@ -1379,9 +1400,9 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
         """
         if x0 == 0.:
             return Xrange_polynomial(self.coeffs, cutdeg=self.cutdeg)
-        if quad_prec:
-            return self.scale_shift(x0)._quad_precision_taylor_shift_one(
-                    ).scale_shift(1. / x0)
+#        if quad_prec:
+#            return self.scale_shift(x0)._quad_precision_taylor_shift_one(
+#                    ).scale_shift(1. / x0)
         return self.scale_shift(x0)._taylor_shift_one().scale_shift(1. / x0)
             
     def _taylor_shift_one(self):

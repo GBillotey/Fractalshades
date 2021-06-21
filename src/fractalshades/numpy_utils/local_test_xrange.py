@@ -724,7 +724,12 @@ class Test_Xrange_timing(unittest.TestCase):
         print("\ntiming", ufunc, dtype, t0, t1, t0 / t1)
         return t0 / t1
 
-
+def _matchingP(res, expected, **kwargs):
+    if res.size > expected.size:
+        _expected = np.zeros(res.shape, expected.dtype)
+        _expected[:expected.size] = expected
+        expected = _expected
+    _matching(res, expected, **kwargs)
 
 
 class Test_Xrange_polynomial(unittest.TestCase):
@@ -739,7 +744,7 @@ class Test_Xrange_polynomial(unittest.TestCase):
         _matching((_P + _P).coeffs, (P + P).coef)
         _matching((_P + 2).coeffs, (P + 2).coef)
         _matching((2 + _P).coeffs, (2 + P).coef)
-    
+
         two = Xrange_array([2.])
         _matching((_P * two).coeffs, (P * 2).coef)
         _matching((two * _P).coeffs, (2 * P).coef)
@@ -750,7 +755,7 @@ class Test_Xrange_polynomial(unittest.TestCase):
         _matching((_P - 2).coeffs, (P - 2).coef)
     
         arr = [1. + 1.j, 1 - 1.j]
-        _P = Xrange_polynomial(arr, 10)
+        _P = Xrange_polynomial(arr, 2)
         P = np.polynomial.Polynomial(arr)
         _matching((_P * _P).coeffs, (P * P).coef)
         
@@ -821,17 +826,17 @@ class Test_Xrange_polynomial(unittest.TestCase):
                 P = Xrange_polynomial(np.array(p_arr[i], dtype), cutdeg=100)
                 Q = P._taylor_shift_one()
                 # print("\nQ", Q)
-                _matching(Q.coeffs, q_arr[i], almost=True, ktol=3.,
+                _matching(Q.coeffs, np.array(q_arr[i], dtype), almost=True, ktol=3.,
                           dtype=dtype)
 
-        # testing _quad_precision_taylor_shift_one
-        for dtype in [np.complex64, np.complex128]:
-            for i in range(len(p_arr)):
-                P = Xrange_polynomial(np.array(p_arr[i], dtype), cutdeg=100)
-                Q = P._quad_precision_taylor_shift_one()
-                print("\nQ", Q)
-                _matching(Q.coeffs, q_arr[i], almost=True, ktol=3.,
-                          dtype=dtype)
+#        # testing _quad_precision_taylor_shift_one
+#        for dtype in [np.complex64, np.complex128]:
+#            for i in range(len(p_arr)):
+#                P = Xrange_polynomial(np.array(p_arr[i], dtype), cutdeg=100)
+#                Q = P._quad_precision_taylor_shift_one()
+#                print("\nQ", Q)
+#                _matching(Q.coeffs, q_arr[i], almost=True, ktol=3.,
+#                          dtype=dtype)
 
         p_arr = [[0., 0., 0., 0., 1.],
                  [1., 0., 0., -7., 1., 21.]
@@ -846,7 +851,7 @@ class Test_Xrange_polynomial(unittest.TestCase):
             for i in range(len(p_arr)):
                 P = Xrange_polynomial(np.array(p_arr[i], dtype), cutdeg=100)
                 Q = P.scale_shift(sc_arr[i])
-                _matching(Q.coeffs, q_arr[i], almost=True, ktol=3.,
+                _matching(Q.coeffs, np.array(q_arr[i], dtype), almost=True, ktol=3.,
                           dtype=dtype)
 
         # testing general taylor_shift
@@ -867,7 +872,7 @@ class Test_Xrange_polynomial(unittest.TestCase):
             for i in range(len(p_arr)):
                 P = Xrange_polynomial(np.array(p_arr[i], dtype), cutdeg=100)
                 Q = P.taylor_shift(sc_arr[i])
-                _matching(Q.coeffs, q_arr[i], almost=True, ktol=3.,
+                _matching(Q.coeffs, np.array(q_arr[i]), almost=True, ktol=3.,
                           dtype=dtype)
 
             
