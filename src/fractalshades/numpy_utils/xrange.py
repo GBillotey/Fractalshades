@@ -1244,19 +1244,27 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
     })
 
     def __init__(self, coeffs, cutdeg):
-        self.cutdeg = cutdeg
         if isinstance(coeffs, Xrange_array):
-            coeffs = coeffs[0:cutdeg+1]
+            self.coeffs = coeffs[0:cutdeg+1]
         else:
-            coeffs = Xrange_array(np.asarray(coeffs)[0:cutdeg+1])#.view(Xrange_array)
-        if (coeffs.size < cutdeg + 1):
-            _coeffs = Xrange_array(np.zeros([cutdeg+1],
-                                   dtype=coeffs._mantissa.dtype))
-            _coeffs[0:coeffs.size] = coeffs
-            coeffs = _coeffs
-        if coeffs.ndim != 1:
+            self.coeffs = Xrange_array(np.asarray(coeffs)[0:cutdeg+1])#.view(Xrange_array)
+        if self.coeffs.ndim != 1:
             raise ValueError("Only 1-d inputs for Xrange_polynomial")
-        self.coeffs = coeffs
+        self.cutdeg = cutdeg
+        
+#        self.cutdeg = cutdeg
+#        if isinstance(coeffs, Xrange_array):
+#            coeffs = coeffs[0:cutdeg+1]
+#        else:
+#            coeffs = Xrange_array(np.asarray(coeffs)[0:cutdeg+1])#.view(Xrange_array)
+#        if (coeffs.size < cutdeg + 1):
+#            _coeffs = Xrange_array(np.zeros([cutdeg+1],
+#                                   dtype=coeffs._mantissa.dtype))
+#            _coeffs[0:coeffs.size] = coeffs
+#            coeffs = _coeffs
+#        if coeffs.ndim != 1:
+#            raise ValueError("Only 1-d inputs for Xrange_polynomial")
+#        self.coeffs = coeffs
 
 
     def  __array_ufunc__(self, ufunc, method, *inputs, **kwargs):

@@ -563,6 +563,14 @@ def numba_test_polyneg(poly):
 def numba_test_polyadd(polya, polyb):
     return polya + polyb
 
+@numba.njit
+def numba_test_polycall0(poly, val):
+    return poly.__call__(val[0])
+
+@numba.njit
+def numba_test_polycall(poly, val):
+    return poly.__call__(val)
+
 class Test_poly_xr(unittest.TestCase):
     
     def test_neg(self):
@@ -596,10 +604,42 @@ class Test_poly_xr(unittest.TestCase):
                 _matching(_Pa.coeffs, Pa.coef)
                 _matching(_Pb.coeffs, Pb.coef)
 
+    def test_op_partial(self):
+        a = [1., 2., 5., 8.]
+        _Pa = Xrange_polynomial(a, 10)
+        Pa = np.polynomial.Polynomial(a)
+        b = [1., 2.]
+        _Pb = Xrange_polynomial(b, 10)
+        Pb = np.polynomial.Polynomial(b)
+        
+        res = [numba_test_polyadd(_Pa, _Pb),
+               numba_test_polyadd(_Pb, _Pa),
+               numba_test_polyadd(_Pa, _Pa)]
+        expected = [Pa + Pb , Pb + Pa, Pa + Pa]
+        for i in range(len(res)):
+            _matching(res[i].coeffs, expected[i].coef)
+
+    def test_call(self):
+        for (dtypea, dtypeb) in crossed_dtypes: 
+            with self.subTest(dtypea=dtypea, dtypeb=dtypeb):
+                nvec = 100
+                xa, stda = generate_random_xr(dtypea, nvec=10 , max_bin_exp=3)
+                xb, stdb = generate_random_xr(dtypeb, nvec=nvec , max_bin_exp=5)
+                _Pa = Xrange_polynomial(xa, cutdeg=nvec-1)
+                Pa = np.polynomial.Polynomial(stda)
+                # Scalar call test
+                res = numba_test_polycall0(_Pa, xb).view(Xrange_array)
+                expected = Pa(stdb[0])
+                _matching(res, expected)
+                # Array call test
+                res = numba_test_polycall(_Pa, xb).view(Xrange_array)
+                expected = Pa(stdb)
+                _matching(res, expected)
+
 
 if __name__ == "__main__":
     import test_config
-    full_test = True
+    full_test = False
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_numba_xr,]))
@@ -607,6 +647,5 @@ if __name__ == "__main__":
     else:
         suite = unittest.TestSuite()
         # suite.addTest(Test_numba_xr("test_expr"))
-        suite.addTest(Test_poly_xr("test_neg"))
-        suite.addTest(Test_poly_xr("test_add"))
+        suite.addTest(Test_poly_xr("test_add_partial"))
         runner.run(suite)
