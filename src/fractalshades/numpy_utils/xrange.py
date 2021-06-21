@@ -36,6 +36,10 @@ def Xrange_to_mpfc(arr):
         exp = arr._exp
         return mpmath.ldexp(float(m), int(exp))
 
+def get_xr_dtype(dtype):
+    return np.dtype([('mantissa', dtype),
+                     ('exp', np.int32)], align=False)
+
 class Xrange_array(np.ndarray):
     """
 Arrays class for "extended range" floats or complex numbers.
@@ -119,7 +123,7 @@ Reference:
     _FLOAT_DTYPES = [np.float32, np.float64]
     _COMPLEX_DTYPES = [np.complex64, np.complex128]
     _DTYPES = _FLOAT_DTYPES + _COMPLEX_DTYPES
-
+    _STRUCT_DTYPES = [get_xr_dtype(dt)  for dt in _DTYPES]
     # types that can be 'viewed' as Xrange_array:
     _HANDLED_TYPES = (np.ndarray, numbers.Number, list)
     #__array_priority__ =  20
@@ -196,6 +200,9 @@ Reference:
                     casted = True
                     break
             if not casted:
+                if (mantissa_dtype in Xrange_array._STRUCT_DTYPES
+                        ) and (exp is None):
+                    return mantissa # Pass-through
                 raise ValueError("Unsupported type for Xrange_array {}".format(
                     mantissa_dtype))
 
@@ -204,8 +211,9 @@ Reference:
         if exp is None:
             exp = np.zeros(sh, dtype=np.int32)
 
-        extended_dtype = np.dtype([('mantissa', mantissa_dtype),
-                                   ('exp', np.int32)], align=False)
+        extended_dtype = get_xr_dtype(mantissa_dtype)
+#        np.dtype([('mantissa', mantissa_dtype),
+#                                   ('exp', np.int32)], align=False)
 
         data = np.empty(sh, dtype=extended_dtype)
         data['mantissa'] = mantissa
@@ -1236,13 +1244,20 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
     })
 
     def __init__(self, coeffs, cutdeg):
-        if isinstance(coeffs, Xrange_array):
-            self.coeffs = coeffs[0:cutdeg+1]
-        else:
-            self.coeffs = Xrange_array(np.asarray(coeffs)[0:cutdeg+1])#.view(Xrange_array)
-        if self.coeffs.ndim != 1:
-            raise ValueError("Only 1-d inputs for Xrange_polynomial")
         self.cutdeg = cutdeg
+        if isinstance(coeffs, Xrange_array):
+            coeffs = coeffs[0:cutdeg+1]
+        else:
+            coeffs = Xrange_array(np.asarray(coeffs)[0:cutdeg+1])#.view(Xrange_array)
+        if (coeffs.size < cutdeg + 1):
+            _coeffs = Xrange_array(np.zeros([cutdeg+1],
+                                   dtype=coeffs._mantissa.dtype))
+            _coeffs[0:coeffs.size] = coeffs
+            coeffs = _coeffs
+        if coeffs.ndim != 1:
+            raise ValueError("Only 1-d inputs for Xrange_polynomial")
+        self.coeffs = coeffs
+
 
     def  __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
         casted_inputs = ()

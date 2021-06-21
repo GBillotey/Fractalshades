@@ -19,10 +19,8 @@ from fractalshades.numpy_utils.xrange import (
    Xrange_SA
 )
 
+# import fractalshades.numpy_utils.numba_xr as numba_xr
 import numba_xr
-#from numba_xr import (
-#    extended_setitem_tuple
-#)
 
 
 from_complex = {np.complex64: np.float32,
@@ -556,10 +554,48 @@ class Test_numba_xr(unittest.TestCase):
                     print("t_numpy", t_np, t_numba/t_np)
                     expr = (t_numba <  t_np)
                     self.assertTrue(expr, msg="Numba speed below numpy")
-                    
-                
 
+@numba.njit
+def numba_test_polyneg(poly):
+    return -poly
+
+@numba.njit
+def numba_test_polyadd(polya, polyb):
+    return polya + polyb
+
+class Test_poly_xr(unittest.TestCase):
+    
+    def test_neg(self):
+        for dtype in (np.float64, np.complex128):
+            with self.subTest(dtype=dtype):
+                nvec = 100
+                xa, stda = generate_random_xr(dtype, nvec=nvec)# , max_bin_exp=250)
+                _P = Xrange_polynomial(xa, cutdeg=nvec-1)
+                P = np.polynomial.Polynomial(stda)
+                res = numba_test_polyneg(_P)
+                expected = -P
+                _matching(res.coeffs, expected.coef)
+                # Check that the original array has not been modified
+                _matching(_P.coeffs, P.coef)
                 
+    def test_add(self):
+        for (dtypea, dtypeb) in ((np.float64, np.float64),):#crossed_dtypes: 
+            with self.subTest(dtypea=dtypea, dtypeb=dtypeb):
+                nvec = 100
+                xa, stda = generate_random_xr(dtypea, nvec=nvec)# , max_bin_exp=250)
+                xb, stdb = generate_random_xr(dtypeb, nvec=nvec)# , max_bin_exp=250)
+                _Pa = Xrange_polynomial(xa, cutdeg=nvec-1)
+                Pa = np.polynomial.Polynomial(stda)
+                _Pb = Xrange_polynomial(xb, cutdeg=nvec-1)
+                Pb = np.polynomial.Polynomial(stdb)
+                
+                res = numba_test_polyadd(_Pa, _Pb)
+                expected = Pa + Pb
+                _matching(res.coeffs, expected.coef)
+                # Check that the original array has not been modified
+                _matching(_Pa.coeffs, Pa.coef)
+                _matching(_Pb.coeffs, Pb.coef)
+
 
 if __name__ == "__main__":
     import test_config
@@ -567,7 +603,10 @@ if __name__ == "__main__":
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_numba_xr,]))
+        runner.run(test_config.suite([Test_poly_xr,]))
     else:
         suite = unittest.TestSuite()
-        suite.addTest(Test_numba_xr("test_expr"))
+        # suite.addTest(Test_numba_xr("test_expr"))
+        suite.addTest(Test_poly_xr("test_neg"))
+        suite.addTest(Test_poly_xr("test_add"))
         runner.run(suite)

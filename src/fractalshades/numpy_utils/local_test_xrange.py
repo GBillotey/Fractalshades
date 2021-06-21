@@ -724,7 +724,12 @@ class Test_Xrange_timing(unittest.TestCase):
         print("\ntiming", ufunc, dtype, t0, t1, t0 / t1)
         return t0 / t1
 
-
+def _matchingP(res, expected, **kwargs):
+    if res.size > expected.size:
+        _expected = np.zeros(res.shape, expected.dtype)
+        _expected[:expected.size] = expected
+        expected = _expected
+    _matching(res, expected, **kwargs)
 
 
 class Test_Xrange_polynomial(unittest.TestCase):
@@ -732,27 +737,27 @@ class Test_Xrange_polynomial(unittest.TestCase):
         arr = [1., 2., 5.]
         _P = Xrange_polynomial(arr, 10)
         P = np.polynomial.Polynomial(arr)
-        _matching(_P.coeffs, P.coef)
-        _matching((_P * _P).coeffs, (P * P).coef)
-        _matching((_P * 2).coeffs, (P * 2).coef)
-        _matching((2 * _P).coeffs, (2 * P).coef)
-        _matching((_P + _P).coeffs, (P + P).coef)
-        _matching((_P + 2).coeffs, (P + 2).coef)
-        _matching((2 + _P).coeffs, (2 + P).coef)
+        _matchingP(_P.coeffs, P.coef)
+        _matchingP((_P * _P).coeffs, (P * P).coef)
+        _matchingP((_P * 2).coeffs, (P * 2).coef)
+        _matchingP((2 * _P).coeffs, (2 * P).coef)
+        _matchingP((_P + _P).coeffs, (P + P).coef)
+        _matchingP((_P + 2).coeffs, (P + 2).coef)
+        _matchingP((2 + _P).coeffs, (2 + P).coef)
     
         two = Xrange_array([2.])
-        _matching((_P * two).coeffs, (P * 2).coef)
-        _matching((two * _P).coeffs, (2 * P).coef)
-        _matching((_P + two).coeffs, (P + 2).coef)
-        _matching((two + _P).coeffs, (2 + P).coef)
+        _matchingP((_P * two).coeffs, (P * 2).coef)
+        _matchingP((two * _P).coeffs, (2 * P).coef)
+        _matchingP((_P + two).coeffs, (P + 2).coef)
+        _matchingP((two + _P).coeffs, (2 + P).coef)
     
-        _matching((_P - (2 * _P)).coeffs, (P - (2 * P)).coef)
-        _matching((_P - 2).coeffs, (P - 2).coef)
+        _matchingP((_P - (2 * _P)).coeffs, (P - (2 * P)).coef)
+        _matchingP((_P - 2).coeffs, (P - 2).coef)
     
         arr = [1. + 1.j, 1 - 1.j]
-        _P = Xrange_polynomial(arr, 10)
+        _P = Xrange_polynomial(arr, 2)
         P = np.polynomial.Polynomial(arr)
-        _matching((_P * _P).coeffs, (P * P).coef)
+        _matchingP((_P * _P).coeffs, (P * P).coef)
         
         for dtype in [np.float32, np.float64, np.complex64, np.complex128]:
             n_vec = 100
@@ -767,7 +772,7 @@ class Test_Xrange_polynomial(unittest.TestCase):
                 
             _P = Xrange_polynomial(arr, 1000)
             P = np.polynomial.Polynomial(arr)
-            _matching((_P * _P).coeffs, (P * P).coef, almost=True, ktol=3., dtype=dtype)
+            _matchingP((_P * _P).coeffs, (P * P).coef, almost=True, ktol=3., dtype=dtype)
             
             n_vec2 = 83
             if dtype in [np.float32, np.float64]:
@@ -779,18 +784,18 @@ class Test_Xrange_polynomial(unittest.TestCase):
             
             _Q = Xrange_polynomial(arr2, 1000)
             Q = np.polynomial.Polynomial(arr2)
-            _matching((_Q * _P).coeffs, (Q * P).coef, almost=True, ktol=3., dtype=dtype)
-            _matching((_P * _Q).coeffs, (P * Q).coef, almost=True, ktol=3., dtype=dtype)
+            _matchingP((_Q * _P).coeffs, (Q * P).coef, almost=True, ktol=3., dtype=dtype)
+            _matchingP((_P * _Q).coeffs, (P * Q).coef, almost=True, ktol=3., dtype=dtype)
             
-            _matching(_P([1.]), P(np.asarray([1.])), almost=True, ktol=3., dtype=dtype)
-            _matching(_P([1.j]), P(np.asarray([1.j])), almost=True, ktol=3., dtype=dtype)
-            _matching(_P([arr]), P(np.asarray([arr])), almost=True, ktol=3., dtype=dtype)
+            _matchingP(_P([1.]), P(np.asarray([1.])), almost=True, ktol=3., dtype=dtype)
+            _matchingP(_P([1.j]), P(np.asarray([1.j])), almost=True, ktol=3., dtype=dtype)
+            _matchingP(_P([arr]), P(np.asarray([arr])), almost=True, ktol=3., dtype=dtype)
     
             # checking with cutdeg
             for cutdeg in range(1, 400, 10):
                 _P = Xrange_polynomial(arr, cutdeg)
                 _Q = Xrange_polynomial(arr2, cutdeg)
-                _matching((_Q * _P).coeffs, (Q * P).cutdeg(cutdeg).coef,
+                _matchingP((_Q * _P).coeffs, (Q * P).cutdeg(cutdeg).coef,
                           almost=True, ktol=3., dtype=dtype)
                 _P = Xrange_polynomial(arr, cutdeg=1000)
                 
@@ -798,11 +803,11 @@ class Test_Xrange_polynomial(unittest.TestCase):
         arr = [1., 2., 5.]
         _P = Xrange_polynomial(arr, 10)
         P = np.polynomial.Polynomial(arr)
-        _matching((2. * _P).coeffs, (2. * P).coef)
-        _matching((_P * 2.).coeffs, (P * 2.).coef)
-        _matching((2. + _P).coeffs, (2. + P).coef)
-        _matching((_P + 2.).coeffs, (P + 2.).coef)
-        _matching((coeff + _P).coeffs, (_P + coeff).coeffs)
+        _matchingP((2. * _P).coeffs, (2. * P).coef)
+        _matchingP((_P * 2.).coeffs, (P * 2.).coef)
+        _matchingP((2. + _P).coeffs, (2. + P).coef)
+        _matchingP((_P + 2.).coeffs, (P + 2.).coef)
+        _matchingP((coeff + _P).coeffs, (_P + coeff).coeffs)
         coeff * _P
         _P * coeff
         #_matching((coeff * _P).coeffs, (_P * coeff).coeffs)
@@ -821,7 +826,7 @@ class Test_Xrange_polynomial(unittest.TestCase):
                 P = Xrange_polynomial(np.array(p_arr[i], dtype), cutdeg=100)
                 Q = P._taylor_shift_one()
                 # print("\nQ", Q)
-                _matching(Q.coeffs, q_arr[i], almost=True, ktol=3.,
+                _matchingP(Q.coeffs, np.array(q_arr[i], dtype), almost=True, ktol=3.,
                           dtype=dtype)
 
 #        # testing _quad_precision_taylor_shift_one
@@ -846,7 +851,7 @@ class Test_Xrange_polynomial(unittest.TestCase):
             for i in range(len(p_arr)):
                 P = Xrange_polynomial(np.array(p_arr[i], dtype), cutdeg=100)
                 Q = P.scale_shift(sc_arr[i])
-                _matching(Q.coeffs, q_arr[i], almost=True, ktol=3.,
+                _matchingP(Q.coeffs, np.array(q_arr[i], dtype), almost=True, ktol=3.,
                           dtype=dtype)
 
         # testing general taylor_shift
@@ -867,7 +872,7 @@ class Test_Xrange_polynomial(unittest.TestCase):
             for i in range(len(p_arr)):
                 P = Xrange_polynomial(np.array(p_arr[i], dtype), cutdeg=100)
                 Q = P.taylor_shift(sc_arr[i])
-                _matching(Q.coeffs, q_arr[i], almost=True, ktol=3.,
+                _matchingP(Q.coeffs, np.array(q_arr[i]), almost=True, ktol=3.,
                           dtype=dtype)
 
             
@@ -877,23 +882,23 @@ class Test_Xrange_SA(unittest.TestCase):
         arr = [1., 2., 5.]
         _P = Xrange_SA(arr, 10)
         P = np.polynomial.Polynomial(arr)
-        _matching(_P.coeffs, P.coef)
-        _matching((_P * _P).coeffs, (P * P).coef)
-        _matching((_P * 2.).coeffs, (P * 2.).coef)
-        _matching((2. * _P).coeffs, (2. * P).coef)
-        _matching((_P + _P).coeffs, (P + P).coef)
-        _matching((_P + 2.).coeffs, (P + 2.).coef)
-        _matching((2. + _P).coeffs, (2. + P).coef)
-        _matching((_P - (2. * _P)).coeffs, (P - (2. * P)).coef)
-        _matching((_P - 2.).coeffs, (P - 2.).coef)
+        _matchingP(_P.coeffs, P.coef)
+        _matchingP((_P * _P).coeffs, (P * P).coef)
+        _matchingP((_P * 2.).coeffs, (P * 2.).coef)
+        _matchingP((2. * _P).coeffs, (2. * P).coef)
+        _matchingP((_P + _P).coeffs, (P + P).coef)
+        _matchingP((_P + 2.).coeffs, (P + 2.).coef)
+        _matchingP((2. + _P).coeffs, (2. + P).coef)
+        _matchingP((_P - (2. * _P)).coeffs, (P - (2. * P)).coef)
+        _matchingP((_P - 2.).coeffs, (P - 2.).coef)
         
         two = Xrange_array([2.])
-        _matching((_P * two).coeffs, (P * 2.).coef)
-        _matching((two * _P).coeffs, (2. * P).coef)
-        _matching((_P + two).coeffs, (P + 2.).coef)
-        _matching((two + _P).coeffs, (2. + P).coef)
-        _matching((_P - (two * _P)).coeffs, (P - (2. * P)).coef)
-        _matching((_P - two).coeffs, (P - 2.).coef)
+        _matchingP((_P * two).coeffs, (P * 2.).coef)
+        _matchingP((two * _P).coeffs, (2. * P).coef)
+        _matchingP((_P + two).coeffs, (P + 2.).coef)
+        _matchingP((two + _P).coeffs, (2. + P).coef)
+        _matchingP((_P - (two * _P)).coeffs, (P - (2. * P)).coef)
+        _matchingP((_P - two).coeffs, (P - 2.).coef)
 
         arrP = [1., 2., 3., 4.]
         arrQ = [4., 3., 2.]
@@ -920,7 +925,7 @@ class Test_Xrange_SA(unittest.TestCase):
         arr = [1. + 1.j, 1 - 1.j]
         _P = Xrange_SA(arr, 10)
         P = np.polynomial.Polynomial(arr)
-        _matching((_P * _P).coeffs, (P * P).coef)
+        _matchingP((_P * _P).coeffs, (P * P).coef)
         
         for dtype in [np.float32, np.float64, np.complex64, np.complex128]:
             with self.subTest(dtype=dtype):
@@ -937,7 +942,7 @@ class Test_Xrange_SA(unittest.TestCase):
                     
                 _P = Xrange_SA(arr, 1000)
                 P = np.polynomial.Polynomial(arr)
-                _matching((_P * _P).coeffs, (P * P).coef, almost=True, ktol=3.,
+                _matchingP((_P * _P).coeffs, (P * P).coef, almost=True, ktol=3.,
                           dtype=dtype)
         
                 n_vec2 = 83
@@ -958,7 +963,7 @@ class Test_Xrange_SA(unittest.TestCase):
                     _Q = Xrange_SA(arr2, cutdeg)
                     _prod = _Q * _P
                     prod = Q * P
-                    _matching(_prod.coeffs, prod.cutdeg(cutdeg).coef,
+                    _matchingP(_prod.coeffs, prod.cutdeg(cutdeg).coef,
                               almost=True, ktol=3., dtype=dtype)
                     res =  prod - prod.cutdeg(cutdeg)
                     _matching(_prod.err, np.sqrt(np.sum(np.abs(res.coef)**2)), 

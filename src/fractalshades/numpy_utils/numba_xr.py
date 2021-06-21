@@ -10,7 +10,6 @@ from numba import (
     generated_jit
 )
 from numba.core.errors import TypingError
-from numba.np import numpy_support
 from numba.extending import (
     overload,
     overload_attribute,
@@ -20,9 +19,12 @@ from numba.extending import (
     type_callable,
     models,
     register_model,
-    make_attribute_wrapper, 
-    unbox
+    make_attribute_wrapper,
+    box,
+    unbox,
+    NativeValue
 )
+from numba.core.imputils import impl_ret_borrowed
 
 import fractalshades.numpy_utils.xrange as fsx
 import math
@@ -55,26 +57,31 @@ numba_float_types = (numba.float64,)
 numba_complex_types = (numba.complex128,)
 numba_base_types = numba_float_types + numba_complex_types
 
+def numpy_xr_type(base_type):
+    return np.dtype([("mantissa", base_type), ("exp", np.int32)], align=False)
+    
+
 def numba_xr_type(base_type):
     """ Return the numba "extended" Record type for the 2 implemented base type
     float64, complex128 """
-    xr_type = np.dtype([("mantissa", base_type), ("exp", np.int32)],
-                        align=False)
-    return numba.from_dtype(xr_type)
+    return numba.from_dtype(numpy_xr_type(base_type))
 
 numba_xr_types = tuple(numba_xr_type(dt) for dt in (np.float64, np.complex128))
-
+#numba_xr_dict = {numba_xr_type(v): v for v in (np.float64, np.complex128)}
 
 
 # Create a datatype for temporary manipulation of Xrange_array items. 
 # This datatype will only be used in numba jitted functions, so we do not
-# expose a full python implementation (class, boxing, unboxing)
+# expose a full python implementation (e.g, boxing, unboxing)
 
 class Xrange_scalar():
-    pass
+    def __init__(self, mantissa, exp):
+        self.mantissa = mantissa
+        self.exp = exp
 
 class Xrange_scalar_Type(types.Type):
     def __init__(self, base_type):
+        self.base_type = base_type
         super().__init__(name="{}_Xrange_scalar".format(base_type))
         self.base_type = base_type
 
@@ -109,6 +116,16 @@ def impl_xrange_scalar(context, builder, sig, args):
 # We will support operation between numba_xr_types and Xrange_scalar instances
 scalar_xr_types = tuple(Xrange_scalar_Type(dt) for dt in numba_base_types)
 xr_types = numba_xr_types + scalar_xr_types
+
+def is_xr_type(val):
+    if isinstance(val, Xrange_scalar_Type):
+        return (val.base_type in numba_base_types)
+    if isinstance(val, numba.types.Record):
+        return (
+            len(val) == 2
+            and "mantissa" in val.fields
+            and "exp" in val.fields
+            and val.fields["mantissa"][0] in numba_base_types)
 
 
 @overload_attribute(numba.types.Record, "is_xr")
@@ -219,11 +236,12 @@ def is_complex(rec):
 @overload(operator.neg)
 def extended_neg(op0):
     """ Change sign of a Record field """
-    if (op0 in xr_types):
+    if (op0 in xr_types): #is_xr_type(op0)):# in xr_types):
         def impl(op0):
             return Xrange_scalar(-op0.mantissa, op0.exp)
         return impl
     else:
+#        print(op0, op0 in xr_types, xr_types)
         raise TypingError("datatype not accepted {}".format(
             op0))
 
@@ -326,6 +344,9 @@ def extended_mul(op0, op1):
             return Xrange_scalar(mul, op1.exp)
         return impl
     else:
+        print(op0 in numba_base_types, op0 in xr_types)
+        print(op1 in numba_base_types, op1 in xr_types)
+        # TypingError: datatype not accepted xr_mul(float64_Xrange_scalar, Record(mantissa[type=float64;offset=0],exp[type=int32;offset=8];12;False))
         raise TypingError("datatype not accepted xr_mul({}, {})".format(
             op0, op1))
 
@@ -561,73 +582,193 @@ def normalize(rec):
         raise TypingError("datatype not accepted {}".format(dtype))
     return impl
 
-# Implementing the Xrange_polynomial class
+# 
+# Implementing the Xrange_polynomial class in numba
 # https://numba.pydata.org/numba-doc/latest/proposals/extension-points.html
+# 
 
-#class XrangePolynomialType(types.Type): # ArrayCompatible):
-#    def __init__(self, coeff, cutdeg):
-#        
-#        super().__init__(name="XrangePolynomial")#.format(base_type))
+class Xrange_polynomial_Type(types.Type):
+    def __init__(self, dtype, cutdeg):
+        self.dtype = dtype
+        self.np_base_type = numba.np.numpy_support.as_dtype(
+                dtype.fields["mantissa"][0])
+#        self.cutdeg = cutdeg
+        self.coeffs = types.Array(dtype, 1, 'C')
+#        print("numba_xr_dict", numba_xr_dict)
+#        print("numba_xr_dict", dtype.fields["mantissa"][0])
+        # The name must be unique if the underlying model is different
+        super().__init__(name="{}_Xrange_polynomial".format(
+                dtype.fields["mantissa"][0])) # str(dtype.fields["mantissa"][0])))
+
+#    @property
+#    def as_array(self):
+#        return self.coeffs
 #
-#        
-#
-#@typeof_impl.register(fsx.Xrange_polynomial)
-#def typeof_index(val, c):
-#    return XrangePolynomialType()
-#
-#@register_model(fsx.Xrange_polynomial)
-#class XrangePolynomialModel(models.StructModel):
-#    def __init__(self, dmm, fe_type):
-#        print("###", dmm, fe_type)
-#        members = [
-#            ('values', fe_type.as_array),
-#            ('cutdeg', numba.int64) # Not that we need, but int32 is painful
-#            ]
-#        models.StructModel.__init__(self, dmm, fe_type, members)
-#
-#make_attribute_wrapper(XrangePolynomialType, 'coeffs', 'coeffs')
-#
-#@lower_builtin(fsx.Xrange_polynomial, types.Array, types.Integer)
-#def impl_xrange_polynomial(context, builder, sig, args):
-#    typ = sig.return_type
-#    coeff, cutdeg = args
-#    xrange_polynomial = cgutils.create_struct_proxy(typ)(context, builder)
-#    xrange_polynomial.coeff = coeff
-#    xrange_polynomial.cutdeg = cutdeg
-#    return xrange_polynomial._getvalue()
-#
-#
-#@numba.njit
-#def test_poly(pol):
-#    p = fsx.Xrange_polynomial(pol, 2)
-#
-#if __name__ == "__main__":
-#    pol = fsx.Xrange_array(["1.e2", "3.14", "2.0"])
-#    tup = (1., numba.int32(1))
-#    numba_test_tup2(tup)
-##    print("numba_xr_types", numba_xr_types)
-#
+#    def copy(self, dtype=None, ndim=1, layout='C'):
+#        assert ndim == 1
+#        assert layout == 'C'
+#        if dtype is None:
+#            dtype = self.dtype
+#        return type(self)(dtype, self.index)
+
+@typeof_impl.register(fsx.Xrange_polynomial)
+def typeof_xrange_polynomial(val, c):
+    coeffs_arrty = typeof_impl(val.coeffs, c)
+    return Xrange_polynomial_Type(coeffs_arrty.dtype, val.cutdeg)
+
+@type_callable(fsx.Xrange_polynomial)
+def type_xrange_polynomial(context):
+    def typer(coeffs, cutdeg):
+        if (isinstance(coeffs, types.Array)
+              and (coeffs.dtype in numba_xr_types)
+              and isinstance(cutdeg, types.Integer)):
+            return Xrange_polynomial_Type(coeffs.dtype, cutdeg)
+    return typer
+
+@register_model(Xrange_polynomial_Type)
+class XrangePolynomialModel(models.StructModel):
+    def __init__(self, dmm, fe_type):
+        members = [
+            ('coeffs', fe_type.coeffs),
+            ('cutdeg', numba.int64) # Not that we need, but int32 is painful
+            ]
+        models.StructModel.__init__(self, dmm, fe_type, members)
+
+make_attribute_wrapper(Xrange_polynomial_Type, 'coeffs', 'coeffs')
+make_attribute_wrapper(Xrange_polynomial_Type, 'cutdeg', 'cutdeg')
+
+@lower_builtin(fsx.Xrange_polynomial, types.Array, types.Integer)
+def impl_xrange_polynomial_constructor(context, builder, sig, args):
+    typ = sig.return_type
+    coeffs, cutdeg = args
+    xrange_polynomial = cgutils.create_struct_proxy(typ)(context, builder)
+    xrange_polynomial.coeffs = coeffs
+    #  We do not copy !!
+    #   > from numba.np.arrayobj import array_copy
+    #   > from numba.core.typing import signature
+    #   > copysig = signature(newty, ty)
+    #   > coeffs_copy = array_copy(context, builder, copysig, (coeffs,))
+    xrange_polynomial.cutdeg = cutdeg
+    return impl_ret_borrowed(context, builder, typ,
+                             xrange_polynomial._getvalue())
+
+
+@unbox(Xrange_polynomial_Type)
+def unbox_xrange_polynomial(typ, obj, c):
+    """
+    Convert a fsx.Xrange_polynomial object to a native xrange_polynomial
+    structure. """
+    coeffs_obj = c.pyapi.object_getattr_string(obj, "coeffs")
+    cutdeg_obj = c.pyapi.object_getattr_string(obj, "cutdeg")
+    xrange_polynomial = cgutils.create_struct_proxy(typ)(c.context, c.builder)
+    xrange_polynomial.cutdeg = c.pyapi.long_as_longlong(cutdeg_obj) 
+    xrange_polynomial.coeffs = c.unbox(typ.coeffs, coeffs_obj).value
+    c.pyapi.decref(coeffs_obj)
+    c.pyapi.decref(cutdeg_obj)
+    is_error = cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
+    return NativeValue(xrange_polynomial._getvalue(), is_error=is_error)
+
+@box(Xrange_polynomial_Type)
+def box_xrange_polynomial(typ, val, c):
+    """
+    Convert a native xrange_polynomial structure to a 
+    fsx.Xrange_polynomial object """
+    xrange_polynomial = cgutils.create_struct_proxy(typ
+        )(c.context, c.builder, value=val)
+    classobj = c.pyapi.unserialize(c.pyapi.serialize_object(
+        fsx.Xrange_polynomial))
+    coeffs_obj = c.box(typ.coeffs, xrange_polynomial.coeffs)
+    cutdeg_obj = c.pyapi.long_from_longlong(xrange_polynomial.cutdeg)
+    xrange_polynomial_obj = c.pyapi.call_function_objargs(
+        classobj, (coeffs_obj, cutdeg_obj))
+    c.pyapi.decref(classobj)
+    c.pyapi.decref(coeffs_obj)
+    c.pyapi.decref(cutdeg_obj)
+    return xrange_polynomial_obj
+
+# 
+# Implementing operations for Xrange_polynomial 
+# 
+@overload(operator.neg)
+def poly_neg(op0):
+    """ Copy of a polynomial with sign changed """
+    if isinstance(op0, Xrange_polynomial_Type):
+        def impl(op0):
+            assert op0.coeffs.size == op0.cutdeg + 1 
+            coeffs = op0.coeffs
+            new_coeffs = np.empty_like(op0.coeffs)
+            for i in range(coeffs.size):
+                new_coeffs[i] = - coeffs[i]
+            return fsx.Xrange_polynomial(new_coeffs, op0.cutdeg)
+        return impl
+
+@overload(operator.add)
+def poly_add(op0, op1):
+    """ Add 2  polynomials with sign changed """
+    if (isinstance(op0, Xrange_polynomial_Type)
+            and isinstance(op0, Xrange_polynomial_Type)
+            ):
+        # There is no lowering implementation for a structured dtype ; so
+        # we initiate a template of length 1 for the compilation.
+        dtres = np.result_type(op0.np_base_type,
+                               op1.np_base_type)
+        res_dtype = numpy_xr_type(dtres)
+        res = np.empty([1], dtype=res_dtype)
+
+        def impl(op0, op1):
+            assert op0.cutdeg == op1.cutdeg
+            res_len = op0.cutdeg + 1
+            coeffs0 = op0.coeffs
+            coeffs1 = op1.coeffs
+            new_coeffs = np.empty_like(res).repeat(res_len)
+            for i in range(res_len):
+                new_coeffs[i] = coeffs0[i] + coeffs1[i]
+            return fsx.Xrange_polynomial(new_coeffs, op0.cutdeg)
+        return impl
+
+
+
+
+
+@numba.njit
+def test_poly(pol):
+    print("in numba")
+#    print("nb", pol, pol.coeffs.dtype)
+    # pol.coeffs[1] = Xrange_scalar(45678., numba.int32(0))
+    coeff2 = pol.coeffs.copy() # * Xrange_scalar(2., numba.int32(0))
+#    print("nb", coeff2)
+    for i in range(len(coeff2)):
+        coeff2[i] = coeff2[i] * coeff2[i] 
+    p2 = - fsx.Xrange_polynomial(coeff2, 2)
+#    print("init", p2.cutdeg, p2.coeffs)
+    print("p2 init", p2.cutdeg, p2.coeffs)
+    return p2
+
+
+@numba.njit
+def test_polyadd(pol1, pol2):
+    print("in numba")
+    return pol1 + pol2
+
+if __name__ == "__main__":
+    arr0 = fsx.Xrange_array(["1.e100", "3.14", "2.0"]) #* (1. + 1j)
+    pol0 = fsx.Xrange_polynomial(arr0, 2)
+    print(pol0.coeffs)
+    print(np.asarray(pol0.coeffs).size)
+    print(pol0.coeffs.size, pol0.cutdeg + 1)
+    p_neg = test_poly(pol0)
+    print("p_neg", p_neg)
+    
+#    arr1 = fsx.Xrange_array(["1.e100", "3.14", "2.0"]) #* (1. + 1j)
+#    pol1 = fsx.Xrange_polynomial(arr1, 2)
 #    
-#    arr = fsx.Xrange_array(["1.e70", "3.14", "2.0"])
-#    arr = arr * (1. + 1.j)
-#    out = arr.copy()
-#    numba_test_neg(arr, out)
-#    print("out", out)
+#    res =  test_polyadd(pol0, pol1)
+#    print("res", res)
 #    
-#    arr = fsx.Xrange_array(["1.e2", "3.14", "2.0"])
-#    numba_test_add2(arr)
-#    print("sum", arr[2])
-#    arr *= (1. + 1.j)
-#    numba_test_expr(arr)
-#    print("expr", arr[0])
+#    arr0 = fsx.Xrange_array(["1.e100", "3.14", "2.0", "5.0"]) #* (1. + 1j)
+#    pol0 = fsx.Xrange_polynomial(arr0, 3)
+#    arr1 = fsx.Xrange_array(["1.e100", "3.14", "2.0", "6.4"]) #* (1. + 1j)
+#    pol1 = fsx.Xrange_polynomial(arr1, 3)
 #    
-##    tup = (1.23, np.int32(7))
-##    numba_test_tup(tup)
-#
-#    
-##    print("is xr", numba_test_is_xr(arr))
-#    debug_code = False
-#    if debug_code:
-#        f = generated_jit(extended_mul)
-#        f(np.asarray(arr)[0], np.asarray(arr)[1])
-#        print(f.inspect_types(pretty=True))
+#    res =  test_polyadd(pol0, pol1)
+#    print("res", res)
