@@ -61,7 +61,7 @@ def plot():
              nx: int=600):#
 #             interior_detect: bool=True):
 
-        interior_detect = True
+        interior_detect = False # True
         
         fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
              theta_deg=0., projection="cartesian", antialiasing=False)

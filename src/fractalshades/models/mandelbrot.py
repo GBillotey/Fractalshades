@@ -643,7 +643,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             h = mpmath.mp.one
             dh = mpmath.mp.zero
             for i in range(1, order + 1):# + 1):
-                dzrdc = mpmath.mpf("2.") * dzrdc * zr + 1.
+                dzrdc = 2. * dzrdc * zr + 1. #  mpmath.mpf("2.")
                 zr = zr * zr + c_loop
                 # divide by unwanted periods
                 if i < order and order % i == 0:
@@ -652,50 +652,90 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             f = zr / h
             df = (dzrdc * h - zr * dh) / (h * h)
             cc = c_loop - f / df
-            newton_cv = abs(cc - c_loop ) <= eps_cv
+            newton_cv = mpmath.almosteq(cc, c_loop) #abs(cc - c_loop ) <= eps_cv
             c_loop = cc
             if newton_cv:
                 print("Newton iteration cv @ ", i_newton)
                 break
         return newton_cv, c_loop
 
-#    @staticmethod
-#    def find_any_attracting(c, order, max_newton=None, eps_cv=None):
-#        """
-#        https://en.wikibooks.org/wiki/Fractals/Mathematics/Newton_method#center
-#        https://mathr.co.uk/blog/2013-04-01_interior_coordinates_in_the_mandelbrot_set.html
-#        https://mathr.co.uk/blog/2018-11-17_newtons_method_for_periodic_points.html
-#        https://code.mathr.co.uk/mandelbrot-numerics/blob/HEAD:/c/lib/m_d_nucleus.c
-#        Run Newton search to find z0 so that f^n(z0) == 0
-#        """
-#        if max_newton is None:
-#            max_newton = mpmath.mp.prec
-#        if eps_cv is None:
-#            eps_cv = mpmath.mpf(2.)**(-mpmath.mp.prec)
-#            print("eps_cv", eps_cv)
-#        c_loop = c
-#
-#        for i_newton in range(max_newton):     
-#            if (i_newton % 5 ==0):
-#                print("i_newton", i_newton, " / ", max_newton)
-#            zr = c_loop #mpmath.mp.zero
-#            dzrdc = mpmath.mp.one# mpmath.mp.zero
-#            # d2zrdzdc = 0.   # == 1. hence : constant wrt c...
-#            for i in range(1, order + 1):
-#                # d2zrdzdc = 2 * (d2zrdzdc * zr + dzrdz * dzrdc)
-#                dzrdc = mpmath.mpf("2.") * dzrdc * zr + mpmath.mp.one
-#                zr = zr * zr + c_loop
-##                    zr = zr / 
-##                if abs(zr) < mpmath.mpf("0.0001"):
-##                    print("zr", zr, i)
-#            cc = c_loop - (zr - c_loop) / (dzrdc - mpmath.mp.one)
-#
-#            newton_cv = abs(cc - c_loop ) <= eps_cv
-#            c_loop = cc
-#            if newton_cv:
-#                break
-#            
-#        return newton_cv, c_loop
+    @staticmethod
+    def find_any_nucleus(c, order, max_newton=None, eps_cv=None):
+        """
+        https://en.wikibooks.org/wiki/Fractals/Mathematics/Newton_method#center
+        https://mathr.co.uk/blog/2013-04-01_interior_coordinates_in_the_mandelbrot_set.html
+        https://mathr.co.uk/blog/2018-11-17_newtons_method_for_periodic_points.html
+        https://code.mathr.co.uk/mandelbrot-numerics/blob/HEAD:/c/lib/m_d_nucleus.c
+        Run Newton search to find z0 so that f^n(z0) == 0
+        """
+        if order is None:
+            return False, c
+        if max_newton is None:
+            max_newton = mpmath.mp.prec
+        if eps_cv is None:
+            eps_cv = mpmath.mpf(2.)**(-mpmath.mp.prec)
+        c_loop = c
+
+        for i_newton in range(max_newton): 
+            print("Newton iteration ANY", i_newton)
+            zr = mpmath.mp.zero
+            dzrdc = mpmath.mp.zero
+#            h = mpmath.mp.one
+#            dh = mpmath.mp.zero
+            for i in range(1, order + 1):# + 1):
+                dzrdc = 2. * dzrdc * zr + 1. #  mpmath.mpf("2.")
+                zr = zr * zr + c_loop
+                # divide by unwanted periods
+#                if i < order and order % i == 0:
+#                    h *= zr
+#                    dh += dzrdc / zr
+            cc = c_loop - zr / dzrdc
+            newton_cv = mpmath.almosteq(cc, c_loop) #abs(cc - c_loop ) <= eps_cv
+            c_loop = cc
+            if newton_cv:
+                print("Newton iteration cv @ ", i_newton)
+                break
+        return newton_cv, c_loop
+
+    @staticmethod
+    def find_any_attracting(c, order, max_newton=None, eps_cv=None):
+        """
+        https://en.wikibooks.org/wiki/Fractals/Mathematics/Newton_method#center
+        https://mathr.co.uk/blog/2013-04-01_interior_coordinates_in_the_mandelbrot_set.html
+        https://mathr.co.uk/blog/2018-11-17_newtons_method_for_periodic_points.html
+        https://code.mathr.co.uk/mandelbrot-numerics/blob/HEAD:/c/lib/m_d_nucleus.c
+        Run Newton search to find z0 so that f^n(z0) == 0
+        """
+        if max_newton is None:
+            max_newton = mpmath.mp.prec
+        if eps_cv is None:
+            eps_cv = mpmath.mpf(2.)**(-mpmath.mp.prec)
+            print("eps_cv", eps_cv)
+        c_loop = c
+
+        for i_newton in range(max_newton):     
+            if (i_newton % 5 == 0):
+                print("attracting ANY", i_newton, " / ", max_newton)
+            zr = c_loop #mpmath.mp.zero
+            dzrdc = mpmath.mp.one# mpmath.mp.zero
+            # d2zrdzdc = 0.   # == 1. hence : constant wrt c...
+            for i in range(1, order + 1):
+                # d2zrdzdc = 2 * (d2zrdzdc * zr + dzrdz * dzrdc)
+                dzrdc = 2. * dzrdc * zr + 1. #mpmath.mp.one
+                zr = zr * zr + c_loop
+#                    zr = zr / 
+#                if abs(zr) < mpmath.mpf("0.0001"):
+#                    print("zr", zr, i)
+            cc = c_loop - (zr - c_loop) / (dzrdc - 1.)#
+
+            newton_cv = mpmath.almosteq(cc, c_loop)
+            #abs(cc - c_loop ) <= eps_cv
+            c_loop = cc
+            if newton_cv:
+                print("attracting ANY iteration cv @ ", i_newton)
+                break
+            
+        return newton_cv, c_loop
 
     def series_approx(self, SA_init, SA_loop, SA_params, iref, file_prefix):
         """
@@ -973,7 +1013,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                 stop_reason[0, bool_glitched] = 3
                 # We generate a glitch_sort_key based on 'close to secondary
                 # nucleus' criteria
-                # We use d2zndc2 field to save it, as specified by glitch_sort_key
+                # We use dzndz field to save it, as specified by glitch_sort_key
                 # parameter of self.cycles call.
                 Z[1, bool_glitched] = full_sq_norm[bool_glitched]
 
