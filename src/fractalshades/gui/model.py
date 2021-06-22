@@ -2,13 +2,36 @@
 import inspect
 import typing
 import functools
-import dataclasses
+#import dataclasses
 import mpmath
 from operator import getitem, setitem
 
 from PyQt5 import QtCore
 from PyQt5.QtCore import pyqtSignal, pyqtSlot
 
+"""
+Implementation of a GUI following a Model-View-Presenter paradigm
+
+- The Model data is stored in a nested dict wrapped in Model or Submodel
+instances The class responsible for the model is always the more deeply nested
+Submodel
+- the GUI-compenents "Views" are the hoted in guimodel.py
+- Presenter make the link between the model and the view. However in the case
+  were a view stricly implements a model, then no presenter is needed
+  
+  Event Publish / subscribe is as follows :
+  
+  model_changerequest_event :  Model -> Submodel (request to update)
+  model_event : Model -> View (notify has been updated)
+  
+  model_notification : Submodel -> Model (Notify has been updated)
+  
+  model_changerequest : Presenter -> Model (request to update)
+  
+  xxx_user_modified : - Viewer -> Submodel (User action)
+                      - Viewer -> Presenter (User action)
+
+"""
 
 
 class Model(QtCore.QObject):

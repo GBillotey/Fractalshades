@@ -672,8 +672,9 @@ class PerturbationFractal(fs.Fractal):
                 if order is None:
                     # k_ball = 0.5
                     order = self.ball_method(c0,
-                            max(self.dx, self.dy) * k_ball, max_iter)
+                            max(self.dx, self.dy) * 0.01 * k_ball, max_iter)
                     if order is None: # ball method escaped...
+                        print("ESCAPED BALL METHOD")
                         order = 1
                 max_newton = 1 if (newton == "step") else 50 #None
                 print("newton ", newton, " with order: ", order)
@@ -691,16 +692,24 @@ class PerturbationFractal(fs.Fractal):
                     print("With shift % from proposed coords:\n",
                           shift.real / self.dx, shift.imag / self.dy)
                 else:
-                    data_type = self.base_float_type
-                    rg = np.random.default_rng(0)
-                    diff = rg.random([2], dtype=data_type)
-                    c_shifted = (c0 + self.dx * (diff[0] - 0.5) + 
-                                      self.dy * (diff[1] - 0.5) * 1.j)
-                    k_ball *= 2.
-                    print("*** Newton failed,")
-                    print("*** Relauch with shifted ref point, ", diff, "k_ball", k_ball)
-                    return self.ensure_ref_point(FP_loop, max_iter,
-                        file_prefix, iref, c0=c_shifted, k_ball=k_ball)
+                    shift = nucleus - (self.x + self.y * 1.j)
+                    print("NEWTON FAILED, try nucleus at:\n", nucleus, order)
+                    print("With shift % from image center:\n",
+                          shift.real / self.dx, shift.imag / self.dy)
+                    shift = nucleus - pt
+                    print("With shift % from proposed coords:\n",
+                          shift.real / self.dx, shift.imag / self.dy)
+                    
+#                    data_type = self.base_float_type
+#                    rg = np.random.default_rng(0)
+#                    diff = rg.random([2], dtype=data_type)
+#                    c_shifted = (c0 + self.dx * (diff[0] - 0.5) + 
+#                                      self.dy * (diff[1] - 0.5) * 1.j)
+#                    k_ball *= 2.
+#                    print("*** Newton failed,")
+#                    print("*** Relauch with shifted ref point, ", diff, "k_ball", k_ball)
+#                    return self.ensure_ref_point(FP_loop, max_iter,
+#                        file_prefix, iref, c0=c_shifted, k_ball=k_ball)
                 pt = nucleus
 
             print("compute ref_point", iref, pt, "\ncenter:\n",

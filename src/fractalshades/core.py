@@ -35,9 +35,9 @@ class Fractal_Data_array():
             rw+temp        tempfile.SpooledTemporaryFile (file_prefix ignored)   
 
         postproc_keys:
-            mode r_raw : tuple (code, None) or (code, function)
-            mode r_postproc : as expeted by Fractal.postproc
-            mode rw_temp : ignored
+            mode r+raw : tuple (code, None) or (code, function)
+            mode r+postproc : as expected by Fractal.postproc
+            mode rw+temp : ignored
         """
         self.fractal = fractal
         self.file_prefix = file_prefix
@@ -125,7 +125,7 @@ class Fractal_Data_array():
             if self._ref is not None:
                 for val in self._ref.values():
                     val.close()
-                    
+  
     def __iter__(self):
         """
         Iterate the Fractal_Data_array by chunks.
@@ -136,15 +136,15 @@ class Fractal_Data_array():
             
     def nanmax(self):
         """ extension of np.nanmax """
-        return max([np.nanmax(chunk) for chunk in self])
+        return np.nanmax([np.nanmax(chunk) for chunk in self])
     
     def nanmin(self):
         """ extension of np.nanmin """
-        return min([np.nanmin(chunk) for chunk in self])
+        return np.nanmin([np.nanmin(chunk) for chunk in self])
     
     def nansum(self):
         """ extension of np.nansum """
-        return sum([np.nansum(chunk) for chunk in self])
+        return np.nansum([np.nansum(chunk) for chunk in self])
 
 
 

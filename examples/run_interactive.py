@@ -58,8 +58,11 @@ def plot():
              xy_ratio: float=1.0,
              dps: int= 100,
              max_iter: int=100000,
-             nx: int=600):
+             nx: int=600):#
+#             interior_detect: bool=True):
 
+        interior_detect = True
+        
         fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
              theta_deg=0., projection="cartesian", antialiasing=False)
         fractal.calc_std_div(complex_type=np.complex128, file_prefix=file_prefix,
@@ -69,7 +72,7 @@ def plot():
                        "cutdeg_glitch": 8,
                        "SA_err": 1.e-6,
                        "use_Taylor_shift": True},
-            glitch_eps=1.e-6, interior_detect=False, glitch_max_attempt=20)
+            glitch_eps=1.e-6, interior_detect=interior_detect, glitch_max_attempt=20)
         fractal.run()
         
         

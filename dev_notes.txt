@@ -159,5 +159,43 @@ pretty print
 https://docs.python.org/2/library/tokenize.html
 
 
+__________________________________________________________________________
+HOW TO JIT / NUMBA
+c.context.enable_nrt:
+The NRT is used to manage reference-counted memory allocation and is not available on the GPU.
+
+Plans :
+1) custom lowering + boxing / unboxing on Xrange_array + support a subset of operations through
+operator overload : +, *
+overload operator
+https://github.com/numba/numba/pull/2983
+nd array lowering / boxing
+https://gist.github.com/sklam/04e722fdf5cb215ff909ae4908712da7
+need to use :
+def array_complex_attr(context, builder, typ, value, attr):
+
+2) custom lowering + boxing / unboxing on Xrange_polynomial. probably group with Xrange_serie
+
+
+3) datatype dedicated to fractal main looping (C struct ?)
+return the function in a closure
+see https://numba.pydata.org/numba-doc/dev/user/faq.html
+(not : no parallell in sus of multiprocessing)
+https://numba.pydata.org/numba-doc/latest/user/cfunc.html#handling-c-structures
+
+my_struct = types.Record.make_c_struct([
+   # Provides a sequence of 2-tuples i.e. (name:str, type:Type)
+   ('i1', types.int32),
+   ('f2', types.float32),
+   ('d3', types.float64),
+   ('af4', types.NestedArray(dtype=types.float32, shape=(7,))),
+])
+
+
+
+
+
+
+
 
  
