@@ -106,46 +106,48 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         """
         Testing field lines, and antialiasing. Full Mandelbrot
         """
-        x, y = "-0.75", "0."
-        dx = "5.e0"
-        precision = 10
-        nx = 1600
-        test_name = self.test_M2_antialias_E0.__name__
-        complex_type = np.complex128
-        prefix = "antialiasing"
-
-        gold = np.array([255, 210, 66]) / 255.
-        black = np.array([0, 0, 0]) / 255.
-        colors1 = np.vstack((gold[np.newaxis, :]))
-        colors2 = np.vstack((black[np.newaxis, :]))
-        colormap = fscolors.Fractal_colormap(kinds="Lch", colors1=colors1,
-            colors2=colors2, n=200, funcs=None, extent="clip")
-        
-        
-#        color_gradient = fscolors.Color_tools.Lch_gradient(gold, black, 200)
-#        colormap = fscolors.Fractal_colormap(color_gradient)
-
-        test_file = self.make_M2_img(x, y, dx, precision, nx,
-            complex_type, test_name, prefix, interior_detect=True,
-            mask_codes=[2], antialiasing=True, colormap=colormap,
-            probes_val=[0., 0.1], grey_layer_key=
-                    ("field_lines", {"n_iter": 10, "swirl": 1.}),
-            blur_ranges=[[0.8, 0.95, 1.0]], hardness=0.9, intensity=0.8)
-        ref_file = os.path.join(self.image_dir_ref, test_name + ".png")
-        err = compare_png(ref_file, test_file)
-        self.assertTrue(err < 0.01)
-        
-        x, y = "-0.1", "0.975"
-        dx = "0.8e0"
-        prefix = "antialiasing_2"
-        test_file = self.make_M2_img(x, y, dx, precision, nx,
-            complex_type, test_name, prefix, interior_detect=True,
-            mask_codes=[2], antialiasing=True, colormap=colormap,
-            probes_val=[0., 0.1], grey_layer_key=("field_lines", {}),
-            blur_ranges=[[0.8, 0.95, 1.0]], hardness=0.9, intensity=0.8)
-        ref_file = os.path.join(self.image_dir_ref, test_name + "_2.png")
-        err = compare_png(ref_file, test_file)
-        self.assertTrue(err < 0.01)
+        with self.subTest(zoom=1):
+            x, y = "-0.75", "0."
+            dx = "5.e0"
+            precision = 10
+            nx = 1600
+            test_name = self.test_M2_antialias_E0.__name__
+            complex_type = np.complex128
+            prefix = "antialiasing"
+    
+            gold = np.array([255, 210, 66]) / 255.
+            black = np.array([0, 0, 0]) / 255.
+            colors1 = np.vstack((gold[np.newaxis, :]))
+            colors2 = np.vstack((black[np.newaxis, :]))
+            colormap = fscolors.Fractal_colormap(kinds="Lch", colors1=colors1,
+                colors2=colors2, n=200, funcs=None, extent="clip")
+            
+            
+    #        color_gradient = fscolors.Color_tools.Lch_gradient(gold, black, 200)
+    #        colormap = fscolors.Fractal_colormap(color_gradient)
+    
+            test_file = self.make_M2_img(x, y, dx, precision, nx,
+                complex_type, test_name, prefix, interior_detect=True,
+                mask_codes=[2], antialiasing=True, colormap=colormap,
+                probes_val=[0., 0.1], grey_layer_key=
+                        ("field_lines", {"n_iter": 10, "swirl": 1.}),
+                blur_ranges=[[0.8, 0.95, 1.0]], hardness=0.9, intensity=0.8)
+            ref_file = os.path.join(self.image_dir_ref, test_name + ".png")
+            err = compare_png(ref_file, test_file)
+            self.assertTrue(err < 0.02)
+            
+        with self.subTest(zoom=2):
+            x, y = "-0.1", "0.975"
+            dx = "0.8e0"
+            prefix = "antialiasing_2"
+            test_file = self.make_M2_img(x, y, dx, precision, nx,
+                complex_type, test_name, prefix, interior_detect=True,
+                mask_codes=[2], antialiasing=True, colormap=colormap,
+                probes_val=[0., 0.1], grey_layer_key=("field_lines", {}),
+                blur_ranges=[[0.8, 0.95, 1.0]], hardness=0.9, intensity=0.8)
+            ref_file = os.path.join(self.image_dir_ref, test_name + "_2.png")
+            err = compare_png(ref_file, test_file)
+            self.assertTrue(err < 0.01)
 
 
     def make_M2_img(self, x, y, dx, precision, nx, complex_type, test_name,
@@ -226,7 +228,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    full_test = True
+    full_test = False
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_Perturbation_mandelbrot]))

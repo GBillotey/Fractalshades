@@ -682,6 +682,14 @@ class PerturbationFractal(fs.Fractal):
 
                 newton_cv, nucleus = self.find_nucleus(
                         c0, order, max_newton=max_newton)
+                
+                if not(newton_cv) and (newton != "step"):
+                    newton_cv, nucleus = self.find_any_nucleus(
+                        c0, order, max_newton=max_newton)
+
+                if not(newton_cv) and (newton != "step"):
+                    newton_cv, nucleus = self.find_any_attracting(
+                        c0, order, max_newton=max_newton)
 
                 if newton_cv or (newton == "step"):
                     shift = nucleus - (self.x + self.y * 1.j)
@@ -692,6 +700,7 @@ class PerturbationFractal(fs.Fractal):
                     print("With shift % from proposed coords:\n",
                           shift.real / self.dx, shift.imag / self.dy)
                 else:
+                    
                     shift = nucleus - (self.x + self.y * 1.j)
                     print("NEWTON FAILED, try nucleus at:\n", nucleus, order)
                     print("With shift % from image center:\n",
@@ -699,6 +708,8 @@ class PerturbationFractal(fs.Fractal):
                     shift = nucleus - pt
                     print("With shift % from proposed coords:\n",
                           shift.real / self.dx, shift.imag / self.dy)
+
+                    raise ValueError("No point found")
                     
 #                    data_type = self.base_float_type
 #                    rg = np.random.default_rng(0)
