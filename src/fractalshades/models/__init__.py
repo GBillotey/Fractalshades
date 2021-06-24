@@ -1,2 +1,2 @@
 # -*- coding: utf-8 -*-
-from .mandelbrot import *
+from .perturbation_mandelbrot import Perturbation_mandelbrot
