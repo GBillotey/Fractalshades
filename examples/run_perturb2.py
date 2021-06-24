@@ -4,6 +4,7 @@ import numpy as np
 import fractalshades as fs
 import fractalshades.models as fsm
 import fractalshades.settings as settings
+import fractalshades.colors as fscolors
 
 def plot():
     """
@@ -15,7 +16,7 @@ def plot():
     x, y = "-1.74920463345912691e+00", "-2.8684660237361114e-04"
     dx = "5e-12"
     precision = 16
-    nx = 3200
+    nx = 800
 
 
     # Set to True if you only want to rerun the post-processing part
@@ -62,6 +63,9 @@ def plot():
     potential_data_key = ("potential", {})
 
 
+
+
+
     citrus2 = np.array([103, 189, 0]) / 255.
     citrus_white = np.array([252, 251, 226]) / 255.
 
@@ -77,72 +81,18 @@ def plot():
     def wave(x):
         return 0.5 + (0.4 * (x - 0.5) - 0.6 * 0.5 * np.cos(x * np.pi * 3.))
 
-    color_gradient4 = fs.Color_tools.Lch_gradient(citrus_white, wheat2,  200,
-                                              f= lambda x: wave(x))
-    color_gradient5 = fs.Color_tools.Lch_gradient(wheat2, wheat1,  200,
-                                              f= lambda x: wave(x))
-    color_gradient6 = fs.Color_tools.Lch_gradient(wheat1, wheat2,  200,
-                                              f= lambda x: wave(x))
-    color_gradient7 = fs.Color_tools.Lch_gradient(wheat2, wheat1,  200,
-                                              f= lambda x: wave(x))
-    color_gradient8 = fs.Color_tools.Lch_gradient(wheat1, wheat2, 200,
-                                              f= lambda x: wave(x))
-    color_gradient9 = fs.Color_tools.Lch_gradient(wheat2, wheat3, 200,
-                                              f= lambda x: wave(x))
-    color_gradient10 = fs.Color_tools.Lch_gradient(wheat3, wheat1,  200,
-                                              f= lambda x: wave(x))
-    color_gradient11 = fs.Color_tools.Lch_gradient(wheat1, lavender2,  200,
-                                              f= lambda x: wave(x))
-    color_gradient12 = fs.Color_tools.Lch_gradient(lavender2, wheat1,  200,
-                                              f= lambda x: wave(x))
-    color_gradient13 = fs.Color_tools.Lch_gradient(wheat1, wheat2,  200,
-                                              f= lambda x: wave(x))
-    color_gradient14 = fs.Color_tools.Lch_gradient(wheat2, wheat3, 200,
-                                              f= lambda x: wave(x))
-    color_gradient15 = fs.Color_tools.Lch_gradient(wheat3, wheat1, 200,
-                                              f= lambda x: wave(x))
-    color_gradient16 = fs.Color_tools.Lch_gradient(wheat1, lavender2, 200,
-                                              f=  lambda x: wave(x))
-    color_gradient17 = fs.Color_tools.Lch_gradient(lavender2, wheat1, 200,
-                                              f= lambda x: wave(x))
-    color_gradient18 = fs.Color_tools.Lch_gradient(wheat1, lavender3, 200,
-                                              f= lambda x: wave(x))
-    color_gradient19 = fs.Color_tools.Lch_gradient(lavender3, lavender2, 200,
-                                              f= lambda x: wave(x))
-    color_gradient20 = fs.Color_tools.Lch_gradient(lavender2, lavender3, 200,
-                                              f= lambda x: wave(x))
-    color_gradient21 = fs.Color_tools.Lch_gradient(lavender3, lavender1, 200,
-                                              f= lambda x: wave(x))
-    color_gradient22 = fs.Color_tools.Lch_gradient(lavender1, lavender3, 200,
-                                              f= lambda x: wave(x))
-    color_gradient23 = fs.Color_tools.Lch_gradient(lavender3, lavender2, 200,
-                                              f= lambda x: wave(x))
-    color_gradient24 = fs.Color_tools.Lch_gradient(lavender2, citrus2, 200,
-                                              f= lambda x: wave(x))
 
-    colormap = (fs.Fractal_colormap(color_gradient4)+
-                fs.Fractal_colormap(color_gradient5) + 
-                fs.Fractal_colormap(color_gradient6) + 
-                fs.Fractal_colormap(color_gradient7) + 
-                fs.Fractal_colormap(color_gradient8) + 
-                fs.Fractal_colormap(color_gradient9) + 
-                fs.Fractal_colormap(color_gradient10) + 
-                fs.Fractal_colormap(color_gradient11) + 
-                fs.Fractal_colormap(color_gradient12) + 
-                fs.Fractal_colormap(color_gradient13) + 
-                fs.Fractal_colormap(color_gradient14) + 
-                fs.Fractal_colormap(color_gradient15) + 
-                fs.Fractal_colormap(color_gradient16) + 
-                fs.Fractal_colormap(color_gradient17) + 
-                fs.Fractal_colormap(color_gradient18) + 
-                fs.Fractal_colormap(color_gradient19) + 
-                fs.Fractal_colormap(color_gradient20) + 
-                fs.Fractal_colormap(color_gradient21) + 
-                fs.Fractal_colormap(color_gradient22) + 
-                fs.Fractal_colormap(color_gradient23) + 
-                fs.Fractal_colormap(color_gradient24) )
+    colormap = fscolors.Fractal_colormap(
+        kinds="Lch",
+        colors1=np.vstack((citrus_white, wheat2, wheat1, wheat2, wheat1, wheat2, wheat3,
+                 wheat1, lavender2, wheat1, wheat2, wheat3, wheat1, lavender2, wheat1,
+                 lavender3, lavender2, lavender3, lavender1, lavender3, 
+                 lavender2)),
+        colors2=None,
+        n = 100,
+        funcs= lambda x: wave(x),
+        extent="mirror")
 
-    colormap.extent = "mirror" #"repeat"
 
     plotter = fs.Fractal_plotter(
         fractal=mandelbrot,

@@ -14,6 +14,8 @@ import tempfile
 import datetime
 import pickle
 
+import numba
+
 import fractalshades as fs
 import fractalshades.numpy_utils.xrange as fsx
 import fractalshades.settings as fssettings
@@ -961,6 +963,8 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         Lauch a full calculation
         """
         self.iref = None
+        print("NEED RECOMPILE") # TODO
+        self._iterate = self.iterate()
         self.cycles()
 
 
@@ -1397,68 +1401,85 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
              ) = self.init_cycling_arrays(chunk_slice, SA_params)
             
 
-        c_act = c.copy()
-        Z_act = Z.copy()
-        U_act = U.copy()
-        stop_reason_act = stop_reason.copy()
+#        c_act = c.copy()
+#        Z_act = Z.copy()
+#        U_act = U.copy()
+#        stop_reason_act = stop_reason.copy()
 
-        iterate = self.iterate()
-        pc_trigger = [False, 0, 0]   #  flag, counter, count_trigger
-        pc_threshold = self.pc_threshold
+        iterate = self._iterate # Suppressed the ()
+        iref = self.iref
+#        pc_trigger = [False, 0, 0]   #  flag, counter, count_trigger
+#        pc_threshold = self.pc_threshold
         
         print("**/CALLING cycles looping,  n_stop", n_stop)
         print("**/active: ", np.count_nonzero(bool_active), np.shape(bool_active))
-        cycling = True
+#        cycling = True
+
+        # 1) Reduce of all arrays to the active part at n_iter
+#        if not(np.all(bool_active)):
+#            c_act = c_act[bool_active]
+#            Z_act = Z_act[:, bool_active]
+#            U_act = U_act[:, bool_active]
+#            stop_reason_act = stop_reason_act[:, bool_active]
+#            index_active = index_active[bool_active]
         
-        while cycling:
-            n_iter += 1
+        if iref is None:
+            raise NotImplementedError()
+        else:
+            numba_cycles_perturb(Z, U, c, stop_reason, stop_iter, bool_active,
+                iref, n_iter, SA_iter, ref_div_iter, ref_path, iterate)
+        
 
-            # 1) Reduce of all arrays to the active part at n_iter
-            if not(np.all(bool_active)):
-                c_act = c_act[bool_active]
-                Z_act = Z_act[:, bool_active]
-                U_act = U_act[:, bool_active]
-                stop_reason_act = stop_reason_act[:, bool_active]
-                index_active = index_active[bool_active]
-
-            # 2) Iterate all active parts vec, delegate to *iterate*
-            if self.iref is None:
-                iterate(Z_act, U_act, c_act, stop_reason_act, n_iter)
-            else:
-                iterate(Z_act, U_act, c_act, stop_reason_act, n_iter, SA_iter,
-                        ref_div_iter, ref_path[n_iter - 1 , :],
-                        ref_path[n_iter, :])
-
-            stopped = (stop_reason_act[0, :] >= 0)
-            index_stopped = index_active[stopped]
-            stop_iter[0, index_stopped] = n_iter
-            stop_reason[0, index_stopped] = stop_reason_act[0, stopped]
-            Z[:, index_stopped] = Z_act[:, stopped]
-            U[:, index_stopped] = U_act[:, stopped]
-            bool_active = ~stopped
-
-            count_active = np.count_nonzero(bool_active)
-            pc = 0 if (count_active == 0) else count_active / (c.size *.01)
-
-            if (count_active < 3 or pc < pc_threshold) and n_iter > 5000:
-                if pc_trigger[0]:
-                    pc_trigger[1] += 1   # increment counter
-                else:
-                    pc_trigger[0] = True # start couting
-                    pc_trigger[2] = int(n_iter + 0.25 * (n_iter - SA_iter)) # set_trigger to 125%
-                    print("Trigger hit at", n_iter)
-                    print("will exit at most at", pc_trigger[2] + n_iter)
-                    self.print_cycling_status(n_iter, count_active, pc,
-                        stop_reason, c.size, n_stop)
-
-            if n_iter % 500 == 0: # 5000
-                self.print_cycling_status(n_iter, count_active, pc,
-                    stop_reason, c.size, n_stop)
-
-            cycling = (count_active != 0 and (pc_trigger[1] <= pc_trigger[2]))
+#        while cycling:
+#            n_iter += 1
+#
+#            # 1) Reduce of all arrays to the active part at n_iter
+#            if not(np.all(bool_active)):
+#                c_act = c_act[bool_active]
+#                Z_act = Z_act[:, bool_active]
+#                U_act = U_act[:, bool_active]
+#                stop_reason_act = stop_reason_act[:, bool_active]
+#                index_active = index_active[bool_active]
+#
+#            # 2) Iterate all active parts vec, delegate to *iterate*
+#            if self.iref is None:
+#                iterate(Z_act, U_act, c_act, stop_reason_act, n_iter)
+#            else:
+#                iterate(Z_act, U_act, c_act, stop_reason_act, n_iter, SA_iter,
+#                        ref_div_iter, ref_path[n_iter - 1 , :],
+#                        ref_path[n_iter, :])
+#
+#            stopped = (stop_reason_act[0, :] >= 0)
+#            index_stopped = index_active[stopped]
+#            stop_iter[0, index_stopped] = n_iter
+#            stop_reason[0, index_stopped] = stop_reason_act[0, stopped]
+#            Z[:, index_stopped] = Z_act[:, stopped]
+#            U[:, index_stopped] = U_act[:, stopped]
+#            bool_active = ~stopped
+#
+#            count_active = np.count_nonzero(bool_active)
+#            pc = 0 if (count_active == 0) else count_active / (c.size *.01)
+#
+#            if (count_active < 3 or pc < pc_threshold) and n_iter > 5000:
+#                if pc_trigger[0]:
+#                    pc_trigger[1] += 1   # increment counter
+#                else:
+#                    pc_trigger[0] = True # start couting
+#                    pc_trigger[2] = int(n_iter + 0.25 * (n_iter - SA_iter)) # set_trigger to 125%
+#                    print("Trigger hit at", n_iter)
+#                    print("will exit at most at", pc_trigger[2] + n_iter)
+#                    self.print_cycling_status(n_iter, count_active, pc,
+#                        stop_reason, c.size, n_stop)
+#
+#            if n_iter % 500 == 0: # 5000
+#                self.print_cycling_status(n_iter, count_active, pc,
+#                    stop_reason, c.size, n_stop)
+#
+#            cycling = (count_active != 0 and (pc_trigger[1] <= pc_trigger[2]))
         
         # Saving the results
         self.save_cycling_arrays(chunk_slice, Z, U, stop_reason, stop_iter)
+
 
 
     def chunk_mask(self, chunk_slice):
@@ -2231,5 +2252,47 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
 
         return post_array, chunk_mask
 
+@numba.jit
+def numba_cycles_perturb(Z, U, c, stop_reason, stop_iter, bool_active, iref,
+                n_iter, SA_iter, ref_div_iter, ref_path, iterate):
+    npts = c.size
+    n_iter_init = n_iter
+    for ipt in range(npts):
+        # skip this loop if pixel not active
+        if not(bool_active[ipt]):
+            continue
+        
+        Zpt = Z[:, ipt]
+        Upt = U[:, ipt]
+        cpt = c[ipt]
+        stop_pt = stop_reason[:, ipt]
 
+        n_iter = n_iter_init
+        cycling = True
+        while cycling:
+            n_iter += 1
+
+#            if ipt == 0:
+#                print("\nZpt, Upt, cpt", Zpt, Upt, cpt)
+#                print("n_iter, SA_iter, ref_div_iter", n_iter, SA_iter, ref_div_iter)
+#                print("ref_path current / new", ref_path[n_iter - 1 , :], ref_path[n_iter, :])
+#            if iref == -1: # None
+#                iterate(Zpt, Upt, cpt, stop_pt, n_iter)
+#            else:
+            iterate(Zpt, Upt, cpt, stop_pt, n_iter, SA_iter,
+                    ref_div_iter, ref_path[n_iter - 1 , :],
+                    ref_path[n_iter, :])
+
+#            print("Zpt just", Zpt)
+
+            cycling = (stop_pt[0] == -1)
+#            print("stopped ?", stop_pt, not(cycling))
+
+            if not(cycling):
+#                if ipt == 0:
+#                    print("STOP", n_iter, stop_pt[0])
+                stop_iter[0, ipt] = n_iter
+                stop_reason[0, ipt] = stop_pt[0]
+#                Z[:, ipt] = Zpt
+#                U[:, ipt] = Upt
 

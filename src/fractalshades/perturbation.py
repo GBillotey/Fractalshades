@@ -280,6 +280,7 @@ class PerturbationFractal(fs.Fractal):
                 self.save_SA(SA_params, self.iref, file_prefix)
 
         # First a standard "perturbation" cycle, no glitch correction
+        self._iterate = self.iterate()
         self.cycles(chunk_slice=None, SA_params=SA_params)
 
         # Exit if glitch correction inactive
