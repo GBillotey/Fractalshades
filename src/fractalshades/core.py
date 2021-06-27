@@ -1048,14 +1048,18 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
     def clean_up(self, file_prefix):
         """ Deletes all data files associated with a given file_prefix
         """
-        pattern = file_prefix + "_*-*_*-*.tmp"
-        data_dir = os.path.join(self.directory, "data")
-        if not os.path.isdir(data_dir):
-            return
-        with os.scandir(data_dir) as it:
-            for entry in it:
-                if (fnmatch.fnmatch(entry.name, pattern)):
-                    os.unlink(entry.path)
+        for pattern in [
+                file_prefix + "_*-*_*-*.tmp",
+                file_prefix + "_pt*.ref",
+                file_prefix + "_pt*.sa"
+        ]:
+            data_dir = os.path.join(self.directory, "data")
+            if not os.path.isdir(data_dir):
+                return
+            with os.scandir(data_dir) as it:
+                for entry in it:
+                    if (fnmatch.fnmatch(entry.name, pattern)):
+                        os.unlink(entry.path)
 
 
     def reload_data_param(self, file_prefix):
@@ -1426,8 +1430,10 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         if iref is None:
             raise NotImplementedError()
         else:
+            last_iref = (iref == self.glitch_max_attempt) 
             numba_cycles_perturb(Z, U, c, stop_reason, stop_iter, bool_active,
-                iref, n_iter, SA_iter, ref_div_iter, ref_path, iterate)
+                iref, n_iter, SA_iter, ref_div_iter, ref_path, iterate,
+                last_iref)
         
 
 #        while cycling:
@@ -2254,7 +2260,8 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
 
 @numba.jit
 def numba_cycles_perturb(Z, U, c, stop_reason, stop_iter, bool_active, iref,
-                n_iter, SA_iter, ref_div_iter, ref_path, iterate):
+                n_iter, SA_iter, ref_div_iter, ref_path, iterate,
+                last_iref):
     npts = c.size
     n_iter_init = n_iter
     for ipt in range(npts):
@@ -2281,7 +2288,7 @@ def numba_cycles_perturb(Z, U, c, stop_reason, stop_iter, bool_active, iref,
 #            else:
             iterate(Zpt, Upt, cpt, stop_pt, n_iter, SA_iter,
                     ref_div_iter, ref_path[n_iter - 1 , :],
-                    ref_path[n_iter, :])
+                    ref_path[n_iter, :], last_iref)
 
 #            print("Zpt just", Zpt)
 

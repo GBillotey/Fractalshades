@@ -896,7 +896,7 @@ class Image_widget(QWidget):
         ref_zoom["dx"] = dx_pix * pix
         with mpmath.workdps(6):
             # Sets the working dps to 10e-4 x pixel size
-            ref_zoom["dps"] = int(-mpmath.log10(pix * dx_pix / nx) + 4)
+            ref_zoom["dps"] = int(-mpmath.log10(pix * dx_pix / nx) + 8)
         print("------*----- NEW dps from zoom", ref_zoom["dps"]  )
         #  mpf -> str (back)
         for (k, v) in to_mpf.items():

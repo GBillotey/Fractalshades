@@ -234,5 +234,5 @@ if __name__ == "__main__":
         runner.run(test_config.suite([Test_Perturbation_mandelbrot]))
     else:
         suite = unittest.TestSuite()
-        suite.addTest(Test_Perturbation_mandelbrot("test_M2_antialias_E0"))
+        suite.addTest(Test_Perturbation_mandelbrot("test_M2_int_E11"))
         runner.run(suite)
