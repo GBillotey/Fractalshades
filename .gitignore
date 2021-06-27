@@ -6,3 +6,6 @@ dist
 dev
 *.egg-info
 /tests/image_comparison
+*plot_multiproc*
+*multiproc_calc*
+/tests/known_fails/data*

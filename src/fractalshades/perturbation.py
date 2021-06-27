@@ -308,15 +308,15 @@ class PerturbationFractal(fs.Fractal):
                     postproc_keys=("stop_iter", None), mode="r+raw")
         
 
-        _gcc = 0
-        _gcc_max = self.glitch_max_attempt
+#        _gcc = 0
+#        _gcc_max = self.glitch_max_attempt
         
         # This looping is for dynamic glitches, we loop the largest glitches
         # first, a glitch being defined as 'same stop iteration'
         print("ANY glitched ? ", glitched.nansum())
 
-        while (_gcc < _gcc_max) and glitched.nanmax():
-            _gcc += 1
+        while (self.iref < self.glitch_max_attempt) and glitched.nanmax():
+#            _gcc += 1
 
             self.iref += 1
             print("Launching glitch correction cycle, iref = ", self.iref)
@@ -654,18 +654,28 @@ class PerturbationFractal(fs.Fractal):
         params["iref"] = self.iref
         return super().save_data_chunk(save_path, params, codes, raw_data)
 
+
     def ensure_ref_point(self, FP_loop, max_iter, file_prefix,
                          iref=0, c0=None, newton="cv", order=None,
-                         k_ball=1.):
+                         randomize=False):
         """
-        # Check if we have at least one reference point stored, otherwise 
-        # computes and stores it
+        # Check if we have a reference point stored for iref, 
+          - otherwise computes and stores it
+          - than load it and return FP_params, Z_path
         
         newton: ["cv", "step", None]
         """
         if self.ref_point_count(file_prefix) <= iref:
             if c0 is None:
                 c0 = self.x + 1.j * self.y
+                
+            if randomize:
+                data_type = self.base_float_type
+                rg = np.random.default_rng(0)
+                diff = rg.random([2], dtype=data_type) * randomize
+                print("RANDOMIZE, diff", diff)
+                c0 = (c0 + self.dx * (diff[0] - 0.5) + 
+                                      self.dy * (diff[1] - 0.5) * 1.j)
             pt = c0
             print("Proposed ref point:\n", c0)
                 
@@ -673,17 +683,21 @@ class PerturbationFractal(fs.Fractal):
                 if order is None:
                     # k_ball = 0.5
                     order = self.ball_method(c0,
-                            max(self.dx, self.dy) * 0.01 * k_ball, max_iter)
+                            max(self.dx, self.dy) * 0.01, max_iter)
                     if order is None: # ball method escaped...
-                        print("ESCAPED BALL METHOD")
-                        order = 1
+                        randomize += 1
+                        print("ESCAPED BALL METHOD", randomize)
+                        self.ensure_ref_point(FP_loop, max_iter, file_prefix,
+                                 iref=0, c0=None, newton="cv", order=None,
+                                 randomize=randomize)
+
                 max_newton = 1 if (newton == "step") else 50 #None
                 print("newton ", newton, " with order: ", order)
                 print("max newton iter ", max_newton)
 
                 newton_cv, nucleus = self.find_nucleus(
                         c0, order, max_newton=max_newton)
-                
+
                 if not(newton_cv) and (newton != "step"):
                     newton_cv, nucleus = self.find_any_nucleus(
                         c0, order, max_newton=max_newton)
@@ -702,15 +716,15 @@ class PerturbationFractal(fs.Fractal):
                           shift.real / self.dx, shift.imag / self.dy)
                 else:
                     
-                    shift = nucleus - (self.x + self.y * 1.j)
-                    print("NEWTON FAILED, try nucleus at:\n", nucleus, order)
-                    print("With shift % from image center:\n",
-                          shift.real / self.dx, shift.imag / self.dy)
-                    shift = nucleus - pt
-                    print("With shift % from proposed coords:\n",
-                          shift.real / self.dx, shift.imag / self.dy)
+#                    shift = nucleus - (self.x + self.y * 1.j)
+#                    print("NEWTON FAILED, try nucleus at:\n", nucleus, order)
+#                    print("With shift % from image center:\n",
+#                          shift.real / self.dx, shift.imag / self.dy)
+#                    shift = nucleus - pt
+#                    print("With shift % from proposed coords:\n",
+#                          shift.real / self.dx, shift.imag / self.dy)
 
-                    raise ValueError("No point found")
+                    raise ValueError("Newton failed with order", order)
                     
 #                    data_type = self.base_float_type
 #                    rg = np.random.default_rng(0)
@@ -728,6 +742,22 @@ class PerturbationFractal(fs.Fractal):
                   self.x + 1j * self.y)
             FP_params, Z_path = self.compute_ref_point(
                     FP_loop, pt, max_iter, iref, file_prefix, order)
+
+            # TODO : known failed
+#            div_ref_pt = (FP_params.get("div_iter", None) is not None)
+#            if div_ref_pt and (newton != "step"):
+#                print("div_ref_pt", randomize)
+#                if not(randomize):
+#                    randomize = 1.
+#                else:
+#                    randomize *= 2.
+#                print("div_ref_pt with randomize", randomize)
+#                div_file = self.ref_point_file(iref, file_prefix)
+#                os.unlink(div_file)
+#                self.ensure_ref_point(FP_loop, max_iter, file_prefix,
+#                         iref=0, c0=None, newton="cv", order=None,
+#                         randomize=randomize)
+                
         else:
             FP_params, Z_path = self.reload_ref_point(iref, file_prefix)
             pt = FP_params["ref_point"]
@@ -755,6 +785,7 @@ class PerturbationFractal(fs.Fractal):
         Z_path[0, :] = np.array(FP_array)
 
         # Now looping and storing ...
+        FP_params.pop('div_iter', None) # delete key div_iter
         for n_iter in range(1, max_iter + 1):
             if n_iter % 5000 == 0:
                 print("Full precision iteration: ", n_iter)

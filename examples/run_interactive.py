@@ -79,6 +79,8 @@ def plot():
 
         interior_detect = False # True
         
+        fractal.clean_up(file_prefix)
+        
         fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
              theta_deg=0., projection="cartesian", antialiasing=False)
         fractal.calc_std_div(complex_type=np.complex128, file_prefix=file_prefix,
@@ -88,7 +90,8 @@ def plot():
                        "cutdeg_glitch": 8,
                        "SA_err": 1.e-6,
                        "use_Taylor_shift": True},
-            glitch_eps=1.e-6, interior_detect=interior_detect, glitch_max_attempt=20)
+            glitch_eps=1.e-6, interior_detect=interior_detect,
+            glitch_max_attempt=20)
         fractal.run()
         
         
@@ -112,7 +115,7 @@ def plot():
             base_data_prefix=file_prefix,
             base_data_function=lambda x:x,
             colormap=colormap,
-            probes_val=[0.25, 0.35],
+            probes_val=[0.25, 0.75],
             probes_kind="qt",
             mask=mask)
        #  plotter.add_calculation_layer(("potential", {}))
