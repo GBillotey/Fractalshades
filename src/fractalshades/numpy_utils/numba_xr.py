@@ -81,9 +81,10 @@ class Xrange_scalar():
 
 class Xrange_scalar_Type(types.Type):
     def __init__(self, base_type):
-        self.base_type = base_type
         super().__init__(name="{}_Xrange_scalar".format(base_type))
         self.base_type = base_type
+        self.np_base_type = numba.np.numpy_support.as_dtype(base_type)
+#                dtype.fields["mantissa"][0])
 
 @type_callable(Xrange_scalar)
 def type_extended_item(context):
@@ -113,6 +114,15 @@ def impl_xrange_scalar(context, builder, sig, args):
     xrange_scalar.exp = exp
     return xrange_scalar._getvalue()
 
+#@overload_attribute(Xrange_scalar_Type, "np_base_type")
+#def np_base_type(scalar):
+#    ret = numba.np.numpy_support.as_dtype(
+#                scalar.fields["mantissa"][0])
+#    return lambda scalar: ret
+    
+#np_base_type = numba.np.numpy_support.as_dtype(
+#                dtype.fields["mantissa"][0])
+
 # We will support operation between numba_xr_types and Xrange_scalar instances
 scalar_xr_types = tuple(Xrange_scalar_Type(dt) for dt in numba_base_types)
 xr_types = numba_xr_types + scalar_xr_types
@@ -134,7 +144,6 @@ def is_xr(rec):
     def impl(rec):
         return ret
     return impl
-
 
 # Dedicated typing for Xrange_array adds some overhead with little benefit
 # -> not implemented by default (passthrough as types.Array)
@@ -269,6 +278,7 @@ def extended_add(op0, op1):
     else:
         raise TypingError("datatype not accepted xr_add({}, {})".format(
             op0, op1))
+
 
 @overload(operator.sub)
 def extended_sub(op0, op1):
@@ -697,11 +707,18 @@ def poly_neg(op0):
             return fsx.Xrange_polynomial(new_coeffs, op0.cutdeg)
         return impl
 
+def xr_type_to_base_type(val):
+    if isinstance(val, Xrange_scalar_Type):
+        base_type = val.base_type
+    else:
+        base_type = val.fields["mantissa"][0]
+    return numba.np.numpy_support.as_dtype(base_type)
+
 @overload(operator.add)
 def poly_add(op0, op1):
-    """ Add 2  polynomials with sign changed """
+    """ Add 2  polynomials or a polynomial and a scalar"""
     if (isinstance(op0, Xrange_polynomial_Type)
-            and isinstance(op0, Xrange_polynomial_Type)
+            and isinstance(op1, Xrange_polynomial_Type)
             ):
         # There is no lowering implementation for a structured dtype ; so
         # we initiate a template of length 1 for the compilation.
@@ -729,18 +746,56 @@ def poly_add(op0, op1):
             for i in range(r01, r1):
                 new_coeffs[i] = coeffs1[i]
 
+            return fsx.Xrange_polynomial(new_coeffs, cutdeg)
+        return impl
+
+    elif (isinstance(op0, Xrange_polynomial_Type)
+            and (op1 in xr_types)
+            ):
+        scalar_base_type = xr_type_to_base_type(op1)
+        base_dtres = np.result_type(op0.np_base_type,
+                                    scalar_base_type)
+        res_dtype = numpy_xr_type(base_dtres)
+        res_template = np.empty([1], dtype=res_dtype)
+
+        def impl(op0, op1):
+            res_len = op0.coeffs.size
+            new_coeffs = res_template.repeat(res_len)
+            for i in range(res_len):
+                new_coeffs[i] = op0.coeffs[i]
+            new_coeffs[0] = new_coeffs[0] + op1
             return fsx.Xrange_polynomial(new_coeffs, op0.cutdeg)
         return impl
+
+    elif (isinstance(op1, Xrange_polynomial_Type)
+            and (op0 in xr_types)
+            ):
+        scalar_base_type = xr_type_to_base_type(op0)
+        base_dtres = np.result_type(op1.np_base_type,
+                                    scalar_base_type)
+        res_dtype = numpy_xr_type(base_dtres)
+        res_template = np.empty([1], dtype=res_dtype)
+
+        def impl(op0, op1):
+            res_len = op1.coeffs.size
+            new_coeffs = res_template.repeat(res_len)
+            for i in range(res_len):
+                new_coeffs[i] = op1.coeffs[i]
+            new_coeffs[0] = new_coeffs[0] + op0
+            return fsx.Xrange_polynomial(new_coeffs, op1.cutdeg)
+        return impl
+
 
 @overload_method(Xrange_polynomial_Type, '__call__')
 def xrange_polynomial_call(poly, val):
     # Implementation for scalars
     if (val in xr_types):
-        if isinstance(val, Xrange_scalar_Type):
-            base_type = val.base_type
-        else:
-            base_type = val.fields["mantissa"][0]
-        base_dtres = numba.np.numpy_support.as_dtype(base_type)
+#        if isinstance(val, Xrange_scalar_Type):
+#            base_type = val.base_type
+#        else:
+#            base_type = val.fields["mantissa"][0]
+#        base_dtres = numba.np.numpy_support.as_dtype(base_type)
+        base_dtres = xr_type_to_base_type(val)
         base_dtres = np.result_type(base_dtres, poly.np_base_type)
         res_dtype = numpy_xr_type(base_dtres)
         res_template = np.empty([1], dtype=res_dtype)
@@ -773,9 +828,8 @@ def xrange_polynomial_call(poly, val):
                     res[j] = coeffs[n - i] + res[j] * val[j]
             return res
         return call_impl
-        
 
-            
+
 @overload_method(Xrange_polynomial_Type, 'deriv')
 def xrange_polynomial_deriv(poly):
     # Call self as a function.
@@ -791,6 +845,99 @@ def xrange_polynomial_deriv(poly):
         return fsx.Xrange_polynomial(deriv_coeffs, cutdeg=poly.cutdeg)
 
     return call_impl
+
+
+@overload(operator.mul)
+def poly_mul(op0, op1):
+    """ Multiply 2  polynomials or a polynomial and a scalar"""
+    if (isinstance(op0, Xrange_polynomial_Type)
+            and isinstance(op1, Xrange_polynomial_Type)
+            ):
+        # There is no lowering implementation for a structured dtype ; so
+        # we initiate a template of length 1 for the compilation.
+        base_dtres = np.result_type(op0.np_base_type,
+                                    op1.np_base_type)
+        res_dtype = numpy_xr_type(base_dtres)
+        res_template = np.zeros([1], dtype=res_dtype)
+
+        def impl(op0, op1):
+            assert op0.cutdeg == op1.cutdeg
+            cutdeg = op0.cutdeg
+            coeffs0 = op0.coeffs
+            coeffs1 = op1.coeffs
+            l0 = coeffs0.size
+            l1 = coeffs1.size
+
+            res_len = min(l0 + l1 - 1, cutdeg + 1)
+            new_coeffs = res_template.repeat(res_len)
+
+            for i in range(res_len):
+                window_min = max(0, i - l1 + 1)
+                window_max = min(l0 - 1, i)
+                for k in range(window_min, window_max + 1):
+                    new_coeffs[i] = new_coeffs[i] + coeffs0[k] * coeffs1[i - k]
+
+            return fsx.Xrange_polynomial(new_coeffs, cutdeg)
+        return impl
+
+    elif (isinstance(op0, Xrange_polynomial_Type)
+            and (op1 in xr_types)
+            ):
+        scalar_base_type = xr_type_to_base_type(op1)
+        base_dtres = np.result_type(op0.np_base_type,
+                                    scalar_base_type)
+        res_dtype = numpy_xr_type(base_dtres)
+        res_template = np.empty([1], dtype=res_dtype)
+
+        def impl(op0, op1):
+            res_len = op0.coeffs.size
+            new_coeffs = res_template.repeat(res_len)
+            for i in range(res_len):
+                new_coeffs[i] = op0.coeffs[i] * op1
+            return fsx.Xrange_polynomial(new_coeffs, op0.cutdeg)
+        return impl
+
+    elif (isinstance(op1, Xrange_polynomial_Type)
+            and (op0 in xr_types)
+            ):
+        scalar_base_type = xr_type_to_base_type(op0)
+        base_dtres = np.result_type(op1.np_base_type,
+                                    scalar_base_type)
+        res_dtype = numpy_xr_type(base_dtres)
+        res_template = np.empty([1], dtype=res_dtype)
+
+        def impl(op0, op1):
+            res_len = op1.coeffs.size
+            new_coeffs = res_template.repeat(res_len)
+            for i in range(res_len):
+                new_coeffs[i] = op0 * op1.coeffs[i]
+            return fsx.Xrange_polynomial(new_coeffs, op1.cutdeg)
+        return impl
+
+
+
+# 
+# Implementing the Xrange_SA class in numba
+# https://numba.pydata.org/numba-doc/latest/proposals/extension-points.html
+# 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #    def __call__(self, arg):
 #        """ Call self as a function.
@@ -871,6 +1018,13 @@ def test_polyadd(pol1, pol2):
     print("in numba")
     return pol1 + pol2
 
+@numba.njit
+def test_iadd(arr, val):
+    print("in numba")
+    for i in range(len(arr)):
+        arr[i] += val[0]
+    return arr
+
 if __name__ == "__main__":
 #    arr0 = fsx.Xrange_array(["1.e100", "3.14", "2.0"]) #* (1. + 1j)
 #    pol0 = fsx.Xrange_polynomial(arr0, 2)
@@ -880,10 +1034,13 @@ if __name__ == "__main__":
 #    p_neg = test_poly(pol0)
 #    print("p_neg", p_neg)
 
-    arr0 = fsx.Xrange_array(["1.", "1.", "1.0"]) #* (1. + 1j)
-    pol0 = fsx.Xrange_polynomial(arr0, 2)
-    res = test_poly_call(pol0)
-    print(res.view(fsx.Xrange_array))
+    arr0 = fsx.Xrange_array(["0.", "1.", "2."]) #* (1. + 1j)
+    val = fsx.Xrange_array(["1."]) #* (1. + 1j)
+    test = test_iadd(arr0, val)
+    print("test", test)
+#    pol0 = fsx.Xrange_polynomial(arr0, 2)
+#    res = test_poly_call(pol0)
+#    print(res.view(fsx.Xrange_array))
     
 #    arr1 = fsx.Xrange_array(["1.e100", "3.14", "2.0"]) #* (1. + 1j)
 #    pol1 = fsx.Xrange_polynomial(arr1, 2)

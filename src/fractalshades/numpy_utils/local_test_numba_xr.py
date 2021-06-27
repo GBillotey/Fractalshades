@@ -81,6 +81,13 @@ def numba_test_add(a, b, out):
         out[i] = a[i] + b[i]
 
 @numba.njit
+def numba_test_iadd(a, b):
+    n, = a.shape
+    for i in range(n):
+        a[i] += b[i]
+    return a
+
+@numba.njit
 def numba_test_sub(a, b, out):
     n, = a.shape
     for i in range(n):
@@ -207,6 +214,45 @@ class Test_numba_xr(unittest.TestCase):
                 _matching(res, expected)
                 numba_test_add(stda, xb, res)
                 _matching(res, expected)
+
+
+#    def test_iadd(self):
+#        for (dtypea, dtypeb) in [(np.float64, np.float64)]:# crossed_dtypes:# [(np.float64, np.float64), np.complex128]: #, np.complex128]: # np.complex64 np.float32
+#            with self.subTest(dtypea=dtypea, dtypeb=dtypeb):
+#                nvec = 10000
+#                xa, stda = generate_random_xr(dtypea, nvec=nvec)
+#                xb, stdb = generate_random_xr(dtypeb, nvec=nvec, seed=800)
+#                res = Xrange_array.empty(xa.shape,
+#                    dtype=np.result_type(dtypea, dtypeb))
+#                expected = stda + stdb
+#                
+#                print("res", res.dtype, type(res))
+#                # Numba timing without compilation
+#                numba_test_add(xa, xb, res)
+#                t_numba = - time.time()
+#                numba_test_add(xa, xb, res)
+#                t_numba += time.time()
+#                # Numba iadd timing without compilation
+#                numba_test_iadd(xa, xb)
+#                t_numba_iadd = - time.time()
+#                numba_test_iadd(xa, xb)
+#                t_numba_iadd += time.time()
+#                res_iadd = xa.view(Xrange_array)
+#                
+#                _matching(res, expected)
+#                _matching(res_iadd, expected)
+#                
+#                print("t_numba", t_numba)
+#                print("t_numba iadd", t_numba_iadd)
+#                expr = (t_numba_iadd <  t_numba)
+#                self.assertTrue(expr, msg="iadd longer than regular add")
+
+#                # Test add a scalar
+#                numba_test_add(xa, stdb, res)
+#                _matching(res, expected)
+#                numba_test_add(stda, xb, res)
+#                _matching(res, expected)
+
 
     def test_sub(self):
         for (dtypea, dtypeb) in crossed_dtypes: #, np.complex128]: # np.complex64 np.float32
@@ -562,14 +608,29 @@ def numba_test_polyneg(poly):
 @numba.njit
 def numba_test_polyadd(polya, polyb):
     return polya + polyb
+@numba.njit
+def numba_test_polyadd_0(polya, polyb):
+    return polya + polyb[0]
+@numba.njit
+def numba_test_polyadd0(polya, polyb):
+    return polya[0] + polyb
 
+@numba.njit
+def numba_test_polycall(poly, val):
+    return poly.__call__(val)
 @numba.njit
 def numba_test_polycall0(poly, val):
     return poly.__call__(val[0])
 
 @numba.njit
-def numba_test_polycall(poly, val):
-    return poly.__call__(val)
+def numba_test_polymul(polya, polyb):
+    return polya * polyb
+@numba.njit
+def numba_test_polymul_0(polya, polyb):
+    return polya * polyb[0]
+@numba.njit
+def numba_test_polymul0(polya, polyb):
+    return polya[0] * polyb
 
 class Test_poly_xr(unittest.TestCase):
     
@@ -587,7 +648,7 @@ class Test_poly_xr(unittest.TestCase):
                 _matching(_P.coeffs, P.coef)
                 
     def test_add(self):
-        for (dtypea, dtypeb) in ((np.float64, np.float64),):#crossed_dtypes: 
+        for (dtypea, dtypeb) in crossed_dtypes: #((np.float64, np.float64),):#crossed_dtypes: 
             with self.subTest(dtypea=dtypea, dtypeb=dtypeb):
                 nvec = 100
                 xa, stda = generate_random_xr(dtypea, nvec=nvec)# , max_bin_exp=250)
@@ -604,6 +665,20 @@ class Test_poly_xr(unittest.TestCase):
                 _matching(_Pa.coeffs, Pa.coef)
                 _matching(_Pb.coeffs, Pb.coef)
 
+        for (dtypea, dtypeb) in crossed_dtypes: #((np.float64, np.float64),):#crossed_dtypes: 
+            with self.subTest(dtypea=dtypea, dtypeb=dtypeb, kind="scalar"):
+                nvec = 100
+                xa, stda = generate_random_xr(dtypea, nvec=nvec)# , max_bin_exp=250)
+                xb, stdb = generate_random_xr(dtypeb, nvec=1)# , max_bin_exp=250)
+                _Pa = Xrange_polynomial(xa, cutdeg=nvec-1)
+                Pa = np.polynomial.Polynomial(stda)              
+                res = numba_test_polyadd_0(_Pa, xb)
+                expected = Pa + stdb[0]
+                _matching(res.coeffs, expected.coef)
+                res = numba_test_polyadd0(xb, _Pa)
+                _matching(res.coeffs, expected.coef)
+                
+
     def test_op_partial(self):
         a = [1., 2., 5., 8.]
         _Pa = Xrange_polynomial(a, 10)
@@ -612,12 +687,22 @@ class Test_poly_xr(unittest.TestCase):
         _Pb = Xrange_polynomial(b, 10)
         Pb = np.polynomial.Polynomial(b)
         
-        res = [numba_test_polyadd(_Pa, _Pb),
-               numba_test_polyadd(_Pb, _Pa),
-               numba_test_polyadd(_Pa, _Pa)]
-        expected = [Pa + Pb , Pb + Pa, Pa + Pa]
-        for i in range(len(res)):
-            _matching(res[i].coeffs, expected[i].coef)
+        with self.subTest(op="+"):
+            res = [numba_test_polyadd(_Pa, _Pb),
+                   numba_test_polyadd(_Pb, _Pa),
+                   numba_test_polyadd(_Pa, _Pa)]
+            expected = [Pa + Pb , Pb + Pa, Pa + Pa]
+            for i in range(len(res)):
+                _matching(res[i].coeffs, expected[i].coef)
+
+        with self.subTest(op="*"):
+            res = [numba_test_polymul(_Pa, _Pb),
+                   numba_test_polymul(_Pb, _Pa),
+                   numba_test_polymul(_Pa, _Pa)]
+            expected = [Pa * Pb , Pb * Pa, Pa * Pa]
+            for i in range(len(res)):
+                _matching(res[i].coeffs, expected[i].coef)
+        
 
     def test_call(self):
         for (dtypea, dtypeb) in crossed_dtypes: 
@@ -636,6 +721,40 @@ class Test_poly_xr(unittest.TestCase):
                 expected = Pa(stdb)
                 _matching(res, expected)
 
+    def test_mul(self):
+        for (dtypea, dtypeb) in crossed_dtypes: 
+            with self.subTest(dtypea=dtypea, dtypeb=dtypeb):
+                nvec = 100
+                xa, stda = generate_random_xr(dtypea, nvec=nvec, seed=110,
+                                              max_bin_exp=25)
+                xb, stdb = generate_random_xr(dtypeb, nvec=nvec, seed=510,
+                                              max_bin_exp=25)
+                _Pa = Xrange_polynomial(xa, cutdeg=nvec-1)
+                Pa = np.polynomial.Polynomial(stda)
+                _Pb = Xrange_polynomial(xb, cutdeg=nvec-1)
+                Pb = np.polynomial.Polynomial(stdb)
+                
+                res = numba_test_polymul(_Pa, _Pb)
+                expected = Pa * Pb
+                _matching(res.coeffs, expected.coef[:nvec], almost=True,
+                          dtype=np.float64, ktol=10.)
+                # Check that the original array has not been modified
+                _matching(_Pa.coeffs, Pa.coef)
+                _matching(_Pb.coeffs, Pb.coef)
+
+        for (dtypea, dtypeb) in crossed_dtypes: #((np.float64, np.float64),):#crossed_dtypes: 
+            with self.subTest(dtypea=dtypea, dtypeb=dtypeb, kind="scalar"):
+                nvec = 100
+                xa, stda = generate_random_xr(dtypea, nvec=nvec)# , max_bin_exp=250)
+                xb, stdb = generate_random_xr(dtypeb, nvec=1)# , max_bin_exp=250)
+                _Pa = Xrange_polynomial(xa, cutdeg=nvec-1)
+                Pa = np.polynomial.Polynomial(stda)              
+                res = numba_test_polymul_0(_Pa, xb)
+                expected = Pa * stdb[0]
+                _matching(res.coeffs, expected.coef)
+                res = numba_test_polymul0(xb, _Pa)
+                _matching(res.coeffs, expected.coef)
+
 
 if __name__ == "__main__":
     import test_config
@@ -646,6 +765,6 @@ if __name__ == "__main__":
         runner.run(test_config.suite([Test_poly_xr,]))
     else:
         suite = unittest.TestSuite()
-        # suite.addTest(Test_numba_xr("test_expr"))
-        suite.addTest(Test_poly_xr("test_add_partial"))
+#        suite.addTest(Test_numba_xr("test_iadd"))
+        suite.addTest(Test_poly_xr("test_mul"))
         runner.run(suite)
