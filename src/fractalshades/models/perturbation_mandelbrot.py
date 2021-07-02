@@ -299,7 +299,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         
 
         if SA_params is None:
-            FP_fields = [0, 1, 2]
+            FP_fields = [0] #ß, 1, 2]
         else:
             # If SA activated, derivatives will be deduced - no need to compute
             # with FP.
@@ -311,7 +311,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             SA_params = self.SA_params
             def func():
                 if SA_params is None:
-                    return [mpmath.mp.zero, mpmath.mp.zero, mpmath.mp.zero]
+                    return [mpmath.mp.zero] #, mpmath.mp.zero, mpmath.mp.zero]
                 else:
                     return [mpmath.mp.zero]
             return func
@@ -319,14 +319,14 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
 
         # Defines FP_loop via a function factory
         def FP_loop():
-            SA_params = self.SA_params
+#            SA_params = self.SA_params
             M_divergence = self.M_divergence
             def func(FP_array, c0, n_iter):
                 """ Full precision loop
                 derivatives corrected by lenght kc
                 """
-                if SA_params is None:  # TODO : unreasoneable - suppress
-                        FP_array[2] = 2. * FP_array[2] * FP_array[0] + 1.
+#                if SA_params is None:  # TODO : unreasoneable - suppress
+#                        FP_array[2] = 2. * FP_array[2] * FP_array[0] + 1.
                 FP_array[0] = FP_array[0]**2 + c0
                 # If FP iteration is divergent, raise the semaphore n_iter
                 # We use the 'infinite' norm not the disc for obvious calc saving
@@ -360,6 +360,8 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         def initialize():
             def func(Z, U, c, chunk_slice, iref):
                 Z[2, :] = 0.
+#                if SA_params is None: 
+#                    Z[2, :] = 1.
                 Z[1, :] = 1.
                 Z[0, :] = 0.
                 U[0, :] = iref
@@ -384,6 +386,8 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             reason_dyn_glitch = 3
             reason_div_glitch = 4
             glitch_off_last_iref = settings.glitch_off_last_iref
+            no_SA = (SA_params is None)
+            dzndc_iter_1 = float(self.dx)
 
             @numba.njit
             def numba_impl(Z, U, c, stop_reason, n_iter, SA_iter,
@@ -402,6 +406,9 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                 4 -> glitched (Ref point diverging  ...)
                 """
                 Z[dzndc] = 2. * (ref_path[zn] * Z[dzndc] + Z[zn] * Z[dzndc])
+
+                if no_SA and (n_iter == 1):
+                    Z[dzndc] = dzndc_iter_1 # Heuristic to 'kick-off'
 
                 if interior_detect and (n_iter > SA_iter + 1):
                     Z[dzndz] = 2. * (ref_path[zn] * Z[dzndz] + Z[zn] * Z[dzndz])

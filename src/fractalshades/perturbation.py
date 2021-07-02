@@ -474,22 +474,30 @@ class PerturbationFractal(fs.Fractal):
             if not(key in UNTRACKED) and dparams[key] != val:
                 print("Unmatching", key, val, "-->", dparams[key])
                 return False
-#            print("its a match", key, val, dparams[key] )
-        print("** all goog")
+            print("its a match", key, val, dparams[key] )
+        print("** all good")
         return True
 
 
 
-    def res_available(self, chunk_slice):
+    def res_available(self, chunk_slice=None):
         """  Returns True if chunkslice is already computed with current
         parameters
         (Otherwise False)
         """
-        try:
-            (dparams, dcodes) = self.reload_data_chunk(chunk_slice,
-                self.file_prefix, scan_only=True)
-        except IOError:
-            return False
+        print("**CALLING res_available +++")
+        if chunk_slice is None:
+            try:
+                (dparams, dcodes) = self.reload_data_param(self.file_prefix)
+            except IOError:
+                return False
+            return self.param_matching(dparams)
+        else:
+            try:
+                (dparams, dcodes) = self.reload_data_chunk(chunk_slice,
+                    self.file_prefix, scan_only=True)
+            except IOError:
+                return False
 
         if dparams["iref"] >= self.iref:
             return self.param_matching(dparams)
@@ -601,8 +609,8 @@ class PerturbationFractal(fs.Fractal):
                                        file_prefix, scan_only=False)
             k_chunk_mask, k_Z, k_U, k_stop_reason, k_stop_iter = raw_data
             keep = ~glitched_chunk
-            if k_chunk_mask is not None: # Safeguard
-                np.testing.assert_equal(k_chunk_mask, chunk_mask)
+#            if k_chunk_mask is not None: # Safeguard
+#                np.testing.assert_equal(k_chunk_mask, chunk_mask)
             Z[:, keep] = k_Z[:, keep]
             U[:, keep] = k_U[:, keep]
             stop_reason[:, keep] =  k_stop_reason[:, keep]
@@ -618,14 +626,18 @@ class PerturbationFractal(fs.Fractal):
         self.initialize()(Z_act, U_act, c_act, chunk_slice, iref)
         U[:, bool_active] = U_act
         
-        n_iter = SA_iter = 0
-        if SA_params is not None:
+        
+        if SA_params is None:
+            n_iter = SA_iter = 0
+#            c[bool_active] = c_act * self.dx
+#            Z_act = c_act * self.dx
+        else:
+            n_iter = SA_iter = SA_params["n_iter"]
             SA_shift = (SA_params["iref"] != self.iref)
             if SA_shift:
                 raise RuntimeError("SA should be shifted 'before' cycling:" + 
                                    "use taylor_shift")
             # n_iter = SA_params["n_iter"]
-            n_iter = SA_iter = SA_params["n_iter"]
             kc = SA_params["kc"]
             P = SA_params["P"]
             for i_z in range(n_Z):
@@ -634,7 +646,8 @@ class PerturbationFractal(fs.Fractal):
                 else:
                     Z_act[i_z, :] = ((P[i_z])(Xrc_act / kc)).to_standard()
         Z[:, bool_active] = Z_act
-        
+#        c[bool_active] = c_act * self.dx
+
         # Initialise the path and ref point
         FP_params, ref_path = self.reload_ref_point(iref, file_prefix)
         ref_div_iter = FP_params.get("div_iter", 2**63 - 1) # max int64

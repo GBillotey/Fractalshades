@@ -66,7 +66,7 @@ def plot():
     directory = os.path.join(test_dir, "localtest_GUI")
     fractal = fsm.Perturbation_mandelbrot(directory)
     
-    def func(fractal: fsm.Perturbation_mandelbrot= fractal,
+    def func(fractal: fsm.Perturbation_mandelbrot=fractal,
              file_prefix: str= "test",
              x: mpmath.mpf= x,
              y: mpmath.mpf= y,
@@ -79,10 +79,11 @@ def plot():
 
         interior_detect = False # True
         
-        fractal.clean_up(file_prefix)
-        
+
+
         fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
              theta_deg=0., projection="cartesian", antialiasing=False)
+
         fractal.calc_std_div(complex_type=np.complex128, file_prefix=file_prefix,
             subset=None, max_iter=max_iter, M_divergence=1.e3,
             epsilon_stationnary=1.e-4, pc_threshold=0.1,
@@ -92,6 +93,14 @@ def plot():
                        "use_Taylor_shift": True},
             glitch_eps=1.e-6, interior_detect=interior_detect,
             glitch_max_attempt=20)
+
+        if not fractal.res_available():
+            print("RES AVAILABLE, no compute")
+            fractal.clean_up(file_prefix)
+        else:
+            print("RES NOT AVAILABLE, clean-up")
+            fractal.clean_up(file_prefix)
+    
         fractal.run()
         
         
