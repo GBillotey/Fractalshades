@@ -4,7 +4,7 @@ import numbers
 import re
 
 import numba
-from numba.core import types, utils, typing, errors, cgutils, extending
+from numba.core import types, utils, typing, errors, cgutils, extending, sigutils
 from numba import (
     njit,
     generated_jit
@@ -15,6 +15,8 @@ from numba.extending import (
     overload_attribute,
     overload_method,
     lower_builtin,
+    lower_getattr,
+    lower_setattr,
     typeof_impl,
     type_callable,
     models,
@@ -24,7 +26,13 @@ from numba.extending import (
     unbox,
     NativeValue
 )
-from numba.core.imputils import impl_ret_borrowed
+from numba.core.imputils import impl_ret_borrowed#, lower_setattr, lower_getattr
+
+from numba.core.typing.templates import (AttributeTemplate, infer_getattr)
+#                                         AbstractTemplate, 
+#                                         signature, Registry, infer_getattr)
+
+
 
 import fractalshades.numpy_utils.xrange as fsx
 import math
@@ -67,6 +75,7 @@ def numba_xr_type(base_type):
     return numba.from_dtype(numpy_xr_type(base_type))
 
 numba_xr_types = tuple(numba_xr_type(dt) for dt in (np.float64, np.complex128))
+numba_real_xr_types = tuple(numba_xr_type(dt) for dt in (np.float64,))
 #numba_xr_dict = {numba_xr_type(v): v for v in (np.float64, np.complex128)}
 
 
@@ -102,8 +111,9 @@ class Xrange_scalar_Model(models.StructModel):
             ]
         models.StructModel.__init__(self, dmm, fe_type, members)
 
-for attr in ('mantissa', 'exp'):
-    make_attribute_wrapper(Xrange_scalar_Type, attr, attr)
+#for attr in ('mantissa', 'exp'):
+make_attribute_wrapper(Xrange_scalar_Type, 'mantissa', 'mantissa')
+make_attribute_wrapper(Xrange_scalar_Type, 'exp', 'exp')
 
 @lower_builtin(Xrange_scalar, types.Number, types.Integer)
 def impl_xrange_scalar(context, builder, sig, args):
@@ -126,6 +136,9 @@ def impl_xrange_scalar(context, builder, sig, args):
 # We will support operation between numba_xr_types and Xrange_scalar instances
 scalar_xr_types = tuple(Xrange_scalar_Type(dt) for dt in numba_base_types)
 xr_types = numba_xr_types + scalar_xr_types
+
+scalar_real_xr_types = tuple(Xrange_scalar_Type(dt) for dt in numba_float_types)
+real_xr_types = numba_real_xr_types + scalar_real_xr_types
 
 def is_xr_type(val):
     if isinstance(val, Xrange_scalar_Type):
@@ -190,7 +203,7 @@ def add_int32(typingctx, src1, src2):
         def codegen(context, builder, signature, args):
             # llvm IRBuilder code here
             # https://llvmlite.readthedocs.io/en/latest/
-            (a ,b) = args
+            (a, b) = args
             return builder.add(a, b)
         return sig, codegen
 
@@ -221,6 +234,14 @@ def sdiv_int32(typingctx, src1, src2):
             return builder.sdiv(a, b)
         return sig, codegen
 
+@numba.extending.intrinsic
+def mul_int32(typingctx, src1, src2):
+    if (src1 == numba.int32) and (src2 == numba.int32):
+        sig = types.int32(types.int32, types.int32)
+        def codegen(context, builder, signature, args):
+            (a, b) = args
+            return builder.mul(a, b)
+        return sig, codegen
 
 @overload(operator.setitem)
 def extended_setitem_tuple(arr, idx, val):
@@ -448,9 +469,15 @@ def extended_sqrt(op0):
 @generated_jit(nopython=True)
 def extended_abs2(op0):
     """ square of abs of a Record field """
-    if op0 in xr_types:
+    if op0 in real_xr_types:
         def impl(op0):
-            return Xrange_scalar(np.square(op0.mantissa), 2 * op0.exp)
+            return Xrange_scalar(np.square(op0.mantissa),
+                                 add_int32(op0.exp, op0.exp))
+        return impl
+    elif op0 in xr_types:
+        def impl(op0):
+            return Xrange_scalar((op0.mantissa * np.conj(op0.mantissa)).real,
+                                 add_int32(op0.exp, op0.exp))
         return impl
     else:
         raise TypingError("Datatype not accepted xr_sqrt({})".format(
@@ -608,7 +635,7 @@ class Xrange_polynomial_Type(types.Type):
 #        print("numba_xr_dict", dtype.fields["mantissa"][0])
         # The name must be unique if the underlying model is different
         super().__init__(name="{}_Xrange_polynomial".format(
-                dtype.fields["mantissa"][0])) # str(dtype.fields["mantissa"][0])))
+                dtype.fields["mantissa"][0]))
 
 #    @property
 #    def as_array(self):
@@ -714,6 +741,11 @@ def xr_type_to_base_type(val):
         base_type = val.fields["mantissa"][0]
     return numba.np.numpy_support.as_dtype(base_type)
 
+
+#def get_template()
+
+
+
 @overload(operator.add)
 def poly_add(op0, op1):
     """ Add 2  polynomials or a polynomial and a scalar"""
@@ -725,7 +757,7 @@ def poly_add(op0, op1):
         base_dtres = np.result_type(op0.np_base_type,
                                     op1.np_base_type)
         res_dtype = numpy_xr_type(base_dtres)
-        res_template = np.empty([1], dtype=res_dtype)
+        res_template = np.zeros([1], dtype=res_dtype)
 
         def impl(op0, op1):
             assert op0.cutdeg == op1.cutdeg
@@ -756,7 +788,7 @@ def poly_add(op0, op1):
         base_dtres = np.result_type(op0.np_base_type,
                                     scalar_base_type)
         res_dtype = numpy_xr_type(base_dtres)
-        res_template = np.empty([1], dtype=res_dtype)
+        res_template = np.zeros([1], dtype=res_dtype)
 
         def impl(op0, op1):
             res_len = op0.coeffs.size
@@ -815,7 +847,7 @@ def xrange_polynomial_call(poly, val):
         base_dtres = numba.np.numpy_support.as_dtype(base_type)
         base_dtres = np.result_type(base_dtres, poly.np_base_type)
         res_dtype = numpy_xr_type(base_dtres)
-        res_template = np.empty([1], dtype=res_dtype)
+        res_template = np.zeros([1], dtype=res_dtype)
 
         def call_impl(poly, val):
             res_len = val.size
@@ -887,7 +919,7 @@ def poly_mul(op0, op1):
         base_dtres = np.result_type(op0.np_base_type,
                                     scalar_base_type)
         res_dtype = numpy_xr_type(base_dtres)
-        res_template = np.empty([1], dtype=res_dtype)
+        res_template = np.zeros([1], dtype=res_dtype)
 
         def impl(op0, op1):
             res_len = op0.coeffs.size
@@ -916,52 +948,347 @@ def poly_mul(op0, op1):
 
 
 
-# 
 # Implementing the Xrange_SA class in numba
 # https://numba.pydata.org/numba-doc/latest/proposals/extension-points.html
-# 
+# Caveat : unboxing is too complex and not implemented, so jitted function
+# can return xrange_SA instances but not take xrange_SA as argument.
+# workarounf is to pass separately xrange_polynomial and err (if not null)
+# then use xrange_polynomial_to_SA
+        
+class Xrange_SA_Type(types.Type):
+    def __init__(self, dtype, cutdeg, err):
+        self.dtype = dtype
+        numba_base_type = dtype.fields["mantissa"][0]
+        self.np_base_type = numba.np.numpy_support.as_dtype(numba_base_type)
+        self.coeffs = types.Array(dtype, 1, 'C')
+        err_dtype = numba_xr_type(np.float64)
+        self.err = types.Array(err_dtype, 1, 'C')
+        #self.err = Xrange_scalar_Type(numba.float64)
+        prefix = "{}_Xrange_SA"
+        super().__init__(name=prefix.format(numba_base_type))
+
+@typeof_impl.register(fsx.Xrange_SA)
+def typeof_xrange_SA(val, c):
+    coeffs_arrty = typeof_impl(val.coeffs, c)
+    return Xrange_SA_Type(coeffs_arrty.dtype, val.cutdeg, val.err)
+
+@type_callable(fsx.Xrange_SA)
+def type_xrange_SA(context):
+    def typer(coeffs, cutdeg, err):
+        if (isinstance(coeffs, types.Array)
+              and (coeffs.dtype in numba_xr_types)
+              and isinstance(cutdeg, types.Integer)
+              and isinstance(err, types.Array)
+        ):
+            return Xrange_SA_Type(coeffs.dtype, cutdeg, err.dtype)
+    return typer
+
+@register_model(Xrange_SA_Type)
+class XrangeSAModel(models.StructModel):
+    def __init__(self, dmm, fe_type):
+        members = [
+            ('coeffs', fe_type.coeffs),
+            ('cutdeg', numba.int64), # Not that we need, but int32 is painful
+            ('err', fe_type.err)
+            ]
+        models.StructModel.__init__(self, dmm, fe_type, members)
+
+make_attribute_wrapper(Xrange_SA_Type, 'coeffs', 'coeffs')
+make_attribute_wrapper(Xrange_SA_Type, 'cutdeg', 'cutdeg')
+make_attribute_wrapper(Xrange_SA_Type, 'err', 'err')
+
+@lower_builtin(fsx.Xrange_SA, types.Array, types.Integer, types.Array)
+def impl_xrange_SA_constructor(context, builder, sig, args):
+    typ = sig.return_type
+    coeffs, cutdeg, err = args
+    xrange_SA = cgutils.create_struct_proxy(typ)(context, builder)
+    #  We do not copy !! sticking to implementation in python
+    xrange_SA.coeffs = coeffs
+    xrange_SA.cutdeg = cutdeg
+    xrange_SA.err = err
+    return impl_ret_borrowed(context, builder, typ, xrange_SA._getvalue())
 
 
+@unbox(Xrange_SA_Type)
+def unbox_xrange_SA(typ, obj, c):
+    """
+    Convert a fsx.Xrange_polynomial object to a native xrange_polynomial
+    structure. """
+    coeffs_obj = c.pyapi.object_getattr_string(obj, "coeffs")
+    cutdeg_obj = c.pyapi.object_getattr_string(obj, "cutdeg")
+    err_obj = c.pyapi.object_getattr_string(obj, "err")
+
+    xrange_sa = cgutils.create_struct_proxy(typ)(c.context, c.builder)
+    xrange_sa.coeffs = c.unbox(typ.coeffs, coeffs_obj).value
+    xrange_sa.cutdeg = c.pyapi.long_as_longlong(cutdeg_obj)
+    xrange_sa.err = c.unbox(typ.err, err_obj).value
+
+    c.pyapi.decref(coeffs_obj)
+    c.pyapi.decref(cutdeg_obj)
+    c.pyapi.decref(err_obj)
+
+    is_error = cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
+    return NativeValue(xrange_sa._getvalue(), is_error=is_error)
+
+@box(Xrange_SA_Type)
+def box_xrange_SA(typ, val, c):
+    """ Convert a native xrange_SA structure to a 
+    fsx.Xrange_polynomial object """
+    xrange_SA = cgutils.create_struct_proxy(typ
+        )(c.context, c.builder, value=val)
+    classobj = c.pyapi.unserialize(c.pyapi.serialize_object(
+        fsx.Xrange_SA))
+
+    coeffs_obj = c.box(typ.coeffs, xrange_SA.coeffs)
+    cutdeg_obj = c.pyapi.long_from_longlong(xrange_SA.cutdeg)
+    err_obj = c.box(typ.err, xrange_SA.err)
+
+    xrange_SA_obj = c.pyapi.call_function_objargs(
+        classobj, (coeffs_obj, cutdeg_obj, err_obj))
+
+    c.pyapi.decref(classobj)
+    c.pyapi.decref(coeffs_obj)
+    c.pyapi.decref(cutdeg_obj)
+    c.pyapi.decref(err_obj)
+
+    return xrange_SA_obj
+
+@overload_method(Xrange_SA_Type, 'to_polynomial')
+def xrange_SA_to_polynomial(sa):
+    """ Convert a xrange_SA to a xrange_polynomial ; err is disregarded """
+    def impl(sa):
+        return fsx.Xrange_polynomial(sa.coeffs, cutdeg=sa.cutdeg)
+    return impl
+
+@overload_method(Xrange_polynomial_Type, 'to_SA')
+def xrange_polynomial_to_SA(poly):
+    """ Convert a xrange_polynomial to a xrange_SA with err = 0."""
+    err_template = np.zeros([1], dtype=numpy_xr_type(np.float64))
+    def impl(poly):
+        return fsx.Xrange_SA(poly.coeffs, cutdeg=poly.cutdeg, 
+            err=err_template.copy())
+    return impl
+
+@overload(operator.neg)
+def sa_neg(op0):
+    """ Copy of a polynomial with sign changed """
+    if isinstance(op0, Xrange_SA_Type):
+        def impl(op0):
+            # assert op0.coeffs.size == op0.cutdeg + 1 
+            coeffs = op0.coeffs
+            new_coeffs = np.empty_like(op0.coeffs)
+            for i in range(coeffs.size):
+                new_coeffs[i] = - coeffs[i]
+            return fsx.Xrange_SA(new_coeffs, op0.cutdeg, op0.err.copy())
+        return impl
+
+@overload(operator.add)
+def sa_add(op0, op1):
+    """ Add 2 SA or a SA and a scalar"""
+
+    if (isinstance(op0, Xrange_SA_Type)
+            and isinstance(op1, Xrange_SA_Type)
+            ):
+        # There is no lowering implementation for a structured dtype ; so
+        # we initiate a template of length 1 for the compilation.
+        base_dtres = np.result_type(op0.np_base_type, op1.np_base_type)
+        res_dtype = numpy_xr_type(base_dtres)
+        res_template = np.zeros([1], dtype=res_dtype)
+        err_template = np.zeros([1], dtype=numpy_xr_type(np.float64))
+
+        def impl(op0, op1):
+            assert op0.cutdeg == op1.cutdeg
+            cutdeg = op0.cutdeg
+            coeffs0 = op0.coeffs
+            coeffs1 = op1.coeffs
+            err0 = op0.err
+            err1 = op1.err
+
+            res_len = min(max(coeffs0.size, coeffs1.size), cutdeg + 1)
+            r01 = min(min(coeffs0.size, coeffs1.size), cutdeg + 1)
+            r0 = min(coeffs0.size, cutdeg + 1)
+            r1 = min(coeffs1.size, cutdeg + 1)
+
+            new_coeffs = res_template.repeat(res_len)
+            for i in range(r01):
+                new_coeffs[i] = coeffs0[i] + coeffs1[i]
+            for i in range(r01, r0):
+                new_coeffs[i] = coeffs0[i]
+            for i in range(r01, r1):
+                new_coeffs[i] = coeffs1[i]
+            err = err_template.copy()
+            err[0] = err0[0] + err1[0]
+
+            return fsx.Xrange_SA(new_coeffs, cutdeg, err)
+        return impl
+
+    elif (isinstance(op0, Xrange_SA_Type)
+            and (op1 in xr_types)
+            ):
+        scalar_base_type = xr_type_to_base_type(op1)
+        base_dtres = np.result_type(op0.np_base_type, scalar_base_type)
+        res_dtype = numpy_xr_type(base_dtres)
+        res_template = np.zeros([1], dtype=res_dtype)
+
+        def impl(op0, op1):
+            res_len = op0.coeffs.size
+            new_coeffs = res_template.repeat(res_len)
+            for i in range(res_len):
+                new_coeffs[i] = op0.coeffs[i]
+            new_coeffs[0] = new_coeffs[0] + op1
+            return fsx.Xrange_SA(new_coeffs, op0.cutdeg, op0.err.copy())
+        return impl
+
+    elif (isinstance(op1, Xrange_SA_Type)
+            and (op0 in xr_types)
+            ):
+        scalar_base_type = xr_type_to_base_type(op0)
+        base_dtres = np.result_type(op1.np_base_type, scalar_base_type)
+        res_dtype = numpy_xr_type(base_dtres)
+        res_template = np.zeros([1], dtype=res_dtype)
+
+        def impl(op0, op1):
+            res_len = op1.coeffs.size
+            new_coeffs = res_template.repeat(res_len)
+            for i in range(res_len):
+                new_coeffs[i] = op1.coeffs[i]
+            new_coeffs[0] = new_coeffs[0] + op0
+            return fsx.Xrange_SA(new_coeffs, op1.cutdeg, op1.err.copy())
+        return impl
 
 
+@overload(operator.mul)
+def sa_mul(op0, op1):
+    """ Multiply 2  polynomials or a polynomial and a scalar"""
+    if (isinstance(op0, Xrange_SA_Type)
+            and isinstance(op1, Xrange_SA_Type)
+            ):
+        # There is no lowering implementation for a structured dtype ; so
+        # we initiate a template of length 1 before compilation.
+        base_dtres = np.result_type(op0.np_base_type,
+                                    op1.np_base_type)
+        res_dtype = numpy_xr_type(base_dtres)
+        res_template = np.zeros([1], dtype=res_dtype)
+        err_template = np.zeros([1], dtype=numpy_xr_type(np.float64))
 
+        def impl(op0, op1):
+            assert op0.cutdeg == op1.cutdeg
+            cutdeg = op0.cutdeg
+            coeffs0 = op0.coeffs
+            coeffs1 = op1.coeffs
+            l0 = coeffs0.size
+            l1 = coeffs1.size
 
+            res_len = min(l0 + l1 - 1, cutdeg + 1)
+            new_coeffs = res_template.repeat(res_len)
 
+            for i in range(res_len):
+                window_min = max(0, i - l1 + 1)
+                window_max = min(l0 - 1, i)
+                for k in range(window_min, window_max + 1):
+                    new_coeffs[i] = new_coeffs[i] + coeffs0[k] * coeffs1[i - k]
 
+            err0 = op0.err[0]
+            err1 = op1.err[0]
+            # 4 terms to store: err, op_err0, op_err1, err_trunc
+            err = err_template.repeat(4)
+            err_tmp = res_template.copy()
+            # err[0] = err0 * err1
+            #    We will use L2 norm to control truncature error term.
+            # Heuristic based on random walk / magnitude of the sum of iud random
+            # variables
+            # Exact term is :
+            #    op_err0 = err0 * np.sum(np.abs(op1))
+            #    op_err1 = err1 * np.sum(np.abs(op0))
+            # Approximated term :
+            # op_err0 = err0 * np.sqrt(np.sum(op1.abs2()))
+            # op_err1 = err1 * np.sqrt(np.sum(op0.abs2()))    
+            # > op_err0 term
+            for i in range(l1):
+                err[1] = err[1] + extended_abs2(coeffs1[i])
+            err[1] = np.sqrt(err[1])
+            err[1] = err0 * err[1]
+            # > op_err1 term
+            for i in range(l0):
+                err[2] = err[2] + extended_abs2(coeffs0[i])
+            err[2] = np.sqrt(err[2])
+            err[2] = err1 * err[2]
 
+            # Truncature_term
+            if cutdeg < (l0 + l1 - 2):
+                # compute the missing terms by deg
+                for i in range(res_len, l0 + l1 - 1):
+                    window_min = max(0, i - l1 + 1)
+                    window_max = min(l0 - 1, i)
+                    err_tmp[0] = Xrange_scalar(0., numba.int32(0))
+                    for k in range(window_min, window_max + 1):
+                        err_tmp[0] = err_tmp[0] + coeffs0[k] * coeffs1[i - k]
 
+                    err[3] = err[3] + extended_abs2(err_tmp[0])
+                err[3] = np.sqrt(err[3])
 
+            err[0] = (op0.err[0] * op1.err[0]) + err[1] + err[2] + err[3]
+            return fsx.Xrange_SA(new_coeffs, cutdeg, err[0:1])
+        return impl
 
+    elif (isinstance(op0, Xrange_SA_Type)
+            and (op1 in xr_types)
+            ):
+        scalar_base_type = xr_type_to_base_type(op1)
+        base_dtres = np.result_type(op0.np_base_type,
+                                    scalar_base_type)
+        res_dtype = numpy_xr_type(base_dtres)
+        res_template = np.zeros([1], dtype=res_dtype)
+        err_template = np.zeros([1], dtype=numpy_xr_type(np.float64))
 
+        def impl(op0, op1):
+            res_len = op0.coeffs.size
+            new_coeffs = res_template.repeat(res_len)
+            new_err = err_template.copy()
+            for i in range(res_len):
+                new_coeffs[i] = op0.coeffs[i] * op1
+            new_err[0] = new_err[0] * np.abs(op1)
+            return fsx.Xrange_SA(new_coeffs, op0.cutdeg, new_err)
+        return impl
 
+    elif (isinstance(op1, Xrange_SA_Type)
+            and (op0 in xr_types)
+            ):
+        scalar_base_type = xr_type_to_base_type(op0)
+        base_dtres = np.result_type(op1.np_base_type,
+                                    scalar_base_type)
+        res_dtype = numpy_xr_type(base_dtres)
+        res_template = np.zeros([1], dtype=res_dtype)
+        err_template = np.zeros([1], dtype=numpy_xr_type(np.float64))
 
+        def impl(op0, op1):
+            res_len = op1.coeffs.size
+            new_coeffs = res_template.repeat(res_len)
+            new_err = err_template.copy()
+            for i in range(res_len):
+                new_coeffs[i] = op1.coeffs[i] * op0
+            new_err[0] = new_err[0] * np.abs(op0)
+            return fsx.Xrange_SA(new_coeffs, op1.cutdeg, new_err)
+        return impl
 
-
-
-
-#    def __call__(self, arg):
-#        """ Call self as a function.
-#        """
-#        if not isinstance(arg, Xrange_array):
-#            arg = Xrange_array(np.asarray(arg))
+#    elif (isinstance(op1, Xrange_SA_Type)
+#            and (op0 in xr_types)
+#            ):
+#        scalar_base_type = xr_type_to_base_type(op0)
+#        base_dtres = np.result_type(op1.np_base_type,
+#                                    scalar_base_type)
+#        res_dtype = numpy_xr_type(base_dtres)
+#        res_template = np.empty([1], dtype=res_dtype)
 #
-#        res_dtype = np.result_type(arg._mantissa, self.coeffs._mantissa)
-#        res = Xrange_array.empty(arg.shape, dtype=res_dtype)
-#        res.fill(self.coeffs[-1])
-#
-#        for i in range(2, self.coeffs.size + 1):
-#            res = self.coeffs[-i] + res * arg
-#        return res
-    
-#    def deriv(self, k=1.):
-#        l = self.coeffs.size
-#        coeffs = self.coeffs[1:] * np.arange(1, l)
-#        if k != 1.:
-#            mul = 1.
-#            for i in range(l-1):
-#                coeffs[i] *= mul
-#                mul *= k
-#        return Xrange_polynomial(coeffs, cutdeg=self.cutdeg)
+#        def impl(op0, op1):
+#            res_len = op1.coeffs.size
+#            new_coeffs = res_template.repeat(res_len)
+#            for i in range(res_len):
+#                new_coeffs[i] = op0 * op1.coeffs[i]
+#            return fsx.Xrange_polynomial(new_coeffs, op1.cutdeg)
+#        return impl
+
+
 
 
 
@@ -982,6 +1309,9 @@ def poly_mul(op0, op1):
 #        elif ufunc is np.subtract: 
 #            res[:op1_len] -= op1[:op1_len]
 #        return Xrange_polynomial(res, cutdeg=cutdeg)
+
+#==============================================================================
+# DEV
 
 
 @numba.njit
@@ -1018,26 +1348,69 @@ def test_polyadd(pol1, pol2):
     print("in numba")
     return pol1 + pol2
 
+#@numba.njit
+#def test_iadd(arr, val):
+#    print("in numba")
+#    for i in range(len(arr)):
+#        arr[i] += val[0]
+#    return arr
 @numba.njit
-def test_iadd(arr, val):
+def test_sa(poly):
     print("in numba")
-    for i in range(len(arr)):
-        arr[i] += val[0]
-    return arr
+    sa = poly.to_SA()
+#    print("nb", pol, pol.coeffs.dtype)
+    # pol.coeffs[1] = Xrange_scalar(45678., numba.int32(0))
+    coeff2 = sa.coeffs.copy() # * Xrange_scalar(2., numba.int32(0))
+    print("coeffs", coeff2)
+#    print("err", sa.err.mantissa, sa.err.exp)
+    return sa
+
+@numba.njit
+def box_add_sa(poly1, poly2):
+    print("in numba")
+    sa1 = poly1.to_SA()
+    sa2 = poly2.to_SA()
+    err = Xrange_scalar(1., numba.int32(1))
+    print("err###", err.mantissa)
+    sa1.err[0] = err
+    print("err in SA ###", sa1.err)
+#    print("nb", pol, pol.coeffs.dtype)
+    # pol.coeffs[1] = Xrange_scalar(45678., numba.int32(0))
+    sa_res = sa1 + sa2 # * Xrange_scalar(2., numba.int32(0))
+
+    #print("err", sa.err.mantissa, sa.err.exp)
+    return sa_res
+
+@numba.njit
+def test_saadd(sa1, sa2):
+    print("in numba")
+    return sa1 + sa2
 
 if __name__ == "__main__":
-#    arr0 = fsx.Xrange_array(["1.e100", "3.14", "2.0"]) #* (1. + 1j)
-#    pol0 = fsx.Xrange_polynomial(arr0, 2)
+    arr0 = fsx.Xrange_array(["1.e100", "3.14", "2.0"]) #* (1. + 1j)
+    pol0 = fsx.Xrange_polynomial(arr0, 2)
+    arr1 = fsx.Xrange_array(["2.e100", "-3.14", "-0.2"]) #* (1. + 1j)
+    pol1 = fsx.Xrange_polynomial(arr1, 2)
+    res = test_sa(pol0)
+    print("res", res)
+    res = box_add_sa(pol0, pol1)
+    print("res", res)
+    
+    sa0 = fsx.Xrange_SA(arr0, 2, fsx.Xrange_array(8.))
+    sa1 = fsx.Xrange_SA(arr1, 2, fsx.Xrange_array(8.))
+    res = test_saadd(sa0, sa1)
+    print("res", res)
+    
 #    print(pol0.coeffs)
 #    print(np.asarray(pol0.coeffs).size)
 #    print(pol0.coeffs.size, pol0.cutdeg + 1)
 #    p_neg = test_poly(pol0)
 #    print("p_neg", p_neg)
 
-    arr0 = fsx.Xrange_array(["0.", "1.", "2."]) #* (1. + 1j)
-    val = fsx.Xrange_array(["1."]) #* (1. + 1j)
-    test = test_iadd(arr0, val)
-    print("test", test)
+#    arr0 = fsx.Xrange_array(["0.", "1.", "2."]) #* (1. + 1j)
+#    val = fsx.Xrange_array(["1."]) #* (1. + 1j)
+#    test = test_iadd(arr0, val)
+#    print("test", test)
 #    pol0 = fsx.Xrange_polynomial(arr0, 2)
 #    res = test_poly_call(pol0)
 #    print(res.view(fsx.Xrange_array))

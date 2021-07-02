@@ -31,9 +31,7 @@ crossed_dtypes = [
     (np.float64, np.complex128),
     (np.complex128, np.float64)
 ]
-#real_crossed_dtypes = [
-#    (np.float64, np.float64)
-#]
+
 
 # testing binary operation of reals extended arrays
 def generate_random_xr(dtype, nvec=500, max_bin_exp=200, seed=100):
@@ -134,6 +132,13 @@ def numba_test_abs(xa, out):
     n, = xa.shape
     for i in range(n):
         out[i] = np.abs(xa[i])
+
+@numba.njit
+def numba_test_abs2(xa, out):
+    n, = xa.shape
+    for i in range(n):
+        out[i] = numba_xr.extended_abs2(xa[i])
+
 
 class Test_numba_xr(unittest.TestCase):
 
@@ -519,6 +524,32 @@ class Test_numba_xr(unittest.TestCase):
                 expr = (t_numba <  t_np)
                 self.assertTrue(expr, msg="Numba speed below numpy")
 
+    def test_abs2(self):
+        for dtype in (np.float64, np.complex128): # np.complex64 np.float32
+            with self.subTest(dtype=dtype):
+                nvec = 10000
+                xa, stda = generate_random_xr(dtype, nvec=nvec, max_bin_exp=75)
+                # Adjust the mantissa to be sure to trigger a renorm for some
+                # (around 30 %) cases
+                xa = np.asarray(xa)
+                exp = np.copy(xa["exp"])
+                xa["mantissa"] *= 2.**(2 * exp)
+                xa["exp"] = -exp
+                xa = xa.view(Xrange_array)
+                res = Xrange_array.empty(xa.shape, dtype=dtype)
+                expected = np.abs(stda) ** 2
+
+                numba_test_abs(xa, res)
+                # Numba timing without compilation
+                t_numba = - time.time()
+                numba_test_abs2(xa, res)
+                t_numba += time.time()
+                
+                _matching(res, expected, almost=True, dtype=np.float64,
+                          ktol=2.)
+
+
+
     def test_expr(self):
         for (dtypea, dtypeb) in crossed_dtypes: #, np.complex128]: # np.complex64 np.float32
 
@@ -652,7 +683,7 @@ class Test_poly_xr(unittest.TestCase):
             with self.subTest(dtypea=dtypea, dtypeb=dtypeb):
                 nvec = 100
                 xa, stda = generate_random_xr(dtypea, nvec=nvec)# , max_bin_exp=250)
-                xb, stdb = generate_random_xr(dtypeb, nvec=nvec)# , max_bin_exp=250)
+                xb, stdb = generate_random_xr(dtypeb, nvec=nvec, seed=510)# , max_bin_exp=250)
                 _Pa = Xrange_polynomial(xa, cutdeg=nvec-1)
                 Pa = np.polynomial.Polynomial(stda)
                 _Pb = Xrange_polynomial(xb, cutdeg=nvec-1)
@@ -669,7 +700,7 @@ class Test_poly_xr(unittest.TestCase):
             with self.subTest(dtypea=dtypea, dtypeb=dtypeb, kind="scalar"):
                 nvec = 100
                 xa, stda = generate_random_xr(dtypea, nvec=nvec)# , max_bin_exp=250)
-                xb, stdb = generate_random_xr(dtypeb, nvec=1)# , max_bin_exp=250)
+                xb, stdb = generate_random_xr(dtypeb, nvec=1, seed=5)# , max_bin_exp=250)
                 _Pa = Xrange_polynomial(xa, cutdeg=nvec-1)
                 Pa = np.polynomial.Polynomial(stda)              
                 res = numba_test_polyadd_0(_Pa, xb)
@@ -702,14 +733,14 @@ class Test_poly_xr(unittest.TestCase):
             expected = [Pa * Pb , Pb * Pa, Pa * Pa]
             for i in range(len(res)):
                 _matching(res[i].coeffs, expected[i].coef)
-        
+
 
     def test_call(self):
         for (dtypea, dtypeb) in crossed_dtypes: 
             with self.subTest(dtypea=dtypea, dtypeb=dtypeb):
                 nvec = 100
                 xa, stda = generate_random_xr(dtypea, nvec=10 , max_bin_exp=3)
-                xb, stdb = generate_random_xr(dtypeb, nvec=nvec , max_bin_exp=5)
+                xb, stdb = generate_random_xr(dtypeb, nvec=nvec , max_bin_exp=5, seed=510)
                 _Pa = Xrange_polynomial(xa, cutdeg=nvec-1)
                 Pa = np.polynomial.Polynomial(stda)
                 # Scalar call test
@@ -746,7 +777,7 @@ class Test_poly_xr(unittest.TestCase):
             with self.subTest(dtypea=dtypea, dtypeb=dtypeb, kind="scalar"):
                 nvec = 100
                 xa, stda = generate_random_xr(dtypea, nvec=nvec)# , max_bin_exp=250)
-                xb, stdb = generate_random_xr(dtypeb, nvec=1)# , max_bin_exp=250)
+                xb, stdb = generate_random_xr(dtypeb, nvec=1, seed=510)# , max_bin_exp=250)
                 _Pa = Xrange_polynomial(xa, cutdeg=nvec-1)
                 Pa = np.polynomial.Polynomial(stda)              
                 res = numba_test_polymul_0(_Pa, xb)
@@ -756,6 +787,116 @@ class Test_poly_xr(unittest.TestCase):
                 _matching(res.coeffs, expected.coef)
 
 
+@numba.njit
+def numba_test_sa_neg(sa):
+    return -sa
+
+@numba.njit
+def numba_test_sa_add(sa0, sa1):
+    return sa0 + sa1
+@numba.njit
+def numba_test_sa_add_0(sa0, sa1):
+    return sa0 + sa1[0]
+@numba.njit
+def numba_test_sa_add0(sa0, sa1):
+    return sa0[0] + sa1
+
+@numba.njit
+def numba_test_sa_mul(sa0, sa1):
+    return sa0 * sa1
+@numba.njit
+def numba_test_sa_mul_0(sa0, sa1):
+    return sa0 * sa1[0]
+@numba.njit
+def numba_test_sa_mul0(sa0, sa1):
+    return sa0[0] * sa1
+
+class Test_SA_xr(unittest.TestCase):
+    
+    def test_neg(self):
+        for dtype in (np.float64, np.complex128):
+            with self.subTest(dtype=dtype):
+                nvec = 100
+                xa, stda = generate_random_xr(dtype, nvec=nvec)# , max_bin_exp=250)
+                xerr, stderr = generate_random_xr(np.float64, nvec=1, seed=480)# , max_bin_exp=250)
+                sa = Xrange_SA(xa, cutdeg=nvec-1, err=abs(xerr))
+                res = numba_test_sa_neg(sa)
+                expected = -sa
+                _matching(res.coeffs, expected.coeffs)
+                _matching(res.err, expected.err)
+
+    def test_add(self):
+        for (dtypea, dtypeb) in crossed_dtypes: #((np.float64, np.float64),):#crossed_dtypes: 
+            with self.subTest(dtypea=dtypea, dtypeb=dtypeb):
+                nvec = 100
+                xa, stda = generate_random_xr(dtypea, nvec=nvec, max_bin_exp=1)# , max_bin_exp=250)
+                xerra, stderra = generate_random_xr(np.float64, nvec=1, max_bin_exp=1)# , max_bin_exp=250)
+                xb, stdb = generate_random_xr(dtypeb, nvec=nvec, max_bin_exp=1)# , max_bin_exp=250)
+                xerrb, stderrb = generate_random_xr(np.float64, nvec=1, max_bin_exp=1)# , max_bin_exp=250)
+                
+                sa = Xrange_SA(xa, cutdeg=nvec-1, err=abs(xerra))
+                sb = Xrange_SA(xb, cutdeg=nvec-1, err=abs(xerrb))
+                res = numba_test_sa_add(sa, sb)
+                expected = sa + sb
+                _matching(res.coeffs, expected.coeffs)
+                _matching(res.err, expected.err)
+                
+        for (dtypea, dtypeb) in crossed_dtypes: #((np.float64, np.float64),):#crossed_dtypes: 
+            with self.subTest(dtypea=dtypea, dtypeb=dtypeb, kind="scalar"):
+                nvec = 100
+                xa, stda = generate_random_xr(dtypea, nvec=nvec, max_bin_exp=3)# , max_bin_exp=250)
+                xerra, stderra = generate_random_xr(np.float64, nvec=1, seed=512, max_bin_exp=3)# , max_bin_exp=250)
+                xb, stdb = generate_random_xr(dtypeb, nvec=1, seed=510)# , max_bin_exp=250)
+
+                sa = Xrange_SA(xa, cutdeg=nvec-1)
+                res = numba_test_sa_add_0(sa, xb)
+                expected = sa + stdb[0]
+                _matching(res.coeffs, expected.coeffs)
+                _matching(res.err, expected.err)
+                res = numba_test_sa_add0(xb, sa)
+                expected = stdb[0] + sa 
+                _matching(res.coeffs, expected.coeffs)
+                _matching(res.err, expected.err)
+
+
+    def test_mul(self):
+        for (dtypea, dtypeb) in crossed_dtypes:
+            with self.subTest(dtypea=dtypea, dtypeb=dtypeb):
+                nvec = 60
+                xa, stda = generate_random_xr(dtypea, nvec=nvec, max_bin_exp=3)# , max_bin_exp=250)
+                xerra, stderra = generate_random_xr(np.float64, nvec=1, seed=512, max_bin_exp=3)# , max_bin_exp=250)
+                xb, stdb = generate_random_xr(dtypeb, nvec=nvec, seed=810, max_bin_exp=3)# , max_bin_exp=250)
+                xerrb, stderrb = generate_random_xr(np.float64, nvec=1, seed=510, max_bin_exp=3)# , max_bin_exp=250)
+                
+                sa = Xrange_SA(xa, cutdeg=nvec-1, err=abs(xerra))
+                sb = Xrange_SA(xb, cutdeg=nvec-1, err=abs(xerrb))
+                res = numba_test_sa_mul(sa, sb)
+                expected = sa * sb
+                _matching(res.coeffs, expected.coeffs.to_standard(), almost=True,
+                          dtype=np.float64, ktol=50.)
+                _matching(res.err, expected.err.to_standard(), almost=True,
+                          dtype=np.float64, ktol=50.)
+
+        for (dtypea, dtypeb) in crossed_dtypes:
+            with self.subTest(dtypea=dtypea, dtypeb=dtypeb, kind="scalar"):
+                nvec = 100
+                xa, stda = generate_random_xr(dtypea, nvec=nvec, max_bin_exp=3)# , max_bin_exp=250)
+                xerra, stderra = generate_random_xr(np.float64, nvec=1, seed=512, max_bin_exp=3)# , max_bin_exp=250)
+                xb, stdb = generate_random_xr(dtypeb, nvec=1, seed=510)# , max_bin_exp=250)
+
+                sa = Xrange_SA(xa, cutdeg=nvec-1)
+                res = numba_test_sa_mul_0(sa, xb)
+                expected = sa * stdb[0]
+                _matching(res.coeffs, expected.coeffs)
+                _matching(res.err, expected.err)
+                res = numba_test_sa_mul0(xb, sa)
+                expected = stdb[0] * sa 
+                _matching(res.coeffs, expected.coeffs)
+                _matching(res.err, expected.err)
+
+
+
+
 if __name__ == "__main__":
     import test_config
     full_test = False
@@ -763,8 +904,11 @@ if __name__ == "__main__":
     if full_test:
         runner.run(test_config.suite([Test_numba_xr,]))
         runner.run(test_config.suite([Test_poly_xr,]))
+        runner.run(test_config.suite([Test_SA_xr,]))
     else:
         suite = unittest.TestSuite()
-#        suite.addTest(Test_numba_xr("test_iadd"))
-        suite.addTest(Test_poly_xr("test_mul"))
+#        suite.addTest(Test_numba_xr("test_add"))
+#        suite.addTest(Test_poly_xr("test_mul"))
+        suite.addTest(Test_SA_xr("test_add"))
+        suite.addTest(Test_SA_xr("test_mul"))
         runner.run(suite)

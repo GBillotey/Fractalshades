@@ -76,7 +76,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 err = compare_png(ref_file, test_file)
                 self.assertTrue(err < 0.01)
 
-    @test_config.no_stdout
+    # @test_config.no_stdout
     def test_M2_int_E11(self):
         """
         Testing interior detection, 5e-12 test case.
@@ -99,7 +99,11 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                     mask_codes=[2], SA_params=SA_params)
                 ref_file = os.path.join(self.image_dir_ref, test_name + ".png")
                 err = compare_png(ref_file, test_file)
-                self.assertTrue(err < 0.01)
+                if SA_params is not None:
+                    self.assertTrue(err < 0.05)
+                else:
+                    self.assertTrue(err < 0.1)
+
 
     @test_config.no_stdout
     def test_M2_antialias_E0(self):
@@ -223,7 +227,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         new_file = os.path.join(self.image_dir,
                                 test_name + "_" + prefix + ".png")
         shutil.move(os.path.join(test_dir, prefix + ".png"), new_file)
-        shutil.rmtree(test_dir)
+        #shutil.rmtree(test_dir)
         return new_file
 
 

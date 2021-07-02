@@ -617,15 +617,14 @@ class Image_widget(QWidget):
         #self._layout.addStretch(1)
         self._layout.addWidget(self._labels, stretch=0)
 
-        # Sets Image
-        self._qim = None
-        self.reset_im()
-
-        
         # Zoom rectangle disabled
         self._rect = None
         self._drawing_rect = False
         self._dragging_rect = False
+
+        # Sets Image
+        self._qim = None
+        self.reset_im()
 
         # zooms anchors for wheel events - note this is only active 
         # when the 
@@ -696,8 +695,12 @@ class Image_widget(QWidget):
         self._fractal_zoom_init["ny"] = ny
         self.validate()
 
-        if self._qim is not None:
-            self._group.removeFromGroup(self._qim)
+#        if self._qim is not None:
+#            self._group.removeFromGroup(self._qim)
+        for item in [self._qim, self._rect]:
+            if item is not None:
+                self._group.removeFromGroup(item)
+
         if valid_image:
             self._qim = QGraphicsPixmapItem(QtGui.QPixmap.fromImage(
                     QtGui.QImage(image_file)))#QtGui.QImage()))#imqt)) # QtGui.QImage(self._im)))

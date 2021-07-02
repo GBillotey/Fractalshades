@@ -829,14 +829,6 @@ class Test_Xrange_polynomial(unittest.TestCase):
                 _matching(Q.coeffs, np.array(q_arr[i], dtype), almost=True, ktol=3.,
                           dtype=dtype)
 
-#        # testing _quad_precision_taylor_shift_one
-#        for dtype in [np.complex64, np.complex128]:
-#            for i in range(len(p_arr)):
-#                P = Xrange_polynomial(np.array(p_arr[i], dtype), cutdeg=100)
-#                Q = P._quad_precision_taylor_shift_one()
-#                print("\nQ", Q)
-#                _matching(Q.coeffs, q_arr[i], almost=True, ktol=3.,
-#                          dtype=dtype)
 
         p_arr = [[0., 0., 0., 0., 1.],
                  [1., 0., 0., -7., 1., 21.]

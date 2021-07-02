@@ -549,8 +549,8 @@ the array returned by base_data_key
 #            count_nonzero[0] = 1
 #            self.hist = np.array([0.])
 #            self.bins = np.array([0., 0.0001])
-        
-        bins_qt = np.cumsum(self.hist) / float(count_nonzero[0])
+        print("np.nancumsum(self.hist) ", np.nancumsum(self.hist))
+        bins_qt = np.nancumsum(self.hist) / float(count_nonzero[0])
         bins_qt = np.insert(bins_qt, 0, 0.) 
         self.qt_to_z = lambda x: np.interp(x, bins_qt, self.bins)
         self.z_to_qt = lambda x: np.interp(x, self.bins, bins_qt)
@@ -1171,7 +1171,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         (x, y)  = (self.x, self.y)
 
         offset = self.offset_chunk(chunk_slice)
-        return (x + offset[0]) + (y + offset[1]) * 1j
+        return (x + offset[0]) + (y + offset[1]) * 1j # TODO test this
 
 
     def offset_chunk(self, chunk_slice, ensure_Xr=False):
@@ -1319,21 +1319,25 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
         return True
 
 
-    def res_available(self, chunk_slice):
+    def res_available(self, chunk_slice=None):
         """  Returns True if chunkslice is already computed with current
         parameters
         (Otherwise False)
         """
         print("**CALLING res_available +++")
-        try:
-            (dparams, dcodes) = self.reload_data_chunk(chunk_slice,
-                self.file_prefix, scan_only=True)
-        except IOError:
-            return False
-        
+        if chunk_slice is None:
+            try:
+                (dparams, dcodes) = self.reload_data_param(self.file_prefix)
+            except IOError:
+                return False
+        else:
+            try:
+                (dparams, dcodes) = self.reload_data_chunk(chunk_slice,
+                    self.file_prefix, scan_only=True)
+            except IOError:
+                return False
+
         return self.param_matching(dparams)
-        # TODO: If we want to be more restrictive
-        # return self.dic_matching(dparams, self.calc_params)
 
 
     @Multiprocess_filler(iterable_attr="chunk_slices",
@@ -2277,7 +2281,7 @@ def numba_cycles_perturb(Z, U, c, stop_reason, stop_iter, bool_active, iref,
         n_iter = n_iter_init
         cycling = True
         while cycling:
-            n_iter += 1
+            n_iter += 1 # here or later ????
 
 #            if ipt == 0:
 #                print("\nZpt, Upt, cpt", Zpt, Upt, cpt)
