@@ -269,6 +269,60 @@ class Test_Xrange_array(unittest.TestCase):
                 expected = np.sum(op4, axis=axis)
                 _matching(res, expected, almost, dtype, cmp_op)
 
+    def test_cumprod(self):
+        almost=True
+        cmp_op=False
+        for dtype in [np.float32, np.float64]:
+            # We need to prevent overflow of 'standard numbers' for the test
+            # to be meaningful...
+            if dtype == np.float32:
+                n_vec = 100
+                max_bin_exp = 3
+                resh = (4, 5, 5)
+            else:
+                n_vec = 200
+                max_bin_exp = 10
+                resh = (4, 10, 5)
+
+            rg = np.random.default_rng(1)
+            
+            op1 = (rg.random([n_vec], dtype=dtype) +
+                       1j*rg.random([n_vec], dtype=dtype))
+            op1 *= 2.**rg.integers(low=-max_bin_exp, high=max_bin_exp, 
+                                   size=[n_vec])
+            
+            op2 = (rg.random([n_vec], dtype=dtype))
+            exp_shift_array = rg.integers(low=-max_bin_exp, high=max_bin_exp, 
+                                   size=[n_vec])
+        
+            expected = np.cumprod(op1)
+            res = np.cumprod(Xrange_array(op1))
+            _matching(res, expected, almost, dtype, cmp_op)
+    
+            expected = np.cumprod(op2 * 2.**exp_shift_array)
+            res = np.cumprod(Xrange_array(op2, exp_shift_array))
+            _matching(res, expected, almost, dtype, cmp_op, ktol=2.)
+            
+            
+            _op3 = Xrange_array(op2, exp_shift_array).reshape(*resh)
+            op3 = (op2 * 2.**exp_shift_array).reshape(resh)
+            for axis in range(3):
+                res = np.cumprod(_op3, axis=axis)
+                expected = np.cumprod(op3, axis=axis)
+                _matching(res, expected, almost, dtype, cmp_op)   
+                
+            expected = np.cumprod(op1 * 2.**exp_shift_array)
+            res = np.cumprod(Xrange_array(op1, exp_shift_array))
+            _matching(res, expected, almost, dtype, cmp_op, ktol=8)
+
+            _op4 = Xrange_array(op1, exp_shift_array).reshape(*resh)
+            op4 = (op1 * 2.**exp_shift_array).reshape(*resh)
+            for axis in range(3):
+                res = np.cumprod(_op4, axis=axis)
+                expected = np.cumprod(op4, axis=axis)
+                _matching(res, expected, almost, dtype, cmp_op)
+
+
     def test_angle(self):
         for dtype in [np.float32, np.float64]:
             n_vec = 1000
@@ -666,13 +720,16 @@ class Test_Xrange_timing(unittest.TestCase):
         t1 += time.time()
     
         np.testing.assert_array_equal(e_res.to_standard(), expected)
+
         print("\ntiming", ufunc, dtype, t0, t1, t0 / t1)
-        # timing <ufunc 'add'> <class 'numpy.float64'> 18.667709
-        # timing <ufunc 'multiply'> <class 'numpy.float64'>  12.814323
+        return t0 / t1
 
-        return t0/t1
-
-
+def _matchingP(res, expected, **kwargs):
+    if res.size > expected.size:
+        _expected = np.zeros(res.shape, expected.dtype)
+        _expected[:expected.size] = expected
+        expected = _expected
+    _matching(res, expected, **kwargs)
 
 
 class Test_Xrange_polynomial(unittest.TestCase):
@@ -687,7 +744,7 @@ class Test_Xrange_polynomial(unittest.TestCase):
         _matching((_P + _P).coeffs, (P + P).coef)
         _matching((_P + 2).coeffs, (P + 2).coef)
         _matching((2 + _P).coeffs, (2 + P).coef)
-    
+
         two = Xrange_array([2.])
         _matching((_P * two).coeffs, (P * 2).coef)
         _matching((two * _P).coeffs, (2 * P).coef)
@@ -698,7 +755,7 @@ class Test_Xrange_polynomial(unittest.TestCase):
         _matching((_P - 2).coeffs, (P - 2).coef)
     
         arr = [1. + 1.j, 1 - 1.j]
-        _P = Xrange_polynomial(arr, 10)
+        _P = Xrange_polynomial(arr, 2)
         P = np.polynomial.Polynomial(arr)
         _matching((_P * _P).coeffs, (P * P).coef)
         
@@ -769,8 +826,9 @@ class Test_Xrange_polynomial(unittest.TestCase):
                 P = Xrange_polynomial(np.array(p_arr[i], dtype), cutdeg=100)
                 Q = P._taylor_shift_one()
                 # print("\nQ", Q)
-                _matching(Q.coeffs, q_arr[i], almost=True, ktol=3.,
+                _matching(Q.coeffs, np.array(q_arr[i], dtype), almost=True, ktol=3.,
                           dtype=dtype)
+
 
         p_arr = [[0., 0., 0., 0., 1.],
                  [1., 0., 0., -7., 1., 21.]
@@ -785,7 +843,7 @@ class Test_Xrange_polynomial(unittest.TestCase):
             for i in range(len(p_arr)):
                 P = Xrange_polynomial(np.array(p_arr[i], dtype), cutdeg=100)
                 Q = P.scale_shift(sc_arr[i])
-                _matching(Q.coeffs, q_arr[i], almost=True, ktol=3.,
+                _matching(Q.coeffs, np.array(q_arr[i], dtype), almost=True, ktol=3.,
                           dtype=dtype)
 
         # testing general taylor_shift
@@ -806,7 +864,7 @@ class Test_Xrange_polynomial(unittest.TestCase):
             for i in range(len(p_arr)):
                 P = Xrange_polynomial(np.array(p_arr[i], dtype), cutdeg=100)
                 Q = P.taylor_shift(sc_arr[i])
-                _matching(Q.coeffs, q_arr[i], almost=True, ktol=3.,
+                _matching(Q.coeffs, np.array(q_arr[i]), almost=True, ktol=3.,
                           dtype=dtype)
 
             
@@ -902,6 +960,14 @@ class Test_Xrange_SA(unittest.TestCase):
                     res =  prod - prod.cutdeg(cutdeg)
                     _matching(_prod.err, np.sqrt(np.sum(np.abs(res.coef)**2)), 
                               almost=True, ktol=10., dtype=dtype)
+                
+#if __name__ == "__main__":
+#    import test_config 
+#    runner = unittest.TextTestRunner(verbosity=2)
+#    runner.run(test_config.suite([Test_Xrange_array,
+#                            Test_Xrange_timing,
+#                            Test_Xrange_polynomial,
+#                            Test_Xrange_SA]))
                 
 if __name__ == "__main__":
     import test_config 

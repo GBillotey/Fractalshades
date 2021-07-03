@@ -6,6 +6,7 @@ import numba
 
 import fractalshades as fs
 import fractalshades.numpy_utils.xrange as fsx
+import fractalshades.numpy_utils.numba_xr as fsxn
 import fractalshades.utils as fsutils
 import fractalshades.settings as settings
 
@@ -133,10 +134,10 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         Run Newton search to find z0 so that f^n(z0) == 0
         """
         if max_newton is None:
-            max_newton = mpmath.mp.prec
-        if eps_cv is None:
-            eps_cv = mpmath.mpf(2.)**(-mpmath.mp.prec)
-            print("eps_cv", eps_cv)
+            max_newton = max(mpmath.mp.dps, 50)
+#        if eps_cv is None:
+#            eps_cv = mpmath.mpf(2.)**(-mpmath.mp.prec)
+#            print("eps_cv", eps_cv)
         c_loop = c
 
         for i_newton in range(max_newton):     
@@ -179,7 +180,8 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         print("SA_err", SA_err)
         SA_err_sq = SA_err**2
 
-        P = SA_init(SA_params["cutdeg"])
+        cutdeg = SA_params["cutdeg"]
+        P = SA_init(cutdeg)
         SA_params["iref"] = iref
         
         # Ensure corner points strictly included in convergence disk :
@@ -191,41 +193,45 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         SA_params["kc"] = kc
         print('SA_params["kc"]', kc)
         kcX = np.insert(kc, 0, 0.)
+        kcX = fsx.Xrange_SA(kcX, cutdeg)
 
-        SA_valid = True
         _, ref_path = self.reload_ref_point(iref, file_prefix)
         n_iter = 0
-        while SA_valid:
-            n_iter +=1
-            # keep a copy
-            
-            P_old0 = P[0].coeffs.copy()
-            # P_old1 = P[1].coeffs.copy()
-            SA_loop(P, n_iter, ref_path[n_iter - 1, :], kcX)
-            coeffs_sum = np.sum(P[0].coeffs.abs2())
-            SA_valid = ((P[0].err.abs2()  <= SA_err_sq * coeffs_sum)
-                        & (coeffs_sum <= 1.e6)) # 1e6 to allow 
-            if not(SA_valid):
-                P[0].coeffs = P_old0
-                # P[1].coeffs = P_old1
-                n_iter -=1
-                print("SA stop", n_iter, P[0].err, np.sqrt(coeffs_sum))
-                deriv_scale = fsx.mpc_to_Xrange(self.dx) / SA_params["kc"]
-                if not(self.Xrange_complex_type):
-                    deriv_scale = deriv_scale.to_standard()
-                P1 = fsx.Xrange_polynomial([complex(1.)],
-                                           cutdeg=SA_params["cutdeg"])
-                # We derive the polynomial wrt to c. Note the 1st coefficent
-                # should be set to 0 if we compute these with FP...
-                # Here, to the contrary we use it to skip the FP iter for all 
-                # derivatives.
-                P_deriv = P[0].deriv() * deriv_scale
-                # P_deriv.coeffs[0] = 0.
-                P_deriv2 = P_deriv.deriv() * deriv_scale
-                # P_deriv2.coeffs[0] = 0.
-                P += [P1, P_deriv, P_deriv2]
-            if n_iter % 500 == 0:
-                print("SA running", n_iter, "err: ", P[0].err, "<<", np.sqrt(np.sum(P[0].coeffs.abs2())))
+        P0 = P[0]
+        
+        P0, n_iter, err = SA_run(SA_loop, P0, n_iter, ref_path, kcX, SA_err_sq)
+#        while SA_valid:
+#            n_iter +=1
+#            # keep a copy
+#            
+#            P_old0 = P0.coeffs.copy()
+#            # P_old1 = P[1].coeffs.copy()
+#            P0 = SA_loop(P0, n_iter, ref_path[n_iter - 1, :], kcX)
+#            coeffs_sum = np.sum(P0.coeffs.abs2())
+#            SA_valid = ((P0.err.abs2()  <= SA_err_sq * coeffs_sum)
+#                        & (coeffs_sum <= 1.e6)) # 1e6 to allow 
+#            if not(SA_valid):
+#                P0.coeffs = P_old0
+#                n_iter -=1
+#            if n_iter % 500 == 0:
+#                print("SA running", n_iter, "err: ", P0.err, "<<", np.sqrt(np.sum(P0.coeffs.abs2())))
+
+        # Storing results
+        print("SA stop", n_iter, err)
+        deriv_scale = fsx.mpc_to_Xrange(self.dx) / SA_params["kc"]
+        if not(self.Xrange_complex_type):
+            deriv_scale = deriv_scale.to_standard()
+        P1 = fsx.Xrange_polynomial([complex(1.)], cutdeg=cutdeg)
+        # We derive the polynomial wrt to c. Note the 1st coefficent
+        # should be set to 0 if we compute these with FP...
+        # Here, to the contrary we use it to skip the FP iter for all 
+        # derivatives.
+        P_deriv = P0.deriv() * deriv_scale
+        # P_deriv.coeffs[0] = 0.
+        # P_deriv2 = P_deriv.deriv() * deriv_scale
+        # P_deriv2.coeffs[0] = 0.
+
+        P = [P0, P1, P_deriv]
         SA_params["n_iter"] = n_iter
         SA_params["P"] = P
 
@@ -319,14 +325,11 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
 
         # Defines FP_loop via a function factory
         def FP_loop():
-#            SA_params = self.SA_params
             M_divergence = self.M_divergence
             def func(FP_array, c0, n_iter):
                 """ Full precision loop
                 derivatives corrected by lenght kc
                 """
-#                if SA_params is None:  # TODO : unreasoneable - suppress
-#                        FP_array[2] = 2. * FP_array[2] * FP_array[0] + 1.
                 FP_array[0] = FP_array[0]**2 + c0
                 # If FP iteration is divergent, raise the semaphore n_iter
                 # We use the 'infinite' norm not the disc for obvious calc saving
@@ -341,36 +344,36 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         def SA_init():
             # cutdeg = self.SA_params["cutdeg"]
             def func(cutdeg):
-                return [fsx.Xrange_SA([0.], cutdeg=cutdeg)]
+                # Typing as complex for numba
+                return [fsx.Xrange_SA([0j], cutdeg=cutdeg)]
             return func
         self.SA_init = SA_init
 
-        # Defines SA_loop via a function factory
+        # Defines SA_loop via a function factory - jitted implementation
         def SA_loop():
-            def func(P, n_iter, ref_path, kcX):
+            @numba.njit
+            def impl(P0, n_iter, ref_path, kcX):
                 """ Series Approximation loop
                 Note that derivatives w.r.t dc will be deduced directly from the
                 S.A polynomial.
                 """
-                P[0] = P[0] * (P[0] + 2. * ref_path[0]) + kcX
-            return func
+                xr_2 = fsxn.Xrange_scalar(1., numba.int32(1))
+                P0 = P0 * (P0 + xr_2 * ref_path[0]) + kcX
+                return P0
+            return impl
         self.SA_loop = SA_loop
 
         # Defines initialize via a function factory
         def initialize():
             def func(Z, U, c, chunk_slice, iref):
                 Z[2, :] = 0.
-#                if SA_params is None: 
-#                    Z[2, :] = 1.
                 Z[1, :] = 1.
                 Z[0, :] = 0.
                 U[0, :] = iref
             return func
         self.initialize = initialize
 
-
-
-        # Defines iterate via a function factory
+        # Defines iterate via a function factory - jitted implementation
         def iterate():
             M_divergence_sq = self.M_divergence ** 2
             epsilon_stationnary_sq = self.epsilon_stationnary ** 2
@@ -387,7 +390,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             reason_div_glitch = 4
             glitch_off_last_iref = settings.glitch_off_last_iref
             no_SA = (SA_params is None)
-            dzndc_iter_1 = float(self.dx)
+            dzndc_iter_1 = float(self.dx) # TODO need adaptation if Xrange
 
             @numba.njit
             def numba_impl(Z, U, c, stop_reason, n_iter, SA_iter,
@@ -467,4 +470,30 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         self.glitch_stop_index = 3 #reason_dyn_glitch
         self.glitch_sort_key = "dzndz"
 
+@numba.njit
+def SA_run(SA_loop, P0, n_iter, ref_path, kcX, SA_err_sq):
+    SA_valid = True
+    while SA_valid:
+        n_iter +=1
+        # keep a copy in case this iter is invalidated
+        P_old0 = P0.coeffs.copy()
+        # P_old1 = P[1].coeffs.copy()
+        P0 = SA_loop(P0, n_iter, ref_path[n_iter - 1, :], kcX)
+        
+#        coeffs_abs2 = fsxn.extended_abs2(P0.coeffs)
+        coeffs_sum = fsxn.Xrange_scalar(0., numba.int32(0))
+        for i in range(len(P0.coeffs)):
+            coeffs_sum = coeffs_sum + fsxn.extended_abs2(P0.coeffs[i])
+        err_abs2 = P0.err[0] * P0.err[0]
 
+#        coeffs_sum = np.sum(P0.coeffs.abs2())
+        SA_valid = ((err_abs2  <= SA_err_sq * coeffs_sum)
+                    and (coeffs_sum <= 1.e6)) # 1e6 to allow 'low zoom'
+        if not(SA_valid):
+            P0_ret = fsx.Xrange_polynomial(P_old0, P0.cutdeg)
+#            P0.coeffs = P_old0
+            n_iter -= 1
+        if n_iter % 500 == 0 and SA_valid:
+            print("SA running", n_iter, "err: ", P0.err,
+                  "<<", np.sqrt(coeffs_sum))
+    return P0_ret, n_iter, P0.err

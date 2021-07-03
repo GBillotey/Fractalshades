@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 import numpy as np
-import numbers
-import re
+#import numbers
+#import re
 
 import numba
-from numba.core import types, utils, typing, errors, cgutils, extending, sigutils
+from numba.core import types,cgutils # utils, typing, errors, extending, sigutils
 from numba import (
     njit,
     generated_jit
@@ -15,8 +15,8 @@ from numba.extending import (
     overload_attribute,
     overload_method,
     lower_builtin,
-    lower_getattr,
-    lower_setattr,
+#    lower_getattr,
+#    lower_setattr,
     typeof_impl,
     type_callable,
     models,
@@ -28,26 +28,25 @@ from numba.extending import (
 )
 from numba.core.imputils import impl_ret_borrowed#, lower_setattr, lower_getattr
 
-from numba.core.typing.templates import (AttributeTemplate, infer_getattr)
+# from numba.core.typing.templates import (AttributeTemplate, infer_getattr)
 #                                         AbstractTemplate, 
 #                                         signature, Registry, infer_getattr)
 
 
 
 import fractalshades.numpy_utils.xrange as fsx
-import math
+# import math
 import operator
 
 """
-The purpose of this module is to allow the use of Xrange_arrays inside numba
-jitted functions.
+Its purpose is to allow the use of Xrange_arrays, polynomials and SA objects
+inside jitted functions by defining mirrored low-level implementations.
 
 By default, Numba will treat all numpy.ndarray subtypes as if they were of the
 base numpy.ndarray type. On one side, ndarray subtypes can easily use all of
 the support that Numba has for ndarray methods ; on the other side it is not
-possible to fully customise the behavior.
-(This is likely to change in future release of Numba, see 
-https://github.com/numba/numba/pull/6148)
+possible to fully customise the behavior. (This is likely to change in future
+release of Numba, see https://github.com/numba/numba/pull/6148)
 
 The workaround followed here is to provide ad-hoc implementation at datatype
 level (in numba langage, for our specific numba.types.Record types). User code
@@ -59,6 +58,9 @@ in numba: only float64, complex128 mantissa are currently supported.
 
 NOte:
     https://numba.pydata.org/numba-doc/latest/proposals/extension-points.html
+
+/!\ This submodule has side effects at import time (due to its heavy use of
+numba operators overload) it should be imported only once (in fractalshades).
 """
 
 numba_float_types = (numba.float64,)
@@ -434,7 +436,7 @@ def extended_overload(compare_operator):
                 return compare_operator(m0_out, m1_out)
             return impl
         else:
-            raise TypingError("datatype not accepted xr_add({}, {})".format(
+            raise TypingError("datatype not accepted in compare({}, {})".format(
                 op0, op1))
 
 for compare_operator in (
@@ -1155,6 +1157,10 @@ def sa_add(op0, op1):
             new_coeffs[0] = new_coeffs[0] + op0
             return fsx.Xrange_SA(new_coeffs, op1.cutdeg, op1.err.copy())
         return impl
+    else:
+        print("!!!", op0.__class__, op1.__class__)
+        raise TypingError("sa_add, not a Xrange_SA_Type ({}, {})".format(
+            op0, op1))
 
 
 @overload(operator.mul)
@@ -1271,6 +1277,11 @@ def sa_mul(op0, op1):
             return fsx.Xrange_SA(new_coeffs, op1.cutdeg, new_err)
         return impl
 
+    else:
+        print("!!!", isinstance(op0, Xrange_SA_Type), isinstance(op1, Xrange_SA_Type))
+        raise TypingError("sa_add, not a Xrange_SA_Type ({}, {})".format(
+            op0, op1))
+
 #    elif (isinstance(op1, Xrange_SA_Type)
 #            and (op0 in xr_types)
 #            ):
@@ -1310,6 +1321,9 @@ def sa_mul(op0, op1):
 #            res[:op1_len] -= op1[:op1_len]
 #        return Xrange_polynomial(res, cutdeg=cutdeg)
 
+print("======================================================================")
+print("IMPORTED NUMBA XR ====================================================")
+print("======================================================================")
 #==============================================================================
 # DEV
 
