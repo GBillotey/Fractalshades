@@ -74,10 +74,9 @@ def plot():
              xy_ratio: float=1.0,
              dps: int= 100,
              max_iter: int=max_iter,
-             nx: int=600):#
-#             interior_detect: bool=True):
-
-        interior_detect = False # True
+             nx: int=600,
+             interior_detect: bool=True,
+             epsilon_stationnary: float=1.e-4):
         
 
 
@@ -92,7 +91,7 @@ def plot():
                        "SA_err": 1.e-6,
                        "use_Taylor_shift": True},
             glitch_eps=1.e-6, interior_detect=interior_detect,
-            glitch_max_attempt=20)
+            glitch_max_attempt=5)
 
         if not fractal.res_available():
             print("RES AVAILABLE, no compute")

@@ -334,12 +334,42 @@ def atom_wget_factory(atom_type):
         wget_dic = {int: Atom_QLineEdit,
                     float: Atom_QLineEdit,
                     str: Atom_QLineEdit,
+                    bool: Atom_QCheckBox,
                     mpmath.mpf: Atom_QPlainTextEdit, #Atom_QLineEdit,
                     type(None): Atom_QLineEdit}
         return wget_dic[atom_type]
     
 class Atom_Edit_mixin:
-    pass
+    def value(self):
+        raise NotImplementedError("Subclasses should implement")
+
+class Atom_QCheckBox(QCheckBox, Atom_Edit_mixin):
+    user_modified = pyqtSignal()
+
+    def __init__(self, atom_type, val, model, parent=None):
+        super().__init__("", parent)
+        self.setChecked(val)
+        self._type = atom_type
+#        self.textChanged[str].connect(self.validate)
+#        self.editingFinished.connect(self.on_user_event)
+#        self.setValidator(Atom_Text_Validator(atom_type, model))
+#        if atom_type is type(None):
+#            self.setReadOnly(True)
+        self.stateChanged.connect(self.on_user_event)
+
+    def value(self):
+        return self.isChecked()
+
+    def on_user_event(self):
+        print("ATOMIC UPDATED from user")
+        self.user_modified.emit()
+
+    def on_model_event(self, val):
+        print("ATOMIC UPDATED from model", val, type(val))
+        self.setChecked(val)
+#        self.setText(str(val))
+#        self.validate(self.text(), acceptable_color="#ffffff")
+
 
 class Atom_QLineEdit(QLineEdit, Atom_Edit_mixin): 
     user_modified = pyqtSignal()
@@ -722,7 +752,7 @@ class Image_widget(QWidget):
         """ Checks if the image 'zoom init' matches the parameters ;
         otherwise, updates """
         ret = 0
-        for key in ["x", "y", "dx", "xy_ratio"]:
+        for key in ["x", "y", "dx", "xy_ratio"]:#, "dps"]:
             expected = self._presenter[key]
             value = self._fractal_zoom_init[key]
             if value is None:
@@ -888,26 +918,38 @@ class Image_widget(QWidget):
         # str -> mpf as needed
         to_mpf = {k: isinstance(self._fractal_zoom_init[k], str) for k in
                   ["x", "y", "dx"]}
-        for (k, v) in to_mpf.items():
-            if v:
-                ref_zoom[k] = mpmath.mpf(ref_zoom[k])
-
-#        print("is_mpf", to_mpf, ref_zoom)
+        # We may need to increase the dps to hold sufficent digits
+        if to_mpf["dx"]:
+            ref_zoom["dx"] = mpmath.mpf(ref_zoom["dx"])
         pix = ref_zoom["dx"] / float(ref_zoom["nx"])
-        ref_zoom["x"] += center_off_px * pix
-        ref_zoom["y"] += center_off_py * pix
-        ref_zoom["dx"] = dx_pix * pix
         with mpmath.workdps(6):
-            # Sets the working dps to 10e-4 x pixel size
+            # Sets the working dps to 10e-8 x pixel size
             ref_zoom["dps"] = int(-mpmath.log10(pix * dx_pix / nx) + 8)
-        print("------*----- NEW dps from zoom", ref_zoom["dps"]  )
-        #  mpf -> str (back)
-        for (k, v) in to_mpf.items():
-            if v:
-                if k == "dx":
-                    ref_zoom[k] = mpmath.nstr(ref_zoom[k], 16)
-                else:
-                    ref_zoom[k] = str(ref_zoom[k])
+        print("------*----- NEW dps from zoom", ref_zoom["dps"])
+
+#        if ref_zoom["dps"] > mpmath.dps:
+#        zoom_dps = max(ref_zoom["dps"], mpmath.mp.dps)
+        with mpmath.workdps(ref_zoom["dps"]):
+            for k in ["x", "y"]:
+                if to_mpf[k]:
+                    ref_zoom[k] = mpmath.mpf(ref_zoom[k])
+    
+    #        print("is_mpf", to_mpf, ref_zoom)
+    
+            ref_zoom["x"] += center_off_px * pix
+            ref_zoom["y"] += center_off_py * pix
+            ref_zoom["dx"] = dx_pix * pix
+    
+            
+            
+            #  mpf -> str (back)
+            for (k, v) in to_mpf.items():
+                if v:
+                    if k == "dx":
+                        ref_zoom[k] = mpmath.nstr(ref_zoom[k], 16)
+                    else:
+                        ref_zoom[k] = str(ref_zoom[k])
+
         for key in ["x", "y", "dx", "dps"]:
             self._presenter[key] = ref_zoom[key]
         
