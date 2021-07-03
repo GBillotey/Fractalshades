@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
-import sys
+import os
+import copy
 import numpy as np
 import time
 import unittest
-import operator
 import numba
-
+import operator
+        
 # Allows relative imports when run locally as script
 # https://docs.python-guide.org/writing/structure/
 #if __name__ == "__main__":
@@ -15,11 +16,21 @@ import numba
 
 #import fractalshades.numpy_utils.xrange as fsx
 from fractalshades.numpy_utils.xrange import (
-   Xrange_array,
-   Xrange_polynomial,
-   Xrange_SA,
-   mpf_to_Xrange
+        Xrange_array,
+        Xrange_polynomial,
+        Xrange_SA,
+        mpf_to_Xrange
 )
+import fractalshades.numpy_utils.numba_xr as numba_xr
+import fractalshades.models as fsmodels
+# Allows relative imports when run locally as script
+# https://docs.python-guide.org/writing/structure/
+#if __name__ == "__main__":
+#    sys.path.insert(0, os.path.abspath(
+#            os.path.join(os.path.dirname(__file__), '..')))
+
+
+
 
 # import fractalshades.numpy_utils.numba_xr as numba_xr
 # numba_xr as side effects (defines overload) make sure we only import once
@@ -30,12 +41,12 @@ from fractalshades.numpy_utils.xrange import (
 #    print("ALREADY IMPORTED")
 #print(mumba_xr)
 
-global imported_numba_xr 
-if not "imported_numba_xr" in globals():
-    import numba_xr
-    imported_numba_xr = True
-else:
-    print("ALREADY imported")    
+#global imported_numba_xr 
+#if not "imported_numba_xr" in globals():
+#    import numba_xr
+#    imported_numba_xr = True
+#else:
+#    print("ALREADY imported")    
 
 
 from_complex = {np.complex64: np.float32,
@@ -680,11 +691,11 @@ def numba_test_polymul0(polya, polyb):
 
 @numba.njit
 def numba_test_expr(polya, polyb):
-    print()
-    p = polya * polyb
-    q = p + polya
-    return q 
-    # return polya * polyb + polya - polyb
+#    print()
+#    p = polya * polyb
+#    q = p + polya
+#    return q 
+    return polya * polyb + polya #- polyb
 
 class Test_poly_xr(unittest.TestCase):
     
@@ -823,7 +834,7 @@ class Test_poly_xr(unittest.TestCase):
                 Pb = np.polynomial.Polynomial(stdb)
                 
                 res = numba_test_expr(_Pa, _Pb)
-                expected = Pa * Pb + Pa - Pb
+                expected = Pa * Pb + Pa #- Pb
                 _matching(res.coeffs, expected.coef[:nvec], almost=True,
                           dtype=np.float64, ktol=10.)
         
@@ -852,13 +863,16 @@ def numba_test_sa_mul_0(sa0, sa1):
 def numba_test_sa_mul0(sa0, sa1):
     return sa0[0] * sa1
 
+two = Xrange_array([2.])
 @numba.njit
 def numba_SA_loop(P0, n_iter, ref_path, kcX):
-    xr_2 = numba_xr.Xrange_scalar(1j, numba.int32(1))
-    # P0 = P0 * (P0 + xr_2 * ref_path[0]) + kcX
+    xr_2 = numba_xr.Xrange_scalar(complex(2.), numba.int32(0))
+    print("xr_2", xr_2.mantissa, xr_2.exp)
+    print("two[0]", two[0].mantissa, two[0].exp)
+    P0 = P0 * (P0 +  xr_2 * ref_path[0]) + kcX
     #P0 = (P0 + xr_2 * ref_path[0]) + kcX
-    print()
-    P0 = P0 + kcX
+#    print()
+#    P0 = P0 + kcX
     return P0
 
 def std_SA_loop(P0, n_iter, ref_path, kcX):
@@ -974,15 +988,11 @@ class Test_SA_xr(unittest.TestCase):
                 _matching(res[i].coeffs, expected[i].coef)
 
     def test_SA_loop(self):
-        import fractalshades.models as fsmodels
-        import os
-        import copy
 
-        n_iter = 10
+
+        n_iter = 6
         # Loader
-        test_dir = os.path.dirname(__file__)
-
-        test_dir = "/home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/tests/images_comparison/test_M2_int_E11"
+        test_dir = os.path.join(os.path.dirname(__file__), "xdata_REF")
         file_prefix = "64SA" #"noSA"
         mandelbrot = fsmodels.Perturbation_mandelbrot(test_dir)
         mandelbrot.zoom(
@@ -995,7 +1005,7 @@ class Test_SA_xr(unittest.TestCase):
             theta_deg=0.
         )
         FP_params, ref_path = mandelbrot.reload_ref_point(0, file_prefix)
-        cutdeg = 64
+        cutdeg = 16
         kc = mandelbrot.ref_point_scaling(0, file_prefix)
 
         # Convert kc into a Xrange array (in all cases the SA iterations use
@@ -1007,15 +1017,21 @@ class Test_SA_xr(unittest.TestCase):
         P0 = Xrange_SA([0j], cutdeg=cutdeg)
         print("P0:\n", P0, P0.coeffs, P0.coeffs.dtype, type(P0.coeffs))
         
+#        ref_path = Xrange_array(ref_path)
+        
         P0_std = copy.deepcopy(P0)
         for i_iter in range(n_iter):
             n_iter +=1
+            print("i_iter", i_iter)
             # keep a copy
             
             # P_old1 = P[1].coeffs.copy()
             P0 = numba_SA_loop(P0, i_iter, ref_path[i_iter - 1, :], kcX)
-            print("P0", type(P0), P0)
             P0_std = std_SA_loop(P0_std, i_iter, ref_path[i_iter - 1, :], kcX)
+            _matching(P0.coeffs, P0_std.coeffs.to_standard(), almost=True,
+                          dtype=np.float64, ktol=20.)
+            _matching(P0.err, P0_std.err.to_standard(), almost=True,
+                          dtype=np.float64, ktol=10.)
 
 
 if __name__ == "__main__":
@@ -1029,7 +1045,19 @@ if __name__ == "__main__":
     else:
         suite = unittest.TestSuite()
 #        suite.addTest(Test_numba_xr("test_add"))
-        suite.addTest(Test_poly_xr("test_expr"))
+        # suite.addTest(Test_poly_xr("test_expr"))
         # suite.addTest(Test_SA_xr("test_expr"))
-        # suite.addTest(Test_SA_xr("test_SA_loop"))
+        suite.addTest(Test_SA_xr("test_SA_loop"))
         runner.run(suite)
+
+
+
+
+
+
+
+
+
+
+
+

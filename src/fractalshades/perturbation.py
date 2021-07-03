@@ -7,6 +7,7 @@ import mpmath
 
 import fractalshades as fs
 import fractalshades.numpy_utils.xrange as fsx
+import fractalshades.numpy_utils.numba_xr # as fsxn
 import fractalshades.settings as fssettings
 import fractalshades.utils as fsutils
 
@@ -14,19 +15,13 @@ import fractalshades.utils as fsutils
 
 class PerturbationFractal(fs.Fractal):
 
-    def __init__(self, directory):#, x, y, dx, nx, xy_ratio, theta_deg, **kwargs):
+    def __init__(self, directory):
         """
         Sames args and kwargs as Fractal except :
             - expect a "precision" integer : number of significant digits
             - x and y input as strings
         """
-#        mpmath.mp.dps = kwargs.pop("precision")
-#        x = mpmath.mpf(x)
-#        y = mpmath.mpf(y)
-#        dx = mpmath.mpf(dx)
-#        self.ref_array = {}
-        super().__init__(directory)#, x, y, dx, nx, xy_ratio, theta_deg,
-             #**kwargs)
+        super().__init__(directory)
 
     @fsutils.zoom_options
     def zoom(self, *,
@@ -41,12 +36,11 @@ class PerturbationFractal(fs.Fractal):
              antialiasing: bool=False):
         mpmath.mp.dps = precision
         # In case the user inputs were strings, we override with mpmath scalars
-        self.x = mpmath.mpf(x)   
+        self.x = mpmath.mpf(x)
         self.y = mpmath.mpf(y)
         self.dx = mpmath.mpf(dx)
         # Lazzy dictionary of reference point pathes
         self._ref_array = {}
-        
 
     def diff_c_chunk(self, chunk_slice, iref, file_prefix,
                      ensure_Xr=False):
@@ -63,7 +57,7 @@ class PerturbationFractal(fs.Fractal):
         """
         offset_x, offset_y = self.offset_chunk(chunk_slice, ensure_Xr)
         FP_params = self.reload_ref_point(iref, file_prefix, scan_only=True)
-        drift_rp = (self.x + 1.j * self.y) - FP_params["ref_point"] #.imag
+        drift_rp = (self.x + 1j * self.y) - FP_params["ref_point"] #.imag
         print("DIFF c_chunk Shifting c with respect to iref", iref, drift_rp)
         print("Shift in pc", drift_rp.real / self.dx, drift_rp.imag / self.dy)
         
@@ -133,11 +127,11 @@ class PerturbationFractal(fs.Fractal):
         
         kc: full precision, scaling coefficient
         """
-        c0 = self.x + 1.j * self.y
-        corner_a = c0 + 0.5 * (self.dx + 1.j * self.dy)
-        corner_b = c0 + 0.5 * (- self.dx + 1.j * self.dy)
-        corner_c = c0 + 0.5 * (- self.dx - 1.j * self.dy)
-        corner_d = c0 + 0.5 * (self.dx - 1.j * self.dy)
+        c0 = self.x + 1j * self.y
+        corner_a = c0 + 0.5 * (self.dx + 1j * self.dy)
+        corner_b = c0 + 0.5 * (- self.dx + 1j * self.dy)
+        corner_c = c0 + 0.5 * (- self.dx - 1j * self.dy)
+        corner_d = c0 + 0.5 * (self.dx - 1j * self.dy)
         ref = self.reload_ref_point(
                 iref, file_prefix,scan_only=True)["ref_point"]
         print("ref point for SA", ref)
@@ -262,8 +256,7 @@ class PerturbationFractal(fs.Fractal):
         self.iref = 0
 
         FP_params, ref_path = self.ensure_ref_point(self.FP_loop(),
-                self.max_iter, file_prefix, iref=self.iref,
-                c0=None)
+                self.max_iter, file_prefix, iref=self.iref, c0=None)
         FP_params0 = self.reload_ref_point(0, file_prefix, scan_only=True)
 
         # If SA is activated :
@@ -401,10 +394,10 @@ class PerturbationFractal(fs.Fractal):
                       offset_y[min_glitch_arg] / self.dy)
 
             if self.Xrange_complex_type:
-                ci = (self.x + fsx.Xrange_to_mpfc(offset_x[min_glitch_arg]) + 1.j
+                ci = (self.x + fsx.Xrange_to_mpfc(offset_x[min_glitch_arg]) + 1j
                       * (self.y + fsx.Xrange_to_mpfc(offset_y[min_glitch_arg])))
             else:
-                ci = (self.x + offset_x[min_glitch_arg] + 1.j
+                ci = (self.x + offset_x[min_glitch_arg] + 1j
                       * (self.y + offset_y[min_glitch_arg]))
             # Overall slightly counter-productive to add a Newton step here
             # (less robust), we keep the raw selected point
@@ -673,14 +666,13 @@ class PerturbationFractal(fs.Fractal):
                          randomize=False):
         """
         # Check if we have a reference point stored for iref, 
-          - otherwise computes and stores it
-          - than load it and return FP_params, Z_path
+          - otherwise computes and stores it in a file
         
         newton: ["cv", "step", None]
         """
         if self.ref_point_count(file_prefix) <= iref:
             if c0 is None:
-                c0 = self.x + 1.j * self.y
+                c0 = self.x + 1j * self.y
                 
             if randomize:
                 data_type = self.base_float_type
@@ -688,10 +680,10 @@ class PerturbationFractal(fs.Fractal):
                 diff = rg.random([2], dtype=data_type) * randomize
                 print("RANDOMIZE, diff", diff)
                 c0 = (c0 + self.dx * (diff[0] - 0.5) + 
-                                      self.dy * (diff[1] - 0.5) * 1.j)
+                                      self.dy * (diff[1] - 0.5) * 1j)
             pt = c0
             print("Proposed ref point:\n", c0)
-                
+
             if (newton is not None) and (newton != "None"):
                 if order is None:
                     # k_ball = 0.5
@@ -720,7 +712,7 @@ class PerturbationFractal(fs.Fractal):
                         c0, order, max_newton=max_newton)
 
                 if newton_cv or (newton == "step"):
-                    shift = nucleus - (self.x + self.y * 1.j)
+                    shift = nucleus - (self.x + self.y * 1j)
                     print("Reference nucleus at:\n", nucleus, order)
                     print("With shift % from image center:\n",
                           shift.real / self.dx, shift.imag / self.dy)
