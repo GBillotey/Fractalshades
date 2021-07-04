@@ -8,7 +8,7 @@ import fractalshades.models as fsm
 import fractalshades.settings as settings
 import fractalshades.colors as fscolors
 
-# STATUS : solved
+# STATUS : failed
 
 
 settings.enable_multiprocessing = True
@@ -19,13 +19,13 @@ fractal = fsm.Perturbation_mandelbrot(directory)
 
 
 file_prefix = 'known_fail'
-x = '-1.36768994867991128'
-y = '0.00949048853859240532'
-dx = '2.477633848347765e-8'
+x = '0.351543039596551284795560321298313956026654945439649'
+y = '-0.0844280975691686526898147774351912949741457039250628'
+dx = '1.229672851710271e-41'
 xy_ratio = 1.0
-dps = 18
-max_iter = 50000
-nx = 1600
+dps = 51
+max_iter = 200000
+nx = 600
 interior_detect = True
 epsilon_stationnary = 0.0001
 
