@@ -7,14 +7,13 @@ import fractalshades as fs
 import fractalshades.models as fsm
 import fractalshades.settings as settings
 import fractalshades.colors as fscolors
-#import fractalshades.gui as fsgui
 
-
+# STATUS : solved
 
 settings.enable_multiprocessing = True
 
 fail_dir = os.path.dirname(__file__)
-directory = os.path.join(fail_dir, "fail1")
+directory = os.path.join(fail_dir, "_data", "fail1")
 fractal = fsm.Perturbation_mandelbrot(directory)
 
 

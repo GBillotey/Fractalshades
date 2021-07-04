@@ -4,6 +4,12 @@ https://blog.ionelmc.ro/2014/05/25/python-packaging/
 
 Packaging
 https://packaging.python.org/tutorials/packaging-projects/
+https://docs.python.org/3/distutils/configfile.html
+https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/#creating-a-virtual-environment
+https://setuptools.readthedocs.io/en/latest/userguide/dependency_management.html
+
+python3 -m pip uninstall fractalshades_G_BILLOTEY
+
 
 Requirement
 wx.python
