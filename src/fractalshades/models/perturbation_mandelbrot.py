@@ -422,6 +422,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                     stop_reason[0] = reason_max_iter
                     return
 
+                # Flagged as 'diverging ref pt glitch'
                 if n_iter >= ref_div_iter:
                     stop_reason[0] = reason_div_glitch
                     return
@@ -493,7 +494,8 @@ def SA_run(SA_loop, P0, n_iter, ref_path, kcX, SA_err_sq):
             P0_ret = fsx.Xrange_polynomial(P_old0, P0.cutdeg)
 #            P0.coeffs = P_old0
             n_iter -= 1
-        if n_iter % 500 == 0 and SA_valid:
+        if n_iter % 5000 == 0 and SA_valid:
+            ssum = np.sqrt(coeffs_sum)
             print("SA running", n_iter, "err: ", P0.err,
-                  "<<", np.sqrt(coeffs_sum))
+                  "<< [(", ssum.mantissa, ",", ssum.exp, ")]")
     return P0_ret, n_iter, P0.err

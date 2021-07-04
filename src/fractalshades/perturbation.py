@@ -4,6 +4,7 @@ import os
 import pickle
 import copy
 import mpmath
+import random
 
 import fractalshades as fs
 import fractalshades.numpy_utils.xrange as fsx
@@ -287,12 +288,12 @@ class PerturbationFractal(fs.Fractal):
         glitch_sort_key = self.glitch_sort_key
         glitch_stop_index = self.glitch_stop_index
 
-        glitched = fs.Fractal_Data_array(self, file_prefix=file_prefix,
+        dyn_glitched = fs.Fractal_Data_array(self, file_prefix=file_prefix,
                 postproc_keys=('stop_reason',
                 lambda x: x == self.glitch_stop_index), mode="r+raw")
         # We store this one as an attribute, as this is the pixels which will
         # need an update "escaped_or_glitched"
-        self.escaped_or_glitched = fs.Fractal_Data_array(self,
+        self.all_glitched = fs.Fractal_Data_array(self,
                 file_prefix=file_prefix, postproc_keys=('stop_reason',
                     lambda x: x >= glitch_stop_index), mode="r+raw")
         glitch_sorts = fs.Fractal_Data_array(self, file_prefix=file_prefix,
@@ -306,9 +307,14 @@ class PerturbationFractal(fs.Fractal):
         
         # This looping is for dynamic glitches, we loop the largest glitches
         # first, a glitch being defined as 'same stop iteration'
-        print("ANY glitched ? ", glitched.nansum())
 
-        while (self.iref < self.glitch_max_attempt) and glitched.nanmax():
+        all_glitch_count = self.all_glitched.nansum()
+        dyn_glitch_count = dyn_glitched.nansum()
+        print("ANY glitched ? ", dyn_glitch_count, all_glitch_count)
+
+        while ((self.iref < self.glitch_max_attempt)
+               and (all_glitch_count > 0)
+            ):#glitched.nanmax():
 #            _gcc += 1
 
             self.iref += 1
@@ -321,69 +327,41 @@ class PerturbationFractal(fs.Fractal):
 
 
             print("with glitch pixel total count",
-                  glitched.nansum(), glitch_sort_key)
+                  dyn_glitch_count, glitch_sort_key)
             print("with glitch and escaped pixel combined count",
-                  self.escaped_or_glitched.nansum())
+                  all_glitch_count)
 
-            # Need to find the minimum ie highest 'priority'
-            glitch_bincount = np.zeros([max_iter], dtype=np.int32)
-            for chunk_slice in self.chunk_slices():
-                stop_iter = stop_iters[chunk_slice]
-                chunck_glitched = glitched[chunk_slice]
-                glitch_bincount += np.bincount(stop_iter[chunck_glitched],
-                                               minlength=max_iter)
-
-            glitch_size = np.max(glitch_bincount)
-            glitch_iter = np.argmax(glitch_bincount)
-            print("check sum", np.sum(glitch_bincount))
-            
-            indices = np.arange(max_iter)
-            print('non null glitch iter', indices[glitch_bincount != 0])
-            print('non null glitch counts', glitch_bincount[glitch_bincount != 0])
-#            first_glitch_iter = (indices[glitch_bincount != 0])[0]
-#            first_glitch_size = glitch_bincount[first_glitch_iter]
-            
-            del glitch_bincount
-            print("Largest glitch (pts: {}, iter: {})".format(
-                    glitch_size, glitch_iter))
-#            print("First glitch (pts: {}, iter: {})".format(
-#                    first_glitch_size, first_glitch_iter))
+            if dyn_glitch_count > 0:
+                glitched = dyn_glitched
+                flag = 'dyn'
+            else:
+                glitched = self.all_glitched
+                flag = 'escape'
+                print("ESCAPE GLITCH !!!")
+                
 
             # Minimize sort criteria over the selected glitch
-            min_glitch = np.inf
-            min_glitch_chunk = None
-            min_glitch_arg = None
-            for chunk_slice in self.chunk_slices():
-                glitch_sort = (glitch_sorts[chunk_slice]).real
-                if self.Xrange_complex_type:
-                    glitch_sort = glitch_sort.view(fsx.Xrange_array
-                                                   ).to_standard()
+            if flag == 'dyn':
+                glitch_iter = self.largest_glitch_iter(stop_iters, glitched)
+                (min_glitch_chunk, min_glitch_arg
+                ) = self.min_glitch_pt(
+                         glitch_sorts, stop_iters, glitched, glitch_iter)
+            elif flag == 'escape':
+                 print("ESCAPE mode, count", all_glitch_count)
+                 (min_glitch_chunk, min_glitch_arg
+                 ) = self.random_glitch_pt(all_glitch_count,
+                                            self.all_glitched)
 
-                # Non-glitched pixel disregarded
-                chunck_glitched = glitched[chunk_slice]
-                glitch_sort[~chunck_glitched] = np.inf
-
-                # Glitched with non-target iter disregarded
-                stop_iter = stop_iters[chunk_slice]
-                is_glitch_iter = (stop_iter == glitch_iter)
-                glitch_sort[~is_glitch_iter] = np.inf
-
-                chunk_min = np.nanmin(glitch_sort)
-                if chunk_min < min_glitch:
-                    chunk_argmin = np.nanargmin(glitch_sort)
-                    min_glitch_chunk = chunk_slice
-                    min_glitch_arg = chunk_argmin
-            print("Minimal criteria reached at", min_glitch_chunk, min_glitch_arg)
-
+            print("candidate",flag, min_glitch_chunk, min_glitch_arg)
             # Now lets define ci. offset from image center is known
             offset_x, offset_y = self.offset_chunk(min_glitch_chunk)
-            offset_x = np.ravel(offset_x)
-            offset_y = np.ravel(offset_y)
-            if self.subset is not None:
-                chunk_mask = np.ravel(self.subset[chunk_slice])
-                offset_x = offset_x[chunk_mask]
-                offset_y = offset_y[chunk_mask]
-            
+#            offset_x = np.ravel(offset_x)
+#            offset_y = np.ravel(offset_y)
+#            if self.subset is not None:
+#                chunk_mask = np.ravel(self.subset[min_glitch_chunk])
+#                offset_x = offset_x[chunk_mask]
+#                offset_y = offset_y[chunk_mask]
+
             if self.Xrange_complex_type:
                 print("With shift from center coords:\n",
                       fsx.Xrange_to_mpfc(offset_x[min_glitch_arg]) / self.dx,
@@ -399,10 +377,16 @@ class PerturbationFractal(fs.Fractal):
             else:
                 ci = (self.x + offset_x[min_glitch_arg] + 1j
                       * (self.y + offset_y[min_glitch_arg]))
-            # Overall slightly counter-productive to add a Newton step here
-            # (less robust), we keep the raw selected point
-            FP_params, Z_path = self.ensure_ref_point(self.FP_loop(), max_iter,
-                file_prefix, iref=self.iref, c0=ci, newton="None", order=glitch_iter)
+            
+            if flag == 'dyn':
+                # Overall slightly counter-productive to add a Newton step here
+                # (less robust), we keep the raw selected point
+                FP_params, Z_path = self.ensure_ref_point(self.FP_loop(), max_iter,
+                    file_prefix, iref=self.iref, c0=ci, newton="None", order=glitch_iter)
+            elif flag == 'escape':
+                # just keep the raw point
+                FP_params, Z_path = self.ensure_ref_point(self.FP_loop(), max_iter,
+                    file_prefix, iref=self.iref, c0=ci, newton="None", order=-1)
 
             if (SA_params is not None):
                 print("SA_params cutdeg / iref:",
@@ -443,6 +427,8 @@ class PerturbationFractal(fs.Fractal):
                             self.SA_loop(), SA_params, self.iref, file_prefix)
                         self.save_SA(SA_params, self.iref, file_prefix)
 
+
+
             self.cycles(chunk_slice=None, SA_params=SA_params)
             
 #            glitched = fs.Fractal_Data_array(self, file_prefix=file_prefix,
@@ -450,9 +436,124 @@ class PerturbationFractal(fs.Fractal):
 #                    lambda x: x == glitch_stop_index), mode="r+raw")
 
             # Recomputing the exit condition
-            print("ANY glitched ? ", glitched.nansum())
+            all_glitch_count = self.all_glitched.nansum()
+            dyn_glitch_count = dyn_glitched.nansum()
+            print("ANY glitched ? ", all_glitch_count)
 
 
+    def largest_glitch_iter(self, stop_iters, glitched):
+        """
+        Return the stop iteration with the largest number of pixel
+        stop_iters: *Fractal_Data_array* wrapping the pixel stop iteration
+        glitched: *Fractal_Data_array* wrapping the dyn glitched pixel bool
+        """
+        max_iter = self.max_iter
+        glitch_bincount = np.zeros([max_iter], dtype=np.int32)
+        for chunk_slice in self.chunk_slices():
+            stop_iter = stop_iters[chunk_slice]
+            chunck_glitched = glitched[chunk_slice]
+            glitch_bincount += np.bincount(stop_iter[chunck_glitched],
+                                           minlength=max_iter)
+
+        glitch_size = np.max(glitch_bincount)
+        glitch_iter = np.argmax(glitch_bincount)
+
+        debug = False
+        if debug:
+            print("check sum", np.sum(glitch_bincount))
+            indices = np.arange(max_iter)
+            print('non null glitch iter',
+                  indices[glitch_bincount != 0])
+            print('non null glitch counts',
+                  glitch_bincount[glitch_bincount != 0])
+        print("Largest glitch (pts: {}, iter: {})".format(
+                glitch_size, glitch_iter))
+
+        return glitch_iter
+
+    def min_glitch_pt(self, glitch_sorts, stop_iters, glitched, glitch_iter):
+        """
+        Return localisation of minimal pixel in a dyn glitch
+        glitch_sorts: *Fractal_Data_array* wrapping the array used to sort
+        stop_iters: *Fractal_Data_array* wrapping the pixel stop iteration
+        glitched: *Fractal_Data_array* wrapping the dyn glitched pixel bool
+        glitch_iter: The largest dyn glitch happens at this iter
+        """
+        min_glitch = np.inf
+        min_glitch_chunk = None
+        min_glitch_arg = None
+        for chunk_slice in self.chunk_slices():
+            glitch_sort = (glitch_sorts[chunk_slice]).real
+#            print("debug, glitch_sort", glitch_sort.shape, glitch_sorts[chunk_slice].shape)
+
+            if self.Xrange_complex_type:
+                glitch_sort = glitch_sort.view(fsx.Xrange_array
+                                               ).to_standard()
+
+#            chunk_min = np.nanmin(glitch_sort) # debug
+            # Non-glitched pixel disregarded
+            chunck_glitched = glitched[chunk_slice]
+            glitch_sort[~chunck_glitched] = np.inf
+
+            # Glitched with non-target iter disregarded
+            stop_iter = stop_iters[chunk_slice]
+            is_glitch_iter = (stop_iter == glitch_iter)
+            glitch_sort[~is_glitch_iter] = np.inf
+#            print("debug2, glitch_sort", glitch_sort.shape)
+
+            chunk_min = np.nanmin(glitch_sort)
+            if chunk_min < min_glitch:
+#                print("debug3, glitch_sort", glitch_sort.shape)
+                chunk_argmin = np.nanargmin(glitch_sort)
+#                print("debug3, chunk_argmin", chunk_argmin, np.unravel_index(chunk_argmin, glitch_sort.shape))
+                min_glitch_chunk = chunk_slice
+                min_glitch_arg = np.unravel_index(chunk_argmin,
+                                                  glitch_sort.shape)
+
+        print("Minimal criteria reached at", min_glitch_chunk, min_glitch_arg)
+        return min_glitch_chunk, min_glitch_arg
+
+    def random_glitch_pt(self, glitch_count, glitched):
+        """
+        Return localisation of a random pixel in a glitch
+        glitch_count: int, the number of glitched pixels
+        glitched: *Fractal_Data_array* wrapping the dyn glitched pixel bool
+        """
+        rd_int = random.randrange(0, glitch_count)
+        for chunk_slice in self.chunk_slices():
+            chunck_glitched = glitched[chunk_slice]
+            glitched_count = np.sum(chunck_glitched)
+#            print("counting", rd_int, glitched_count)
+            if rd_int < glitched_count:
+                nz0, nz1 = np.nonzero(chunck_glitched)
+                rd_index = (nz0[rd_int], nz1[rd_int])
+#                print("found index", chunck_glitched.shape, rd_index)
+                return(chunk_slice, rd_index)
+            else:
+                rd_int -= glitched_count
+        # If we are hre, raise 
+        raise RuntimeError("glitch_count does not match glitched")
+
+
+#    def random_glitch_pt(self, glitch_count, glitched):
+#        """
+#        Return localisation of a random pixel in a glitch
+#        glitch_count: int, the number of glitched pixels
+#        glitched: *Fractal_Data_array* wrapping the dyn glitched pixel bool
+#        """
+#        rd_int = random.randrange(0, glitch_count)
+#        for chunk_slice in self.chunk_slices():
+#            chunck_glitched = glitched[chunk_slice]
+#            glitched_count = np.sum(chunck_glitched)
+#            print("counting", rd_int, glitched_count)
+#            if rd_int < glitched_count:
+#                rd_index = np.nonzero(chunck_glitched)[rd_int]
+#                print("foud index", glitched.shape, rd_index)
+#                return(chunk_slice, rd_index)
+#            else:
+#                rd_int -= glitched_count
+
+        
 
     def param_matching(self, dparams):
         """
@@ -498,7 +599,7 @@ class PerturbationFractal(fs.Fractal):
         
         # We are in the case where a file exists but not updated to the irefs
         # do we need to actually do something ?
-        glitched_chunk = np.ravel(self.escaped_or_glitched[chunk_slice])
+        glitched_chunk = np.ravel(self.all_glitched[chunk_slice])
         if np.any(glitched_chunk):
             print("Glitch correction triggered, computing")
             return False
@@ -592,7 +693,7 @@ class PerturbationFractal(fs.Fractal):
             # We are in a glitch correction loop, only glitched index are 
             # active. Or rather "escaped_or_glitched" (including glitches due
             # to reference point prematurate exit).
-            glitched_chunk = np.ravel(self.escaped_or_glitched[chunk_slice])
+            glitched_chunk = np.ravel(self.all_glitched[chunk_slice])
             if self.subset is not None:
                 glitched_chunk = glitched_chunk[chunk_mask]
             bool_active = glitched_chunk
@@ -670,85 +771,88 @@ class PerturbationFractal(fs.Fractal):
         
         newton: ["cv", "step", None]
         """
-        if self.ref_point_count(file_prefix) <= iref:
-            if c0 is None:
-                c0 = self.x + 1j * self.y
-                
-            if randomize:
-                data_type = self.base_float_type
-                rg = np.random.default_rng(0)
-                diff = rg.random([2], dtype=data_type) * randomize
-                print("RANDOMIZE, diff", diff)
-                c0 = (c0 + self.dx * (diff[0] - 0.5) + 
-                                      self.dy * (diff[1] - 0.5) * 1j)
-            pt = c0
-            print("Proposed ref point:\n", c0)
+        
+        # Early escape if file exists
+        if self.ref_point_count(file_prefix) > iref:
+            FP_params, Z_path = self.reload_ref_point(iref, file_prefix)
+            pt = FP_params["ref_point"]
+            print("reloading ref point", iref, pt, "center", self.x + 1j * self.y)
+            return FP_params, Z_path
 
-            if (newton is not None) and (newton != "None"):
-                if order is None:
-                    # k_ball = 0.5
-                    order = self.ball_method(c0,
-                            max(self.dx, self.dy) * 0.01, max_iter)
-                    if order is None: # ball method escaped...
+#        if self.ref_point_count(file_prefix) <= iref:
+        if c0 is None:
+            c0 = self.x + 1j * self.y
+
+        if randomize:
+            data_type = self.base_float_type
+            rg = np.random.default_rng(0)
+            diff = rg.random([2], dtype=data_type) * randomize
+            print("RANDOMIZE, diff", diff)
+            c0 = (c0 + self.dx * (diff[0] - 0.5)
+                + self.dy * (diff[1] - 0.5) * 1j)
+
+        pt = c0
+        print("Proposed ref point:\n", c0)
+
+        # If we plan a newton iteration, we lauche the process
+        # ball method to find the order, than Newton
+        if (newton is not None) and (newton != "None"):
+            if order is None:
+                k_ball = 0.1
+                order = self.ball_method(
+                    c0, max(self.dx, self.dy) * k_ball, max_iter)
+                if order is None: # ball method escaped... we try to recover
+                    if randomize < 5:
                         randomize += 1
-                        print("ESCAPED BALL METHOD", randomize)
+                        print("BALL METHOD RANDOM ", randomize)
                         self.ensure_ref_point(FP_loop, max_iter, file_prefix,
                                  iref=0, c0=None, newton="cv", order=None,
                                  randomize=randomize)
+                    else:
+                        raise ValueError("Ball method failed")
 
-                max_newton = 1 if (newton == "step") else 50 #None
-                print("newton ", newton, " with order: ", order)
-                print("max newton iter ", max_newton)
+            max_newton = 1 if (newton == "step") else None
+            print("newton ", newton, " with order: ", order)
+            print("max newton iter ", max_newton)
 
-                newton_cv, nucleus = self.find_nucleus(
-                        c0, order, max_newton=max_newton)
+            newton_cv, nucleus = self.find_nucleus(
+                    c0, order, max_newton=max_newton)
 
-                if not(newton_cv) and (newton != "step"):
+            if not(newton_cv) and (newton != "step"):
+                attempt = 0
+                while not(newton_cv) and attempt < 2:
+                    attempt += 1
+                    old_dps = mpmath.mp.dps
+                    mpmath.mp.dps = int(1.25 * old_dps)
+                    print("Newton not cv, dps boost to: ", mpmath.mp.dps)
                     newton_cv, nucleus = self.find_any_nucleus(
                         c0, order, max_newton=max_newton)
+#                    newton_cv, nucleus = self.find_any_nucleus(
+#                        c0, order, max_newton=max_newton)
 
-                if not(newton_cv) and (newton != "step"):
-                    newton_cv, nucleus = self.find_any_attracting(
-                        c0, order, max_newton=max_newton)
+#                if not(newton_cv) and (newton != "step"):
+#                    newton_cv, nucleus = self.find_any_attracting(
+#                        c0, order, max_newton=max_newton)
 
-                if newton_cv or (newton == "step"):
-                    shift = nucleus - (self.x + self.y * 1j)
-                    print("Reference nucleus at:\n", nucleus, order)
-                    print("With shift % from image center:\n",
-                          shift.real / self.dx, shift.imag / self.dy)
-                    shift = nucleus - pt
-                    print("With shift % from proposed coords:\n",
-                          shift.real / self.dx, shift.imag / self.dy)
-                else:
-                    
-#                    shift = nucleus - (self.x + self.y * 1.j)
-#                    print("NEWTON FAILED, try nucleus at:\n", nucleus, order)
-#                    print("With shift % from image center:\n",
-#                          shift.real / self.dx, shift.imag / self.dy)
-#                    shift = nucleus - pt
-#                    print("With shift % from proposed coords:\n",
-#                          shift.real / self.dx, shift.imag / self.dy)
+            if newton_cv or (newton == "step"):
+                shift = nucleus - (self.x + self.y * 1j)
+                print("Reference nucleus at:\n", nucleus, order)
+                print("With shift % from image center:\n",
+                      shift.real / self.dx, shift.imag / self.dy)
+                shift = nucleus - pt
+                print("With shift % from proposed coords:\n",
+                      shift.real / self.dx, shift.imag / self.dy)
+            else:
+                raise ValueError("Newton failed with order", order)
 
-                    raise ValueError("Newton failed with order", order)
-                    
-#                    data_type = self.base_float_type
-#                    rg = np.random.default_rng(0)
-#                    diff = rg.random([2], dtype=data_type)
-#                    c_shifted = (c0 + self.dx * (diff[0] - 0.5) + 
-#                                      self.dy * (diff[1] - 0.5) * 1.j)
-#                    k_ball *= 2.
-#                    print("*** Newton failed,")
-#                    print("*** Relauch with shifted ref point, ", diff, "k_ball", k_ball)
-#                    return self.ensure_ref_point(FP_loop, max_iter,
-#                        file_prefix, iref, c0=c_shifted, k_ball=k_ball)
-                pt = nucleus
+            pt = nucleus
 
-            print("compute ref_point", iref, pt, "\ncenter:\n",
-                  self.x + 1j * self.y)
-            FP_params, Z_path = self.compute_ref_point(
-                    FP_loop, pt, max_iter, iref, file_prefix, order)
+        print("compute ref_point", iref, pt, "\ncenter:\n",
+              self.x + 1j * self.y)
+        FP_params, Z_path = self.compute_ref_point(
+                FP_loop, pt, max_iter, iref, file_prefix, order)
 
-            # TODO : known failed
+        # TODO : known failed
 #            div_ref_pt = (FP_params.get("div_iter", None) is not None)
 #            if div_ref_pt and (newton != "step"):
 #                print("div_ref_pt", randomize)
@@ -763,10 +867,7 @@ class PerturbationFractal(fs.Fractal):
 #                         iref=0, c0=None, newton="cv", order=None,
 #                         randomize=randomize)
                 
-        else:
-            FP_params, Z_path = self.reload_ref_point(iref, file_prefix)
-            pt = FP_params["ref_point"]
-            print("reloading ref point", iref, pt, "center", self.x + 1j * self.y)
+
 
         return FP_params,  Z_path
 
@@ -787,10 +888,13 @@ class PerturbationFractal(fs.Fractal):
 
         Z_path = np.empty([max_iter + 1, len(FP_codes)],
                           dtype=self.base_complex_type)
+#        Z_path = np.zeros([max_iter + 1, len(FP_codes)],
+#                          dtype=self.base_complex_type)
         Z_path[0, :] = np.array(FP_array)
 
         # Now looping and storing ...
-        FP_params.pop('div_iter', None) # delete key div_iter
+#        FP_params.pop('div_iter', None) # delete key div_iter / not needed !
+        print("Computing full precision path starting at: \n", c)
         for n_iter in range(1, max_iter + 1):
             if n_iter % 5000 == 0:
                 print("Full precision iteration: ", n_iter)
