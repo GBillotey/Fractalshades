@@ -27,7 +27,7 @@ def compare_png(ref_file, test_file):
 class Test_Perturbation_mandelbrot(unittest.TestCase):
         
     def setUp(self):
-        image_dir = os.path.join(test_config.test_dir, "images_comparison")
+        image_dir = os.path.join(test_config.test_dir, "_images_comparison")
 
         fsutils.mkdir_p(image_dir)
         self.image_dir = image_dir

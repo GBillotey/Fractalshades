@@ -31,6 +31,8 @@ class Fractal_Data_array():
     def __init__(self, fractal, file_prefix=None, postproc_keys=None,
                  mode="r_raw"):
         """
+        Wrapper around a set of tiled data.
+
         mode :
             r+raw          direct read of stored file (from file_prefix)
             r+postproc     postproc layer on stored file (from file_prefix)
@@ -38,7 +40,7 @@ class Fractal_Data_array():
 
         postproc_keys:
             mode r+raw : tuple (code, None) or (code, function)
-            mode r+postproc : as expected by Fractal.postproc
+            mode r+postproc : postproc_keys is transferred to Fractal.postproc
             mode rw+temp : ignored
         """
         self.fractal = fractal
@@ -128,14 +130,14 @@ class Fractal_Data_array():
                 for val in self._ref.values():
                     val.close()
   
-    def __iter__(self):
+    def __iter__(self):  # TODO : is it actually still used ????
         """
         Iterate the Fractal_Data_array by chunks.
         Note: Should make min, max just work.
         """
         for chunk_slice in self.fractal.chunk_slices():
             yield self[chunk_slice]
-            
+
     def nanmax(self):
         """ extension of np.nanmax """
         return np.nanmax([np.nanmax(chunk) for chunk in self])

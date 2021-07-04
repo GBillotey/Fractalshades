@@ -1,4 +1,5 @@
 graft tests
 graft docs
 global-exclude *.py[cod] __pycache__ *.so
-
+global-exclude tests/_images_comparison/*
+global-exclude tests/known_fails/_data/*
