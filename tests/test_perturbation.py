@@ -154,13 +154,94 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
             self.assertTrue(err < 0.01)
 
 
+    @test_config.no_stdout
+    def test_glitch_divref(self):
+        """
+        Testing based on fail2 test case
+        """
+        x = '-1.36768994867991128'
+        y = '0.00949048853859240532'
+        dx = '2.477633848347765e-8'
+        precision = 18
+        nx = 1600
+        test_name = self.test_glitch_divref.__name__
+        prefix="fail2"
+
+        black = np.array([0, 0, 0]) / 255.
+        citrus2 = np.array([103, 189, 0]) / 255.
+
+        colors1 = np.vstack((citrus2[np.newaxis, :]))
+        colors2 = np.vstack((black[np.newaxis, :]))
+        colormap = fscolors.Fractal_colormap(kinds="Lch", colors1=colors1,
+            colors2=colors2, n=200, funcs=None, extent="mirror")
+
+        grey_layer_key = ("DEM_shade", {"kind": "potential",
+                            "theta_LS": 30.,
+                            "phi_LS": 70.,
+                            "shininess": 300.,
+                            "ratio_specular": 15000.})
+    
+        test_file = self.make_M2_img(x, y, dx, precision, nx,
+            np.complex128, test_name, prefix, interior_detect=True,
+            mask_codes=[2], antialiasing=True, colormap=colormap,
+            probes_val=[0.25, 0.75], grey_layer_key=grey_layer_key,
+            blur_ranges=[[0.8, 0.95, 1.0]], hardness=0.9, intensity=0.8,
+            glitch_max_attempt=10)
+        ref_file = os.path.join(self.image_dir_ref, test_name + ".png")
+        err = compare_png(ref_file, test_file)
+        self.assertTrue(err < 0.02)
+
+    @test_config.no_stdout
+    def test_glitch_dyn(self):
+        """
+        Testing based on Dinkydau "Flake" test case
+        """
+        x = "-1.99996619445037030418434688506350579675531241540724851511761922944801584242342684381376129778868913812287046406560949864353810575744772166485672496092803920095332"
+        y = "0.00000000000000000000000000000000030013824367909383240724973039775924987346831190773335270174257280120474975614823581185647299288414075519224186504978181625478529"
+        dx = "1.8e-157"
+        precision = 200
+
+        nx = 1600
+        test_name = self.test_glitch_dyn.__name__
+        prefix="flake"
+
+        black = np.array([0, 0, 0]) / 255.
+        purple = np.array([181, 40, 99]) / 255.
+
+        colors1 = np.vstack((black[np.newaxis, :]))
+        colors2 = np.vstack((purple[np.newaxis, :]))
+        colormap = fscolors.Fractal_colormap(kinds="Lab", colors1=colors1,
+            colors2=colors2, n=200, funcs=None, extent="mirror")
+
+        grey_layer_key = ("DEM_shade", {"kind": "potential",
+                            "theta_LS": 30.,
+                            "phi_LS": 70.,
+                            "shininess": 300.,
+                            "ratio_specular": 15000.})
+        SA_params={"cutdeg": 8,
+                   "cutdeg_glitch": 8,
+                   "SA_err": 1.e-4,
+                   "use_Taylor_shift": True}
+
+        test_file = self.make_M2_img(x, y, dx, precision, nx,
+            np.complex128, test_name, prefix, interior_detect=True,
+            mask_codes=[2], antialiasing=True, colormap=colormap,
+            probes_val=[0.3, 0.5], grey_layer_key=grey_layer_key,
+            blur_ranges=[[0.98, 0.995, 1.0]], hardness=0.9, intensity=0.8,
+            glitch_max_attempt=10, xy_ratio=0.5,SA_params=SA_params)
+        ref_file = os.path.join(self.image_dir_ref, test_name + ".png")
+        err = compare_png(ref_file, test_file)
+        self.assertTrue(err < 0.02)
+
+    @test_config.no_stdout
     def make_M2_img(self, x, y, dx, precision, nx, complex_type, test_name,
                     prefix, interior_detect=False, mask_codes=[3, 4], 
                     SA_params={"cutdeg": 64, "cutdeg_glitch": 8},
                     antialiasing=False, colormap=None, hardness=0.75,
                     intensity=0.95,
                     probes_val=[0., 0.25], blur_ranges=[],
-                    grey_layer_key=None):
+                    grey_layer_key=None,
+                    glitch_max_attempt=1, xy_ratio=1.0):
         """
         
         """
@@ -173,7 +254,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
              y=y,
              dx=dx,
              nx=nx,
-             xy_ratio=1.,
+             xy_ratio=xy_ratio,
              theta_deg=0.,
              projection="cartesian",
              antialiasing=antialiasing)
@@ -190,7 +271,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
             SA_params=SA_params,
             glitch_eps=1.e-6,
             interior_detect=interior_detect,
-            glitch_max_attempt=1)
+            glitch_max_attempt=glitch_max_attempt)
 
         mandelbrot.run()
 
@@ -227,7 +308,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         new_file = os.path.join(self.image_dir,
                                 test_name + "_" + prefix + ".png")
         shutil.move(os.path.join(test_dir, prefix + ".png"), new_file)
-        #shutil.rmtree(test_dir)
+        shutil.rmtree(test_dir)
         return new_file
 
 
@@ -238,5 +319,5 @@ if __name__ == "__main__":
         runner.run(test_config.suite([Test_Perturbation_mandelbrot]))
     else:
         suite = unittest.TestSuite()
-        suite.addTest(Test_Perturbation_mandelbrot("test_M2_int_E11"))
+        suite.addTest(Test_Perturbation_mandelbrot("test_glitch_dyn"))
         runner.run(suite)
