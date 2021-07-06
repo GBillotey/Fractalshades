@@ -4,7 +4,7 @@ The pupose of this python package is to propose standard or deep-zoom exploratio
 
 ## Prerequisites
 This Python package relies on the following dependencies:
-numpy, mpmath, Pillow, PyQt5.
+numpy, numba, mpmath, Pillow, PyQt5.
 
 Regarding mpmath, installing also gmpy gives a big performance, see 
 https://mpmath.org/doc/current/setup.html#using-gmpy-optional
