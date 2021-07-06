@@ -393,7 +393,7 @@ the array returned by base_data_key
             postproc_keys += [layer_options["postproc_key"]]
 #            if layer_options["output"]:
             layer_mode = {True: "I",
-                          False: "P"}[layer_options["disp_layer"]]
+                          False: "L"}[layer_options["disp_layer"]]
             grey_img += [PIL.Image.new(mode=layer_mode,
                                      size=(nx, ny), color=0)]
 
