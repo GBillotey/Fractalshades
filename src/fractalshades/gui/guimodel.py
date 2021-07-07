@@ -28,7 +28,7 @@ from PyQt5.QtWidgets import (QWidget, QAction, QDockWidget, QPushButton,
                              QGraphicsScene, QGraphicsView,
                              QGraphicsPixmapItem, QGraphicsItemGroup,
                              QGraphicsRectItem, QFrame, QScrollArea, 
-                             QPlainTextEdit
+                             QPlainTextEdit, QColorDialog
                              )
 from PyQt5.QtWidgets import (QMainWindow, QApplication)
 #
@@ -133,7 +133,7 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
         action_box.setLayout(action_layout)
         self.set_border_style(action_box)
         return action_box
-    
+
     def set_border_style(self, gb):
         """ adds borders to an action box"""
         gb.setStyleSheet(
@@ -271,10 +271,10 @@ class Func_widget(QFrame):#Widget):#QWidget):
                 self.layout_field(qs, i_param, i_union, ifield)
         else:
             uval = fd[(i_param, i_union, "val")]
-            print("UVAL", uval)
+#            print("UVAL", uval)
             atom_wget = atom_wget_factory(utype)(utype, uval, self._model)
             self._widgets[(i_param, i_union, "val")] = atom_wget
-            print("atom_wget", atom_wget, type(atom_wget))
+#            print("atom_wget", atom_wget, type(atom_wget))
             atom_wget.user_modified.connect(functools.partial(
                     self.on_user_mod, (i_param, i_union, "val"),
                     atom_wget.value))
@@ -295,9 +295,9 @@ class Func_widget(QFrame):#Widget):#QWidget):
                 # w.deleteLater() 
 
     def on_user_mod(self, key, val_callback, *args):
-        print("*args", args)
+#        print("*args", args)
         val = val_callback()
-        print("item evt",  key, val, type(val))
+#        print("item evt",  key, val, type(val))
         self.func_user_modified.emit(key, val)
 
     def model_event_slot(self, keys, val):
@@ -305,13 +305,13 @@ class Func_widget(QFrame):#Widget):#QWidget):
         if keys[:-1] != self._func_keys:
             return
         key = keys[-1]
-        print("IN MY Wideget, I KNOW has been modified", key, val)
+#        print("IN MY Wideget, I KNOW has been modified", key, val)
         try:
             wget = self._widgets[key]
         except KeyError:
             # Not a widget, could be a parameter notification
             return
-        print("with associated Widget", wget)
+#        print("with associated Widget", wget)
 
         # check first Atom_Mixin
         if isinstance(wget, Atom_Edit_mixin):
@@ -336,6 +336,7 @@ def atom_wget_factory(atom_type):
                     str: Atom_QLineEdit,
                     bool: Atom_QCheckBox,
                     mpmath.mpf: Atom_QPlainTextEdit, #Atom_QLineEdit,
+                    QtGui.QColor: Atom_QColor,
                     type(None): Atom_QLineEdit}
         return wget_dic[atom_type]
     
@@ -361,14 +362,61 @@ class Atom_QCheckBox(QCheckBox, Atom_Edit_mixin):
         return self.isChecked()
 
     def on_user_event(self):
-        print("ATOMIC UPDATED from user")
+#        print("ATOMIC UPDATED from user")
         self.user_modified.emit()
 
     def on_model_event(self, val):
-        print("ATOMIC UPDATED from model", val, type(val))
+#        print("ATOMIC UPDATED from model", val, type(val))
         self.setChecked(val)
 #        self.setText(str(val))
 #        self.validate(self.text(), acceptable_color="#ffffff")
+
+
+class Atom_QColor(QPushButton, Atom_Edit_mixin):
+    user_modified = pyqtSignal()
+
+    def __init__(self, atom_type, val, model, parent=None):
+        super().__init__("", parent)
+        self._type = atom_type
+        self._kind = {3: "rgb", 4: "rgbf"}[len(val)]
+        self._color = None
+        self.update_color(QtGui.QColor(*val))
+        self.clicked.connect(self.on_user_event)
+
+    def update_color(self, color):
+        """ color: QtGui.QColor """
+        if color != self._color:
+            print("COLOR MODIFIED", color.getRgbF(), self._kind)
+            self._color = color
+            self.setStyleSheet("background-color: {0};"
+                               "border-color: {1};"
+                               "border-style: solid;"
+                               "border-width: 1px;"
+                               "border-radius: 4px;".format(
+                    self._color.name(), self._color.name()))
+
+            self.repaint()
+            self.user_modified.emit()
+
+    def value(self):
+        if self._kind == "rgb":
+            return self._color.getRgb()[0:3]
+        elif self._kind == "rgbf":
+            return self._color.getRgb()
+
+    def on_user_event(self):
+        colord = QColorDialog()#self._color)
+        colord.setOption(QColorDialog.DontUseNativeDialog)
+        if self._kind == "rgbf":
+            colord.setOption(QColorDialog.ShowAlphaChannel)
+        colord.setCurrentColor(self._color)
+        colord.setCustomColor(0, self._color)
+        if colord.exec():
+            self.update_color(colord.currentColor())
+
+    def on_model_event(self, val):
+        self.update_color(QtGui.QColor(*val))
+
 
 
 class Atom_QLineEdit(QLineEdit, Atom_Edit_mixin): 
@@ -390,11 +438,11 @@ class Atom_QLineEdit(QLineEdit, Atom_Edit_mixin):
         return self._type(self.text()) 
 
     def on_user_event(self):
-        print("ATOMIC UPDATED from user")
+#        print("ATOMIC UPDATED from user")
         self.user_modified.emit()
     
     def on_model_event(self, val):
-        print("ATOMIC UPDATED from model", val, type(val))
+#        print("ATOMIC UPDATED from model", val, type(val))
         self.setText(str(val))
         self.validate(self.text(), acceptable_color="#ffffff")
 
@@ -434,7 +482,7 @@ class Atom_QPlainTextEdit(QPlainTextEdit, Atom_Edit_mixin):
     def on_model_event(self, val):
         """ 
         """
-        print("ATOMIC UPDATED from model", val, type(val))
+#        print("ATOMIC UPDATED from model", val, type(val))
         # Signals shall be blocked to avoid an infinite event loop.
         str_val = val # self.val_to_str(val)
         if str_val != self.toPlainText():
@@ -504,11 +552,11 @@ class Atom_QComboBox(QComboBox, Atom_Edit_mixin):
         return self.currentIndex()
 
     def on_user_event(self):
-        print("ATOMIC UPDATED from user")#, val, type(val))
+#        print("ATOMIC UPDATED from user")#, val, type(val))
         self.user_modified.emit()
     
     def on_model_event(self, val):
-        print("ATOMIC UPDATED from model", val, type(val))
+#        print("ATOMIC UPDATED from model", val, type(val))
         self.setCurrentIndex(val) #self.findText(val))
 
 class Atom_fractal_button(QPushButton, Atom_Edit_mixin):
@@ -752,7 +800,7 @@ class Image_widget(QWidget):
         """ Checks if the image 'zoom init' matches the parameters ;
         otherwise, updates """
         ret = 0
-        for key in ["x", "y", "dx", "xy_ratio"]:#, "dps"]:
+        for key in ["x", "y", "dx", "xy_ratio"]:#, "dps"]: # TODO : or precision ??
             expected = self._presenter[key]
             value = self._fractal_zoom_init[key]
             if value is None:
