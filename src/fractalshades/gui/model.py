@@ -10,16 +10,19 @@ from PyQt5 import QtCore
 from PyQt5.QtCore import pyqtSignal, pyqtSlot
 
 """
-Implementation of a GUI following a Model-View-Presenter paradigm
+Implementation of a GUI following a Model-View-Presenter interface
+architectural pattern.
 
 - The Model data is stored in a nested dict wrapped in Model or Submodel
-instances The class responsible for the model is always the more deeply nested
+instances The class in charge of the model is always the more deeply nested
 Submodel
-- the GUI-compenents "Views" are the hoted in guimodel.py
+
+- the GUI-compenents "Views" are the hosted in guimodel.py
 - Presenter make the link between the model and the view. However in the case
-  were a view stricly implements a model, then no presenter is needed
-  
-  Event Publish / subscribe is as follows :
+  where a view stricly implements a (sub)model, then no presenter is needed, the
+  view direclty send events to its submodel.
+
+  Event Publish / subscribe chain is as follows :
   
   model_changerequest_event :  Model -> Submodel (request to update)
   model_event : Model -> View (notify has been updated)
@@ -31,6 +34,8 @@ Submodel
   xxx_user_modified : - Viewer -> Submodel (User action)
                       - Viewer -> Presenter (User action)
 
+Model-level 'settings' provide a convenient direct access to a subset of keys
+at model level. They are instanciated by a Model *declare_setting* method.
 """
 
 
@@ -93,16 +98,17 @@ class Model(QtCore.QObject):
 
     @pyqtSlot(object)
     def setting_touched(self, setting_name):
-        print("SETTING TOUCHED SIDE EFFECT", setting_name)
-        print("settings", self._settings)
+        """ Reload setting with same value (side effect)"""
+#        print("SETTING TOUCHED SIDE EFFECT", setting_name)
+#        print("settings", self._settings)
         setting_val = self.setting(setting_name)
-        print("val, key", self._settings[setting_name], setting_val)
+#        print("val, key", self._settings[setting_name], setting_val)
         self.model_changerequest_event.emit(
                 self._settings[setting_name], setting_val)
 
     @pyqtSlot(object, object)
     def setting_modified(self, setting_name, setting_val):
-        print("SETTING MODIFIEF", setting_name)
+#        print("SETTING MODIFIEF", setting_name)
         self.model_changerequest_event.emit(
                 self._settings[setting_name], setting_val)
 
@@ -110,7 +116,7 @@ class Model(QtCore.QObject):
     def model_notified_slot(self, keys, oldval, val):
         """ A change has been done in a model / submodel,
         need to notify the widgets (viewers) """
-        print("Model widget_modified", keys, oldval, val)
+#        print("Model widget_modified", keys, oldval, val)
         # Here we can implement UNDO / REDO stack
         self.model_event.emit(keys, val)
 
@@ -119,14 +125,14 @@ class Model(QtCore.QObject):
     def model_changerequest_slot(self, keys, oldval, val):
         """ A change has been requested by a widget (viewer),
         connected to a presenter i.e not holding the data """
-        print("Model widget_change request", keys, oldval, val)
+#        print("Model widget_change request", keys, oldval, val)
         if len(keys) == 0:
             # This change can be handled at model level
-            print("yoyo model")
+#            print("yoyo model")
             self._model[keys] = val
             self.model_event.emit(keys, val)
         else:
-            print("yoyo smodel")
+#            print("yoyo smodel")
             self.model_changerequest_event.emit(keys, val)
             # This change needs to be handled at sub-model level
 
@@ -553,6 +559,8 @@ def default_val(utype):
         return mpmath.mpf("0.0")
     elif utype is str:
         return ""
+    elif utype is bool:
+        return False
     elif utype is type(None):
         return None
     elif typing.get_origin(utype) is typing.Literal:
