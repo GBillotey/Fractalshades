@@ -29,5 +29,5 @@ The following online ressources have been incredibly useful:
 * https://www.math.univ-toulouse.fr/~cheritat/wiki-draw/index.php/Mandelbrot_set
 
 ## License
-BSD-3
+MIT
 
