@@ -43,6 +43,11 @@ class Model(QtCore.QObject):
     """
     Model composed of nested dict. An item of this dict is identified by a 
     list of nested keys.
+    
+    Beside the this dict, a Model keeps also internally references to :
+       - all Submodel class intances
+       - a list of keys that are directly exposed with an alias at model level
+         a.k.a "settings"
     """
     # Notify the widget (view)
     model_event = pyqtSignal(object, object) # key, newval
@@ -54,7 +59,7 @@ class Model(QtCore.QObject):
         self._model = source
         if self._model is None:
             self._model = dict()
-        # Register for Submodel and Presenter classes
+        # Register all Submodel and Presenter classes
         self._register = dict()
         # Register for model-level settings (dps, ...)
         self._settings = dict()
@@ -117,30 +122,22 @@ class Model(QtCore.QObject):
         """ A change has been done in a model / submodel,
         need to notify the widgets (viewers) """
 #        print("Model widget_modified", keys, oldval, val)
-        # Here we can implement UNDO / REDO stack
+        # Here we could implement UNDO / REDO stack
         self.model_event.emit(keys, val)
 
 
-    @pyqtSlot(object, object, object)
-    def model_changerequest_slot(self, keys, oldval, val):
+    @pyqtSlot(object, object)
+    def model_changerequest_slot(self, keys, val):
         """ A change has been requested by a widget (viewer),
         connected to a presenter i.e not holding the data """
-#        print("Model widget_change request", keys, oldval, val)
         if len(keys) == 0:
             # This change can be handled at model level
-#            print("yoyo model")
             self._model[keys] = val
             self.model_event.emit(keys, val)
         else:
-#            print("yoyo smodel")
+            # This change need to be be handled at submodel level
             self.model_changerequest_event.emit(keys, val)
-            # This change needs to be handled at sub-model level
 
-    
-
-
-
-    
 
 class Submodel(QtCore.QObject):
     """
@@ -168,31 +165,31 @@ class Submodel(QtCore.QObject):
 
 
 
-class Fractal_submodel(Submodel):
-    # key, oldval, newval signal
-    model_notification = pyqtSignal(object, object, object)
-
-    def __init__(self, model, submodel_keys, fractal):
-        super().__init__(model, submodel_keys)
-        self._dict["fractal_object"] = fractal
-        
-    def model_event_slot(self, keys, val):
-        if keys[:-1] != self._keys:
-            return
-        raise NotImplementedError()
-
-class View_submodel(Submodel):
-    # key, oldval, newval signal
-    model_notification = pyqtSignal(object, object, object)
-
-    def __init__(self, model, submodel_keys, view):
-        super().__init__(model, submodel_keys)
-        self._dict["file_prefix"] = view
-
-    def model_event_slot(self, keys, val):
-        if keys[:-1] != self._keys:
-            return
-        raise NotImplementedError()
+#class Fractal_submodel(Submodel):
+#    # key, oldval, newval signal
+#    model_notification = pyqtSignal(object, object, object)
+#
+#    def __init__(self, model, submodel_keys, fractal):
+#        super().__init__(model, submodel_keys)
+#        self._dict["fractal_object"] = fractal
+#        
+#    def model_event_slot(self, keys, val):
+#        if keys[:-1] != self._keys:
+#            return
+#        raise NotImplementedError()
+#
+#class View_submodel(Submodel):
+#    # key, oldval, newval signal
+#    model_notification = pyqtSignal(object, object, object)
+#
+#    def __init__(self, model, submodel_keys, view):
+#        super().__init__(model, submodel_keys)
+#        self._dict["file_prefix"] = view
+#
+#    def model_event_slot(self, keys, val):
+#        if keys[:-1] != self._keys:
+#            return
+#        raise NotImplementedError()
 
 
 class Func_submodel(Submodel):
@@ -229,7 +226,6 @@ class Func_submodel(Submodel):
                 self._model.declare_setting("dps", self._keys + tuple([key]))
                 return
         raise ValueError("Parameter not found", dps_var)
-
 
     def build_dict(self):
         """
@@ -276,8 +272,7 @@ class Func_submodel(Submodel):
         fd[(i_param, "val_def")] = default
         # fd[(i_param, "type_def")] = None # to be completed later
 
-        # inspect the datatype - is it a union
-        
+        # inspect the datatype - is it a Union a Litteral or standard
         if origin is typing.Union:
             fd[(i_param, "n_types")] = len(uargs)
             fd[(i_param, "n_choices")] = 0
@@ -303,7 +298,6 @@ class Func_submodel(Submodel):
         else:
             raise ValueError("Unsupported type origin: {}".format(origin))
             
-#        fd[(i_param, "types")] = []
         if fd[(i_param, "n_types")] > 0:
             for i_union, utype in enumerate(uargs):
                 self.insert_uarg(i_param, i_union, utype)
@@ -382,7 +376,7 @@ class Func_submodel(Submodel):
         except KeyError:
             oldval = self.getkwargs()[key]
             self.setkwarg(key, val)
-            # Emit a model modification for the persenter that might be
+            # Emit a model modification for the presenter that might be
             # tracking
             self.model_notification.emit(self._keys + tuple([key]),
                                          oldval, val)
@@ -444,57 +438,78 @@ class Func_submodel(Submodel):
 
         else:
             raise ValueError("Untracked key {}".format(key))
-    
-        # Do we need more locally
-        
-        # Now we notify the model upstream
-        
-#    @pyqtSlot(tuple, str)
-#    def on_func_arg_changed(self, key, val):
-#        print("called slot", key, val)
-            
+
+
+class Colormap_submodel(Submodel):
+    model_notification = pyqtSignal(object, object, object)
+
+    def __init__(self, model, submodel_keys, cmap):
+        """
+        Submodel
+        Wraps and inspect a colormap
+        """
+        super().__init__(model, submodel_keys)
+        self._cmap = cmap
+        self.build_dict()
+        self.model_notification.connect(self._model.model_notified_slot)
+
+    def build_dict(self):
+        cd = self._dict
+        for attr in ["colors", "kinds", "grad_npts", "grad_funcs", "extent"]:
+            cd[attr] = getattr(self._cmap, attr)
+
+
 class Presenter(QtCore.QObject):
     """
-    A presenter holds a mapping to the real model data
+    A Presenter holds a mapping key -> model_key to the model data.
+    When a mapping item is modified, it emits a model_changerequest signal
+    transmitted to the model.
+
+    Example: for an interactive fractal image explorer the mapping should be
+    of the form :
+        {"folder": folder_key
+         "image": image_key
+         "xy_ratio": xy_ratio_key
+         "x": x_key
+         "y": y_key
+         "dx": dx_key}
     """
-#    # key, oldval, newval signal
-#    model_notification = pyqtSignal(object, object, object)
+    model_changerequest = pyqtSignal(object, object)
 
     def __init__(self, model, mapping, register_key):
-        super().__init__()  # Mandatory for the signal / slot machinery !
+        super().__init__()
         self._model = model
         self._mapping = mapping
         self._model.to_register(register_key, self)
+        self.model_changerequest.connect(self._model.model_changerequest_slot)
 
     def __getitem__(self, key):
-        # print("presenter", key, self._mapping[key])
         return self._model[self._mapping[key]]
-        # return getitem(self._model, self._mapping[key])
 
     def __setitem__(self, key, val):
-        oldval = self[key]
-        self.model_changerequest.emit(self._mapping[key], oldval, val)
+        # oldval = self[key]
+        self.model_changerequest.emit(self._mapping[key], val)
 
 
-class Image_presenter(Presenter):
-    # key, oldval, newval signal
-    model_changerequest = pyqtSignal(object, object, object)
-
-    def __init__(self, model, mapping, register_key):
-        """
-        Submodel
-        Wraps and inspect an parameter and a key of the main model / submodel
-
-        mapping should map 
-            {"folder": folder_key
-             "image": image_key
-             "xy_ratio": xy_ratio_key
-             "x": x_key
-             "y": y_key
-             "dx": dx_key}
-        """
-        super().__init__(model, mapping, register_key)
-        self.model_changerequest.connect(self._model.model_changerequest_slot)
+#class Image_presenter(Presenter):
+#    # key, oldval, newval signal
+#    model_changerequest = pyqtSignal(object, object, object)
+#
+#    def __init__(self, model, mapping, register_key):
+#        """
+#        Submodel
+#        Wraps and inspect a parameter and a key of the main model / submodel
+#
+#        mapping should map 
+#            {"folder": folder_key
+#             "image": image_key
+#             "xy_ratio": xy_ratio_key
+#             "x": x_key
+#             "y": y_key
+#             "dx": dx_key}
+#        """
+#        super().__init__(model, mapping, register_key)
+#        self.model_changerequest.connect(self._model.model_changerequest_slot)
 
 #    @property
 #    def image(self):
@@ -511,40 +526,40 @@ class Image_presenter(Presenter):
 #    @property
 #    def dx(self):
 #        return self["dx"]
-    @pyqtSlot(object, object)
-    def model_event_slot(self, keys, val):
-        """ modif request from model level """
-        if keys[:-1] != self._keys:
-            return
-        self.func_user_modified_slot(keys[-1], val)
+#    @pyqtSlot(object, object)
+#    def model_event_slot(self, keys, val):
+#        """ modif request from model level """
+#        if keys[:-1] != self._keys:
+#            return
+#        self.func_user_modified_slot(keys[-1], val)
 
-    @pyqtSlot(object, object)
-    def param_user_modified_slot(self, key_list, val_list):
-        """
-        
-        """
-        if key_list == ("px", "py"):
-            px = val_list[0]
-            py = val_list[1]
-            print("mouse tracked in view presenter")
-            print(px, py)
-        elif key_list == ("px", "py", "pxx", "pyy"):
-            px = val_list[0]
-            py = val_list[1]
-            pxx = val_list[2]
-            pyy = val_list[3]
-            print("zoom proposed in view presenter")
-            print(px, py, pxx, pyy)
-        else:
-            raise ValueError(key_list)
+#    @pyqtSlot(object, object)
+#    def param_user_modified_slot(self, key_list, val_list):
+#        """
+#        
+#        """
+#        if key_list == ("px", "py"):
+#            px = val_list[0]
+#            py = val_list[1]
+#            print("mouse tracked in view presenter")
+#            print(px, py)
+#        elif key_list == ("px", "py", "pxx", "pyy"):
+#            px = val_list[0]
+#            py = val_list[1]
+#            pxx = val_list[2]
+#            pyy = val_list[3]
+#            print("zoom proposed in view presenter")
+#            print(px, py, pxx, pyy)
+#        else:
+#            raise ValueError(key_list)
 
-    @pyqtSlot()
-    def zoom_reset_slot(self):
-        pass
-
-    @pyqtSlot(object)
-    def image_modifed_slot(self, im):
-        pass
+#    @pyqtSlot()
+#    def zoom_reset_slot(self):
+#        pass
+#
+#    @pyqtSlot(object)
+#    def image_modifed_slot(self, im):
+#        pass
 
 
 

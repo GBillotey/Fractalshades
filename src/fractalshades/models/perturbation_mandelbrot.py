@@ -54,9 +54,9 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         if order is None:
             return False, c
         if max_newton is None:
-            max_newton = mpmath.mp.prec
-        if eps_cv is None:
-            eps_cv = mpmath.mpf(2.)**(-mpmath.mp.prec)
+            max_newton = max(mpmath.mp.dps, 50)
+#        if eps_cv is None:
+#            eps_cv = mpmath.mpf(2.)**(-mpmath.mp.prec)
         c_loop = c
 
         hit = False
@@ -98,9 +98,9 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         if order is None:
             return False, c
         if max_newton is None:
-            max_newton = mpmath.mp.prec
-        if eps_cv is None:
-            eps_cv = mpmath.mpf(2.)**(-mpmath.mp.prec)
+            max_newton = max(mpmath.mp.dps, 50)
+#        if eps_cv is None:
+#            eps_cv = mpmath.mpf(2.)**(-mpmath.mp.prec)
         c_loop = c
 
         for i_newton in range(max_newton): 
@@ -164,6 +164,23 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             
         return newton_cv, c_loop
 
+
+    # TODO implement atom domain size estimate
+    # https://mathr.co.uk/blog/2013-12-10_atom_domain_size_estimation.html
+
+    # TODO implement nucleus size estimate
+    # https://mathr.co.uk/blog/2016-12-24_deriving_the_size_estimate.html
+    @staticmethod
+    def nucleus_size_estimate(c, order):
+        z = mpmath.mpc(0., 0.)
+        l = mpmath.mpc(1., 0.)
+        b = mpmath.mpc(1., 0.)
+        for i in range(1, order):
+            z = z * z + c
+            l = 2. * z * l
+            b = b + 1. / l
+        return 1. / (b * l * l)
+
     def series_approx(self, SA_init, SA_loop, SA_params, iref, file_prefix):
         """
         Zk, zk
@@ -199,6 +216,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         n_iter = 0
         P0 = P[0]
         
+        # Call jitted function for the loop
         P0, n_iter, err = SA_run(SA_loop, P0, n_iter, ref_path, kcX, SA_err_sq)
 #        while SA_valid:
 #            n_iter +=1

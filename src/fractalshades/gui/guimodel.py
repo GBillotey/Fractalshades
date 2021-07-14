@@ -9,33 +9,58 @@ import os
 
 import PIL
 import functools
-import copy
-from operator import getitem, setitem
+#import copy
+#from operator import getitem, setitem
 import mpmath
 
 
 from PyQt5 import QtCore
 from PyQt5.QtCore import Qt
 #from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import pyqtSignal, pyqtSlot
+from PyQt5.QtCore import pyqtSignal #, pyqtSlot
 
 from PyQt5 import QtWidgets, QtGui
-from PyQt5.QtWidgets import (QWidget, QAction, QDockWidget, QPushButton,
-                              QMenu, QHBoxLayout, QVBoxLayout, QCheckBox,
-                              QLabel, QMenuBar, QToolBar, QComboBox,
-                              QLineEdit, QStackedWidget, QGroupBox,
-                             QGridLayout, QSpacerItem, QSizePolicy,
-                             QGraphicsScene, QGraphicsView,
-                             QGraphicsPixmapItem, QGraphicsItemGroup,
-                             QGraphicsRectItem, QFrame, QScrollArea, 
-                             QPlainTextEdit, QColorDialog
-                             )
+from PyQt5.QtWidgets import (
+    QWidget,
+    QAction,
+    QDockWidget,
+    QPushButton,
+    QMenu,
+    QHBoxLayout,
+    QVBoxLayout,
+    QCheckBox,
+    QLabel,
+#    QMenuBar,
+#    QToolBar,
+    QComboBox,
+    QLineEdit,
+    QStackedWidget,
+    QGroupBox,
+    QGridLayout,
+    QSpacerItem,
+    QSizePolicy,
+    QGraphicsScene,
+    QGraphicsView,
+    QGraphicsPixmapItem,
+    QGraphicsItemGroup,
+    QGraphicsRectItem,
+    QFrame,
+    QScrollArea, 
+    QPlainTextEdit,
+    QColorDialog,
+    QGraphicsOpacityEffect,
+    QSpinBox,
+    QStyledItemDelegate,
+    QTableWidget,
+    QTableWidgetItem
+)
+
 from PyQt5.QtWidgets import (QMainWindow, QApplication)
 #
 
 import fractalshades as fs
-from fractalshades.gui.model import (Model, Fractal_submodel, View_submodel,
-    Func_submodel, type_name, Image_presenter)
+import fractalshades.colors as fscolors
+from fractalshades.gui.model import (Model, Func_submodel, type_name, Presenter)
 
 from fractalshades.gui.QCodeEditor import QCodeEditor
 
@@ -337,6 +362,7 @@ def atom_wget_factory(atom_type):
                     bool: Atom_QCheckBox,
                     mpmath.mpf: Atom_QPlainTextEdit, #Atom_QLineEdit,
                     QtGui.QColor: Atom_QColor,
+                    fscolors.Fractal_colormap: Atom_cmap_button,
                     type(None): Atom_QLineEdit}
         return wget_dic[atom_type]
     
@@ -371,52 +397,122 @@ class Atom_QCheckBox(QCheckBox, Atom_Edit_mixin):
 #        self.setText(str(val))
 #        self.validate(self.text(), acceptable_color="#ffffff")
 
+#class Atom_Colorbar(QPushButton, Atom_Edit_mixin):
+#    user_modified = pyqtSignal()
+#
+#    def __init__(self, atom_type, val, model, parent=None):
+#        super().__init__("", parent)
+#        self._type = atom_type
+#        self._colorbar = None
+#        self.update_colorbar(val)
+#        self.clicked.connect(self.on_user_event)
+#
+#    def update_color(self, color):
+#        """ color: QtGui.QColor """
+#        if color != self._color:
+#            print("COLOR MODIFIED", color.getRgbF(), self._kind)
+#            self._color = color
+#            self.setStyleSheet("background-color: {0};"
+#                               "border-color: {1};"
+#                               "border-style: solid;"
+#                               "border-width: 1px;"
+#                               "border-radius: 4px;".format(
+#                    self._color.name(), self._color.name()))
+#
+#            self.repaint()
+#            self.user_modified.emit()
+#
+#    def value(self):
+#        if self._kind == "rgb":
+#            return self._color.getRgb()[0:3]
+#        elif self._kind == "rgbf":
+#            return self._color.getRgb()
+#
+#    def on_user_event(self):
+#        colord = QColorDialog()#self._color)
+#        colord.setOption(QColorDialog.DontUseNativeDialog)
+#        if self._kind == "rgbf":
+#            colord.setOption(QColorDialog.ShowAlphaChannel)
+#        colord.setCurrentColor(self._color)
+#        colord.setCustomColor(0, self._color)
+#        if colord.exec():
+#            self.update_color(colord.currentColor())
+#
+#    def on_model_event(self, val):
+#        self.update_color(QtGui.QColor(*val))
+
+
+
 
 class Atom_QColor(QPushButton, Atom_Edit_mixin):
     user_modified = pyqtSignal()
 
     def __init__(self, atom_type, val, model, parent=None):
+        """
+        val is given in rgb float, or rgba float (in the range [0., 1.])
+        Internally we use QtGui.QColor rgb or rgba i.e. uint8 format
+        """
         super().__init__("", parent)
         self._type = atom_type
-        self._kind = {3: "rgb", 4: "rgbf"}[len(val)]
+        self._kind = {3: "rgb", 4: "rgba"}[len(val)]
         self._color = None
-        self.update_color(QtGui.QColor(*val))
+        self.update_color(QtGui.QColor(*list(
+                int(channel * 255) for channel in val)))
         self.clicked.connect(self.on_user_event)
 
     def update_color(self, color):
         """ color: QtGui.QColor """
         if color != self._color:
-            print("COLOR MODIFIED", color.getRgbF(), self._kind)
             self._color = color
             self.setStyleSheet("background-color: {0};"
                                "border-color: {1};"
                                "border-style: solid;"
                                "border-width: 1px;"
                                "border-radius: 4px;".format(
-                    self._color.name(), self._color.name()))
+                           self._color.name(), "grey"))
+
+            if self._kind == "rgba":
+                # paint a gradient from the color with transparency to the
+                # full color with rgba "a" value set to 255
+                gradient = QtGui.QLinearGradient(0, 0, 1, 0)
+                gradient.setCoordinateMode(QtGui.QGradient.ObjectBoundingMode)
+                gradient.setColorAt(0.0, QtGui.QColor(0, 0, 0, color.alpha()))
+                gradient.setColorAt(0.1, QtGui.QColor(0, 0, 0, color.alpha()))
+                gradient.setColorAt(0.9, Qt.black)
+                gradient.setColorAt(1.0, Qt.black)
+                effect = QGraphicsOpacityEffect(self)
+                effect.setOpacity(1.)
+                effect.setOpacityMask(gradient)
+                self.setGraphicsEffect(effect)
 
             self.repaint()
             self.user_modified.emit()
 
     def value(self):
+        c = self._color
         if self._kind == "rgb":
-            return self._color.getRgb()[0:3]
-        elif self._kind == "rgbf":
-            return self._color.getRgb()
+            ret = (c.redF(), c.greenF(), c.blueF())
+        elif self._kind == "rgba":
+            ret = (c.redF(), c.greenF(), c.blueF(), c.alphaF())
+        return ret
 
     def on_user_event(self):
         colord = QColorDialog()#self._color)
         colord.setOption(QColorDialog.DontUseNativeDialog)
-        if self._kind == "rgbf":
+        if self._kind == "rgba":
             colord.setOption(QColorDialog.ShowAlphaChannel)
         colord.setCurrentColor(self._color)
         colord.setCustomColor(0, self._color)
+        colord.currentColorChanged.connect(self.update_color)
+        old_col = self._color
         if colord.exec():
             self.update_color(colord.currentColor())
+        else:
+            self.update_color(old_col)
 
     def on_model_event(self, val):
-        self.update_color(QtGui.QColor(*val))
-
+        self.update_color(QtGui.QColor(*list(
+                int(channel * 255) for channel in val)))
 
 
 class Atom_QLineEdit(QLineEdit, Atom_Edit_mixin): 
@@ -486,9 +582,10 @@ class Atom_QPlainTextEdit(QPlainTextEdit, Atom_Edit_mixin):
         # Signals shall be blocked to avoid an infinite event loop.
         str_val = val # self.val_to_str(val)
         if str_val != self.toPlainText():
-            blocker = QtCore.QSignalBlocker(self)
-            self.setPlainText(str_val)
-            blocker.unblock()
+            # blocker = QtCore.QSignalBlocker(self)
+            with QtCore.QSignalBlocker(self): # as blocker:
+                self.setPlainText(str_val)
+            # blocker.unblock()
         self.validate(from_user=False)
 
     def validate(self, from_user=True):
@@ -569,6 +666,53 @@ class Atom_fractal_button(QPushButton, Atom_Edit_mixin):
     def value(self):
         return self._fractal
 
+    def on_model_event(self, val):
+        pass
+
+class Qcmap_image(QWidget):
+    """
+    Widget of a cmap image with expanding width, fixed height
+    """
+    def __init__(self, parent, cmap, minwidth=200, height=20):
+        super().__init__(parent)
+        self._cmap = cmap
+        self.setMinimumWidth(minwidth)
+        self.setMinimumHeight(height)
+        self.setMaximumHeight(height)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Minimum,
+                           QtWidgets.QSizePolicy.Expanding)
+
+    def paintEvent(self, evt):
+        size = self.size()
+        nx, ny = size.width(), size.height()
+        QtGui.QPainter(self).drawImage(0, 0, self._cmap.output_ImageQt(nx, ny))
+
+class Atom_cmap_button(Qcmap_image, Atom_Edit_mixin):
+    user_modified = pyqtSignal()
+
+    def __init__(self, atom_type, val, model, parent=None):
+        super().__init__(parent, val)
+        self._cmap = None
+        self.update_cmap(val)
+
+    def update_cmap(self, cmap):
+        """ cmap: fscolor.Fractal_colormap """
+        if cmap != self._cmap:
+            self._cmap = cmap
+            self.repaint()
+            # Note : we do not emit self.user_modified, this is done at
+            # Qcmap_editor widget level
+            print("CMAP MODIFIED")
+
+    def value(self):
+        return self._cmap
+
+    def on_model_event(self, val):
+        self.update_cmap(val)
+
+    def mouseReleaseEvent(self, event):
+        print("clicked")
+
 
 class Atom_Text_Validator(QtGui.QValidator):
     mp_dps_used = pyqtSignal(int)
@@ -597,7 +741,7 @@ class Atom_Text_Validator(QtGui.QValidator):
         if self._type is mpmath.ctx_mp_python.mpf:
 #            needed_dps = len(val)
             # Trailing carriage return are invalid
-            if val[-1] == "\n":
+            if (val[-1] == "\n") or (val[0] == "\n"):
                 return (valid[False], val, pos)
             # Automatically correct the dps 'in the model' to hold at least
             # this value
@@ -605,6 +749,155 @@ class Atom_Text_Validator(QtGui.QValidator):
 #                self.mp_dps_used.emit(needed_dps)
 
         return (valid[isinstance(casted, self._type)], val, pos)
+
+
+class ColorDelegate(QStyledItemDelegate):
+    def createEditor(self, parent, option, index):
+        dialog = QColorDialog(None) #
+        dialog.setOption(QColorDialog.DontUseNativeDialog)
+        dialog.setCurrentColor(index.data(Qt.BackgroundRole))
+        dialog.setCustomColor(0, index.data(Qt.BackgroundRole))
+        # The returned editor widget should have Qt::StrongFocus
+        dialog.setFocusPolicy(Qt.StrongFocus)
+        dialog.setFocusProxy(parent)
+        return dialog
+
+    def setEditorData(self, editor, index):
+        color = index.data(Qt.BackgroundRole)
+        editor.setCurrentColor(color)
+
+    def setModelData(self, editor, model, index):
+        """ If modal QColorDialog result code is Accepted, save color"""
+        if editor.result():
+            color = editor.currentColor()
+            model.setData(index, color, Qt.BackgroundRole)
+
+    def paint(self, painter, option, index):
+        """ Fill with BackgroundRole color + red rectangle for selection."""
+        # After painting, you should ensure that the painter is returned to the
+        # state it was supplied in when this function was called
+        painter.save()
+        selected = bool(option.state & QtWidgets.QStyle.State_Selected)
+        painter.fillRect(option.rect, index.data(Qt.BackgroundRole))
+        if selected:
+            rect = option.rect
+            rect.adjust(1, 1, -1, -1)
+            pen = QtGui.QPen(Qt.red)
+            pen.setWidth(2)
+            painter.setPen(pen)
+            painter.drawRect(rect)
+        painter.restore()
+
+
+class Qcmap_editor(QWidget):
+    """
+    Widget of a cmap image with expanding width, fixed height
+    """
+    # TODO refactor with a submodel
+    def __init__(self, parent, cmap_smodel):#, minwidth=200, height=20):
+        super().__init__(parent)
+        self._cmap = cmap_smodel["cmap"]
+        
+        layout = QVBoxLayout()
+        layout.addWidget(self.add_param_box())
+        layout.addWidget(self.add_table_box())
+        # layout.addWidget(self.add_preview_box())
+        layout.addStretch(1)
+        self.setLayout(layout)
+        
+        self._wget_n.valueChanged.connect(functools.partial(
+                self.event_filter, "size"))
+        
+    def add_param_box(self):
+        
+        param_box = QGroupBox("Cmap parameters")
+        # Choice of number of lines
+        self._wget_n = QSpinBox(self)
+        self._wget_n.setRange(2, 256)
+        self._wget_n.setValue(len(self._cmap.colors))
+        # Choice of cmap "extent"
+        extent_choices = ["mirror", "repeat", "clip"]
+        self._wget_extent = QComboBox(self)
+        self._wget_extent.addItems(extent_choices)
+        # preview
+        self._preview = Qcmap_image(self, self._cmap)
+        param_layout = QHBoxLayout()
+        param_layout.addWidget(self._wget_n)#self._param_widget)
+        param_layout.addWidget(self._wget_extent)#self._param_widget)
+        param_layout.addWidget(self._preview, stretch=1)
+        param_box.setLayout(param_layout)
+        return param_box
+
+    def add_table_box(self):
+        table_box = QGroupBox("Cmap data")
+        table_layout = QHBoxLayout()
+
+        self._table = QTableWidget()
+        # COLUMNS : colors, kinds, n, funcs=None
+        self._table.setColumnCount(4)
+        self._table.setStyleSheet('''
+                QTableView {
+                selection-background-color: white;
+                }
+                QTableView::item::selected {
+                  border: 2px solid red;
+                }
+            ''')
+
+        self._table.setItemDelegateForColumn(0, ColorDelegate(self._table))
+        self._table.setHorizontalHeaderLabels((
+                "color",
+                "kind",
+                "grad_pts",
+                "grad_func"))
+        self._table.horizontalHeader().setSectionResizeMode(
+                QtWidgets.QHeaderView.Stretch)
+        self.populate_table()
+        
+        table_layout = QHBoxLayout()
+        table_box.setLayout(table_layout)
+        table_layout.addWidget(self._table)#self._param_widget)
+        return table_box
+    
+    def populate_table(self):
+        n_rows = len(self._cmap.colors)
+        self._table.setRowCount(n_rows)
+
+        for irow in range(n_rows):
+            val = self._cmap.colors[irow, :]
+            color_item = self._table.item(irow, 0)
+            if color_item is None:
+                color_item = QTableWidgetItem("")
+            color_item.setData(Qt.BackgroundRole, QtGui.QColor(
+                    *list(int(255 * f) for f in val)))
+            self._table.setItem(irow, 0, color_item)
+
+    def event_filter(self, source, val):
+        print("event", source, val)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 class QDict_viewer(QWidget):
@@ -693,7 +986,20 @@ class Image_widget(QWidget):
         self.setLayout(self._layout)
         self._layout.addWidget(self._view, stretch=1)
         #self._layout.addStretch(1)
-        self._layout.addWidget(self._labels, stretch=0)
+        
+        dock_widget = QDockWidget(None, Qt.Window)
+        dock_widget.setWidget(self._labels)
+        # Not closable :
+        dock_widget.setFeatures(QDockWidget.DockWidgetFloatable | 
+                                QDockWidget.DockWidgetMovable)
+        dock_widget.setWindowTitle("Image")
+        dock_widget.setStyleSheet(
+                "QDockWidget {background: #dadada; font: bold 14px;"
+                              "border: 2px solid  #646464;}"
+                "QDockWidget::title {text-align: left; background: #646464;"
+                                     "padding-left: 5px;}")
+        parent.addDockWidget(Qt.RightDockWidgetArea, dock_widget)
+        # self._layout.addWidget(self._labels, stretch=0)
 
         # Zoom rectangle disabled
         self._rect = None
@@ -957,9 +1263,11 @@ class Image_widget(QWidget):
         nx = self._fractal_zoom_init["nx"]
         ny = self._fractal_zoom_init["ny"]
         # new center offet in pixel
-        center_off_px = 0.5 * (self._rect_pos0.x() + self._rect_pos1.x() - nx)
-        center_off_py = 0.5 * (ny - self._rect_pos0.y() - self._rect_pos1.y())
-        dx_pix = abs(self._rect_pos0.x() - self._rect_pos1.x())
+        topleft, bottomRight = self.selection_corners(self._rect_pos0,
+                                                      self._rect_pos1)
+        center_off_px = 0.5 * (topleft.x() + bottomRight.x() - nx)
+        center_off_py = 0.5 * (ny - topleft.y() - bottomRight.y())
+        dx_pix = abs(topleft.x() - bottomRight.x())
 #        print("center px", center_off_px)
 #        print("center py", center_off_py)
         ref_zoom = self._fractal_zoom_init.copy()
@@ -1034,19 +1342,7 @@ class Image_widget(QWidget):
     def draw_rect(self, pos0, pos1):
         """ Draws the selection rectangle """
         # Enforce the correct ratio
-        diffx = pos1.x() - pos0.x()
-        diffy = pos1.y() - pos0.y()
-        radius_sq = diffx ** 2 + diffy ** 2
-        diffx0 = math.sqrt(radius_sq / (1. + self.xy_ratio ** 2))
-        diffy0 = diffx0 * self.xy_ratio
-        diffx0 = math.copysign(diffx0, diffx)
-        diffy0 = math.copysign(diffy0, diffy)
-        pos1 = QtCore.QPointF(pos0.x() + diffx0, pos0.y() + diffy0)
-
-        topleft = QtCore.QPointF(min(pos0.x(), pos1.x()),
-                                 min(pos0.y(), pos1.y()))
-        bottomRight = QtCore.QPointF(max(pos0.x(), pos1.x()),
-                                     max(pos0.y(), pos1.y()))
+        topleft, bottomRight = self.selection_corners(pos0, pos1)
         rectF = QtCore.QRectF(topleft, bottomRight)
         if self._rect is not None:
             self._rect.setRect(rectF)
@@ -1055,6 +1351,17 @@ class Image_widget(QWidget):
             self._rect.setPen(QtGui.QPen(QtGui.QColor("red"), 0, Qt.DashLine))
             self._group.addToGroup(self._rect)
 
+    def selection_corners(self, pos0, pos1):
+        # Enforce the correct ratio
+        diffx = abs(pos1.x() - pos0.x())
+        diffy = abs(pos1.y() - pos0.y())
+        # Enforce the correct ratio
+        radius_sq = diffx ** 2 + diffy ** 2
+        diffx0 = math.sqrt(radius_sq / (1. + self.xy_ratio ** 2))
+        diffy0 = diffx0 * self.xy_ratio
+        topleft = QtCore.QPointF(pos0.x() - diffx0, pos0.y() - diffy0)
+        bottomRight = QtCore.QPointF(pos0.x() + diffx0, pos0.y() + diffy0)
+        return topleft, bottomRight
 
     def model_event_slot(self, keys, val):
         """ A model item has been modified - will it impact the widget ? """
@@ -1086,6 +1393,20 @@ class Fractal_MainWindow(QMainWindow):
     
     def __init__(self, gui):
         super().__init__(parent=None)
+        self.setStyleSheet("""
+                QMainWindow::separator {
+                    background: #dadada;
+                    width: 3px; /* when vertical */
+                    height: 3px; /* when horizontal */
+                }
+                
+                QMainWindow::separator:hover {
+                    background: red;
+                }""")
+#                "QDockWidget {background: #dadada; font: bold 14px;"
+#                              "border: 2px solid  #646464;}"
+#                "QDockWidget::title {text-align: left; background: #646464;"
+#                                     "padding-left: 5px;}")
         self.build_model(gui)
         self.layout()
         # self.mp_dps_used.connect(model.dps_used_slot)
@@ -1094,9 +1415,6 @@ class Fractal_MainWindow(QMainWindow):
         model = self._model = Model()
         
         # Adds the submodels
-#        Fractal_submodel(model, tuple(["fractal"]), gui._fractal)
-#        View_submodel(model, tuple(["view"]), gui._fractal)
-
         Func_submodel(model, ("func",), gui._func, dps_var=gui._dps)
 
         # Adds the presenters
@@ -1107,25 +1425,27 @@ class Fractal_MainWindow(QMainWindow):
                    "dx": ("func", gui._dx),
                    "xy_ratio": ("func", gui._xy_ratio),
                    "dps": ("func", gui._dps)}
-        Image_presenter(model, mapping, register_key="image")
-        
+        Presenter(model, mapping, register_key="image")
 
     def layout(self):
         self.add_func_wget()
         self.add_image_wget()
-        
+
     def add_func_wget(self):
         func_wget = Action_func_widget(self, self.from_register(("func",)),
             action_setting=("image_updated", 
                 self.from_register("image")._mapping["image"]))
-        dock_widget = QDockWidget(None, Qt.SubWindow)
+        dock_widget = QDockWidget(None, Qt.Window)
         dock_widget.setWidget(func_wget)
+        # Not closable :
+        dock_widget.setFeatures(QDockWidget.DockWidgetFloatable | 
+                                QDockWidget.DockWidgetMovable)
         dock_widget.setWindowTitle("Parameters")
         dock_widget.setStyleSheet(
-                "QDockWidget {color: white; font: bold 14px;"
-                    + "border: 2px solid  #646464;}"
-                + "QDockWidget::title {text-align: left; background: #646464;"
-                    + "padding-left: 5px;}")
+                "QDockWidget {background: #dadada; font: bold 14px;"
+                              "border: 2px solid  #646464;}"
+                "QDockWidget::title {text-align: left; background: #646464;"
+                                     "padding-left: 5px;}")
         self.addDockWidget(Qt.RightDockWidgetArea, dock_widget)
         self._func_wget = func_wget
 
@@ -1135,9 +1455,9 @@ class Fractal_MainWindow(QMainWindow):
 
     def from_register(self, register_key):
         return self._model._register[register_key]
-    
-    def on_image_event(self):
-        print("image updated")
+
+#    def on_image_event(self):
+#        print("image updated")
 
 #        self.setWindowTitle('Fractalshades')
 #        tb = QToolBar(self)

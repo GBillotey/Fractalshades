@@ -8,6 +8,8 @@ https://docs.python.org/3/distutils/configfile.html
 https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/#creating-a-virtual-environment
 https://setuptools.readthedocs.io/en/latest/userguide/dependency_management.html
 
+https://test.pypi.org/
+
 python3 -m pip uninstall fractalshades_G_BILLOTEY
 
 

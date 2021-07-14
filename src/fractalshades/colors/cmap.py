@@ -351,46 +351,55 @@ class Color_tools():
 
 
 class Fractal_colormap():
-    def __new__(cls, kinds, colors1, colors2, n, funcs=None, extent="clip"):
+    def __new__(cls, colors, kinds, grad_npts, grad_funcs=None,
+                extent="mirror"):
         """
-        Fractal_colormap factory, concatenates n color gradients.
+        Fractal_colormap factory, concatenates (n-1) color gradients (passing
+        through n colors).
 
-        kinds: arrays of string [n] , "Lab" or "Lch"
-        colors 1: rgb float np.array of shape [n, 3]
-        colors 2: rgb float np.array shape [n, 3]
-        n: int np.array of size [n] : number of internal points used, for
-            each gradient
-        funcs : array of callables mapping [0, 1.] to [0., 1] passed to each
-            gradient
+        colors : rgb float np.array of shape [n, 3]
+        kinds: arrays of string [n-1] , "Lab" or "Lch"
+        grad_npts : int np.array of size [n-1] : number of internal points
+            used, for each gradient
+        grad_funcs : [n-1] array of callables mapping [0, 1.] to [0., 1] passed
+            to each gradient. Default to identity.
         extent : scalar, ["clip", "mirror", "repeat"] What to do with out of
             range values.
-        """
-        npts = colors1.shape[0]
-
+        """      
+        
         # Provides sensible defaults if a scalar is provided
+        npts = colors.shape[0] - 1
         if isinstance(kinds, str):
             kinds = [kinds] * npts
-        if colors2 is None:
-            colors2 = np.roll(colors1, -1, axis=0)
-        if isinstance(n, int):
-            n = [n] * npts
-        if funcs is None:
-            funcs = lambda x: x
-        if callable(funcs):
-            funcs = [funcs] * npts
+        if isinstance(grad_npts, int):
+            grad_npts = [grad_npts] * npts
+        if grad_funcs is None:
+            grad_funcs = lambda x: x
+        if callable(grad_funcs):
+            grad_funcs = [grad_funcs] * npts
+        
+        # If color 2 not provided... we roll and cut the last item
+        # colors2 = np.roll(colors, -1, axis=0)
+        colors1 = colors[:-1]
+        colors2 = colors[1:]
+#        kinds = kinds[:-1]
+#        n = n[:-1]
+#        funcs = funcs[:-1]
+#        npts -= 1
 
         fc = sum(tuple(_Fractal_colormap(Color_tools.color_gradient(
-                       kinds[ipt], colors1[ipt, :], colors2[ipt, :], n[ipt],
-                       funcs[ipt])) for ipt in range(1, npts)),
+                       kinds[ipt], colors1[ipt, :], colors2[ipt, :], grad_npts[ipt],
+                       grad_funcs[ipt])) for ipt in range(1, npts)),
                  start=_Fractal_colormap(Color_tools.color_gradient(
-                       kinds[0], colors1[0, :], colors2[0, :], n[0],
-                       funcs[0])))
+                       kinds[0], colors1[0, :], colors2[0, :], grad_npts[0],
+                       grad_funcs[0])))
         # Stores "constructor" vals
         fc.kinds = kinds
-        fc.colors1 = colors1
-        fc.colors2 = colors2
-        fc.funcs = funcs
+        fc.colors = colors
+        fc.grad_npts = grad_npts
+        fc.grad_funcs = grad_funcs
         fc.extent = extent
+
         return fc
 
 #    def params(self):
@@ -403,8 +412,6 @@ class Fractal_colormap():
         raise NotImplementedError()
     def __sub__(self, other):
         raise NotImplementedError()
-    
-    
 
 
 class _Fractal_colormap():
@@ -421,18 +428,13 @@ class _Fractal_colormap():
                   of this probe is mapped to *_probe_value*, either given by the
                   user or computed at plot time.
     """
-    def __init__(self, color_gradient, extent="clip"):
+    def __init__(self, color_gradient, extent="mirror"):
         """
-        Creates from : 
-            - Directly a color gradient array (as output by Color_tools
-              gradient functions, array of shape (n_colors, 3))
-            - A matplotlib colormap ; in this case color_gradient shall be a
-              list of the form (start, stop, n _colors)
-*color_gradient*  Either: a Color gradient array from Colortool class, or if a
-maltplotlib colormap is provided at second input, a tuple (xmin, xmax,
-n_colors) where xmi, xmax refer to this colormap (xmin xmax btw. 0 and 1).
-*colormap*  None or a matplotlib colormap
-*extent*    ["clip", "mirror", "repeat"] What to do with out of range Values.
+Creates a colormap from a color gradient array (as output by Color_tools
+gradient functions, array of shape (n_colors, 3))
+
+*color_gradient*  a Color gradient array from Colortool class
+*extent*  ["mirror", "repeat", "clip"] specifies what to do with out of range Values.
         """
         self._colors = color_gradient
         n_colors, _ = color_gradient.shape
@@ -461,19 +463,21 @@ n_colors) where xmi, xmax refer to this colormap (xmin xmax btw. 0 and 1).
 
     def __add__(self, other):
         """ Concatenates 2 Colormaps """
-        fcm = _Fractal_colormap(np.vstack([self._colors, other._colors]))
+        fcm = _Fractal_colormap(np.vstack([self._colors, other._colors[1:]]))
 #        print("self._probes", self._probes)
 #        print("other._probes", other._probes)
 #        print("other._probes + (self._probes[-1])", other._probes + (self._probes[-1]))
-        self._probes[-1] += 0.5
-        fcm._probes = np.concatenate([self._probes,
-            (other._probes + (self._probes[-1] + 0.5))[1:]])
+        #self._probes[-1] += 0.5
+        fcm._probes = np.concatenate([
+            self._probes,
+            (other._probes + (self._probes[-1]))[1:]
+            ])
         return fcm
 
     def __sub__(self, other):
         """ Sbstract a colormap ie adds its reversed version """
         return self.__add__(other.__neg__())
-    
+
     def _output(self, nx, ny):
         margin = 1
         nx_im = nx - 2 * margin
@@ -494,7 +498,7 @@ n_colors) where xmi, xmax refer to this colormap (xmin xmax btw. 0 and 1).
         B = self._output(nx, ny)
         PIL.Image.fromarray(B).save(
             os.path.join(dir_path, file_name + ".cbar.png"))
-    
+
     def output_ImageQt(self, nx, ny):
 #https://stackoverflow.com/questions/34697559/pil-image-to-qpixmap-conversion-issue
         B = self._output(nx, ny)

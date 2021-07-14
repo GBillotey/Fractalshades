@@ -17,15 +17,14 @@ fail_dir = os.path.dirname(__file__)
 directory = os.path.join(fail_dir, "_data", "fail3")
 fractal = fsm.Perturbation_mandelbrot(directory)
 
-
 file_prefix = 'known_fail'
-x = '0.351543039596551284795560321298313956026654945439649'
-y = '-0.0844280975691686526898147774351912949741457039250628'
-dx = '1.229672851710271e-41'
+x = '-0.1414140536120085076596110051583272'
+y = '0.9733970599864861722981911373774183'
+dx = '2.588759488193097e-24'
 xy_ratio = 1.0
-dps = 51
-max_iter = 200000
-nx = 4000
+dps = 77
+max_iter = 150000
+nx = 600
 interior_detect = True
 epsilon_stationnary = 0.0001
 
