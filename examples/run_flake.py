@@ -26,7 +26,7 @@ def plot():
     # Set to True to enable multi-processing
     settings.enable_multiprocessing = True
 
-    nx = 600
+    nx = 3200
     xy_ratio = 0.5
     theta_deg = 0.
     complex_type = np.complex128

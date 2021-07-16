@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import os
+from PyQt5 import QtGui
 
 import fractalshades as fs
 import fractalshades.models as fsm
@@ -21,15 +22,28 @@ def plot():
     y = '-0.0'
     dx = '5.0'
     file_prefix = 'test'
-    x = '-1.3946566098506499504829799455764876353014024400777060452537569774'
-    y = '0.015824206635236152220786654128816548666412248773926125324037648824'
-    dx = '1.062240111665733e-55'
+#    x = '-1.3946566098506499504829799455764876353014024400777060452537569774'
+#    y = '0.015824206635236152220786654128816548666412248773926125324037648824'
+#    dx = '1.062240111665733e-55'
+#    x = "-1.3946566098506499504829799455764876353014024400777060452613826135087015500753"
+#    y = "0.015824206635236152220786654128816548666412248773926125317532981685511096081278"
+#    dx = "5.866507293156746e-67"
+    
     xy_ratio = 1.0
-    dps = 65
-    max_iter = 100000
+    dps = 77
+    max_iter = 150000
     nx = 600
     interior_detect = True
     epsilon_stationnary = 0.0001
+    
+    gold = np.array([255, 210, 66]) / 255.
+    black = np.array([0, 0, 0]) / 255.
+    purple = np.array([181, 40, 99]) / 255.
+    citrus2 = np.array([103, 189, 0]) / 255.
+    colors = np.vstack((citrus2[np.newaxis, :],
+                         black[np.newaxis, :]))
+    colormap = fscolors.Fractal_colormap(colors=colors, kinds="Lch", 
+         grad_npts=200, grad_funcs=None, extent="mirror")
     
 #    x = '-1.24710405741042405360962651098294394779517220029152023311484191548274'
 #    y = '0.404377520626112573015438541889013872729238186318787005674541172744775'
@@ -86,7 +100,9 @@ def plot():
              max_iter: int=max_iter,
              nx: int=nx,
              interior_detect: bool=interior_detect,
-             epsilon_stationnary: float=epsilon_stationnary):
+             interior_color: QtGui.QColor=(0., 0., 1.),
+             epsilon_stationnary: float=epsilon_stationnary,
+             colormap: fscolors.Fractal_colormap=colormap):
         
 
 
@@ -101,27 +117,19 @@ def plot():
                        "SA_err": 1.e-6,
                        "use_Taylor_shift": True},
             glitch_eps=1.e-6, interior_detect=interior_detect,
-            glitch_max_attempt=2)
+            glitch_max_attempt=10)
 
         if fractal.res_available():
             print("RES AVAILABLE, no compute")
-            fractal.clean_up(file_prefix)
+            # fractal.clean_up(file_prefix)
         else:
             print("RES NOT AVAILABLE, clean-up")
             fractal.clean_up(file_prefix)
     
         fractal.run()
 
-        gold = np.array([255, 210, 66]) / 255.
-        black = np.array([0, 0, 0]) / 255.
-        purple = np.array([181, 40, 99]) / 255.
-        citrus2 = np.array([103, 189, 0]) / 255.
-        colors1 = np.vstack((citrus2[np.newaxis, :]))
-        colors2 = np.vstack((black[np.newaxis, :]))
-        colormap = fscolors.Fractal_colormap(kinds="Lch", colors1=colors1,
-            colors2=colors2, n=200, funcs=None, extent="mirror")
-        
-        mask_codes = [2]#, 3, 4]
+
+        mask_codes = [0, 2]#, 3, 4]
         mask = fs.Fractal_Data_array(fractal, file_prefix=file_prefix,
             postproc_keys=('stop_reason', lambda x: np.isin(x, mask_codes)),
             mode="r+raw")
@@ -146,7 +154,7 @@ def plot():
                 hardness=0.9,
                 intensity=0.8,
                 shade_type={"Lch": 1.0, "overlay": 0., "pegtop": 4.})
-        plotter.plot(file_prefix, mask_color=(0., 0., 1.))
+        plotter.plot(file_prefix, mask_color=interior_color)
 #             x: =,
 #             y: =):
         

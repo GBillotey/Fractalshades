@@ -60,12 +60,34 @@ from PyQt5.QtWidgets import (QMainWindow, QApplication)
 
 import fractalshades as fs
 import fractalshades.colors as fscolors
-from fractalshades.gui.model import (Model, Func_submodel, type_name, Presenter)
+from fractalshades.gui.model import (
+    Model,
+    Func_submodel,
+    Colormap_submodel,
+    Presenter,
+    type_name,
+)
 
 from fractalshades.gui.QCodeEditor import QCodeEditor
 
 
-
+DOCK_WIDGET_CSS = """
+QDockWidget {
+    font-size: 8pt;
+    font: bold;
+    color: #A0A5AA;
+}
+QDockWidget::title {
+    padding-left: 12px;
+    padding-top: 3px;
+    padding-bottom: 3px;
+    text-align: center left;
+    border-left: 1px solid #32363F;
+    border-top: 1px solid #32363F;
+    border-right: 1px solid #32363F;
+    background: #25272C;
+}
+"""
 #from viewer import Image_widget
 
 def getapp():
@@ -73,6 +95,13 @@ def getapp():
     if app is None:
         app = QApplication([])
     return app
+
+def getmainwindow():
+    for w in QtWidgets.QApplication.topLevelWidgets():
+        if w.inherits('QMainWindow'):
+            return w
+    raise RuntimeError('Count not find QMainWindow instance.')
+
 
 class MinimizedStackedWidget(QStackedWidget):
     def sizeHint(self):
@@ -95,17 +124,8 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
     A Func_widget with parameters & actions group
     """
     func_performed = pyqtSignal()
-
-#    def __init__(self, atom_type, model):
-#        super().__init__()
-#        self._model = model
-#        self._type = atom_type
-#        if atom_type is mpmath.ctx_mp_python.mpf:
-#            self.mp_dps_used.connect(functools.partial(
-#                    model.setting_modified, "dps"))
     
-    
-    def __init__(self, parent, func_smodel, action_setting=None):#model, func_keys):
+    def __init__(self, parent, func_smodel, action_setting=None):
         super().__init__(parent)
         self._submodel = func_smodel
         # Parameters and action boxes
@@ -114,9 +134,9 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
 
         # general layout
         layout = QVBoxLayout()
-        layout.addWidget(param_box)
+        layout.addWidget(param_box, stretch=1)
         layout.addWidget(action_box)
-        layout.addStretch(1)
+#        layout.addStretch(1)
         self.setLayout(layout)
             
         # Connect events
@@ -141,7 +161,7 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
         param_scrollarea.setWidget(self._param_widget)
         param_scrollarea.setWidgetResizable(True)
         
-        param_layout.addWidget(param_scrollarea)#self._param_widget)
+        param_layout.addWidget(param_scrollarea)
         param_box.setLayout(param_layout)
         self.set_border_style(param_box)
         return param_box
@@ -190,28 +210,22 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
         ce.show()
         
 
-class Func_widget(QFrame):#Widget):#QWidget):
+class Func_widget(QFrame):
     # Signal to inform the model that a parameter has been modified by the 
     # user.
-    # item_mod_evt = pyqtSignal(tuple, object)
     func_user_modified = pyqtSignal(object, object)
 
-    def __init__(self, parent, func_smodel):#model, func_keys):
+    def __init__(self, parent, func_smodel):
         super().__init__(parent)
-        
-#        self.setFrameStyle(QFrame.Box )#| QFrame.Raised);
-#        self.setLineWidth(1);
-        
         self._model = func_smodel._model
         self._func_keys = func_smodel._keys
         self._submodel = func_smodel# model[func_keys]
         self._widgets = dict() # Will store references to the widgets that can
                                # be programmatically updated 
-        
-        # Compoenents and layout
+
+        # Components and layout
         self._layout = QGridLayout(self)
         self.layout()
-
         # Publish / subscribe signals with the submodel
         self.func_user_modified.connect(self._submodel.func_user_modified_slot)
         self._model.model_event.connect(self.model_event_slot)
@@ -228,22 +242,21 @@ class Func_widget(QFrame):#Widget):#QWidget):
         
         name = fd[(i_param, "name")]
         name_label = QLabel(name)
-        myFont = QtGui.QFont()#QtGui.QFont()
+        myFont = QtGui.QFont()
         myFont.setWeight(QtGui.QFont.ExtraBold)
         name_label.setFont(myFont)
         self._layout.addWidget(name_label, i_param, 0, 1, 1)
 
-        # Adds a check-box for default
+        # Adds a check-box for default value
         if fd[(i_param, "has_def")]:
-            is_default = self._widgets[(i_param, "is_def")] = QCheckBox()#"(default)", self)
-    #        is_default.setFont(QtGui.QFont("Times", italic=True))
+            is_default = self._widgets[(i_param, "is_def")] = QCheckBox()
             is_default.setChecked(fd[(i_param, "is_def")])
             is_default.stateChanged.connect(functools.partial(
                 self.on_user_mod, (i_param, "is_def"), is_default.isChecked))
             self._layout.addWidget(is_default, i_param, 1, 1, 1)
 
         # Handles Union types
-        qs = QStackedWidget()# MinimizedStackedWidget()
+        qs = QStackedWidget()
         qs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         n_uargs = fd[(i_param, "n_types")]
         if n_uargs == 0:
@@ -273,17 +286,10 @@ class Func_widget(QFrame):#Widget):#QWidget):
         qs.setCurrentIndex(fd[(i_param, "type_sel")])
         self._layout.addWidget(qs, i_param, 3, 1, 1)
         self._layout.setRowStretch(i_param, 0)
-#        label = QGroupBox()#self)
-#        label.add
-#        label.setTitle("Hello World")
-#        label.setAttribute(Qt.WA_TranslucentBackground)
-#        self._layout.addWidget(label, 2*i_param, 0, 1, 3)
 
         # adds a spacer at bottom
         self._layout.setRowStretch(i_param + 1, 1)
-            
-        pass
-        # 
+
     
     def layout_uarg(self, qs, i_param, i_union):
 
@@ -305,6 +311,11 @@ class Func_widget(QFrame):#Widget):#QWidget):
                     atom_wget.value))
             qs.addWidget(atom_wget)#, i_param, 3, 1, 1)
             
+            if isinstance(atom_wget, Atom_Submodel_mixin):
+                atom_wget.request_submodel.connect(functools.partial(
+                    self.on_submodel, (i_param, i_union, "val"),
+                    atom_wget.value))
+            
     
 #    def layout_field(self, qs, i_param, i_union, ifield):
 #        fd = self._submodel.func_dict
@@ -320,25 +331,23 @@ class Func_widget(QFrame):#Widget):#QWidget):
                 # w.deleteLater() 
 
     def on_user_mod(self, key, val_callback, *args):
-#        print("*args", args)
+        """ Notify the model of modification by the user of a widget"""
         val = val_callback()
-#        print("item evt",  key, val, type(val))
         self.func_user_modified.emit(key, val)
 
     def model_event_slot(self, keys, val):
-        # Does the event impact one of my subwidgets ? otherwise, retiurn
+        """ Handles modification of widget triggered from model """
+        # Does the event impact one of my child widgets ? otherwise, return
         if keys[:-1] != self._func_keys:
             return
         key = keys[-1]
-#        print("IN MY Wideget, I KNOW has been modified", key, val)
         try:
             wget = self._widgets[key]
         except KeyError:
             # Not a widget, could be a parameter notification
             return
-#        print("with associated Widget", wget)
 
-        # check first Atom_Mixin
+        # Check first Atom_Mixin
         if isinstance(wget, Atom_Edit_mixin):
             wget.on_model_event(val)
         elif isinstance(wget, QCheckBox):
@@ -348,6 +357,31 @@ class Func_widget(QFrame):#Widget):#QWidget):
         else:
             raise NotImplementedError("Func_widget.model_event_slot {}".format(
                                       wget))
+            
+    def on_submodel(self, keys, val_callback, smodel_class, wget_class):
+        """ Handles creation of a submodel, as needed """
+        val = val_callback()
+        print("Submodel creation requested", keys, val)
+        print("with model", smodel_class)
+        print("with wget", wget_class)
+        print("register", self._model._register.keys())
+        print('_func_keys', self._func_keys)
+        smodel_keys = self._func_keys + (smodel_class.__name__,)
+        print("smodel_keys", smodel_keys)
+
+        smodel_class(self._model, smodel_keys, val)
+        wget = wget_class(None, self._model._register[smodel_keys])
+
+        main_window = getmainwindow()
+
+        dock_widget = QDockWidget(None, Qt.Window)
+        dock_widget.setWidget(wget)
+        # Not closable :
+        dock_widget.setFeatures(QDockWidget.DockWidgetFloatable | 
+                                QDockWidget.DockWidgetMovable)
+        dock_widget.setWindowTitle(smodel_class.__name__)
+        dock_widget.setStyleSheet(DOCK_WIDGET_CSS)
+        main_window.addDockWidget(Qt.RightDockWidgetArea, dock_widget)
 
 
 def atom_wget_factory(atom_type):
@@ -370,6 +404,10 @@ class Atom_Edit_mixin:
     def value(self):
         raise NotImplementedError("Subclasses should implement")
 
+class Atom_Submodel_mixin:
+    def value(self):
+        raise NotImplementedError("Subclasses should implement")
+
 class Atom_QCheckBox(QCheckBox, Atom_Edit_mixin):
     user_modified = pyqtSignal()
 
@@ -377,71 +415,16 @@ class Atom_QCheckBox(QCheckBox, Atom_Edit_mixin):
         super().__init__("", parent)
         self.setChecked(val)
         self._type = atom_type
-#        self.textChanged[str].connect(self.validate)
-#        self.editingFinished.connect(self.on_user_event)
-#        self.setValidator(Atom_Text_Validator(atom_type, model))
-#        if atom_type is type(None):
-#            self.setReadOnly(True)
         self.stateChanged.connect(self.on_user_event)
 
     def value(self):
         return self.isChecked()
 
     def on_user_event(self):
-#        print("ATOMIC UPDATED from user")
         self.user_modified.emit()
 
     def on_model_event(self, val):
-#        print("ATOMIC UPDATED from model", val, type(val))
         self.setChecked(val)
-#        self.setText(str(val))
-#        self.validate(self.text(), acceptable_color="#ffffff")
-
-#class Atom_Colorbar(QPushButton, Atom_Edit_mixin):
-#    user_modified = pyqtSignal()
-#
-#    def __init__(self, atom_type, val, model, parent=None):
-#        super().__init__("", parent)
-#        self._type = atom_type
-#        self._colorbar = None
-#        self.update_colorbar(val)
-#        self.clicked.connect(self.on_user_event)
-#
-#    def update_color(self, color):
-#        """ color: QtGui.QColor """
-#        if color != self._color:
-#            print("COLOR MODIFIED", color.getRgbF(), self._kind)
-#            self._color = color
-#            self.setStyleSheet("background-color: {0};"
-#                               "border-color: {1};"
-#                               "border-style: solid;"
-#                               "border-width: 1px;"
-#                               "border-radius: 4px;".format(
-#                    self._color.name(), self._color.name()))
-#
-#            self.repaint()
-#            self.user_modified.emit()
-#
-#    def value(self):
-#        if self._kind == "rgb":
-#            return self._color.getRgb()[0:3]
-#        elif self._kind == "rgbf":
-#            return self._color.getRgb()
-#
-#    def on_user_event(self):
-#        colord = QColorDialog()#self._color)
-#        colord.setOption(QColorDialog.DontUseNativeDialog)
-#        if self._kind == "rgbf":
-#            colord.setOption(QColorDialog.ShowAlphaChannel)
-#        colord.setCurrentColor(self._color)
-#        colord.setCustomColor(0, self._color)
-#        if colord.exec():
-#            self.update_color(colord.currentColor())
-#
-#    def on_model_event(self, val):
-#        self.update_color(QtGui.QColor(*val))
-
-
 
 
 class Atom_QColor(QPushButton, Atom_Edit_mixin):
@@ -472,8 +455,8 @@ class Atom_QColor(QPushButton, Atom_Edit_mixin):
                            self._color.name(), "grey"))
 
             if self._kind == "rgba":
-                # paint a gradient from the color with transparency to the
-                # full color with rgba "a" value set to 255
+                # Paint a gradient from the color with transparency to the
+                # color with no transparency (rgba "a" value set to 255)
                 gradient = QtGui.QLinearGradient(0, 0, 1, 0)
                 gradient.setCoordinateMode(QtGui.QGradient.ObjectBoundingMode)
                 gradient.setColorAt(0.0, QtGui.QColor(0, 0, 0, color.alpha()))
@@ -497,7 +480,7 @@ class Atom_QColor(QPushButton, Atom_Edit_mixin):
         return ret
 
     def on_user_event(self):
-        colord = QColorDialog()#self._color)
+        colord = QColorDialog()
         colord.setOption(QColorDialog.DontUseNativeDialog)
         if self._kind == "rgba":
             colord.setOption(QColorDialog.ShowAlphaChannel)
@@ -530,15 +513,12 @@ class Atom_QLineEdit(QLineEdit, Atom_Edit_mixin):
     def value(self):
         if self._type is type(None):
             return None
-        # should we do this ??? or rather in the model
         return self._type(self.text()) 
 
     def on_user_event(self):
-#        print("ATOMIC UPDATED from user")
         self.user_modified.emit()
     
     def on_model_event(self, val):
-#        print("ATOMIC UPDATED from model", val, type(val))
         self.setText(str(val))
         self.validate(self.text(), acceptable_color="#ffffff")
 
@@ -571,21 +551,12 @@ class Atom_QPlainTextEdit(QPlainTextEdit, Atom_Edit_mixin):
     def value(self):
         return self.toPlainText()
 
-#    @staticmethod
-#    def val_to_str(val):
-#        return str(val)
-
     def on_model_event(self, val):
-        """ 
-        """
-#        print("ATOMIC UPDATED from model", val, type(val))
-        # Signals shall be blocked to avoid an infinite event loop.
-        str_val = val # self.val_to_str(val)
+        str_val = val
         if str_val != self.toPlainText():
-            # blocker = QtCore.QSignalBlocker(self)
-            with QtCore.QSignalBlocker(self): # as blocker:
+            # Signals shall be blocked to avoid an infinite event loop.
+            with QtCore.QSignalBlocker(self):
                 self.setPlainText(str_val)
-            # blocker.unblock()
         self.validate(from_user=False)
 
     def validate(self, from_user=True):
@@ -643,18 +614,17 @@ class Atom_QComboBox(QComboBox, Atom_Edit_mixin):
         self._choices = typing.get_args(atom_type)
         self.currentTextChanged.connect(self.on_user_event)
         self.addItems(str(c) for c in self._choices)
-        self.setCurrentIndex(val) #self.findText(val))
+        self.setCurrentIndex(val)
 
     def value(self):
         return self.currentIndex()
 
     def on_user_event(self):
-#        print("ATOMIC UPDATED from user")#, val, type(val))
         self.user_modified.emit()
     
     def on_model_event(self, val):
-#        print("ATOMIC UPDATED from model", val, type(val))
-        self.setCurrentIndex(val) #self.findText(val))
+        self.setCurrentIndex(val)
+
 
 class Atom_fractal_button(QPushButton, Atom_Edit_mixin):
     user_modified = pyqtSignal()
@@ -669,10 +639,9 @@ class Atom_fractal_button(QPushButton, Atom_Edit_mixin):
     def on_model_event(self, val):
         pass
 
+
 class Qcmap_image(QWidget):
-    """
-    Widget of a cmap image with expanding width, fixed height
-    """
+    """ Widget of a cmap image, expanding width """
     def __init__(self, parent, cmap, minwidth=200, height=20):
         super().__init__(parent)
         self._cmap = cmap
@@ -687,8 +656,10 @@ class Qcmap_image(QWidget):
         nx, ny = size.width(), size.height()
         QtGui.QPainter(self).drawImage(0, 0, self._cmap.output_ImageQt(nx, ny))
 
-class Atom_cmap_button(Qcmap_image, Atom_Edit_mixin):
+
+class Atom_cmap_button(Qcmap_image, Atom_Edit_mixin, Atom_Submodel_mixin):
     user_modified = pyqtSignal()
+    request_submodel = pyqtSignal(object, object)
 
     def __init__(self, atom_type, val, model, parent=None):
         super().__init__(parent, val)
@@ -700,7 +671,7 @@ class Atom_cmap_button(Qcmap_image, Atom_Edit_mixin):
         if cmap != self._cmap:
             self._cmap = cmap
             self.repaint()
-            # Note : we do not emit self.user_modified, this is done at
+            # Note : we do not emit self.user_modified, this shall be done at
             # Qcmap_editor widget level
             print("CMAP MODIFIED")
 
@@ -712,6 +683,7 @@ class Atom_cmap_button(Qcmap_image, Atom_Edit_mixin):
 
     def mouseReleaseEvent(self, event):
         print("clicked")
+        self.request_submodel.emit(Colormap_submodel, Qcmap_editor)
 
 
 class Atom_Text_Validator(QtGui.QValidator):
@@ -729,25 +701,17 @@ class Atom_Text_Validator(QtGui.QValidator):
         print("validate", val, pos, type(val), self._type)
         valid = {True: QtGui.QValidator.Acceptable,
                  False: QtGui.QValidator.Intermediate}
-
         if self._type is type(None):
             return (valid[val == "None"], val, pos)
-
         try:
             casted = self._type(val)
         except ValueError:
             return (valid[False], val, pos)
 
         if self._type is mpmath.ctx_mp_python.mpf:
-#            needed_dps = len(val)
-            # Trailing carriage return are invalid
+            # Starting or trailing carriage return are invalid
             if (val[-1] == "\n") or (val[0] == "\n"):
                 return (valid[False], val, pos)
-            # Automatically correct the dps 'in the model' to hold at least
-            # this value
-#            if self._model.setting("dps") < needed_dps:
-#                self.mp_dps_used.emit(needed_dps)
-
         return (valid[isinstance(casted, self._type)], val, pos)
 
 
@@ -757,7 +721,7 @@ class ColorDelegate(QStyledItemDelegate):
         dialog.setOption(QColorDialog.DontUseNativeDialog)
         dialog.setCurrentColor(index.data(Qt.BackgroundRole))
         dialog.setCustomColor(0, index.data(Qt.BackgroundRole))
-        # The returned editor widget should have Qt::StrongFocus
+        # QT doc: The returned editor widget should have Qt::StrongFocus
         dialog.setFocusPolicy(Qt.StrongFocus)
         dialog.setFocusProxy(parent)
         return dialog
@@ -774,8 +738,9 @@ class ColorDelegate(QStyledItemDelegate):
 
     def paint(self, painter, option, index):
         """ Fill with BackgroundRole color + red rectangle for selection."""
-        # After painting, you should ensure that the painter is returned to the
-        # state it was supplied in when this function was called
+        # QT doc: After painting, you should ensure that the painter is
+        # returned to the state it was supplied in when this function was
+        # called.
         painter.save()
         selected = bool(option.state & QtWidgets.QStyle.State_Selected)
         painter.fillRect(option.rect, index.data(Qt.BackgroundRole))
@@ -796,7 +761,7 @@ class Qcmap_editor(QWidget):
     # TODO refactor with a submodel
     def __init__(self, parent, cmap_smodel):#, minwidth=200, height=20):
         super().__init__(parent)
-        self._cmap = cmap_smodel["cmap"]
+        self._submodel = cmap_smodel
         
         layout = QVBoxLayout()
         layout.addWidget(self.add_param_box())
@@ -807,7 +772,11 @@ class Qcmap_editor(QWidget):
         
         self._wget_n.valueChanged.connect(functools.partial(
                 self.event_filter, "size"))
-        
+
+    @property
+    def _cmap(self):
+        return self._submodel._cmap
+
     def add_param_box(self):
         
         param_box = QGroupBox("Cmap parameters")
@@ -967,7 +936,7 @@ class Image_widget(QWidget):
         self._view = QGraphicsView()
         self._scene.addItem(self._group)
         self._view.setScene(self._scene)
-        self._view.setFrameStyle(QFrame.Box)
+        #self._view.setFrameStyle(QFrame.Box)
         
 
         
@@ -993,12 +962,8 @@ class Image_widget(QWidget):
         dock_widget.setFeatures(QDockWidget.DockWidgetFloatable | 
                                 QDockWidget.DockWidgetMovable)
         dock_widget.setWindowTitle("Image")
-        dock_widget.setStyleSheet(
-                "QDockWidget {background: #dadada; font: bold 14px;"
-                              "border: 2px solid  #646464;}"
-                "QDockWidget::title {text-align: left; background: #646464;"
-                                     "padding-left: 5px;}")
-        parent.addDockWidget(Qt.RightDockWidgetArea, dock_widget)
+        dock_widget.setStyleSheet(DOCK_WIDGET_CSS)
+        parent.addDockWidget(Qt.LeftDockWidgetArea, dock_widget)
         # self._layout.addWidget(self._labels, stretch=0)
 
         # Zoom rectangle disabled
@@ -1399,10 +1364,11 @@ class Fractal_MainWindow(QMainWindow):
                     width: 3px; /* when vertical */
                     height: 3px; /* when horizontal */
                 }
-                
                 QMainWindow::separator:hover {
                     background: red;
-                }""")
+                }
+                QWidget {background-color: #646464}
+                """)
 #                "QDockWidget {background: #dadada; font: bold 14px;"
 #                              "border: 2px solid  #646464;}"
 #                "QDockWidget::title {text-align: left; background: #646464;"
@@ -1441,12 +1407,8 @@ class Fractal_MainWindow(QMainWindow):
         dock_widget.setFeatures(QDockWidget.DockWidgetFloatable | 
                                 QDockWidget.DockWidgetMovable)
         dock_widget.setWindowTitle("Parameters")
-        dock_widget.setStyleSheet(
-                "QDockWidget {background: #dadada; font: bold 14px;"
-                              "border: 2px solid  #646464;}"
-                "QDockWidget::title {text-align: left; background: #646464;"
-                                     "padding-left: 5px;}")
-        self.addDockWidget(Qt.RightDockWidgetArea, dock_widget)
+        dock_widget.setStyleSheet(DOCK_WIDGET_CSS)
+        self.addDockWidget(Qt.LeftDockWidgetArea, dock_widget)
         self._func_wget = func_wget
 
     def add_image_wget(self):

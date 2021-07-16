@@ -452,11 +452,22 @@ class Colormap_submodel(Submodel):
         self._cmap = cmap
         self.build_dict()
         self.model_notification.connect(self._model.model_notified_slot)
+        print("Colormap_submodel created", cmap)
 
     def build_dict(self):
         cd = self._dict
+        print("build dict", self._cmap, type(self._cmap))
         for attr in ["colors", "kinds", "grad_npts", "grad_funcs", "extent"]:
             cd[attr] = getattr(self._cmap, attr)
+
+    def model_event_slot(self, keys, val):
+        if keys[:-1] != self._keys:
+            return
+        self.cmap_user_modified_slot(keys[-1], val)
+    
+    @pyqtSlot(object, object)
+    def cmap_user_modified_slot(self, key, val):
+        print("cmap model event", key, val)
 
 
 class Presenter(QtCore.QObject):
