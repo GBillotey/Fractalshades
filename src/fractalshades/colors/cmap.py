@@ -394,13 +394,14 @@ class Fractal_colormap():
                        kinds[0], colors1[0, :], colors2[0, :], grad_npts[0],
                        grad_funcs[0])))
         # Stores "constructor" vals
-        fc.kinds = kinds
-        fc.colors = colors
-        fc.grad_npts = grad_npts
-        fc.grad_funcs = grad_funcs
+        fc.colors = np.asarray(colors)
+        fc.kinds = np.asarray(kinds)
+        fc.grad_npts = np.asarray(grad_npts)
+        fc.grad_funcs = np.asarray(grad_funcs)
         fc.extent = extent
 
         return fc
+
 
 #    def params(self):
 #        return (self.kinds, self.colors1, self.colors2, self.funcs, 
@@ -446,6 +447,10 @@ gradient functions, array of shape (n_colors, 3))
     def n_colors(self):
         """ Total number of colors in the colormap. """
         return self._colors.shape[0]
+
+    @property
+    def npts(self):
+        return self.colors.shape[0]
 
     @property
     def probes(self):

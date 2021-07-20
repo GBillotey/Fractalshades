@@ -6,8 +6,12 @@ import functools
 import mpmath
 from operator import getitem, setitem
 
+import numpy as np
+
 from PyQt5 import QtCore
 from PyQt5.QtCore import pyqtSignal, pyqtSlot
+
+import fractalshades.colors as fscolors
 
 """
 Implementation of a GUI following a Model-View-Presenter interface
@@ -80,8 +84,12 @@ class Model(QtCore.QObject):
 
     def __setitem__(self, keys, val):
         # Sets an item value. keys iterable of nested keys
-        setitem(functools.reduce(getitem, keys[:-1], self._model),
-                keys[-1], val)
+#        setitem(functools.reduce(getitem, keys[:-1], self._model),
+#                keys[-1], val)
+        print("setitem", keys, val)
+        print("self[keys[:-1]]", self[keys[:-1]])
+        setitem(self[keys[:-1]], keys[-1], val)
+        # self.model_item_updated.emit(keys)
         # self.model_item_updated.emit(keys)
 
     def __getitem__(self, keys):
@@ -121,7 +129,7 @@ class Model(QtCore.QObject):
     def model_notified_slot(self, keys, oldval, val):
         """ A change has been done in a model / submodel,
         need to notify the widgets (viewers) """
-#        print("Model widget_modified", keys, oldval, val)
+        print("Model widget_modified", keys, oldval, val)
         # Here we could implement UNDO / REDO stack
         self.model_event.emit(keys, val)
 
@@ -438,36 +446,7 @@ class Func_submodel(Submodel):
 
         else:
             raise ValueError("Untracked key {}".format(key))
-
-
-class Colormap_submodel(Submodel):
-    model_notification = pyqtSignal(object, object, object)
-
-    def __init__(self, model, submodel_keys, cmap):
-        """
-        Submodel
-        Wraps and inspect a colormap
-        """
-        super().__init__(model, submodel_keys)
-        self._cmap = cmap
-        self.build_dict()
-        self.model_notification.connect(self._model.model_notified_slot)
-        print("Colormap_submodel created", cmap)
-
-    def build_dict(self):
-        cd = self._dict
-        print("build dict", self._cmap, type(self._cmap))
-        for attr in ["colors", "kinds", "grad_npts", "grad_funcs", "extent"]:
-            cd[attr] = getattr(self._cmap, attr)
-
-    def model_event_slot(self, keys, val):
-        if keys[:-1] != self._keys:
-            return
-        self.cmap_user_modified_slot(keys[-1], val)
-    
-    @pyqtSlot(object, object)
-    def cmap_user_modified_slot(self, key, val):
-        print("cmap model event", key, val)
+        
 
 
 class Presenter(QtCore.QObject):
@@ -500,6 +479,110 @@ class Presenter(QtCore.QObject):
     def __setitem__(self, key, val):
         # oldval = self[key]
         self.model_changerequest.emit(self._mapping[key], val)
+
+
+
+class Colormap_presenter(Presenter):
+    # model_notification = pyqtSignal(object, object, object)
+    
+    model_changerequest = pyqtSignal(object, object)
+    
+    
+    cmap_arr_attr = ["colors", "kinds", "grad_npts", "grad_funcs"]
+    cmap_attr =  cmap_arr_attr + ["extent"]
+    extent_choices = ["mirror", "repeat", "clip"]
+
+    def __init__(self, model, mapping, register_key):
+        """
+        Presenter for a colormap
+        Mapping expected : mapping = {"cmap": cmap_key}
+        """
+        super().__init__(model, mapping, register_key)
+                
+#                model, submodel_keys)
+#        self._cmap = cmap
+#        self.build_dict()
+#        self.model_notification.connect(self._model.model_notified_slot)
+#        print("Colormap_submodel created", cmap)
+
+    @property
+    def cmap(self):
+        return self._model[self._mapping["cmap"]]
+
+    @property
+    def cmap_dic(self):
+        cmap = self.cmap
+        return {attr: getattr(cmap, attr) for attr in self.cmap_attr}
+
+    @staticmethod
+    def default_cmap_attr(attr):
+        if attr == "colors":
+            return [0., 0., 0.]
+        elif attr == "kinds":
+            return "Lch"
+        elif attr == "grad_npts":
+            return 32
+        elif attr == "grad_funcs":
+            return (lambda x: x)
+        else:
+            raise ValueError(attr)
+
+#    def build_dict(self):
+#        cd = self._dict
+#        print("build dict", self._cmap, type(self._cmap))
+#        for attr in self.cmap_attr:
+#            cd[attr] = getattr(self._cmap, attr)
+
+#    def model_event_slot(self, keys, val):
+#        if keys[:-1] != self._keys:
+#            return
+#        self.cmap_user_modified_slot(keys[-1], val)
+
+    @pyqtSlot(object, object)
+    def cmap_user_modified_slot(self, key, val):
+        print("cmap model event", key, val)
+
+        if key == "size":
+            cmap = self.adjust_size(val)
+        elif key == "extent":
+            cmap = self.cmap
+            cmap.extent = val
+        else:
+            raise ValueError(key)
+
+        self.model_changerequest.emit(self._mapping["cmap"], cmap)
+    
+    def adjust_size(self, val):
+        npts = self.cmap.npts
+        cmap_dic = self.cmap_dic
+        if val < npts:
+            for attr in self.cmap_arr_attr:
+                print("attr", attr)
+                cmap_dic[attr] = cmap_dic[attr][:val, ...]
+        elif  val > npts:
+            for attr in self.cmap_arr_attr:
+                print("attr", attr)
+                old_arr = cmap_dic[attr]
+                sh = (val,) + old_arr.shape[1:]
+                new_arr = np.empty(sh, old_arr.dtype)
+                new_arr[:npts, ...] = old_arr
+                new_arr[npts:, ...] = self.default_cmap_attr(attr)
+                cmap_dic[attr] = new_arr
+                print("new_arr", new_arr)
+
+        return fscolors.Fractal_colormap(**cmap_dic)
+        self.build_dict()
+        print("cmap model_notification", self._keys)
+
+
+
+
+
+
+
+
+
+
 
 
 #class Image_presenter(Presenter):

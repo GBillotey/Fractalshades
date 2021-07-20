@@ -63,13 +63,26 @@ import fractalshades.colors as fscolors
 from fractalshades.gui.model import (
     Model,
     Func_submodel,
-    Colormap_submodel,
+    Colormap_presenter,
     Presenter,
     type_name,
 )
 
 from fractalshades.gui.QCodeEditor import QCodeEditor
 
+# QMainWindow
+MAIN_WINDOW_CSS = """
+QWidget {background-color: #646464;
+        color: white;}
+QMainWindow::separator {
+    background: #7e7e7e;
+    width: 4px; /* when vertical */
+    height: 4px; /* when horizontal */
+}
+QMainWindow::separator:hover {
+    background: #df4848;
+}
+"""
 
 DOCK_WIDGET_CSS = """
 QDockWidget {
@@ -88,7 +101,23 @@ QDockWidget::title {
     background: #25272C;
 }
 """
-#from viewer import Image_widget
+
+# QLineEdit
+PARAM_LINE_EDIT_CSS = """
+QLineEdit {{
+    color: white;
+    background: {0};
+}}
+"""
+
+# QPlainTextEdit
+PLAIN_TEXT_EDIT_CSS = """
+QWidget {{
+    color: white;
+    background: {0};
+    border-radius: 2px;
+}}
+"""
 
 def getapp():
     app = QtCore.QCoreApplication.instance()
@@ -263,7 +292,7 @@ class Func_widget(QFrame):
             utype = fd[(i_param, 0, "type")]
             print("utype", utype)
             utype_label = QLabel(type_name(utype))
-            self._layout.addWidget(utype_label, i_param, 2, 1, 1)
+            self._layout.addWidget(utype_label, i_param, 3, 1, 1)
             self.layout_uarg(qs, i_param, 0)
         else:
             utypes = [fd[(i_param, utype, "type")] for utype in range(n_uargs)]
@@ -278,13 +307,13 @@ class Func_widget(QFrame):
             utypes_combo.currentIndexChanged[int].connect(qs.setCurrentIndex)
             # utypes_combo.activated.connect(qs.setCurrentIndex)
             
-            self._layout.addWidget(utypes_combo, i_param, 2, 1, 1)
+            self._layout.addWidget(utypes_combo, i_param, 3, 1, 1)
             for utype in range(n_uargs):
                 self.layout_uarg(qs, i_param, utype)
         # The displayed item of the union is denoted by "type_sel" :
         # self.layout_uarg(qs, i_param, fd[(i_param, "type_sel")])
         qs.setCurrentIndex(fd[(i_param, "type_sel")])
-        self._layout.addWidget(qs, i_param, 3, 1, 1)
+        self._layout.addWidget(qs, i_param, 2, 1, 1)
         self._layout.setRowStretch(i_param, 0)
 
         # adds a spacer at bottom
@@ -311,10 +340,9 @@ class Func_widget(QFrame):
                     atom_wget.value))
             qs.addWidget(atom_wget)#, i_param, 3, 1, 1)
             
-            if isinstance(atom_wget, Atom_Submodel_mixin):
-                atom_wget.request_submodel.connect(functools.partial(
-                    self.on_submodel, (i_param, i_union, "val"),
-                    atom_wget.value))
+            if isinstance(atom_wget, Atom_Presenter_mixin):
+                atom_wget.request_presenter.connect(functools.partial(
+                    self.on_presenter, (i_param, i_union, "val")))
             
     
 #    def layout_field(self, qs, i_param, i_union, ifield):
@@ -357,30 +385,37 @@ class Func_widget(QFrame):
         else:
             raise NotImplementedError("Func_widget.model_event_slot {}".format(
                                       wget))
-            
-    def on_submodel(self, keys, val_callback, smodel_class, wget_class):
-        """ Handles creation of a submodel, as needed """
-        val = val_callback()
-        print("Submodel creation requested", keys, val)
-        print("with model", smodel_class)
+
+    def on_presenter(self, keys, presenter_class, wget_class):
+        """ Handles creation of a presenter, as needed """
+        print("presenter creation requested", keys)
+        print("with presenter", presenter_class)
         print("with wget", wget_class)
         print("register", self._model._register.keys())
         print('_func_keys', self._func_keys)
-        smodel_keys = self._func_keys + (smodel_class.__name__,)
-        print("smodel_keys", smodel_keys)
+        # (i_param, i_union, "val")
+#        smodel_keys = (("var_submodels", self._func_keys, keys,
+#                        smodel_class.__name__),)
+#        print("smodel_keys", smodel_keys)
+        mapping = {"cmap":  self._func_keys + (keys,)}
+        register_key = presenter_class.__name__
+        print("mapping****************", mapping)
 
-        smodel_class(self._model, smodel_keys, val)
-        wget = wget_class(None, self._model._register[smodel_keys])
+        presenter_class(self._model, mapping, register_key)
+        print("register 2", self._model._register.keys())
+        wget = wget_class(None, self._model._register[register_key])
 
         main_window = getmainwindow()
 
         dock_widget = QDockWidget(None, Qt.Window)
         dock_widget.setWidget(wget)
         # Not closable :
-        dock_widget.setFeatures(QDockWidget.DockWidgetFloatable | 
-                                QDockWidget.DockWidgetMovable)
-        dock_widget.setWindowTitle(smodel_class.__name__)
+#        dock_widget.setFeatures(QDockWidget.DockWidgetFloatable | 
+#                                QDockWidget.DockWidgetMovable)
+        dock_widget.setWindowTitle(register_key)
         dock_widget.setStyleSheet(DOCK_WIDGET_CSS)
+        # event
+        
         main_window.addDockWidget(Qt.RightDockWidgetArea, dock_widget)
 
 
@@ -404,7 +439,7 @@ class Atom_Edit_mixin:
     def value(self):
         raise NotImplementedError("Subclasses should implement")
 
-class Atom_Submodel_mixin:
+class Atom_Presenter_mixin:
     def value(self):
         raise NotImplementedError("Subclasses should implement")
 
@@ -507,6 +542,8 @@ class Atom_QLineEdit(QLineEdit, Atom_Edit_mixin):
         self.textChanged[str].connect(self.validate)
         self.editingFinished.connect(self.on_user_event)
         self.setValidator(Atom_Text_Validator(atom_type, model))
+        self.setStyleSheet(PARAM_LINE_EDIT_CSS.format(
+                       "#25272C"))
         if atom_type is type(None):
             self.setReadOnly(True)
 
@@ -520,17 +557,18 @@ class Atom_QLineEdit(QLineEdit, Atom_Edit_mixin):
     
     def on_model_event(self, val):
         self.setText(str(val))
-        self.validate(self.text(), acceptable_color="#ffffff")
+        self.validate(self.text(), acceptable_color="#25272C")
 
     def validate(self, text, acceptable_color="#c8c8c8"):
         validator = self.validator()
         if validator is not None:
             ret, _, _ = validator.validate(text, self.pos())
             if ret == QtGui.QValidator.Acceptable:
-                self.setStyleSheet("background-color: {}".format(
+                self.setStyleSheet(PARAM_LINE_EDIT_CSS.format(
                        acceptable_color))
             else:
-                self.setStyleSheet("background-color: #dc4646")
+                self.setStyleSheet(PARAM_LINE_EDIT_CSS.format(
+                       "#dc4646"))
 
 
 class Atom_QPlainTextEdit(QPlainTextEdit, Atom_Edit_mixin):
@@ -544,6 +582,9 @@ class Atom_QPlainTextEdit(QPlainTextEdit, Atom_Edit_mixin):
         # Wrapping parameters
         self.setLineWrapMode(QPlainTextEdit.WidgetWidth) 
         self.setWordWrapMode(QtGui.QTextOption.WrapAnywhere)
+        self.setStyleSheet(PLAIN_TEXT_EDIT_CSS.format(
+                       "#25272C"))
+        
         # signals / slots
         self._validator = Atom_Text_Validator(atom_type, model)
         self.textChanged.connect(self.validate)
@@ -567,13 +608,13 @@ class Atom_QPlainTextEdit(QPlainTextEdit, Atom_Edit_mixin):
         if validator is not None:
             ret, _, _ = validator.validate(text, self.pos())
             if ret == QtGui.QValidator.Acceptable:
-                self.setStyleSheet("background-color: #ffffff;"
-                    + "border: 1px solid  lightgrey")
+                self.setStyleSheet(PLAIN_TEXT_EDIT_CSS.format(
+                       "#25272C"))
                 if from_user:
                     self.user_modified.emit()
             else:
-                self.setStyleSheet("background-color: #dc4646;"
-                    + "border: 1px solid  lightgrey")
+                self.setStyleSheet(PLAIN_TEXT_EDIT_CSS.format(
+                       "#dc4646"))
             cursor = QtGui.QTextCursor(self.document())
             cursor.movePosition(QtGui.QTextCursor.End)
 
@@ -657,9 +698,9 @@ class Qcmap_image(QWidget):
         QtGui.QPainter(self).drawImage(0, 0, self._cmap.output_ImageQt(nx, ny))
 
 
-class Atom_cmap_button(Qcmap_image, Atom_Edit_mixin, Atom_Submodel_mixin):
+class Atom_cmap_button(Qcmap_image, Atom_Edit_mixin, Atom_Presenter_mixin):
     user_modified = pyqtSignal()
-    request_submodel = pyqtSignal(object, object)
+    request_presenter = pyqtSignal(object, object)
 
     def __init__(self, atom_type, val, model, parent=None):
         super().__init__(parent, val)
@@ -679,11 +720,12 @@ class Atom_cmap_button(Qcmap_image, Atom_Edit_mixin, Atom_Submodel_mixin):
         return self._cmap
 
     def on_model_event(self, val):
+        print("CMAP img model event")
         self.update_cmap(val)
 
     def mouseReleaseEvent(self, event):
         print("clicked")
-        self.request_submodel.emit(Colormap_submodel, Qcmap_editor)
+        self.request_presenter.emit(Colormap_presenter, Qcmap_editor)
 
 
 class Atom_Text_Validator(QtGui.QValidator):
@@ -756,26 +798,41 @@ class ColorDelegate(QStyledItemDelegate):
 
 class Qcmap_editor(QWidget):
     """
-    Widget of a cmap image with expanding width, fixed height
+    Widget of a cmap data table
     """
-    # TODO refactor with a submodel
-    def __init__(self, parent, cmap_smodel):#, minwidth=200, height=20):
+    cmap_user_modified = pyqtSignal(object, object)
+
+    def __init__(self, parent, cmap_presenter):
         super().__init__(parent)
-        self._submodel = cmap_smodel
         
+        self._model = cmap_presenter._model
+        self._mapping = cmap_presenter._mapping
+        self._presenter = cmap_presenter# model[func_keys]
+        self.extent_choices = self._presenter.extent_choices
+        
+        
+#        self._submodel = cmap_smodel
+#        self._model = cmap_smodel._model
+#        self.extent_choices = self._submodel.extent_choices
+
         layout = QVBoxLayout()
         layout.addWidget(self.add_param_box())
         layout.addWidget(self.add_table_box())
         # layout.addWidget(self.add_preview_box())
         layout.addStretch(1)
         self.setLayout(layout)
-        
+
         self._wget_n.valueChanged.connect(functools.partial(
                 self.event_filter, "size"))
+        self._wget_extent.currentTextChanged.connect(functools.partial(
+                self.event_filter, "extent"))
+
+        self.cmap_user_modified.connect(cmap_presenter.cmap_user_modified_slot)
+        self._model.model_event.connect(self.model_event_slot)
 
     @property
     def _cmap(self):
-        return self._submodel._cmap
+        return self._presenter.cmap
 
     def add_param_box(self):
         
@@ -783,11 +840,10 @@ class Qcmap_editor(QWidget):
         # Choice of number of lines
         self._wget_n = QSpinBox(self)
         self._wget_n.setRange(2, 256)
-        self._wget_n.setValue(len(self._cmap.colors))
+        # self._wget_n.setValue(len(self._cmap.colors))
         # Choice of cmap "extent"
-        extent_choices = ["mirror", "repeat", "clip"]
         self._wget_extent = QComboBox(self)
-        self._wget_extent.addItems(extent_choices)
+        self._wget_extent.addItems(self.extent_choices)
         # preview
         self._preview = Qcmap_image(self, self._cmap)
         param_layout = QHBoxLayout()
@@ -795,7 +851,16 @@ class Qcmap_editor(QWidget):
         param_layout.addWidget(self._wget_extent)#self._param_widget)
         param_layout.addWidget(self._preview, stretch=1)
         param_box.setLayout(param_layout)
+        
+        self.populate_param_box()
         return param_box
+
+    def populate_param_box(self):
+        self._wget_n.setValue(len(self._cmap.colors))
+        val_extent = self.extent_choices.index(self._cmap.extent)
+        self._wget_extent.setCurrentIndex(val_extent)
+        self._preview._cmap = self._cmap
+        self._preview.repaint()
 
     def add_table_box(self):
         table_box = QGroupBox("Cmap data")
@@ -843,6 +908,14 @@ class Qcmap_editor(QWidget):
 
     def event_filter(self, source, val):
         print("event", source, val)
+        self.cmap_user_modified.emit(source, val)
+
+    def model_event_slot(self, keys, val):
+        print("In Qcmap_editor event filter", keys, val, self._presenter._mapping["cmap"])
+        if keys != self._presenter._mapping["cmap"]:
+            # Sets the value of the sub-widgets according to the smodel
+            self.populate_param_box()
+            self.populate_table()
 
 
 
@@ -1358,18 +1431,8 @@ class Fractal_MainWindow(QMainWindow):
     
     def __init__(self, gui):
         super().__init__(parent=None)
-        self.setStyleSheet("""
-                QMainWindow::separator {
-                    background: #dadada;
-                    width: 3px; /* when vertical */
-                    height: 3px; /* when horizontal */
-                }
-                QMainWindow::separator:hover {
-                    background: red;
-                }
-                QWidget {background-color: #646464}
-                """)
-#                "QDockWidget {background: #dadada; font: bold 14px;"
+        self.setStyleSheet(MAIN_WINDOW_CSS)
+#                "QDockWidget {background: #dadada; font: bold 14px;" #dadada;
 #                              "border: 2px solid  #646464;}"
 #                "QDockWidget::title {text-align: left; background: #646464;"
 #                                     "padding-left: 5px;}")
