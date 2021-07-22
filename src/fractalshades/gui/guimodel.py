@@ -119,6 +119,37 @@ QWidget {{
 }}
 """
 
+COMBO_BOX_CSS = """
+QComboBox {
+    color: white;
+    background: #25272C;
+}
+QComboBox:item {
+    color: white;
+    background: #25272C;
+}
+QComboBox:item:selected {
+    color: #df4848;
+    background: #25272C;
+}
+"""
+
+CHECK_BOX_CSS = """
+QCheckBox:indicator {
+    border: 2px solid #25272C;
+    background: #646464;
+}
+QCheckBox:indicator:pressed {
+    background: #df4848;
+}
+QCheckBox:indicator:checked {
+    background: #25272C;
+}
+QCheckBox:indicator:checked:pressed {
+    background: #df4848;
+}
+"""
+
 def getapp():
     app = QtCore.QCoreApplication.instance()
     if app is None:
@@ -388,35 +419,30 @@ class Func_widget(QFrame):
 
     def on_presenter(self, keys, presenter_class, wget_class):
         """ Handles creation of a presenter, as needed """
-        print("presenter creation requested", keys)
-        print("with presenter", presenter_class)
-        print("with wget", wget_class)
-        print("register", self._model._register.keys())
-        print('_func_keys', self._func_keys)
-        # (i_param, i_union, "val")
-#        smodel_keys = (("var_submodels", self._func_keys, keys,
-#                        smodel_class.__name__),)
-#        print("smodel_keys", smodel_keys)
+        if not hasattr(self, "presenters"):
+            self.presenters = dict()
+
         mapping = {"cmap":  self._func_keys + (keys,)}
-        register_key = presenter_class.__name__
-        print("mapping****************", mapping)
-
-        presenter_class(self._model, mapping, register_key)
-        print("register 2", self._model._register.keys())
-        wget = wget_class(None, self._model._register[register_key])
-
-        main_window = getmainwindow()
-
-        dock_widget = QDockWidget(None, Qt.Window)
-        dock_widget.setWidget(wget)
-        # Not closable :
-#        dock_widget.setFeatures(QDockWidget.DockWidgetFloatable | 
-#                                QDockWidget.DockWidgetMovable)
-        dock_widget.setWindowTitle(register_key)
-        dock_widget.setStyleSheet(DOCK_WIDGET_CSS)
-        # event
+        varname = self._submodel._dict[(keys[0], "name")]
+        register_key = "{}({})".format(presenter_class.__name__, varname)
         
-        main_window.addDockWidget(Qt.RightDockWidgetArea, dock_widget)
+        if register_key not in self._model._register.keys():
+            presenter_class(self._model, mapping, register_key)
+            wget = wget_class(None, self._model._register[register_key])
+            dock_widget = QDockWidget(None, Qt.Window)
+            dock_widget.setWidget(wget)
+            dock_widget.setWindowTitle(register_key)
+            dock_widget.setStyleSheet(DOCK_WIDGET_CSS)
+            self.presenters[register_key] = dock_widget
+
+            main_window = getmainwindow()
+            main_window.addDockWidget(Qt.RightDockWidgetArea, dock_widget)
+#            dock_widget.visibilityChanged.connect(functools.partial(
+#                self.on_visibilityChanged, register_key))
+        else:
+            print("Only set visible")
+            dock_widget = self.presenters[register_key]
+            dock_widget.setVisible(True)
 
 
 def atom_wget_factory(atom_type):
@@ -451,6 +477,7 @@ class Atom_QCheckBox(QCheckBox, Atom_Edit_mixin):
         self.setChecked(val)
         self._type = atom_type
         self.stateChanged.connect(self.on_user_event)
+        self.setStyleSheet(CHECK_BOX_CSS)
 
     def value(self):
         return self.isChecked()
@@ -656,6 +683,8 @@ class Atom_QComboBox(QComboBox, Atom_Edit_mixin):
         self.currentTextChanged.connect(self.on_user_event)
         self.addItems(str(c) for c in self._choices)
         self.setCurrentIndex(val)
+        
+        self.setStyleSheet(COMBO_BOX_CSS)#"background:#000000")
 
     def value(self):
         return self.currentIndex()
@@ -911,9 +940,10 @@ class Qcmap_editor(QWidget):
         self.cmap_user_modified.emit(source, val)
 
     def model_event_slot(self, keys, val):
-        print("In Qcmap_editor event filter", keys, val, self._presenter._mapping["cmap"])
-        if keys != self._presenter._mapping["cmap"]:
+        print("In Qcmap_editor model event filter", keys, val, self._presenter._mapping["cmap"])
+        if keys == self._presenter._mapping["cmap"]:
             # Sets the value of the sub-widgets according to the smodel
+            print("populate & update !")
             self.populate_param_box()
             self.populate_table()
 

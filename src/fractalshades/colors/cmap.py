@@ -546,9 +546,14 @@ gradient functions, array of shape (n_colors, 3))
         *z*  array to normalise
         *probes_z* array of dim self.n_probes: values of z at probes
         """
-        if np.any(probes_z.shape != self._probes.shape):
-            raise ValueError("Expected *probes_values* of shape {0}, "
-                "given {1}".format(self._probes.shape, probes_z.shape))        
+        if probes_z.shape != self._probes.shape:
+            if probes_z.shape == (2,):
+                probes_z = np.linspace(probes_z[0], probes_z[1],
+                    num=self._probes.shape[0], dtype=probes_z.dtype)
+                assert probes_z.shape == self._probes.shape
+            else:
+                raise ValueError("Expected *probes_values* of shape {0}, "
+                    "given {1}".format(self._probes.shape, probes_z.shape))        
 
         # on over / under flow : clip or mirror
         ext_min = np.min(probes_z)
