@@ -9,9 +9,8 @@ import PIL
 import PIL.ImageQt
 import os
 
+import fractalshades.numpy_utils.expr_parser as fs_parser
 
-
-#import fractalshades.numpy_utils.xrange as fsx
 #import fractalshades.settings as fssettings
 #import fractalshades.utils as fsutils
 
@@ -351,10 +350,10 @@ class Color_tools():
 
 
 class Fractal_colormap():
-    def __new__(cls, colors, kinds, grad_npts, grad_funcs=None,
-                extent="mirror"):
+    def __init__(self, colors, kinds, grad_npts=32, grad_funcs="x",
+        extent="mirror"):
         """
-        Fractal_colormap factory, concatenates (n-1) color gradients (passing
+        Fractal_colormap, concatenates (n-1) color gradients (passing
         through n colors).
 
         colors : rgb float np.array of shape [n, 3]
@@ -362,126 +361,106 @@ class Fractal_colormap():
         grad_npts : int np.array of size [n-1] : number of internal points
             used, for each gradient
         grad_funcs : [n-1] array of callables mapping [0, 1.] to [0., 1] passed
-            to each gradient. Default to identity.
+            to each gradient. Callable passed as a string expression of x var
+            (ie, the func is the evaluation of "lambda x: " + expr).
+            Default to identity.
         extent : scalar, ["clip", "mirror", "repeat"] What to do with out of
             range values.
         """      
-        
+        self.colors = colors = np.asarray(colors)
+        self.n_grads = n_grads = colors.shape[0] - 1
+        self.n_probes = n_probes = colors.shape[0]
+
         # Provides sensible defaults if a scalar is provided
-        npts = colors.shape[0] - 1
         if isinstance(kinds, str):
-            kinds = [kinds] * npts
+            kinds = [kinds] * n_grads
         if isinstance(grad_npts, int):
-            grad_npts = [grad_npts] * npts
-        if grad_funcs is None:
-            grad_funcs = lambda x: x
-        if callable(grad_funcs):
-            grad_funcs = [grad_funcs] * npts
+            grad_npts = [grad_npts] * n_grads
+        if isinstance(grad_funcs, str): #callable(grad_funcs):
+            grad_funcs = [grad_funcs] * n_grads
+
+        self.kinds = kinds = np.asarray(kinds)
+        self.grad_npts = grad_npts = np.asarray(grad_npts)
+        self.grad_funcs = grad_funcs = np.asarray(grad_funcs)
+        self.extent = extent
         
+        # Deprecated option (not compatible with GUI editor)
+        if callable(grad_funcs):
+            raise ValueError("Callable grad_funcs deprecated, use string")
+
+
         # If color 2 not provided... we roll and cut the last item
         # colors2 = np.roll(colors, -1, axis=0)
-        colors1 = colors[:-1]
-        colors2 = colors[1:]
+#        colors1 = colors[:-1]
+#        colors2 = colors[1:]
 #        kinds = kinds[:-1]
 #        n = n[:-1]
 #        funcs = funcs[:-1]
 #        npts -= 1
 
-        fc = sum(tuple(_Fractal_colormap(Color_tools.color_gradient(
-                       kinds[ipt], colors1[ipt, :], colors2[ipt, :], grad_npts[ipt],
-                       grad_funcs[ipt])) for ipt in range(1, npts)),
-                 start=_Fractal_colormap(Color_tools.color_gradient(
-                       kinds[0], colors1[0, :], colors2[0, :], grad_npts[0],
-                       grad_funcs[0])))
-        # Stores "constructor" vals
-        fc.colors = np.asarray(colors)
-        fc.kinds = np.asarray(kinds)
-        fc.grad_npts = np.asarray(grad_npts)
-        fc.grad_funcs = np.asarray(grad_funcs)
-        fc.extent = extent
+#        fc = sum(tuple(_Fractal_colormap(Color_tools.color_gradient(
+#                       kinds[ipt], colors[ipt, :], colors[ipt + 1, :], grad_npts[ipt],
+#                       grad_funcs[ipt])) for ipt in range(1, npts)),
+#                 start=_Fractal_colormap(Color_tools.color_gradient(
+#                       kinds[0], colors[0, :], colors[1, :], grad_npts[0],
+#                       grad_funcs[0])))
 
-        return fc
+        # Should define 2 internal arrays
+        self._n_interp_colors = sum(grad_npts) - n_grads + 1
+        self._interp_colors = np.empty([self._n_interp_colors, 3],
+                                       dtype=np.float64)
+        self._probes = np.empty([n_probes], dtype=np.float32)
+
+#        print([grad_funcs[i_grad] for i_grad in range(n_grads)])
+        grad_func_evals = [
+            fs_parser.safe_eval("lambda x: " + grad_funcs[i_grad])
+            for i_grad in range(n_grads)
+        ]
+
+        i_col = 0
+        for i_grad in range(n_grads):
+            grad = Color_tools.color_gradient(
+                kinds[i_grad], colors[i_grad, :], colors[i_grad + 1, :],
+                grad_npts[i_grad], grad_func_evals[i_grad])
+#            print("i_grad", i_grad)
+#            print("grad_npts[i_grad]", grad_npts[i_grad])
+#            print("grad.shape", grad.shape)
+            self._interp_colors[i_col: i_col + grad_npts[i_grad], :] = grad
+            self._probes[i_grad] = i_col
+            i_col += (grad_npts[i_grad] - 1)
+        self._probes[n_grads] = i_col # last piquet
+
+
 
 
 #    def params(self):
 #        return (self.kinds, self.colors1, self.colors2, self.funcs, 
 #                self.extent)
     # Disables operations, as "constructor" vals will not follow
-    def __neg__(self):
-        raise NotImplementedError()
-    def __add__(self, other):
-        raise NotImplementedError()
-    def __sub__(self, other):
-        raise NotImplementedError()
+#    def __neg__(self):
+#        raise NotImplementedError()
+#    def __add__(self, other):
+#        raise NotImplementedError()
+#    def __sub__(self, other):
+#        raise NotImplementedError()
 
-
-class _Fractal_colormap():
-    # TODO : should be refactored so that it takes an array for which each line
-    # is a list of argument to Color gradient array from Colortool class,
-    # Each of them added to make the colormap
-    # Discontinue support for matplotlib colormaps
-    """
-    Class responsible for mapping a real array to a colors array.
-    Attributes :
-        *_colors* Internal list of possible colors, [0 to self.n_colors]
-        *_probes* list of indices in self._colors array, identifying the
-                  transitions between differrent sections of the colormap. Each
-                  of this probe is mapped to *_probe_value*, either given by the
-                  user or computed at plot time.
-    """
-    def __init__(self, color_gradient, extent="mirror"):
+    def __str__(self):
+        """ Return a string that can be evaluated to restaure the colormap
         """
-Creates a colormap from a color gradient array (as output by Color_tools
-gradient functions, array of shape (n_colors, 3))
-
-*color_gradient*  a Color gradient array from Colortool class
-*extent*  ["mirror", "repeat", "clip"] specifies what to do with out of range Values.
-        """
-        self._colors = color_gradient
-        n_colors, _ = color_gradient.shape
-        self._probes = np.array([0, n_colors-1], dtype=np.float32)
-#        self.quantiles_ref = None
-        self.extent = extent
-
-    @property
-    def n_colors(self):
-        """ Total number of colors in the colormap. """
-        return self._colors.shape[0]
-
-    @property
-    def npts(self):
-        return self.colors.shape[0]
-
-    @property
-    def probes(self):
-        """ Position of the "probes" ie transitions between the different parts
-        of the colormap. Read-only. """
-        return np.copy(self._probes)
-
-    def __neg__(self):
-        """
-        Returns a reversed colormap
-        """
-        other = _Fractal_colormap(self._colors[::-1, :])
-        other._probes = self._probes[-1] - self._probes[::-1]
-        return other
-
-    def __add__(self, other):
-        """ Concatenates 2 Colormaps """
-        fcm = _Fractal_colormap(np.vstack([self._colors, other._colors[1:]]))
-#        print("self._probes", self._probes)
-#        print("other._probes", other._probes)
-#        print("other._probes + (self._probes[-1])", other._probes + (self._probes[-1]))
-        #self._probes[-1] += 0.5
-        fcm._probes = np.concatenate([
-            self._probes,
-            (other._probes + (self._probes[-1]))[1:]
-            ])
-        return fcm
-
-    def __sub__(self, other):
-        """ Sbstract a colormap ie adds its reversed version """
-        return self.__add__(other.__neg__())
+        colors_str = np.array2string(self.colors, separator=', ')
+        kinds_str = np.array2string(self.kinds, separator=', ')
+        grad_npts_str = np.array2string(self.grad_npts, separator=', ')
+        grad_funcs_str = np.array2string(self.grad_funcs, separator=', ')
+        extent_str = self.extent
+        return (
+            "fscolors.Fractal_colormap(\n"
+            "    colors={},\n"
+            "    kinds={},\n"
+            "    grad_npts={},\n"
+            "    grad_funcs={},\n"
+            "    extent=\'{}\'\n)"
+        ).format(colors_str, kinds_str, grad_npts_str, grad_funcs_str,
+                 extent_str)
 
     def _output(self, nx, ny):
         margin = 1
@@ -517,11 +496,11 @@ gradient functions, array of shape (n_colors, 3))
         z = np.ravel(z)
         z = self.normalize(z, probes_z)
         # linear interpolation in sorted color array
-        indices = np.searchsorted(np.arange(self.n_colors), z)
+        indices = np.searchsorted(np.arange(self._n_interp_colors), z)
         alpha = indices - z
-        search_colors = np.vstack([self._colors[0, :],
-                                   self._colors,
-                                   self._colors[-1, :]])
+        search_colors = np.vstack([self._interp_colors[0, :],
+                                   self._interp_colors,
+                                   self._interp_colors[-1, :]])
         z_colors = (alpha[:, np.newaxis] * search_colors[indices, :] + 
              (1.-alpha[:, np.newaxis]) * search_colors[indices + 1, :])
         return np.reshape(z_colors, [nx, ny, 3])  
@@ -532,17 +511,17 @@ gradient functions, array of shape (n_colors, 3))
         """
         z = self.normalize(z, probes_z)
         # linear interpolation in sorted greyscale array
-        indices = np.searchsorted(np.arange(self.n_colors), z)
+        indices = np.searchsorted(np.arange(self.n_interp_colors), z)
         alpha = indices - z
         search_colors = np.concatenate([
-            [0.], np.linspace(0., 1., self.n_colors),  [1.]])
+            [0.], np.linspace(0., 1., self.n_interp_colors),  [1.]])
         z_greys = (alpha * search_colors[indices] +
                    (1. - alpha) * search_colors[indices + 1])
         return z_greys
 
     def normalize(self, z, probes_z):
         """
-        Normalise z , z -> z* so that z*min = 0 / z*max = self.n_colors
+        Normalise z , z -> z* so that z*min = 0 / z*max = self.n_interp_colors
         *z*  array to normalise
         *probes_z* array of dim self.n_probes: values of z at probes
         """
@@ -594,6 +573,100 @@ Formula: https://en.wikipedia.org/wiki/Triangle_wave
         """
         return ext_min + ((x - ext_min) % (ext_max - ext_min))
 
+
+#
+#class _Fractal_colormap():
+#    # TODO : should be refactored so that it takes an array for which each line
+#    # is a list of argument to Color gradient array from Colortool class,
+#    # Each of them added to make the colormap
+#    # Discontinue support for matplotlib colormaps
+#    """
+#    Class responsible for mapping a real array to a colors array.
+#    Attributes :
+#        *_colors* Internal list of possible colors, [0 to self.n_colors]
+#        *_probes* list of indices in self._colors array, identifying the
+#                  transitions between differrent sections of the colormap. Each
+#                  of this probe is mapped to *_probe_value*, either given by the
+#                  user or computed at plot time.
+#    """
+#    def __init__(self, color_gradient, extent="mirror"):
+#        """
+#Creates a colormap from a color gradient array (as output by Color_tools
+#gradient functions, array of shape (n_colors, 3))
+#
+#*color_gradient*  a Color gradient array from Colortool class
+#*extent*  ["mirror", "repeat", "clip"] specifies what to do with out of range Values.
+#        """
+#        self._colors = color_gradient
+#        n_colors, _ = color_gradient.shape
+#        self._probes = np.array([0, n_colors-1], dtype=np.float32)
+##        self.quantiles_ref = None
+#        self.extent = extent
+#
+#    @property
+#    def n_colors(self):
+#        """ Total number of colors in the colormap. """
+#        return self._colors.shape[0]
+#
+#    @property
+#    def npts(self):
+#        return self.colors.shape[0]
+#
+#    @property
+#    def probes(self):
+#        """ Position of the "probes" ie transitions between the different parts
+#        of the colormap. Read-only. """
+#        return np.copy(self._probes)
+#
+#    def __neg__(self):
+#        """
+#        Returns a reversed colormap
+#        """
+#        other = _Fractal_colormap(self._colors[::-1, :])
+#        other._probes = self._probes[-1] - self._probes[::-1]
+#        return other
+#
+#    def __add__(self, other):
+#        """ Concatenates 2 Colormaps """
+#        fcm = _Fractal_colormap(np.vstack([self._colors, other._colors[1:]]))
+##        print("self._probes", self._probes)
+##        print("other._probes", other._probes)
+##        print("other._probes + (self._probes[-1])", other._probes + (self._probes[-1]))
+#        #self._probes[-1] += 0.5
+#        fcm._probes = np.concatenate([
+#            self._probes,
+#            (other._probes + (self._probes[-1]))[1:]
+#            ])
+#        return fcm
+#
+#    def __sub__(self, other):
+#        """ Sbstract a colormap ie adds its reversed version """
+#        return self.__add__(other.__neg__())
+
+
+
 ## Defines the neutral element for cmap addition
 #EMPTY_CMAP = _Fractal_colormap(np.array([]).reshape([0, 3]))
 #EMPTY_CMAP._probes = np.array([-1])
+def test_print_cmap():
+    gold = np.array([255, 210, 66]) / 255.
+    black = np.array([0, 0, 0]) / 255.
+    purple = np.array([181, 40, 99]) / 255.
+    citrus2 = np.array([103, 189, 0]) / 255.
+    colors = np.vstack((citrus2[np.newaxis, :],
+                         purple[np.newaxis, :]))
+    colormap = Fractal_colormap(kinds="Lch", colors=colors,
+         grad_npts=200, grad_funcs="x", extent="mirror")
+    print(colormap)
+    
+    colors2 = np.vstack((citrus2[np.newaxis, :],
+                         black[np.newaxis, :],
+                         gold[np.newaxis, :],
+                         purple[np.newaxis, :]))
+    colormap2 = Fractal_colormap(kinds="Lch", colors=colors2,
+         grad_npts=[200, 20, 10], grad_funcs=["x", "x**6", "(1-x)"], extent="mirror")
+    print(colormap2)
+
+
+if __name__ == "__main__":
+    test_print_cmap()

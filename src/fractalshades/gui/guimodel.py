@@ -150,6 +150,15 @@ QCheckBox:indicator:checked:pressed {
 }
 """
 
+TABLE_WIDGET_CSS = """
+QTableView {
+selection-background-color: #646464;
+}
+QTableView::item::selected {
+  border: 2px solid red;
+}
+"""
+
 def getapp():
     app = QtCore.QCoreApplication.instance()
     if app is None:
@@ -157,6 +166,8 @@ def getapp():
     return app
 
 def getmainwindow():
+    for w in QtWidgets.QApplication.topLevelWidgets():
+        print("w main", w, w.inherits('QMainWindow'))
     for w in QtWidgets.QApplication.topLevelWidgets():
         if w.inherits('QMainWindow'):
             return w
@@ -426,17 +437,18 @@ class Func_widget(QFrame):
         varname = self._submodel._dict[(keys[0], "name")]
         register_key = "{}({})".format(presenter_class.__name__, varname)
         
-        if register_key not in self._model._register.keys():
+        if register_key not in self.presenters.keys():#self._model._register.keys():
             presenter_class(self._model, mapping, register_key)
             wget = wget_class(None, self._model._register[register_key])
             dock_widget = QDockWidget(None, Qt.Window)
             dock_widget.setWidget(wget)
             dock_widget.setWindowTitle(register_key)
             dock_widget.setStyleSheet(DOCK_WIDGET_CSS)
-            self.presenters[register_key] = dock_widget
 
             main_window = getmainwindow()
+            print("Add doc widget", dock_widget, wget)
             main_window.addDockWidget(Qt.RightDockWidgetArea, dock_widget)
+            self.presenters[register_key] = dock_widget
 #            dock_widget.visibilityChanged.connect(functools.partial(
 #                self.on_visibilityChanged, register_key))
         else:
@@ -833,21 +845,16 @@ class Qcmap_editor(QWidget):
 
     def __init__(self, parent, cmap_presenter):
         super().__init__(parent)
+        print("init Qcmap_editor with presenter", cmap_presenter, cmap_presenter.cmap)
         
         self._model = cmap_presenter._model
         self._mapping = cmap_presenter._mapping
         self._presenter = cmap_presenter# model[func_keys]
         self.extent_choices = self._presenter.extent_choices
-        
-        
-#        self._submodel = cmap_smodel
-#        self._model = cmap_smodel._model
-#        self.extent_choices = self._submodel.extent_choices
 
         layout = QVBoxLayout()
         layout.addWidget(self.add_param_box())
         layout.addWidget(self.add_table_box())
-        # layout.addWidget(self.add_preview_box())
         layout.addStretch(1)
         self.setLayout(layout)
 
@@ -855,6 +862,8 @@ class Qcmap_editor(QWidget):
                 self.event_filter, "size"))
         self._wget_extent.currentTextChanged.connect(functools.partial(
                 self.event_filter, "extent"))
+        self._table.itemChanged.connect(functools.partial(
+                self.event_filter, "table"))
 
         self.cmap_user_modified.connect(cmap_presenter.cmap_user_modified_slot)
         self._model.model_event.connect(self.model_event_slot)
@@ -898,14 +907,7 @@ class Qcmap_editor(QWidget):
         self._table = QTableWidget()
         # COLUMNS : colors, kinds, n, funcs=None
         self._table.setColumnCount(4)
-        self._table.setStyleSheet('''
-                QTableView {
-                selection-background-color: white;
-                }
-                QTableView::item::selected {
-                  border: 2px solid red;
-                }
-            ''')
+        self._table.setStyleSheet(TABLE_WIDGET_CSS)
 
         self._table.setItemDelegateForColumn(0, ColorDelegate(self._table))
         self._table.setHorizontalHeaderLabels((

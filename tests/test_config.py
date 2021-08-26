@@ -4,6 +4,8 @@ from contextlib import contextmanager
 from functools import wraps
 import os
 import sys
+import numpy as np
+import PIL
 
 test_dir = os.path.dirname(__file__)
 
@@ -40,3 +42,17 @@ def no_stdout(func):
         with suppress_stdout():
             return func(*args, **kwargs)
     return wrapper
+
+def compare_png(ref_file, test_file):
+    """
+    Return a scalar value of the difference between 2 images
+    """
+    ref_image = PIL.Image.open(ref_file)
+    test_image = PIL.Image.open(test_file)
+    
+    root, ext = os.path.splitext(test_file)
+    diff_file = root + ".diff" + ext
+    diff_image = PIL.ImageChops.difference(ref_image, test_image)
+    diff_image.save(diff_file)
+    errors = np.asarray(diff_image) / 255.
+    return np.mean(errors)

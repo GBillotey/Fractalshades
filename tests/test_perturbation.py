@@ -12,16 +12,16 @@ import fractalshades.colors as fscolors
 
 import test_config
 
-def compare_png(ref_file, test_file):
-    ref_image = PIL.Image.open(ref_file)
-    test_image = PIL.Image.open(test_file)
-    
-    root, ext = os.path.splitext(test_file)
-    diff_file = root + ".diff" + ext
-    diff_image = PIL.ImageChops.difference(ref_image, test_image)
-    diff_image.save(diff_file)
-    errors = np.asarray(diff_image) / 255.
-    return np.mean(errors)
+#def compare_png(ref_file, test_file):
+#    ref_image = PIL.Image.open(ref_file)
+#    test_image = PIL.Image.open(test_file)
+#    
+#    root, ext = os.path.splitext(test_file)
+#    diff_file = root + ".diff" + ext
+#    diff_image = PIL.ImageChops.difference(ref_image, test_image)
+#    diff_image.save(diff_file)
+#    errors = np.asarray(diff_image) / 255.
+#    return np.mean(errors)
 
 
 class Test_Perturbation_mandelbrot(unittest.TestCase):
@@ -73,7 +73,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 test_file = self.make_M2_img(x, y, dx, precision, nx,
                                              complex_type, test_name, prefix)
                 ref_file = os.path.join(self.image_dir_ref, test_name + ".png")
-                err = compare_png(ref_file, test_file)
+                err = test_config.compare_png(ref_file, test_file)
                 self.assertTrue(err < 0.01)
 
     # @test_config.no_stdout
@@ -98,7 +98,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                     complex_type, test_name, prefix, interior_detect=True,
                     mask_codes=[2], SA_params=SA_params)
                 ref_file = os.path.join(self.image_dir_ref, test_name + ".png")
-                err = compare_png(ref_file, test_file)
+                err = test_config.compare_png(ref_file, test_file)
                 if SA_params is not None:
                     self.assertTrue(err < 0.05)
                 else:
@@ -137,7 +137,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                         ("field_lines", {"n_iter": 10, "swirl": 1.}),
                 blur_ranges=[[0.8, 0.95, 1.0]], hardness=0.9, intensity=0.8)
             ref_file = os.path.join(self.image_dir_ref, test_name + ".png")
-            err = compare_png(ref_file, test_file)
+            err = test_config.compare_png(ref_file, test_file)
             self.assertTrue(err < 0.02)
             
         with self.subTest(zoom=2):
@@ -150,7 +150,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 probes_val=[0., 0.1], grey_layer_key=("field_lines", {}),
                 blur_ranges=[[0.8, 0.95, 1.0]], hardness=0.9, intensity=0.8)
             ref_file = os.path.join(self.image_dir_ref, test_name + "_2.png")
-            err = compare_png(ref_file, test_file)
+            err = test_config.compare_png(ref_file, test_file)
             self.assertTrue(err < 0.01)
 
 
@@ -188,7 +188,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
             blur_ranges=[[0.8, 0.95, 1.0]], hardness=0.9, intensity=0.8,
             glitch_max_attempt=10)
         ref_file = os.path.join(self.image_dir_ref, test_name + ".png")
-        err = compare_png(ref_file, test_file)
+        err = test_config.compare_png(ref_file, test_file)
         self.assertTrue(err < 0.02)
 
     @test_config.no_stdout
@@ -230,7 +230,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
             blur_ranges=[[0.98, 0.995, 1.0]], hardness=0.9, intensity=0.8,
             glitch_max_attempt=10, xy_ratio=0.5,SA_params=SA_params)
         ref_file = os.path.join(self.image_dir_ref, test_name + ".png")
-        err = compare_png(ref_file, test_file)
+        err = test_config.compare_png(ref_file, test_file)
         self.assertTrue(err < 0.02)
 
     @test_config.no_stdout

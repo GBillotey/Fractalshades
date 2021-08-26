@@ -17,7 +17,7 @@ import fractalshades.colors as fscolors
 Implementation of a GUI following a Model-View-Presenter interface
 architectural pattern.
 
-- The Model data is stored in a nested dict wrapped in Model or Submodel
+- The model data is stored in a nested dict wrapped in Model or Submodel
 instances The class in charge of the model is always the more deeply nested
 Submodel
 
@@ -494,7 +494,7 @@ class Colormap_presenter(Presenter):
 
     def __init__(self, model, mapping, register_key):
         """
-        Presenter for a colormap
+        Presenter for a colormap editor
         Mapping expected : mapping = {"cmap": cmap_key}
         """
         super().__init__(model, mapping, register_key)
@@ -547,6 +547,8 @@ class Colormap_presenter(Presenter):
         elif key == "extent":
             cmap = self.cmap
             cmap.extent = val
+        elif key == "table":
+            cmap = self.update_table(val)
         else:
             raise ValueError(key)
 
@@ -573,6 +575,14 @@ class Colormap_presenter(Presenter):
         return fscolors.Fractal_colormap(**cmap_dic)
         self.build_dict()
         print("cmap model_notification", self._keys)
+    
+    def update_table(self, item):
+        """ item : modified QTableWidgetItem """
+        row, col = item.row(), item.column()
+        print("Table modified at", row, col)
+        # Color, kind, grad_pts, grad_func
+        raise NotImplementedError("You shall implement...")
+        return self.cmap
 
 
 

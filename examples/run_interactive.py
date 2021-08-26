@@ -40,8 +40,8 @@ def plot():
     black = np.array([0, 0, 0]) / 255.
     purple = np.array([181, 40, 99]) / 255.
     citrus2 = np.array([103, 189, 0]) / 255.
-    colors = np.vstack((citrus2[np.newaxis, :],
-                         black[np.newaxis, :]))
+    colors = np.vstack((gold[np.newaxis, :],
+                         purple[np.newaxis, :]))
     colormap = fscolors.Fractal_colormap(colors=colors, kinds="Lch", 
          grad_npts=200, grad_funcs=None, extent="mirror")
     
@@ -113,8 +113,8 @@ def plot():
             subset=None, max_iter=max_iter, M_divergence=1.e3,
             epsilon_stationnary=1.e-4, pc_threshold=0.1,
             SA_params={"cutdeg": 8,
-                       "cutdeg_glitch": 8,
                        "SA_err": 1.e-6,
+                       "cutdeg_glitch": 8,
                        "use_Taylor_shift": True},
             glitch_eps=1.e-6, interior_detect=interior_detect,
             glitch_max_attempt=10)
@@ -125,7 +125,7 @@ def plot():
         else:
             print("RES NOT AVAILABLE, clean-up")
             fractal.clean_up(file_prefix)
-    
+
         fractal.run()
 
 
@@ -140,7 +140,7 @@ def plot():
             base_data_prefix=file_prefix,
             base_data_function=lambda x:x,
             colormap=colormap,
-            probes_val=[0.25, 0.75],
+            probes_val=[0.0, 0.1],
             probes_kind="qt",
             mask=mask)
        #  plotter.add_calculation_layer(("potential", {}))
