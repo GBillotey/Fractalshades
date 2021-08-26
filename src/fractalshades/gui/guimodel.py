@@ -165,13 +165,17 @@ def getapp():
         app = QApplication([])
     return app
 
-def getmainwindow():
-    for w in QtWidgets.QApplication.topLevelWidgets():
-        print("w main", w, w.inherits('QMainWindow'))
-    for w in QtWidgets.QApplication.topLevelWidgets():
-        if w.inherits('QMainWindow'):
-            return w
-    raise RuntimeError('Count not find QMainWindow instance.')
+def getmainwindow(win):
+    """ 
+    win : QWidget
+    Return the QMainWindow that is in `win` ancestors list, if found.
+    """
+    parent = win
+    while parent is not None:
+        if parent.inherits('QMainWindow'):
+            return parent
+        parent = parent.parent()
+    raise RuntimeError('Count not find QMainWindow instance.', win)
 
 
 class MinimizedStackedWidget(QStackedWidget):
@@ -433,28 +437,31 @@ class Func_widget(QFrame):
         if not hasattr(self, "presenters"):
             self.presenters = dict()
 
-        mapping = {"cmap":  self._func_keys + (keys,)}
         varname = self._submodel._dict[(keys[0], "name")]
         register_key = "{}({})".format(presenter_class.__name__, varname)
-        
+
         if register_key not in self.presenters.keys():#self._model._register.keys():
+            # TODO mapping for something else than a cmap...
+            mapping = {"cmap":  self._func_keys + (keys,)}
             presenter_class(self._model, mapping, register_key)
             wget = wget_class(None, self._model._register[register_key])
-            dock_widget = QDockWidget(None, Qt.Window)
+            main_window = getmainwindow(self)
+            dock_widget = QDockWidget(register_key, None, Qt.Window)
             dock_widget.setWidget(wget)
-            dock_widget.setWindowTitle(register_key)
+#            dock_widget.setWindowTitle(register_key)
             dock_widget.setStyleSheet(DOCK_WIDGET_CSS)
 
-            main_window = getmainwindow()
+
             print("Add doc widget", dock_widget, wget)
             main_window.addDockWidget(Qt.RightDockWidgetArea, dock_widget)
             self.presenters[register_key] = dock_widget
 #            dock_widget.visibilityChanged.connect(functools.partial(
 #                self.on_visibilityChanged, register_key))
         else:
-            print("Only set visible")
             dock_widget = self.presenters[register_key]
-            dock_widget.setVisible(True)
+            print("Only toggle visible", dock_widget.isVisible())
+            toggle = dock_widget.isVisible()
+            dock_widget.setVisible(not(toggle))
 
 
 def atom_wget_factory(atom_type):

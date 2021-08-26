@@ -43,7 +43,7 @@ def plot():
     colors = np.vstack((gold[np.newaxis, :],
                          purple[np.newaxis, :]))
     colormap = fscolors.Fractal_colormap(colors=colors, kinds="Lch", 
-         grad_npts=200, grad_funcs=None, extent="mirror")
+         grad_npts=200, grad_funcs="x", extent="mirror")
     
 #    x = '-1.24710405741042405360962651098294394779517220029152023311484191548274'
 #    y = '0.404377520626112573015438541889013872729238186318787005674541172744775'
