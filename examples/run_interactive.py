@@ -42,7 +42,7 @@ def plot():
     citrus2 = np.array([103, 189, 0]) / 255.
     colors = np.vstack((gold[np.newaxis, :],
                          purple[np.newaxis, :]))
-    colormap = fscolors.Fractal_colormap(colors=colors, kinds="Lch", 
+    colormap = fscolors.Fractal_colormap(colors=colors, kinds="Lab", 
          grad_npts=200, grad_funcs="x", extent="mirror")
     
 #    x = '-1.24710405741042405360962651098294394779517220029152023311484191548274'

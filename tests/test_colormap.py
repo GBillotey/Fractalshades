@@ -3,6 +3,7 @@ import os
 import numpy as np
 import unittest
 
+import fractalshades
 import fractalshades.colors as fscolors
 import fractalshades.utils as fsutils
 import test_config
@@ -21,8 +22,8 @@ class Test_Fractal_colormap(unittest.TestCase):
     
     @test_config.no_stdout
     def test_print_cmap(self):
-        """ Testing that Fractal_colormap __str__ method returns a string which
-        can be evaluated to generate the same cmap.
+        """ Testing that Fractal_colormap __repr__ method returns a string
+        which can be evaluated to generate the same cmap.
         """
         gold = np.array([255, 210, 66]) / 255.
         black = np.array([0, 0, 0]) / 255.
@@ -32,7 +33,7 @@ class Test_Fractal_colormap(unittest.TestCase):
                              purple[np.newaxis, :]))
         colormap = fscolors.Fractal_colormap(colors=colors, kinds="Lab",
              grad_npts=200, grad_funcs="x", extent="mirror")
-        colormap_inp = eval(str(colormap))
+        colormap_inp = eval(repr(colormap))
         # Tests that the 2 cmap are the same
         np.testing.assert_almost_equal(colormap.colors, colormap_inp.colors)
         np.testing.assert_almost_equal(colormap._probes, colormap_inp._probes)
@@ -45,7 +46,7 @@ class Test_Fractal_colormap(unittest.TestCase):
                              purple[np.newaxis, :]))
         colormap2 = fscolors.Fractal_colormap(kinds="Lch", colors=colors2,
              grad_npts=[200, 20, 10], grad_funcs=["x", "x**6", "(1-x)"], extent="mirror")
-        colormap_inp2 = eval(str(colormap2))
+        colormap_inp2 = eval(repr(colormap2))
         # Tests that the 2 cmap are the same
         np.testing.assert_almost_equal(colormap2.colors, colormap_inp2.colors)
         np.testing.assert_almost_equal(colormap2._probes, colormap_inp2._probes)
@@ -95,5 +96,4 @@ if __name__ == "__main__":
     else:
         suite = unittest.TestSuite()
         suite.addTest(Test_Fractal_colormap("test_print_cmap"))
-        suite.addTest(Test_Fractal_colormap("test_cbar_im"))
         runner.run(suite)

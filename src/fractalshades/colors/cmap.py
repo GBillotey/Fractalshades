@@ -444,7 +444,8 @@ class Fractal_colormap():
 #    def __sub__(self, other):
 #        raise NotImplementedError()
 
-    def __str__(self):
+
+    def __repr__(self):
         """ Return a string that can be evaluated to restaure the colormap
         """
         colors_str = np.array2string(self.colors, separator=', ')
@@ -453,7 +454,7 @@ class Fractal_colormap():
         grad_funcs_str = np.array2string(self.grad_funcs, separator=', ')
         extent_str = self.extent
         return (
-            "fscolors.Fractal_colormap(\n"
+            "fractalshades.colors.Fractal_colormap(\n"
             "    colors={},\n"
             "    kinds={},\n"
             "    grad_npts={},\n"
@@ -461,6 +462,8 @@ class Fractal_colormap():
             "    extent=\'{}\'\n)"
         ).format(colors_str, kinds_str, grad_npts_str, grad_funcs_str,
                  extent_str)
+
+
 
     def _output(self, nx, ny):
         margin = 1
@@ -666,6 +669,7 @@ def test_print_cmap():
     colormap2 = Fractal_colormap(kinds="Lch", colors=colors2,
          grad_npts=[200, 20, 10], grad_funcs=["x", "x**6", "(1-x)"], extent="mirror")
     print(colormap2)
+    print(repr(colormap2))
 
 
 if __name__ == "__main__":

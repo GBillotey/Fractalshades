@@ -9,6 +9,7 @@ from operator import getitem, setitem
 import numpy as np
 
 from PyQt5 import QtCore
+from PyQt5.QtCore import Qt
 from PyQt5.QtCore import pyqtSignal, pyqtSlot
 
 import fractalshades.colors as fscolors
@@ -489,25 +490,29 @@ class Colormap_presenter(Presenter):
     
     
     cmap_arr_attr = ["colors", "kinds", "grad_npts", "grad_funcs"]
+    cmap_arr_roles = [Qt.BackgroundRole,
+                      Qt.DisplayRole,
+                      Qt.DisplayRole,
+                      Qt.DisplayRole] # TODO
+
     cmap_attr =  cmap_arr_attr + ["extent"]
     extent_choices = ["mirror", "repeat", "clip"]
+    
+    
+   # kwargs = ["colors", "kinds", "grad_npts", "grad_funcs"]
 
     def __init__(self, model, mapping, register_key):
         """
-        Presenter for a colormap editor
+        Presenter for a `fractalshades.colors.Fractal_colormap` parameter
         Mapping expected : mapping = {"cmap": cmap_key}
         """
         super().__init__(model, mapping, register_key)
-                
-#                model, submodel_keys)
-#        self._cmap = cmap
-#        self.build_dict()
-#        self.model_notification.connect(self._model.model_notified_slot)
-#        print("Colormap_submodel created", cmap)
 
     @property
     def cmap(self):
-        return self._model[self._mapping["cmap"]]
+        # To use as a parameter presenter, the only key should be the class
+        # name (see `on_presenter` from `Func_widget`)
+        return self._model[self._mapping["Colormap_presenter"]]
 
     @property
     def cmap_dic(self):
@@ -517,13 +522,13 @@ class Colormap_presenter(Presenter):
     @staticmethod
     def default_cmap_attr(attr):
         if attr == "colors":
-            return [0., 0., 0.]
+            return [0.5, 0.5, 0.5]
         elif attr == "kinds":
             return "Lch"
         elif attr == "grad_npts":
             return 32
         elif attr == "grad_funcs":
-            return (lambda x: x)
+            return "x"
         else:
             raise ValueError(attr)
 
@@ -552,10 +557,11 @@ class Colormap_presenter(Presenter):
         else:
             raise ValueError(key)
 
-        self.model_changerequest.emit(self._mapping["cmap"], cmap)
+        self.model_changerequest.emit(self._mapping["Colormap_presenter"],
+                                      cmap)
     
     def adjust_size(self, val):
-        npts = self.cmap.npts
+        npts = self.cmap.n_probes
         cmap_dic = self.cmap_dic
         if val < npts:
             for attr in self.cmap_arr_attr:
@@ -579,10 +585,26 @@ class Colormap_presenter(Presenter):
     def update_table(self, item):
         """ item : modified QTableWidgetItem """
         row, col = item.row(), item.column()
-        print("Table modified at", row, col)
+        role = self.cmap_arr_roles[col]
+        kwarg_key = self.cmap_arr_attr[col]
+
+        cmap_dic = self.cmap_dic
+
+        print("Table modified at", row, col) # 1 0 
+        print("new val", role, item.data(role)) # <PyQt5.QtGui.QColor object at 0x7fbd5d61bac0>
+        print(kwarg_key, cmap_dic)
+        modified_kwarg = cmap_dic[kwarg_key]
+        print("tab init val", modified_kwarg) # array([[1.        , 0.82352941, 0.25882353],
+        #      [0.70980392, 0.15686275, 0.38823529]]
+        data = item.data(role)
+        if col == 0:
+            modified_kwarg[row] = [data.redF(), data.greenF(), data.blueF()]
+        else:
+            modified_kwarg[row] = data
+        print("tab new val", modified_kwarg)
+        cmap_dic[kwarg_key] = modified_kwarg
         # Color, kind, grad_pts, grad_func
-        raise NotImplementedError("You shall implement...")
-        return self.cmap
+        return fscolors.Fractal_colormap(**cmap_dic)
 
 
 
