@@ -8,7 +8,7 @@ import copy
 
 safe_names = ["x", "np"]
 safe_attrs = ["sin", "cos", "tan", "arccos", "arcsin", "arctan", "exp", "log",
-              "sqrt", "isin", "where"]
+              "sqrt", "isin", "where", "pi"]
 
 def acceptable_expr(expr):
     """

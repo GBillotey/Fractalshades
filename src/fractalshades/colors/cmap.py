@@ -379,9 +379,9 @@ class Fractal_colormap():
         if isinstance(grad_funcs, str): #callable(grad_funcs):
             grad_funcs = [grad_funcs] * n_grads
 
-        self.kinds = kinds = np.asarray(kinds)
+        self.kinds = kinds # = np.asarray(kinds)
         self.grad_npts = grad_npts = np.asarray(grad_npts)
-        self.grad_funcs = grad_funcs = np.asarray(grad_funcs)
+        self.grad_funcs = grad_funcs # = np.asarray(grad_funcs)
         self.extent = extent
         
         # Deprecated option (not compatible with GUI editor)
@@ -449,9 +449,9 @@ class Fractal_colormap():
         """ Return a string that can be evaluated to restaure the colormap
         """
         colors_str = np.array2string(self.colors, separator=', ')
-        kinds_str = np.array2string(self.kinds, separator=', ')
+        kinds_str = repr(self.kinds)# np.array2string(self.kinds, separator=', ')
         grad_npts_str = np.array2string(self.grad_npts, separator=', ')
-        grad_funcs_str = np.array2string(self.grad_funcs, separator=', ')
+        grad_funcs_str = repr(self.grad_funcs)# np.array2string(self.grad_funcs, separator=', ')
         extent_str = self.extent
         return (
             "fractalshades.colors.Fractal_colormap(\n"

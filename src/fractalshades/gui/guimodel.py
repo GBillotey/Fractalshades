@@ -962,19 +962,26 @@ class ExprDelegate(QStyledItemDelegate):
     def setModelData(self, editor, model, index):
         val = editor.text()
         model.setData(index, val, Qt.DisplayRole)
+        if self.validate(index):
+            color = QtGui.QColor("#646464")
+        else:
+            color = QtGui.QColor("red")
+        model.setData(index, color, Qt.BackgroundRole)
 
     def updateEditorGeometry(self, editor, option, index):
         editor.setGeometry(option.rect)
 
     def validate(self, index):
-        val = index.data(Qt.DisplayRole)
-        val = self.modifier(val)
-        return fs_parser.acceptable_expr(ast.parse(val, mode="eval"))
+        val = self.modifier(index.data(Qt.DisplayRole))
+        try:
+            return fs_parser.acceptable_expr(ast.parse(val, mode="eval"))
+        except (SyntaxError):
+            return False
 
 
 class Qcmap_editor(QWidget):
     """
-    Widget of a cmap data table
+    Widget of a cmap editor : parameters & data table
     """
     cmap_user_modified = pyqtSignal(object, object)
     
@@ -983,12 +990,10 @@ class Qcmap_editor(QWidget):
     locked_flags = (Qt.ItemIsEnabled)
 
     def __init__(self, parent, cmap_presenter):
-        super().__init__(parent)
-        print("init Qcmap_editor with presenter", cmap_presenter, cmap_presenter.cmap)
-        
+        super().__init__(parent)        
         self._model = cmap_presenter._model
         self._mapping = cmap_presenter._mapping
-        self._presenter = cmap_presenter# model[func_keys]
+        self._presenter = cmap_presenter
         self.extent_choices = self._presenter.extent_choices
 
         layout = QVBoxLayout()
@@ -1017,18 +1022,17 @@ class Qcmap_editor(QWidget):
         # Choice of number of lines
         self._wget_n = QSpinBox(self)
         self._wget_n.setRange(2, 256)
-        # self._wget_n.setValue(len(self._cmap.colors))
         # Choice of cmap "extent"
         self._wget_extent = QComboBox(self)
         self._wget_extent.addItems(self.extent_choices)
-        # preview
+        # preview as an image
         self._preview = Qcmap_image(self, self._cmap)
         param_layout = QHBoxLayout()
-        param_layout.addWidget(self._wget_n)#self._param_widget)
-        param_layout.addWidget(self._wget_extent)#self._param_widget)
+        param_layout.addWidget(self._wget_n)
+        param_layout.addWidget(self._wget_extent)
         param_layout.addWidget(self._preview, stretch=1)
         param_box.setLayout(param_layout)
-        
+
         self.populate_param_box()
         return param_box
 
@@ -1096,7 +1100,7 @@ class Qcmap_editor(QWidget):
                 row_range=range(n_rows - 1),
                 role=Qt.DisplayRole,
                 tab=self._cmap.kinds,
-                val_func=lambda v: str(v), # <class 'numpy.str_'> to str
+                val_func=lambda v: v, # <class 'numpy.str_'> to str
                 flags=self.std_flags
             )
             # grad_npts editor items
@@ -1114,7 +1118,7 @@ class Qcmap_editor(QWidget):
                 row_range=range(n_rows - 1),
                 role=Qt.DisplayRole,
                 tab=self._cmap.grad_funcs,
-                val_func=lambda v: str(v), # <class 'numpy.str_'> to str
+                val_func=lambda v: v, # <class 'numpy.str_'> to str
                 flags=self.std_flags
             )
 
@@ -1147,7 +1151,7 @@ class Qcmap_editor(QWidget):
         if source in ["size", "extent"]:
             self.cmap_user_modified.emit(source, val)
         elif source == "table":
-            # val : PyQt5.QtWidgets.QTableWidgetItem'
+            # val : PyQt5.QtWidgets.QTableWidgetItem
             row, col = val.row(), val.column()
 
             if col == 0:
@@ -1156,21 +1160,22 @@ class Qcmap_editor(QWidget):
             delegate = self._table.itemDelegateForColumn(col)
 
             if delegate is None:
-                self.cmap_user_modified.emit(source, val)
-                return
+                raise RuntimeError()
 
             model = self._table.model()
             index = model.index(row, col) 
             validated = delegate.validate(index)
 
             if validated:
-#                    val.setBackground(QtGui.QColor("#646464"))
+                # make sure that the normal flags are activateed (selection
+                # allowed)
                 with QtCore.QSignalBlocker(self._table):
                     val.setFlags(self.std_flags)
                 self.cmap_user_modified.emit(source, val)
             else:
                 # Invalid value, the event is not emited
-#                    val.setBackground(QtGui.QColor("red"))
+                # Prevent the cell from being selected, to display the "red" bg
+                # color (through flags)
                 with QtCore.QSignalBlocker(self._table):
                     val.setFlags(self.unvalidated_flags)
         else:

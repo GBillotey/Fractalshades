@@ -565,18 +565,21 @@ class Colormap_presenter(Presenter):
         cmap_dic = self.cmap_dic
         if val < npts:
             for attr in self.cmap_arr_attr:
-                print("attr", attr)
-                cmap_dic[attr] = cmap_dic[attr][:val, ...]
+                # Should work even for multidomentionnal ndarray (e.g., colors)
+                cmap_dic[attr] = cmap_dic[attr][:val] #, ...]
         elif  val > npts:
             for attr in self.cmap_arr_attr:
-                print("attr", attr)
                 old_arr = cmap_dic[attr]
-                sh = (val,) + old_arr.shape[1:]
-                new_arr = np.empty(sh, old_arr.dtype)
-                new_arr[:npts, ...] = old_arr
-                new_arr[npts:, ...] = self.default_cmap_attr(attr)
+                default = self.default_cmap_attr(attr)
+                if isinstance(old_arr, np.ndarray):
+                    old_arr = cmap_dic[attr]
+                    sh = (val,) + old_arr.shape[1:]
+                    new_arr = np.empty(sh, old_arr.dtype)
+                    new_arr[:npts, ...] = old_arr
+                    new_arr[npts:, ...] = default
+                else:
+                    new_arr = old_arr + [default] * (val - npts)
                 cmap_dic[attr] = new_arr
-                print("new_arr", new_arr)
 
         return fscolors.Fractal_colormap(**cmap_dic)
         self.build_dict()
@@ -601,7 +604,7 @@ class Colormap_presenter(Presenter):
             modified_kwarg[row] = [data.redF(), data.greenF(), data.blueF()]
         else:
             modified_kwarg[row] = data
-        print("tab new val", modified_kwarg)
+        print("tab new val", modified_kwarg, data)
         cmap_dic[kwarg_key] = modified_kwarg
         # Color, kind, grad_pts, grad_func
         return fscolors.Fractal_colormap(**cmap_dic)
