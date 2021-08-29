@@ -8,10 +8,12 @@ import copy
 
 safe_names = ["x", "np"]
 safe_attrs = ["sin", "cos", "tan", "arccos", "arcsin", "arctan", "exp", "log",
-              "sqrt", "isin", "where"]
+              "sqrt", "isin", "where", "pi"]
 
 def acceptable_expr(expr):
-
+    """
+    Return True if "lambda x: " + `expr` is a valid function of one var, x.
+    """
     if isinstance(expr, ast.Expression):
         return acceptable_expr(expr.body)
 
@@ -31,31 +33,31 @@ def acceptable_expr(expr):
                 and acceptable_expr(expr.body))
 
     elif isinstance(expr, ast.arguments):
-        print("arguments", expr.__dict__)
+#        print("arguments", expr.__dict__)
         return all(acceptable_expr(arg) for arg in expr.args)
 
     elif isinstance(expr, ast.arg):
-        print("arg", expr.__dict__)
+#        print("arg", expr.__dict__)
         return expr.arg == "x"
 
     elif isinstance(expr, ast.Name):
-        print("name", expr.__dict__)
+#        print("name", expr.__dict__)
         return expr.id in safe_names
 
     elif isinstance(expr, ast.Attribute):
-        print("attribute", expr.__dict__)
+#        print("attribute", expr.__dict__)
         return (acceptable_expr(expr.value)
                 and (expr.attr in safe_attrs))
 
     elif isinstance(expr, ast.Call): 
-        print("call", expr.__dict__)
+#        print("call", expr.__dict__)
         return (acceptable_expr(expr.func)
                 and all(acceptable_expr(arg) for arg in expr.args))
 
     elif (isinstance(expr, ast.List) or isinstance(expr, ast.Tuple)):
         return all(acceptable_expr(arg) for arg in expr.elts)
 
-    print(expr)
+    print("NOT VALID: <", expr, ">")
     return False
 
 def safe_eval(expr):
