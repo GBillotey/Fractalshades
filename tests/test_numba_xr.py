@@ -989,10 +989,14 @@ class Test_SA_xr(unittest.TestCase):
 
     def test_SA_loop(self):
 
-
         n_iter = 6
-        # Loader
-        test_dir = os.path.join(os.path.dirname(__file__), "xdata_REF")
+        # Loader        
+        test_dir = os.path.join(
+                os.path.dirname(__file__),
+                "REFERENCE_DATA",
+                "xdata_REF"
+        )
+        
         file_prefix = "64SA" #"noSA"
         mandelbrot = fsmodels.Perturbation_mandelbrot(test_dir)
         mandelbrot.zoom(
@@ -1013,16 +1017,16 @@ class Test_SA_xr(unittest.TestCase):
         kc = mpf_to_Xrange(kc, dtype=np.complex128)
         kcX = np.insert(kc, 0, 0.)
         kcX = Xrange_SA(kcX, cutdeg=cutdeg)
-        print("kcX:\n", kcX, kcX.coeffs, kcX.coeffs.dtype, type(kcX.coeffs))
+#        print("kcX:\n", kcX, kcX.coeffs, kcX.coeffs.dtype, type(kcX.coeffs))
         P0 = Xrange_SA([0j], cutdeg=cutdeg)
-        print("P0:\n", P0, P0.coeffs, P0.coeffs.dtype, type(P0.coeffs))
+#        print("P0:\n", P0, P0.coeffs, P0.coeffs.dtype, type(P0.coeffs))
         
 #        ref_path = Xrange_array(ref_path)
         
         P0_std = copy.deepcopy(P0)
         for i_iter in range(n_iter):
             n_iter +=1
-            print("i_iter", i_iter)
+#            print("i_iter", i_iter)
             # keep a copy
             
             # P_old1 = P[1].coeffs.copy()

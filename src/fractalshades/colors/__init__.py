@@ -1,2 +1,2 @@
 # -*- coding: utf-8 -*-
-from .cmap import *
+from .color_mapping import *

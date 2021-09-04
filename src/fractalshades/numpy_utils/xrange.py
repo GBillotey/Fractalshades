@@ -212,8 +212,6 @@ Reference:
             exp = np.zeros(sh, dtype=np.int32)
 
         extended_dtype = get_xr_dtype(mantissa_dtype)
-#        np.dtype([('mantissa', mantissa_dtype),
-#                                   ('exp', np.int32)], align=False)
 
         data = np.empty(sh, dtype=extended_dtype)
         data['mantissa'] = mantissa
@@ -1251,20 +1249,6 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
         if self.coeffs.ndim != 1:
             raise ValueError("Only 1-d inputs for Xrange_polynomial")
         self.cutdeg = cutdeg
-        
-#        self.cutdeg = cutdeg
-#        if isinstance(coeffs, Xrange_array):
-#            coeffs = coeffs[0:cutdeg+1]
-#        else:
-#            coeffs = Xrange_array(np.asarray(coeffs)[0:cutdeg+1])#.view(Xrange_array)
-#        if (coeffs.size < cutdeg + 1):
-#            _coeffs = Xrange_array(np.zeros([cutdeg+1],
-#                                   dtype=coeffs._mantissa.dtype))
-#            _coeffs[0:coeffs.size] = coeffs
-#            coeffs = _coeffs
-#        if coeffs.ndim != 1:
-#            raise ValueError("Only 1-d inputs for Xrange_polynomial")
-#        self.coeffs = coeffs
 
 
     def  __array_ufunc__(self, ufunc, method, *inputs, **kwargs):

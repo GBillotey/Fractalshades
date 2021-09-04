@@ -11,7 +11,7 @@ import fractalshades.numpy_utils.xrange as fsx
 import fractalshades.numpy_utils.numba_xr # as fsxn
 import fractalshades.settings as fssettings
 import fractalshades.utils as fsutils
-
+import fractalshades.postproc as fspp
 #force_recompute_SA = True
 
 class PerturbationFractal(fs.Fractal):
@@ -43,10 +43,10 @@ class PerturbationFractal(fs.Fractal):
         # Lazzy dictionary of reference point pathes
         self._ref_array = {}
 
-    def diff_c_chunk(self, chunk_slice, iref, file_prefix,
+    def diff_c_chunk(self, chunk_slice, iref, calc_name,
                      ensure_Xr=False):
         """
-        Returns a chunk of c_vec for the calculation
+        Returns a 2d chunk of c_vec for the calculation
         Parameters
          - chunk_span
          - data_type: expected one of np.float64, np.longdouble
@@ -56,8 +56,8 @@ class PerturbationFractal(fs.Fractal):
         
                 as a "delta" wrt reference pt iref
         """
-        offset_x, offset_y = self.offset_chunk(chunk_slice, ensure_Xr)
-        FP_params = self.reload_ref_point(iref, file_prefix, scan_only=True)
+        offset_x, offset_y = self.chunk_offset(chunk_slice, ensure_Xr)
+        FP_params = self.reload_ref_point(iref, calc_name, scan_only=True)
         drift_rp = (self.x + 1j * self.y) - FP_params["ref_point"] #.imag
         print("DIFF c_chunk Shifting c with respect to iref", iref, drift_rp)
         print("Shift in pc", drift_rp.real / self.dx, drift_rp.imag / self.dy)
@@ -73,7 +73,7 @@ class PerturbationFractal(fs.Fractal):
 
         return diff + drift_rp
 
-    def postproc_chunck(self, postproc_keys, chunk_slice, file_prefix):
+    def postproc_chunck(self, postproc_keys, chunk_slice, calc_name):
         """
         Postproc a stored array of data
         reshape as a sub-image crop to feed fractalImage
@@ -86,11 +86,11 @@ class PerturbationFractal(fs.Fractal):
 
         """
         params, codes, raw_data = self.reload_data_chunk(chunk_slice,
-                                                         file_prefix)
+                                                         calc_name)
         chunk_mask, Z, U, stop_reason, stop_iter = raw_data
         complex_dic, int_dic, termination_dic = self.codes_mapping(*codes)
         
-        FP_codes, ref_array = self.get_ref_array(file_prefix)#[:, :, :]
+        FP_codes, ref_array = self.get_ref_array(calc_name)#[:, :, :]
         full_Z = Z.copy()
         for key, val in complex_dic.items():
             # If this field in a full precision array, we add it :
@@ -107,21 +107,21 @@ class PerturbationFractal(fs.Fractal):
         return self.reshape2d(post_array, chunk_mask, chunk_slice)
 
 
-    def ref_point_count(self, file_prefix):
+    def ref_point_count(self, calc_name):
         iref = 0
-        while os.path.exists(self.ref_point_file(iref, file_prefix)):
+        while os.path.exists(self.ref_point_file(iref, calc_name)):
             iref += 1
         return iref
 
-    def ref_point_file(self, iref, file_prefix):
+    def ref_point_file(self, iref, calc_name):
         """
         Returns the file path to store or retrieve data arrays associated to a 
         data chunk
         """
         return os.path.join(self.directory, "data",
-                file_prefix + "_pt{0:d}.ref".format(iref))
+                calc_name + "_pt{0:d}.ref".format(iref))
 
-    def ref_point_scaling(self, iref, file_prefix):
+    def ref_point_scaling(self, iref, calc_name):
         """
         Return a scaling coefficient used as a convergence radius for serie 
         approximation, or as a reference scale for derivatives.
@@ -134,35 +134,35 @@ class PerturbationFractal(fs.Fractal):
         corner_c = c0 + 0.5 * (- self.dx - 1j * self.dy)
         corner_d = c0 + 0.5 * (self.dx - 1j * self.dy)
         ref = self.reload_ref_point(
-                iref, file_prefix,scan_only=True)["ref_point"]
+                iref, calc_name, scan_only=True)["ref_point"]
         print("ref point for SA", ref)
         # Let take some margin
         kc = max(abs(ref - corner_a), abs(ref - corner_b),
                  abs(ref - corner_c), abs(ref - corner_d)) * 2.0
         return kc
 
-    def save_ref_point(self, FP_params, Z_path, iref, file_prefix):
+    def save_ref_point(self, FP_params, Z_path, iref, calc_name):
         """
         Write to a dat file the following data:
            - params = main parameters used for the calculation
            - codes = complex_codes, int_codes, termination_codes
            - arrays : [Z, U, stop_reason, stop_iter]
         """
-        save_path = self.ref_point_file(iref, file_prefix)
+        save_path = self.ref_point_file(iref, calc_name)
         fsutils.mkdir_p(os.path.dirname(save_path))
         with open(save_path, 'wb+') as tmpfile:
             print("Path computed, saving", save_path)
             pickle.dump(FP_params, tmpfile, pickle.HIGHEST_PROTOCOL)
             pickle.dump(Z_path, tmpfile, pickle.HIGHEST_PROTOCOL)
 
-    def reload_ref_point(self, iref, file_prefix, scan_only=False):
+    def reload_ref_point(self, iref, calc_name, scan_only=False):
         """
         Reload arrays from a data file
            - params = main parameters used for the calculation
            - codes = complex_codes, int_codes, termination_codes
            - arrays : [Z, U, stop_reason, stop_iter]
         """
-        save_path = self.ref_point_file(iref, file_prefix)
+        save_path = self.ref_point_file(iref, calc_name)
         with open(save_path, 'rb') as tmpfile:
             FP_params = pickle.load(tmpfile)
             if scan_only:
@@ -170,18 +170,18 @@ class PerturbationFractal(fs.Fractal):
             Z_path = pickle.load(tmpfile)
         return FP_params, Z_path
 
-    def get_ref_array(self, file_prefix):
+    def get_ref_array(self, calc_name):
         """
         Lazzy evaluation of array compiling all ref points 'pathes'
         """
-        nref = self.ref_point_count(file_prefix)
-        FP_params = self.reload_ref_point(0, file_prefix, scan_only=True)
+        nref = self.ref_point_count(calc_name)
+        FP_params = self.reload_ref_point(0, calc_name, scan_only=True)
         max_iter = FP_params["max_iter"]
         FP_codes = FP_params["FP_codes"]
         print("FP_codes",  FP_codes)
         
         try:
-            ret = self._ref_array[file_prefix]
+            ret = self._ref_array[calc_name]
             if ret.shape[0] == nref:
                 return FP_codes, ret
             else:
@@ -201,43 +201,43 @@ class PerturbationFractal(fs.Fractal):
                                   dtype=self.complex_type)
 
         for iref in range(nref):
-            FP_params, Z_path = self.reload_ref_point(iref, file_prefix)
+            FP_params, Z_path = self.reload_ref_point(iref, calc_name)
             ref_array[iref, : , :] = Z_path[:, :]
-        self._ref_array[file_prefix] = ref_array
+        self._ref_array[calc_name] = ref_array
         return FP_codes, ref_array
 
-    def SA_file(self, iref, file_prefix):
+    def SA_file(self, iref, calc_name):
         """
         Returns the file path to store or retrieve params associated with a
         series approximation
         """
-        return os.path.join(self.directory, "data", file_prefix +
+        return os.path.join(self.directory, "data", calc_name +
                             "_pt{0:d}.sa".format(iref) )
 
-    def save_SA(self, SA_params, iref, file_prefix):
+    def save_SA(self, SA_params, iref, calc_name):
         """
         Write to a dat file the following data:
            - params = main parameters used for the calculation
            - codes = complex_codes, int_codes, termination_codes
            - arrays : [Z, U, stop_reason, stop_iter]
         """
-        save_path = self.SA_file(iref, file_prefix)
+        save_path = self.SA_file(iref, calc_name)
         fsutils.mkdir_p(os.path.dirname(save_path))
         with open(save_path, 'wb+') as tmpfile:
             print("SA computed, saving", save_path)
             pickle.dump(SA_params, tmpfile, pickle.HIGHEST_PROTOCOL)
 
-    def reload_SA(self, iref, file_prefix):
+    def reload_SA(self, iref, calc_name):
         """
         """
-        save_path = self.SA_file(iref, file_prefix)
+        save_path = self.SA_file(iref, calc_name)
         with open(save_path, 'rb') as tmpfile:
             SA_params = pickle.load(tmpfile)
         return SA_params
 
     def run(self):#, FP_loop, FP_params, SA_init, SA_loop, SA_params, max_iter,
                # initialize, iterate, subset, codes,
-               # file_prefix, pc_threshold, iref=0, glitch_stop_index=None,
+               # calc_name, pc_threshold, iref=0, glitch_stop_index=None,
                # glitch_sort_key=None, glitch_max_attempt=0):
         """
         glitch_stop_index : All points with a stop_reason >= glitch_stop_index
@@ -246,19 +246,30 @@ class PerturbationFractal(fs.Fractal):
                 stop_reason == glitch_stop_index will be sorted according to 
                 minimum value of field `glitch_sort_key` the minimal  point
                 used as new reference.
+                if None, no glitch correction.
                 
         glitch_sort_key : the complex (Z array) field where is stored our
             'priority value' to select the next reference pixel.
         """
-        file_prefix = self.file_prefix
+        if not(self.res_available()):
+            # We write the param file and initialize the
+            # memmaps for progress reports and calc arrays
+            # It is not process safe so we dot it before entering multi-processing
+            # loop
+            fsutils.mkdir_p(os.path.join(self.directory, "data"))
+            self.open_report_mmap()
+            self.open_data_mmaps()
+            self.save_params()
+
+        calc_name = self.calc_name
         max_iter = self.max_iter
         SA_params = copy.deepcopy(self.SA_params)
 
         self.iref = 0
 
         FP_params, ref_path = self.ensure_ref_point(self.FP_loop(),
-                self.max_iter, file_prefix, iref=self.iref, c0=None)
-        FP_params0 = self.reload_ref_point(0, file_prefix, scan_only=True)
+                self.max_iter, calc_name, iref=self.iref, c0=None)
+        FP_params0 = self.reload_ref_point(0, calc_name, scan_only=True)
 
         # If SA is activated :
         # Reload SA coefficient, otherwise compute them.
@@ -267,11 +278,11 @@ class PerturbationFractal(fs.Fractal):
             use_Taylor_shift = SA_params.pop("use_Taylor_shift", True)
             cutdeg_glitch = SA_params.pop("cutdeg_glitch", None)
             try:
-                SA_params = self.reload_SA(self.iref, file_prefix)
+                SA_params = self.reload_SA(self.iref, calc_name)
             except FileNotFoundError:
                 SA_params = self.series_approx(self.SA_init(), self.SA_loop(),
-                    SA_params, self.iref, file_prefix)
-                self.save_SA(SA_params, self.iref, file_prefix)
+                    SA_params, self.iref, calc_name)
+                self.save_SA(SA_params, self.iref, calc_name)
 
         # First a standard "perturbation" cycle, no glitch correction
         self._iterate = self.iterate()
@@ -288,19 +299,32 @@ class PerturbationFractal(fs.Fractal):
         glitch_sort_key = self.glitch_sort_key
         glitch_stop_index = self.glitch_stop_index
 
-        dyn_glitched = fs.Fractal_Data_array(self, file_prefix=file_prefix,
-                postproc_keys=('stop_reason',
-                lambda x: x == self.glitch_stop_index), mode="r+raw")
+#        dyn_glitched = fs.Fractal_Data_array(self, calc_name=calc_name,
+#                postproc_keys=('stop_reason',
+#                lambda x: x == self.glitch_stop_index), mode="r+raw")
+        dyn_glitched = fspp.Fractal_array(
+                self, calc_name, "stop_reason",
+                func=lambda x: x == glitch_stop_index)
+
         # We store this one as an attribute, as this is the pixels which will
         # need an update "escaped_or_glitched"
-        self.all_glitched = fs.Fractal_Data_array(self,
-                file_prefix=file_prefix, postproc_keys=('stop_reason',
-                    lambda x: x >= glitch_stop_index), mode="r+raw")
-        glitch_sorts = fs.Fractal_Data_array(self, file_prefix=file_prefix,
-                    postproc_keys=(glitch_sort_key, None), mode="r+raw")
-        stop_iters = fs.Fractal_Data_array(self, file_prefix=file_prefix,
-                    postproc_keys=("stop_iter", None), mode="r+raw")
+#        self.all_glitched = fs.Fractal_Data_array(self,
+#                calc_name=calc_name, postproc_keys=('stop_reason',
+#                    lambda x: x >= glitch_stop_index), mode="r+raw")
+        self.all_glitched = fspp.Fractal_array(
+                self, calc_name, "stop_reason",
+                func=lambda x: x >= glitch_stop_index)
+
+#        glitch_sorts = fs.Fractal_Data_array(self, file_prefix=file_prefix,
+#                    postproc_keys=(glitch_sort_key, None), mode="r+raw")
+        glitch_sorts = fspp.Fractal_array(
+                self, calc_name, glitch_sort_key, func=None)
         
+
+#        stop_iters = fs.Fractal_Data_array(self, calc_name=calc_name,
+#                    postproc_keys=("stop_iter", None), mode="r+raw")
+        stop_iters = fspp.Fractal_array(
+                self, calc_name, "stop_iter", func=None)
 
 #        _gcc = 0
 #        _gcc_max = self.glitch_max_attempt
@@ -308,97 +332,98 @@ class PerturbationFractal(fs.Fractal):
         # This looping is for dynamic glitches, we loop the largest glitches
         # first, a glitch being defined as 'same stop iteration'
 
-        all_glitch_count = self.all_glitched.nansum()
-        dyn_glitch_count = dyn_glitched.nansum()
-        print("ANY glitched ? ", dyn_glitch_count, all_glitch_count)
+#        all_glitch_count = self.all_glitched.nansum()
+#        dyn_glitch_count = dyn_glitched.nansum()
+        
+        
+        header, report = self.reload_report(None, calc_name)
+        print("*** REPORT")
+        print(header)
+        print(report)
+        all_glitch_count = np.sum(report[:, header.index("total-glitched")])
+        dyn_glitch_count = np.sum(report[:, header.index("dyn-glitched")])
+        prev_all_glitch_count = 0 # Track the progress
+        
+        print("ANY glitched ? dyn / total", dyn_glitch_count, all_glitch_count)
 
         while ((self.iref < self.glitch_max_attempt)
                and (all_glitch_count > 0)
-            ):#glitched.nanmax():
-#            _gcc += 1
-
+            ):
             self.iref += 1
             print("Launching glitch correction cycle, iref = ", self.iref)
+            print("with glitch and escaped pixel combined count (dyn / total)",
+                  dyn_glitch_count, all_glitch_count)
 
-            # We need to define c0
-#            glitched = fs.Fractal_Data_array(self, file_prefix=file_prefix,
-#                    postproc_keys=('stop_reason',
-#                    lambda x: x == glitch_stop_index), mode="r+raw")
-
-
-            print("with glitch pixel total count",
-                  dyn_glitch_count, glitch_sort_key)
-            print("with glitch and escaped pixel combined count",
-                  all_glitch_count)
-
-            if dyn_glitch_count > 0:
+            # We need to define the new c0. 
+            # - if no dyn glitched, use some random 
+            # - If we are stuck (no progress), we use some random
+            if (dyn_glitch_count > 0 and
+                prev_all_glitch_count != all_glitch_count):
                 glitched = dyn_glitched
                 flag = 'dyn'
             else:
                 glitched = self.all_glitched
                 flag = 'escape'
-                print("ESCAPE GLITCH !!!")
-                
+            prev_all_glitch_count = all_glitch_count
 
             # Minimize sort criteria over the selected glitch
             if flag == 'dyn':
                 glitch_iter = self.largest_glitch_iter(stop_iters, glitched)
                 (min_glitch_chunk, min_glitch_arg
                 ) = self.min_glitch_pt(
-                         glitch_sorts, stop_iters, glitched, glitch_iter)
+                         glitch_sorts, stop_iters, glitched, glitch_iter,
+                         header, report)
             elif flag == 'escape':
                  print("ESCAPE mode, count", all_glitch_count)
                  (min_glitch_chunk, min_glitch_arg
-                 ) = self.random_glitch_pt(all_glitch_count,
-                                            self.all_glitched)
-
+                 ) = self.random_glitch_pt(
+                     all_glitch_count, self.all_glitched, header, report)
             print("candidate",flag, min_glitch_chunk, min_glitch_arg)
-            # Now lets define ci. offset from image center is known
-            offset_x, offset_y = self.offset_chunk(min_glitch_chunk)
-#            offset_x = np.ravel(offset_x)
-#            offset_y = np.ravel(offset_y)
-#            if self.subset is not None:
-#                chunk_mask = np.ravel(self.subset[min_glitch_chunk])
-#                offset_x = offset_x[chunk_mask]
-#                offset_y = offset_y[chunk_mask]
 
-            if self.Xrange_complex_type:
-                print("With shift from center coords:\n",
-                      fsx.Xrange_to_mpfc(offset_x[min_glitch_arg]) / self.dx,
-                      fsx.Xrange_to_mpfc(offset_y[min_glitch_arg]) / self.dy)
-            else:
-                print("With shift from center coords:\n",
-                      offset_x[min_glitch_arg] / self.dx,
-                      offset_y[min_glitch_arg] / self.dy)
+            # min_glitch_arg in 1d need to translate in 2d ...
+            chunk_mask = None
+            if self.subset is not None:
+                chunk_mask = self.subset[min_glitch_chunk]
+
+            min_glitch_arg = self.index2d(min_glitch_arg, chunk_mask,
+                                          min_glitch_chunk)
+            # Now lets define ci. offset from image center is known
+            offset_x, offset_y = self.chunk_offset(min_glitch_chunk)
 
             if self.Xrange_complex_type:
                 ci = (self.x + fsx.Xrange_to_mpfc(offset_x[min_glitch_arg]) + 1j
                       * (self.y + fsx.Xrange_to_mpfc(offset_y[min_glitch_arg])))
+                print("With shift from center coords:\n",
+                      fsx.Xrange_to_mpfc(offset_x[min_glitch_arg]) / self.dx,
+                      fsx.Xrange_to_mpfc(offset_y[min_glitch_arg]) / self.dy)
             else:
                 ci = (self.x + offset_x[min_glitch_arg] + 1j
                       * (self.y + offset_y[min_glitch_arg]))
+                print("With shift from center coords:\n",
+                      offset_x[min_glitch_arg] / self.dx,
+                      offset_y[min_glitch_arg] / self.dy)
             
             if flag == 'dyn':
                 # Overall slightly counter-productive to add a Newton step here
                 # (less robust), we keep the raw selected point
                 FP_params, Z_path = self.ensure_ref_point(self.FP_loop(), max_iter,
-                    file_prefix, iref=self.iref, c0=ci, newton="None", order=glitch_iter)
+                    calc_name, iref=self.iref, c0=ci, newton="None", order=-1)
             elif flag == 'escape':
                 # just keep the raw point
                 FP_params, Z_path = self.ensure_ref_point(self.FP_loop(), max_iter,
-                    file_prefix, iref=self.iref, c0=ci, newton="None", order=-1)
+                    calc_name, iref=self.iref, c0=ci, newton="None", order=-1)
 
             if (SA_params is not None):
                 print("SA_params cutdeg / iref:",
                       SA_params["cutdeg"], SA_params["iref"])
                 try:
-                    SA_params = self.reload_SA(self.iref, file_prefix)
+                    SA_params = self.reload_SA(self.iref, calc_name)
                 except FileNotFoundError:
                     if use_Taylor_shift:
                         # We will shift the SA params coefficient from the first
                         # reference point
                         print("Shifting SA from pt0 to new reference point")
-                        SA_params0 = self.reload_SA(0, file_prefix)
+                        SA_params0 = self.reload_SA(0, calc_name)
                         P0 = SA_params0["P"]
                         dc_ref = (fsx.mpc_to_Xrange(FP_params["ref_point"]
                             - FP_params0["ref_point"], self.base_complex_type)
@@ -417,27 +442,26 @@ class PerturbationFractal(fs.Fractal):
                                      "kc": SA_params0["kc"],
                                      "n_iter": SA_params0["n_iter"],
                                      "P": P_shifted}
-                        self.save_SA(SA_params, self.iref, file_prefix)
+                        self.save_SA(SA_params, self.iref, calc_name)
                     else:
                         # Shift of SA approx is vetoed (no 'Taylor shift')
                         # -> Fall back to full SA recompute
                         if cutdeg_glitch is not None:
                             SA_params["cutdeg"] = cutdeg_glitch
                         SA_params = self.series_approx(self.SA_init(),
-                            self.SA_loop(), SA_params, self.iref, file_prefix)
-                        self.save_SA(SA_params, self.iref, file_prefix)
+                            self.SA_loop(), SA_params, self.iref, calc_name)
+                        self.save_SA(SA_params, self.iref, calc_name)
 
 
 
             self.cycles(chunk_slice=None, SA_params=SA_params)
-            
-#            glitched = fs.Fractal_Data_array(self, file_prefix=file_prefix,
-#                    postproc_keys=('stop_reason',
-#                    lambda x: x == glitch_stop_index), mode="r+raw")
 
             # Recomputing the exit condition
-            all_glitch_count = self.all_glitched.nansum()
-            dyn_glitch_count = dyn_glitched.nansum()
+            header, report = self.reload_report(None, calc_name)
+            all_glitch_count = np.sum(report[:,
+                                      header.index("total-glitched")])
+            dyn_glitch_count = np.sum(report[:, header.index("dyn-glitched")])
+
             print("ANY glitched ? ", all_glitch_count)
 
 
@@ -455,23 +479,11 @@ class PerturbationFractal(fs.Fractal):
             glitch_bincount += np.bincount(stop_iter[chunck_glitched],
                                            minlength=max_iter)
 
-        glitch_size = np.max(glitch_bincount)
-        glitch_iter = np.argmax(glitch_bincount)
+        return np.argmax(glitch_bincount) # glitch_iter
 
-        debug = False
-        if debug:
-            print("check sum", np.sum(glitch_bincount))
-            indices = np.arange(max_iter)
-            print('non null glitch iter',
-                  indices[glitch_bincount != 0])
-            print('non null glitch counts',
-                  glitch_bincount[glitch_bincount != 0])
-        print("Largest glitch (pts: {}, iter: {})".format(
-                glitch_size, glitch_iter))
 
-        return glitch_iter
-
-    def min_glitch_pt(self, glitch_sorts, stop_iters, glitched, glitch_iter):
+    def min_glitch_pt(self, glitch_sorts, stop_iters, glitched, glitch_iter,
+                      header, report):
         """
         Return localisation of minimal pixel in a dyn glitch
         glitch_sorts: *Fractal_Data_array* wrapping the array used to sort
@@ -482,78 +494,54 @@ class PerturbationFractal(fs.Fractal):
         min_glitch = np.inf
         min_glitch_chunk = None
         min_glitch_arg = None
-        for chunk_slice in self.chunk_slices():
+
+        for i, chunk_slice in enumerate(self.chunk_slices()):
+            # early exit this iteration if no glitched pixel
+            glitched_count = report[i, header.index("dyn-glitched")]
+            if glitched_count == 0:
+                continue
+
             glitch_sort = (glitch_sorts[chunk_slice]).real
-#            print("debug, glitch_sort", glitch_sort.shape, glitch_sorts[chunk_slice].shape)
+            indices = np.arange(len(glitch_sort), dtype=np.int32)
+            # keep only the glitched + good iter part
+            keep = (glitched[chunk_slice]
+                    & (stop_iters[chunk_slice] == glitch_iter))
 
+            glitch_sort = glitch_sort[keep]
+            if len(glitch_sort) == 0: # if has glitched pix but none from the largest
+                continue
             if self.Xrange_complex_type:
-                glitch_sort = glitch_sort.view(fsx.Xrange_array
-                                               ).to_standard()
-
-#            chunk_min = np.nanmin(glitch_sort) # debug
-            # Non-glitched pixel disregarded
-            chunck_glitched = glitched[chunk_slice]
-            glitch_sort[~chunck_glitched] = np.inf
-
-            # Glitched with non-target iter disregarded
-            stop_iter = stop_iters[chunk_slice]
-            is_glitch_iter = (stop_iter == glitch_iter)
-            glitch_sort[~is_glitch_iter] = np.inf
-#            print("debug2, glitch_sort", glitch_sort.shape)
-
+                glitch_sort = glitch_sort.view(fsx.Xrange_array).to_standard()
             chunk_min = np.nanmin(glitch_sort)
+            indices = indices[keep]
+
             if chunk_min < min_glitch:
-#                print("debug3, glitch_sort", glitch_sort.shape)
-                chunk_argmin = np.nanargmin(glitch_sort)
-#                print("debug3, chunk_argmin", chunk_argmin, np.unravel_index(chunk_argmin, glitch_sort.shape))
+                min_glitch_arg = indices[np.nanargmin(glitch_sort)]
                 min_glitch_chunk = chunk_slice
-                min_glitch_arg = np.unravel_index(chunk_argmin,
-                                                  glitch_sort.shape)
+                min_glitch = chunk_min # updates the min
 
         print("Minimal criteria reached at", min_glitch_chunk, min_glitch_arg)
         return min_glitch_chunk, min_glitch_arg
 
-    def random_glitch_pt(self, glitch_count, glitched):
+    def random_glitch_pt(self, glitch_count, glitched, header, report):
         """
         Return localisation of a random pixel in a glitch
         glitch_count: int, the number of glitched pixels
         glitched: *Fractal_Data_array* wrapping the dyn glitched pixel bool
         """
         rd_int = random.randrange(0, glitch_count)
-        for chunk_slice in self.chunk_slices():
-            chunck_glitched = glitched[chunk_slice]
-            glitched_count = np.sum(chunck_glitched)
-#            print("counting", rd_int, glitched_count)
+        for i, chunk_slice in enumerate(self.chunk_slices()):
+            glitched_count = report[i, header.index("total-glitched")]
             if rd_int < glitched_count:
-                nz0, nz1 = np.nonzero(chunck_glitched)
-                rd_index = (nz0[rd_int], nz1[rd_int])
-#                print("found index", chunck_glitched.shape, rd_index)
+                chunck_glitched = glitched[chunk_slice]
+                
+                (nz0,) = np.nonzero(chunck_glitched) # indices of non-zero pts
+                rd_index = nz0[rd_int]
                 return(chunk_slice, rd_index)
             else:
                 rd_int -= glitched_count
-        # If we are hre, raise 
+        # If we are here, raise 
         raise RuntimeError("glitch_count does not match glitched")
-
-
-#    def random_glitch_pt(self, glitch_count, glitched):
-#        """
-#        Return localisation of a random pixel in a glitch
-#        glitch_count: int, the number of glitched pixels
-#        glitched: *Fractal_Data_array* wrapping the dyn glitched pixel bool
-#        """
-#        rd_int = random.randrange(0, glitch_count)
-#        for chunk_slice in self.chunk_slices():
-#            chunck_glitched = glitched[chunk_slice]
-#            glitched_count = np.sum(chunck_glitched)
-#            print("counting", rd_int, glitched_count)
-#            if rd_int < glitched_count:
-#                rd_index = np.nonzero(chunck_glitched)[rd_int]
-#                print("foud index", glitched.shape, rd_index)
-#                return(chunk_slice, rd_index)
-#            else:
-#                rd_int -= glitched_count
-
-        
 
     def param_matching(self, dparams):
         """
@@ -564,6 +552,7 @@ class PerturbationFractal(fs.Fractal):
         # TODO : note: when comparing iref should be disregarded ? 
         # or subclass specific implementation
         UNTRACKED = ["SA_params", "datetime", "debug"]
+        SPECIAL_CASE = ["prec"] # TODO increased precision should be accepted
         for key, val in self.params.items():
             if not(key in UNTRACKED) and dparams[key] != val:
                 print("Unmatching", key, val, "-->", dparams[key])
@@ -573,100 +562,24 @@ class PerturbationFractal(fs.Fractal):
         return True
 
 
-
-    def res_available(self, chunk_slice=None):
-        """  Returns True if chunkslice is already computed with current
-        parameters
-        (Otherwise False)
-        """
-        print("**CALLING res_available +++")
-        if chunk_slice is None:
-            try:
-                (dparams, dcodes) = self.reload_data_param(self.file_prefix)
-            except IOError:
-                return False
-            return self.param_matching(dparams)
-        else:
-            try:
-                (dparams, dcodes) = self.reload_data_chunk(chunk_slice,
-                    self.file_prefix, scan_only=True)
-            except IOError:
-                return False
-
-        if dparams["iref"] >= self.iref:
-            return self.param_matching(dparams)
-            # return self.dic_matching(dparams, self.calc_params)
-        
-        # We are in the case where a file exists but not updated to the irefs
-        # do we need to actually do something ?
-        glitched_chunk = np.ravel(self.all_glitched[chunk_slice])
-        if np.any(glitched_chunk):
-            print("Glitch correction triggered, computing")
-            return False
-        else:
-            print("No glitched pixels remaining: ")
-            return self.param_matching(dparams)
-            # return self.dic_matching(dparams, self.calc_params)
-        
-#        subset = self.subset
-#        iref = self.iref
-#        codes = self.codes
-#        file_prefix = self.file_prefix
-#                # First tries to reload the data :
-#                
-#        if subset is not None:
-#            chunk_mask = np.ravel(subset[chunk_slice])
-#        else:
-#            chunk_mask = None
-#                
-#        try:
-#            (dparams, dcodes) = self.reload_data_chunk(chunk_slice,
-#                                                   file_prefix, scan_only=True)
-#            self.dic_matching(dparams, self.params)
-#            self.dic_matching(dcodes, codes)
-#
-#            if (iref is None) or iref == 0:
-#                print("Data found, skipping calc: ", chunk_slice)
-#                return
-#            # Now if this is a glitch correction iteration... we should check
-#            # if any pixel in this chunk is glitched with iref_pix < iref
-#            else:
-#                glitch_loop = True
-#                glitched_chunk = np.ravel(glitched[chunk_slice])
-#                print("glitched count", np.count_nonzero(glitched[chunk_slice]))
-#                # glitched_chunk[...] = True #debug
-#                irefs_chunk = np.ravel(irefs[chunk_slice])
-#                if subset is not None:
-#                    glitched_chunk = glitched_chunk[chunk_mask]
-#                    irefs_chunk = irefs_chunk[chunk_mask]
-#                if (np.any(glitched_chunk) and
-#                    (np.min(irefs_chunk[glitched_chunk]) < iref)):
-#                    print("Glitch correction triggered, computing: ", iref)
-#                else:
-#                    print("Data found in glitch correction loop, "
-#                          "skipping calc: ", chunk_slice)        
-#                    return
-#        except IOError:
-#            glitch_loop = False # File not found, nothing to 'unglitch'
-#            print("Unable to find data_file, computing")
-
-
     def init_cycling_arrays(self, chunk_slice, SA_params):
         
 #        subset = self.subset
 #        codes = self.codes
         iref = self.iref
-        file_prefix = self.file_prefix
+        calc_name = self.calc_name
 #        SA_params = self.SA_params
 
         # Creating c and Xrc arrays
-        chunk_mask = self.chunk_mask(chunk_slice)
-        c = np.ravel(self.diff_c_chunk(chunk_slice, iref, file_prefix))
+        
+#        chunk_mask = self.chunk_mask(chunk_slice)
+        c = np.ravel(self.diff_c_chunk(chunk_slice, iref, calc_name))
         if self.subset is not None:
-            c = c[self.chunk_mask(chunk_slice)]
+            chunk_mask = self.chunk_mask[chunk_slice]
+            c = c[chunk_mask]
         Xrc_needed = (SA_params is not None) and not(self.Xrange_complex_type)
         if Xrc_needed:
-            Xrc = np.ravel(self.diff_c_chunk(chunk_slice, iref, file_prefix,
+            Xrc = np.ravel(self.diff_c_chunk(chunk_slice, iref, calc_name,
                                              ensure_Xr=True))
             if self.subset is not None:
                 Xrc = Xrc[chunk_mask]
@@ -698,13 +611,15 @@ class PerturbationFractal(fs.Fractal):
                 glitched_chunk = glitched_chunk[chunk_mask]
             bool_active = glitched_chunk
             # We also need to keep previous value for pixels which are not
-            # glitched
-            (dparams, dcodes, raw_data) = self.reload_data_chunk(chunk_slice,
-                                       file_prefix, scan_only=False)
-            k_chunk_mask, k_Z, k_U, k_stop_reason, k_stop_iter = raw_data
+            # glitched 
+
+            # Still needed even with use of memmap : fancy indexing only used 
+            # when we push back the data
+            params, codes = self.reload_params(calc_name)
+            (k_chunk_mask, k_Z, k_U, k_stop_reason, k_stop_iter
+                )= self.reload_data(chunk_slice, calc_name)
             keep = ~glitched_chunk
-#            if k_chunk_mask is not None: # Safeguard
-#                np.testing.assert_equal(k_chunk_mask, chunk_mask)
+
             Z[:, keep] = k_Z[:, keep]
             U[:, keep] = k_U[:, keep]
             stop_reason[:, keep] =  k_stop_reason[:, keep]
@@ -743,26 +658,14 @@ class PerturbationFractal(fs.Fractal):
 #        c[bool_active] = c_act * self.dx
 
         # Initialise the path and ref point
-        FP_params, ref_path = self.reload_ref_point(iref, file_prefix)
+        FP_params, ref_path = self.reload_ref_point(iref, calc_name)
         ref_div_iter = FP_params.get("div_iter", 2**63 - 1) # max int64
 
         return (c, Z, U, stop_reason, stop_iter, n_stop, bool_active,
              index_active, n_iter, SA_iter, ref_div_iter, ref_path)
 
 
-    def save_data_chunk(self, save_path, params, codes, raw_data):
-        """
-        Write to a dat file the following data:
-           - params = main parameters used for the calculation
-           - codes = complex_codes, int_codes, termination_codes
-           - arrays : [Z, U, stop_reason, stop_iter]
-        """
-        params = copy.deepcopy(params)
-        params["iref"] = self.iref
-        return super().save_data_chunk(save_path, params, codes, raw_data)
-
-
-    def ensure_ref_point(self, FP_loop, max_iter, file_prefix,
+    def ensure_ref_point(self, FP_loop, max_iter, calc_name,
                          iref=0, c0=None, newton="cv", order=None,
                          randomize=False):
         """
@@ -773,13 +676,13 @@ class PerturbationFractal(fs.Fractal):
         """
         
         # Early escape if file exists
-        if self.ref_point_count(file_prefix) > iref:
-            FP_params, Z_path = self.reload_ref_point(iref, file_prefix)
+        if self.ref_point_count(calc_name) > iref:
+            FP_params, Z_path = self.reload_ref_point(iref, calc_name)
             pt = FP_params["ref_point"]
             print("reloading ref point", iref, pt, "center", self.x + 1j * self.y)
             return FP_params, Z_path
 
-#        if self.ref_point_count(file_prefix) <= iref:
+#        if self.ref_point_count(calc_name) <= iref:
         if c0 is None:
             c0 = self.x + 1j * self.y
 
@@ -805,7 +708,7 @@ class PerturbationFractal(fs.Fractal):
                     if randomize < 5:
                         randomize += 1
                         print("BALL METHOD RANDOM ", randomize)
-                        self.ensure_ref_point(FP_loop, max_iter, file_prefix,
+                        self.ensure_ref_point(FP_loop, max_iter, calc_name,
                                  iref=0, c0=None, newton="cv", order=None,
                                  randomize=randomize)
                     else:
@@ -850,29 +753,15 @@ class PerturbationFractal(fs.Fractal):
         print("compute ref_point", iref, pt, "\ncenter:\n",
               self.x + 1j * self.y)
         FP_params, Z_path = self.compute_ref_point(
-                FP_loop, pt, max_iter, iref, file_prefix, order)
+                FP_loop, pt, max_iter, iref, calc_name, order)
 
-        # TODO : known failed
-#            div_ref_pt = (FP_params.get("div_iter", None) is not None)
-#            if div_ref_pt and (newton != "step"):
-#                print("div_ref_pt", randomize)
-#                if not(randomize):
-#                    randomize = 1.
-#                else:
-#                    randomize *= 2.
-#                print("div_ref_pt with randomize", randomize)
-#                div_file = self.ref_point_file(iref, file_prefix)
-#                os.unlink(div_file)
-#                self.ensure_ref_point(FP_loop, max_iter, file_prefix,
-#                         iref=0, c0=None, newton="cv", order=None,
-#                         randomize=randomize)
                 
 
 
         return FP_params,  Z_path
 
     def compute_ref_point(self, FP_loop, c, max_iter,
-                          iref, file_prefix, order=None):
+                          iref, calc_name, order=None):
         """
         Computes full precision, and stores path in normal precision
         Note: Extended range not considered as orbit remind bounded.
@@ -904,7 +793,7 @@ class PerturbationFractal(fs.Fractal):
                 print("Full precision loop diverging at iter", div_iter)
                 break
             Z_path[n_iter, :] = np.array(FP_array)
-        self.save_ref_point(FP_params, Z_path, iref, file_prefix)
+        self.save_ref_point(FP_params, Z_path, iref, calc_name)
         return FP_params, Z_path
 
 

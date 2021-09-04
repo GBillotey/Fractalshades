@@ -61,6 +61,8 @@ NOte:
 
 /!\ This submodule has side effects at import time (due to its heavy use of
 numba operators overload) it should be imported only once (in fractalshades).
+
+See https://github.com/pygae/clifford
 """
 
 numba_float_types = (numba.float64,)
