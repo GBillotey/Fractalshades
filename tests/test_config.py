@@ -11,6 +11,8 @@ import PIL
 
 
 test_dir = os.path.dirname(__file__)
+temporary_data_dir = os.path.join(test_dir, "_temporary_data")
+ref_data_dir = os.path.join(test_dir, "REFERENCE_DATA")
 
 def suite(testcases):
     """
@@ -37,10 +39,13 @@ def suppress_stdout():
     with open(os.devnull, "w") as devnull:
         old_stdout = sys.stdout
         sys.stdout = devnull
+        old_stderr = sys.stderr
+        sys.stderr = devnull
         try:  
             yield
         finally:
             sys.stdout = old_stdout
+            sys.stderr = old_stderr
 
 def no_stdout(func):
     """ Decorator, suppress output of the decorated function"""

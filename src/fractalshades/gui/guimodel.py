@@ -1820,7 +1820,7 @@ class Fractal_GUI:
         print("_fractal", self._fractal)
 #        self._view = view
 
-    def connect_image(self, image_param="file_prefix"):
+    def connect_image(self, image_param="calc_name"):
         self._image = image_param
 
     def connect_mouse(self, x="x", y="y", dx="dx", xy_ratio="xy_ratio",

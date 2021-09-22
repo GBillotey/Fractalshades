@@ -1,7 +1,7 @@
 # Below are listed extra files to include in the source distribution
 # Tests
 recursive-include tests *
-recursive-exclude tests/_images_comparison *
+recursive-exclude tests/_temporary_data *
 recursive-exclude tests/known_fails/_data *
 # Examples
 recursive-include examples* *.py

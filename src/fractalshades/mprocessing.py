@@ -17,10 +17,11 @@ def process_init(job, redirect_path):
     """
     global process_job
     process_job = job
-    fsutils.mkdir_p(redirect_path)
-    out_file = str(os.getpid())
-    sys.stdout = open(os.path.join(redirect_path, out_file + ".out"), "a")
-    sys.stderr = open(os.path.join(redirect_path, out_file + ".err"), "a")
+    if redirect_path is not None:
+        fsutils.mkdir_p(redirect_path)
+        out_file = str(os.getpid())
+        sys.stdout = open(os.path.join(redirect_path, out_file + ".out"), "a")
+        sys.stderr = open(os.path.join(redirect_path, out_file + ".err"), "a")
 
 def job_proxy(key):
     """ returns result of global job variable from the child-process """
@@ -33,8 +34,8 @@ class Multiprocess_filler():
         """
         Decorator class for an instance-method *method*
 
-        *iterable_attr* : string, getattr(instance, iterable_attr) is an
-            iterable.
+        *iterable_attr* : string, getattr(instance, iterable_attr) is a
+            Generator function (i.e. `yields` the successive values).
         *res_attr* : string or None, if not None (instance, res_attr) is a
             dict-like.
         *redirect_path_attr* : string or None. If veto_multiprocess is False,
@@ -50,13 +51,12 @@ class Multiprocess_filler():
             (... CPU-intensive calculations ...)
             return val
 
-        - iter_kwargs will be filled with successive values yield by *iterable*
-            and successive outputs calculated by multiprocessing.cpu_count()
-            child-processes,
+        - iter_kwargs will be filled with successive values yielded
+            and successive outputs will calculated by child-processes,
         - these outputs will be pushed in place to res in parent process:
             res[key] = val
         - the child-processes stdout and stderr are redirected to os.getpid()
-            files in subdir *redirect_path* (extensions .out, in)
+            files in subdir *redirect_path* (extensions .out, in) - if provided
         """
         self.iterable = iterable_attr
         self.res = res_attr
@@ -79,7 +79,11 @@ class Multiprocess_filler():
                 and not(self.veto_multiprocess)):
                 print("Launch Multiprocess_filler of ", method.__name__)
                 print("cpu count:", multiprocessing.cpu_count())
-                redirect_path = getattr(instance, self.redirect_path_attr)
+
+                redirect_path=None
+                if self.redirect_path_attr is not None:
+                    redirect_path = getattr(instance, self.redirect_path_attr)
+
                 with multiprocessing.Pool(
                         initializer=process_init,
                         initargs=(job, redirect_path),
@@ -100,4 +104,3 @@ class Multiprocess_filler():
                     else:
                         job(key)
         return wrapper
-

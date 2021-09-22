@@ -1,0 +1,117 @@
+# -*- coding: utf-8 -*-
+import os
+import unittest
+import shutil
+
+import numpy as np
+import numba
+
+import fractalshades as fs
+import fractalshades.utils as fsutils
+import fractalshades.postproc as fspp
+#from fractalshades.mprocessing import Multiprocess_filler
+import test_config
+
+class Dummy_Fractal(fs.Fractal):
+    """ Minimal test implementation """
+    
+    @fsutils.calc_options
+    def calc1(self, calc_name):
+        complex_codes = ["z", "_z2", "z3"]
+        int_codes = ["int_1"]  # reference FP
+        stop_codes = ["max_iter"]
+        self.codes = (complex_codes, int_codes, stop_codes)
+        self.init_data_types(np.complex128)
+
+        def initialize():
+            def func(Z, U, c, chunk_slice):
+                Z[2, :] = c**3
+                Z[1, :] = c**2
+                Z[0, :] = c
+                U[0, :] = 1
+            return func
+        self.initialize = initialize
+        
+        def iterate():
+            @numba.njit
+            def numba_impl(Z, U, c, stop_reason, n_iter):
+                if n_iter >= 0:
+                    stop_reason[0] = 0
+                if np.abs(c) > 1:
+                    Z[0] = 0.
+                    Z[1] = 0.
+                    Z[2] = 0.
+                    U[0] = 0
+
+            return numba_impl
+        self.iterate = iterate
+
+
+class Test_postproc(unittest.TestCase):
+    
+    def setUp(self):
+        pp_dir = os.path.join(test_config.temporary_data_dir, "_postproc_dir")
+        fsutils.mkdir_p(pp_dir)
+        self.pp_dir = pp_dir
+        self.fractal = Dummy_Fractal(pp_dir)
+    
+    def test_arr(self):
+        """
+        Testing Fractal simple calc, storing of result arrays, re-reading them
+        though a Fractal_array object.
+        """
+        
+        f = self.fractal
+        f.clean_up("test")
+
+        f.zoom(x=0., y=0., dx=3., nx=800, xy_ratio=1, theta_deg=0.)
+        f.calc1(calc_name="test")
+        f.run()
+        
+        pp_z = fspp.Fractal_array(f, "test", "z", func=None)
+        pp_z3 = fspp.Fractal_array(f, "test", "z3", func=None)
+        pp_i1 = fspp.Fractal_array(f, "test", "int_1", func=None)
+        stop_reason = fspp.Fractal_array(f, "test", "stop_reason", func=None)
+        stop_iter = fspp.Fractal_array(f, "test", "stop_iter", func=None)
+        
+        for chunk in f.chunk_slices():
+#            res = pp_z[chunk]
+            c = np.ravel(f.c_chunk(chunk))
+            invalid = (np.abs(c) > 1)
+
+            expected_z = c.copy()
+            expected_z[invalid] = 0.
+            np.testing.assert_array_equal(expected_z, pp_z[chunk])
+
+            expected_z3 = expected_z ** 3
+            np.testing.assert_array_equal(expected_z3, pp_z3[chunk])
+
+            expected_i1 = np.where(invalid, 0, 1)
+            np.testing.assert_array_equal(expected_i1, pp_i1[chunk])
+
+            expected_stop = np.zeros(c.shape, np.int32)
+            expected_stop_iter = np.ones(c.shape, np.int32)
+            np.testing.assert_array_equal(expected_stop, stop_reason[chunk])
+            np.testing.assert_array_equal(expected_stop_iter, stop_iter[chunk])
+            
+
+
+    def tearDown(self):
+        pp_dir = self.pp_dir
+        try:
+            shutil.rmtree(os.path.join(pp_dir, "multiproc_calc"))
+        except FileNotFoundError:
+            pass
+
+        
+
+
+if __name__ == "__main__":
+    full_test = False
+    runner = unittest.TextTestRunner(verbosity=2)
+    if full_test:
+        runner.run(test_config.suite([Test_postproc]))
+    else:
+        suite = unittest.TestSuite()
+        suite.addTest(Test_postproc("test_arr"))
+        runner.run(suite)
