@@ -1,4 +1,7 @@
-![](https://github.com/GBillotey/Fractalshades/workflows/python-package/badge.svg)
+|GitHubActions|_
+
+.. |GitHubActions| image:: https://github.com/GBillotey/Fractalshades/workflows/Python-package/badge.svg
+.. _GitHubActions: https://github.com/GBillotey/Fractalshades/actions?query=workflow%3APython-package
 
 # Fractal-shades
 The pupose of this python package is to propose standard or deep-zoom exploration (under 1.e-300) of a few fractals.
