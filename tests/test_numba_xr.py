@@ -541,9 +541,9 @@ class Test_numba_xr(unittest.TestCase):
                 t_np += time.time()
                 
                 _matching(res, expected, almost=True, dtype=np.float64,
-                          ktol=2.)
+                          ktol=4.)
                 _matching(res_np, expected, almost=True, dtype=np.float64,
-                          ktol=2.)
+                          ktol=4.)
 
                 print("t_numba", t_numba)
                 print("t_numpy", t_np, t_numba/t_np)

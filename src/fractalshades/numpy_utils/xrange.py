@@ -622,12 +622,12 @@ Reference:
                     m0.real, sqrt0._exp,
                     m0.imag, sqrt0._exp, None)
             m = m_re + 1.j * m_im
-            even_exp = ((exp % 2) == 0).astype(np.bool)
+            even_exp = ((exp % 2) == 0).astype(bool)
             exp = np.where(even_exp, exp // 2, (exp - 1) // 2)
             out["mantissa"] = np.sqrt(np.where(even_exp, m, m * 2.))
             out["exp"] = exp
         else:
-            even_exp = ((sqrt0._exp % 2) == 0).astype(np.bool)
+            even_exp = ((sqrt0._exp % 2) == 0).astype(bool)
             out["mantissa"] = np.sqrt(np.where(even_exp, sqrt0._mantissa,
                                  sqrt0._mantissa * 2.))
             out["exp"] = np.where(even_exp, sqrt0._exp // 2,
@@ -661,7 +661,7 @@ Reference:
         m0 = op0._mantissa
         m1 = op1._mantissa
         if out is None:
-            out = np.empty(np.broadcast(m0, m1).shape, dtype=np.bool)
+            out = np.empty(np.broadcast(m0, m1).shape, dtype=bool)
 
         if (op0.is_complex or op1.is_complex):
             if ufunc in [np.equal, np.not_equal]:

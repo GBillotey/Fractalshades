@@ -362,7 +362,7 @@ class Test_Xrange_array(unittest.TestCase):
         _test_op2(np.not_equal, cmp_op=True)
 
     def test_abs(self):
-        _test_op1(np.abs, almost=True)
+        _test_op1(np.abs, almost=True, ktol=2.0)
     def test_sqrt(self):
         _test_op1(np.sqrt, almost=True)
     def test_square(self):
@@ -370,7 +370,7 @@ class Test_Xrange_array(unittest.TestCase):
     def test_conj(self):
         _test_op1(np.conj, almost=True)
     def test_log(self):
-        _test_op1(np.log, almost=True)
+        _test_op1(np.log, almost=True, ktol=2.0)
 
 
     def test_edge_cases(self):
@@ -641,10 +641,10 @@ class Test_Xrange_array(unittest.TestCase):
 class Test_Xrange_timing(unittest.TestCase):
     
     def test_timing(self):
-        self.assertTrue(self.timing_op1_complex(np.square) < 20)
-        self.assertTrue(self.timing_op2_complex(np.add) < 20)
-        self.assertTrue(self.timing_op2_complex(np.multiply) < 20)
-        self.assertTrue(self.timing_abs2_complex() < 20)
+        self.assertTrue(self.timing_op1_complex(np.square) < 40)
+        self.assertTrue(self.timing_op2_complex(np.add) < 40)
+        self.assertTrue(self.timing_op2_complex(np.multiply) < 40)
+        self.assertTrue(self.timing_abs2_complex() < 40)
     
     
     def timing_abs2_complex(self, dtype=np.float64):
