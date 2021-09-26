@@ -974,7 +974,8 @@ class ExprDelegate(QStyledItemDelegate):
     def validate(self, index):
         val = self.modifier(index.data(Qt.DisplayRole))
         try:
-            return fs_parser.acceptable_expr(ast.parse(val, mode="eval"))
+            return fs_parser.acceptable_expr(ast.parse(val, mode="eval"),
+                                             safe_vars=["x"])
         except (SyntaxError):
             return False
 
@@ -998,8 +999,8 @@ class Qcmap_editor(QWidget):
 
         layout = QVBoxLayout()
         layout.addWidget(self.add_param_box())
-        layout.addWidget(self.add_table_box())
-        layout.addStretch(1)
+        layout.addWidget(self.add_table_box(), stretch=1)
+#        layout.addStretch(1)
         self.setLayout(layout)
 
         self._wget_n.valueChanged.connect(functools.partial(
@@ -1045,7 +1046,7 @@ class Qcmap_editor(QWidget):
 
     def add_table_box(self):
         table_box = QGroupBox("Cmap data")
-        table_layout = QHBoxLayout()
+        table_layout = QVBoxLayout()
 
         self._table = QTableWidget()
         # COLUMNS : colors, kinds, n, funcs=None
@@ -1068,15 +1069,20 @@ class Qcmap_editor(QWidget):
                 "kind",
                 "grad_pts",
                 "grad_func"))
-        self._table.horizontalHeader().setSectionResizeMode(
-                QtWidgets.QHeaderView.Stretch)
+        # Horizontal Headr: expand last column
+        h_header = self._table.horizontalHeader()
+        h_header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+        h_header.setSectionResizeMode(3, QtWidgets.QHeaderView.Stretch)
+        # Vertical Header: ResizeToContents
+        self._table.verticalHeader().setSectionResizeMode(
+                QtWidgets.QHeaderView.ResizeToContents)
 
         # QAbstractItemView::SelectionMode QAbstractItemView::SingleSelection
         self._table.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
         
         table_layout = QHBoxLayout()
         table_box.setLayout(table_layout)
-        table_layout.addWidget(self._table)
+        table_layout.addWidget(self._table, stretch=1)
         return table_box
     
     def populate_table(self):
@@ -1314,6 +1320,7 @@ class Image_widget(QWidget):
 
         # Zoom rectangle disabled
         self._rect = None
+        self._rect_under = None
         self._drawing_rect = False
         self._dragging_rect = False
 
@@ -1392,7 +1399,7 @@ class Image_widget(QWidget):
 
 #        if self._qim is not None:
 #            self._group.removeFromGroup(self._qim)
-        for item in [self._qim, self._rect]:
+        for item in [self._qim, self._rect, self._rect_under]:
             if item is not None:
                 self._group.removeFromGroup(item)
 
@@ -1406,6 +1413,7 @@ class Image_widget(QWidget):
             self._qim = None
         
         self._rect = None
+        self._rect_under = None
         self._drawing_rect = False
 
     @staticmethod
@@ -1542,6 +1550,8 @@ class Image_widget(QWidget):
             if (self._rect_pos0 == self._rect_pos1):
                 self._group.removeFromGroup(self._rect)
                 self._rect = None
+                self._group.removeFromGroup(self._rect_under)
+                self._rect_under = None
                 print("cancel drawing RECT")
                 self.cancel_drawing_rect()
             else:
@@ -1657,9 +1667,14 @@ class Image_widget(QWidget):
         rectF = QtCore.QRectF(topleft, bottomRight)
         if self._rect is not None:
             self._rect.setRect(rectF)
+            self._rect_under.setRect(rectF)
         else:
+            self._rect_under = QGraphicsRectItem(rectF)
+            self._rect_under.setPen(QtGui.QPen(QtGui.QColor("red"), 0, Qt.SolidLine))
+            self._group.addToGroup(self._rect_under)
+
             self._rect = QGraphicsRectItem(rectF)
-            self._rect.setPen(QtGui.QPen(QtGui.QColor("red"), 0, Qt.DashLine))
+            self._rect.setPen(QtGui.QPen(QtGui.QColor("black"), 0, Qt.DotLine))
             self._group.addToGroup(self._rect)
 
     def selection_corners(self, pos0, pos1):
@@ -1668,8 +1683,8 @@ class Image_widget(QWidget):
         diffy = abs(pos1.y() - pos0.y())
         # Enforce the correct ratio
         radius_sq = diffx ** 2 + diffy ** 2
-        diffx0 = math.sqrt(radius_sq / (1. + self.xy_ratio ** 2))
-        diffy0 = diffx0 * self.xy_ratio
+        diffx0 = math.sqrt(radius_sq / (1. + 1. / self.xy_ratio ** 2))
+        diffy0 = diffx0 / self.xy_ratio
         topleft = QtCore.QPointF(pos0.x() - diffx0, pos0.y() - diffy0)
         bottomRight = QtCore.QPointF(pos0.x() + diffx0, pos0.y() + diffy0)
         return topleft, bottomRight

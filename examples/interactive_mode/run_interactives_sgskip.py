@@ -122,9 +122,9 @@ def plot():
         fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
              theta_deg=0., projection="cartesian", antialiasing=False)
 
-        fractal.calc_std_div(complex_type=np.complex128, calc_name=calc_name,
+        fractal.calc_std_div(datatype=np.complex128, calc_name=calc_name,
             subset=None, max_iter=max_iter, M_divergence=1.e3,
-            epsilon_stationnary=1.e-4, pc_threshold=0.1,
+            epsilon_stationnary=1.e-4,
             SA_params={"cutdeg": 8,
                        "SA_err": 1.e-6,
                        "cutdeg_glitch": 8,

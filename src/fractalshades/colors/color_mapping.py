@@ -11,19 +11,6 @@ import os
 
 import fractalshades.numpy_utils.expr_parser as fs_parser
 
-#import fractalshades.settings as fssettings
-#import fractalshades.utils as fsutils
-
-#def mkdir_p(path):
-#    """ Creates directory ; if exists does nothing """
-#    try:
-#        os.makedirs(path)
-#    except OSError as exc:
-#        if exc.errno == errno.EEXIST and os.path.isdir(path):
-#            pass
-#        else:
-#            raise exc
-
 
 class Color_tools():
     """ A bunch of staticmethods
@@ -43,7 +30,6 @@ class Color_tools():
     # CIE standard illuminant A, . Simulates typical, domestic,
     # tungsten-filament lighting with correlated color temperature of 2856 K. 
     A_ref_white = np.array([1.0985, 1.0000, 0.3558])
-
 
     @staticmethod
     def rgb_to_XYZ(rgb):
@@ -368,16 +354,23 @@ class Fractal_colormap:
         Fractal_colormap, concatenates (n-1) color gradients (passing
         through n colors).
 
+        Parameters
+        ==========
         colors : rgb float np.array of shape [n, 3]
+            The successives colors of the colormap
         kinds: arrays of string [n-1] , "Lab" or "Lch"
-        grad_npts : int np.array of size [n-1] : number of internal points
-            used, for each gradient
-        grad_funcs : [n-1] array of callables mapping [0, 1.] to [0., 1] passed
-            to each gradient. Callable passed as a string expression of x var
-            (ie, the func is the evaluation of "lambda x: " + expr).
+            The kind of gradient between colors n and n+1 : either linear in
+            Lab space of Lch space
+        grad_npts : int np.array of size [n-1]
+            number of internal points stores, gradient between colors n and n+1
+            a typical value is 32.
+        grad_funcs : [n-1] array of callables mapping [0, 1.] to [0., 1]
+            These are passed to each gradient. Callable passed as a string
+            expression of x var
+            (ie, the callable is the evaluation of "lambda x: " + expr).
             Default to identity.
-        extent : scalar, ["clip", "mirror", "repeat"] What to do with out of
-            range values.
+        extent : "clip" | "mirror" | "repeat"
+            What to do with out of range values.
         """      
         self.colors = colors = np.asarray(colors)
         self.n_grads = n_grads = colors.shape[0] - 1
@@ -400,22 +393,6 @@ class Fractal_colormap:
         if callable(grad_funcs):
             raise ValueError("Callable grad_funcs deprecated, use string")
 
-
-        # If color 2 not provided... we roll and cut the last item
-        # colors2 = np.roll(colors, -1, axis=0)
-#        colors1 = colors[:-1]
-#        colors2 = colors[1:]
-#        kinds = kinds[:-1]
-#        n = n[:-1]
-#        funcs = funcs[:-1]
-#        npts -= 1
-
-#        fc = sum(tuple(_Fractal_colormap(Color_tools.color_gradient(
-#                       kinds[ipt], colors[ipt, :], colors[ipt + 1, :], grad_npts[ipt],
-#                       grad_funcs[ipt])) for ipt in range(1, npts)),
-#                 start=_Fractal_colormap(Color_tools.color_gradient(
-#                       kinds[0], colors[0, :], colors[1, :], grad_npts[0],
-#                       grad_funcs[0])))
 
         # Should define 2 internal arrays
         self._n_interp_colors = sum(grad_npts) - n_grads + 1
@@ -442,19 +419,6 @@ class Fractal_colormap:
             i_col += (grad_npts[i_grad] - 1)
         self._probes[n_grads] = i_col # last piquet
 
-
-
-
-#    def params(self):
-#        return (self.kinds, self.colors1, self.colors2, self.funcs, 
-#                self.extent)
-    # Disables operations, as "constructor" vals will not follow
-#    def __neg__(self):
-#        raise NotImplementedError()
-#    def __add__(self, other):
-#        raise NotImplementedError()
-#    def __sub__(self, other):
-#        raise NotImplementedError()
 
 
     def __repr__(self):
@@ -588,11 +552,32 @@ Formula: https://en.wikipedia.org/wiki/Triangle_wave
         """
         return ext_min + ((x - ext_min) % (ext_max - ext_min))
 
+#: A colormap circling through black, blue, white, orange, black
+classic_colormap = Fractal_colormap(
+    colors=[[0.00784314, 0.01960784, 0.14509804],
+            [0.17647059, 0.10980392, 0.10588235],
+            [0.48627451, 0.24313725, 0.07058824],
+            [0.63921569, 0.39607843, 0.17647059],
+            [0.81176471, 0.58039216, 0.33333333],
+            [0.97647059, 0.85490196, 0.64313725],
+            [0.96470588, 0.98823529, 0.90196078],
+            [0.48627451, 0.7254902 , 0.90980392],
+            [0.27843137, 0.51764706, 0.74901961],
+            [0.12156863, 0.32941176, 0.57254902],
+            [0.07058824, 0.25490196, 0.49411765],
+            [0.00784314, 0.01960784, 0.14509804]],
+    kinds=['Lab', 'Lch', 'Lch', 'Lch', 'Lab', 'Lab', 'Lab', 'Lch', 'Lch', 'Lch', 'Lab'],
+    grad_npts=[32, 32, 32, 32,  32,  32,  32,  32,  32,  32,  32,  32],
+    grad_funcs=['x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x'],
+    extent='mirror'
+) 
+
 
 class Curve:
     def __init__(self, fn="x", brightness=None, hardness=None,
                  blur_ranges=None):
         """
+        TODO - work in progress
         A transfert curve from [0, 1] to [0, 1]
         ("Grey levels map")
         brightness float, O. leaves untouched, 0..+1 brighten
@@ -717,100 +702,3 @@ class Curve:
             blur1, blur2, blur3 = blur_range
             data = data * Curve.bluring_coeff(blur1, blur2, blur3, blur_base)
         return data
-#
-#class _Fractal_colormap():
-#    # TODO : should be refactored so that it takes an array for which each line
-#    # is a list of argument to Color gradient array from Colortool class,
-#    # Each of them added to make the colormap
-#    # Discontinue support for matplotlib colormaps
-#    """
-#    Class responsible for mapping a real array to a colors array.
-#    Attributes :
-#        *_colors* Internal list of possible colors, [0 to self.n_colors]
-#        *_probes* list of indices in self._colors array, identifying the
-#                  transitions between differrent sections of the colormap. Each
-#                  of this probe is mapped to *_probe_value*, either given by the
-#                  user or computed at plot time.
-#    """
-#    def __init__(self, color_gradient, extent="mirror"):
-#        """
-#Creates a colormap from a color gradient array (as output by Color_tools
-#gradient functions, array of shape (n_colors, 3))
-#
-#*color_gradient*  a Color gradient array from Colortool class
-#*extent*  ["mirror", "repeat", "clip"] specifies what to do with out of range Values.
-#        """
-#        self._colors = color_gradient
-#        n_colors, _ = color_gradient.shape
-#        self._probes = np.array([0, n_colors-1], dtype=np.float32)
-##        self.quantiles_ref = None
-#        self.extent = extent
-#
-#    @property
-#    def n_colors(self):
-#        """ Total number of colors in the colormap. """
-#        return self._colors.shape[0]
-#
-#    @property
-#    def npts(self):
-#        return self.colors.shape[0]
-#
-#    @property
-#    def probes(self):
-#        """ Position of the "probes" ie transitions between the different parts
-#        of the colormap. Read-only. """
-#        return np.copy(self._probes)
-#
-#    def __neg__(self):
-#        """
-#        Returns a reversed colormap
-#        """
-#        other = _Fractal_colormap(self._colors[::-1, :])
-#        other._probes = self._probes[-1] - self._probes[::-1]
-#        return other
-#
-#    def __add__(self, other):
-#        """ Concatenates 2 Colormaps """
-#        fcm = _Fractal_colormap(np.vstack([self._colors, other._colors[1:]]))
-##        print("self._probes", self._probes)
-##        print("other._probes", other._probes)
-##        print("other._probes + (self._probes[-1])", other._probes + (self._probes[-1]))
-#        #self._probes[-1] += 0.5
-#        fcm._probes = np.concatenate([
-#            self._probes,
-#            (other._probes + (self._probes[-1]))[1:]
-#            ])
-#        return fcm
-#
-#    def __sub__(self, other):
-#        """ Sbstract a colormap ie adds its reversed version """
-#        return self.__add__(other.__neg__())
-
-
-
-## Defines the neutral element for cmap addition
-#EMPTY_CMAP = _Fractal_colormap(np.array([]).reshape([0, 3]))
-#EMPTY_CMAP._probes = np.array([-1])
-def test_print_cmap():
-    gold = np.array([255, 210, 66]) / 255.
-    black = np.array([0, 0, 0]) / 255.
-    purple = np.array([181, 40, 99]) / 255.
-    citrus2 = np.array([103, 189, 0]) / 255.
-    colors = np.vstack((citrus2[np.newaxis, :],
-                         purple[np.newaxis, :]))
-    colormap = Fractal_colormap(kinds="Lch", colors=colors,
-         grad_npts=200, grad_funcs="x", extent="mirror")
-    print(colormap)
-    
-    colors2 = np.vstack((citrus2[np.newaxis, :],
-                         black[np.newaxis, :],
-                         gold[np.newaxis, :],
-                         purple[np.newaxis, :]))
-    colormap2 = Fractal_colormap(kinds="Lch", colors=colors2,
-         grad_npts=[200, 20, 10], grad_funcs=["x", "x**6", "(1-x)"], extent="mirror")
-    print(colormap2)
-    print(repr(colormap2))
-
-
-if __name__ == "__main__":
-    test_print_cmap()

@@ -2,6 +2,12 @@
 """
 General settings for the package
 """
+import sys
+
+# this is a pointer to the module object instance itself.
+this = sys.modules[__name__]
+
+
 enable_multiprocessing = True # True
 skip_calc = False
 
@@ -13,3 +19,26 @@ chunk_size = 200
 
 # Number of bins for plots
 HIST_BINS = 100
+
+# Output mode : "png" | "Pillow"
+# if "Pillow" 
+output_mode = "png"
+
+# figures : module-level container used if output_mode == "Pillow"
+# -> the output images are stagged and not directly written to disk.
+figures = list()
+
+def add_figure(fig):
+    """ add a figure to the stagged images """
+    this.figures += [fig]
+
+def get_figures():
+    """ push the stagged images """
+    return this.figures
+
+def close(which):
+    """ delete the stagged images """
+    if which == "all":
+        this.figures = list()
+    else:
+        raise ValueError(which)

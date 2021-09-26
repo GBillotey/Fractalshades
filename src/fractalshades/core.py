@@ -22,18 +22,43 @@ from fractalshades.mprocessing import Multiprocess_filler
 
 
 
-"""
+class _Pillow_figure:
+    def __init__(self, img, pnginfo):
+        """
+        This class is a wrapper that can be used to redirect a Fractal_plotter
+        output, for instance when generating the documentation.
+        """
+        self.img = img
+        self.pnginfo = pnginfo
 
-"""
+    def save_png(self, im_path):
+        self.img.save(im_path,format="png", pnginfo=self.pnginfo)
 
-class Fractal_plotter():
+
+class Fractal_plotter:
     def  __init__(self, postproc_batch):
         """
-        A Fractal plotter
-        - point to a single Fractal
+        The base plotting class.
+        
+        A Fractal plotter :
+
+        - points to a single Fractal
         - can hold several postproc_batches each one point to a single
           (fracal, calculation) couple
-         - can hold several post-processing layers
+        - can hold several post-processing layers
+         
+        Parameters
+        ----------
+        postproc_batch
+            A single `fractalshades.postproc.Postproc_batch` or a list of 
+            these
+
+        Notes
+        -----
+
+        .. warning::
+            When passed multiples `Postproc_batches`, each one shall point to
+            the same `Fractal` object
         """
         # postproc_batchescan be single or an enumeration
         postproc_batches = postproc_batch
@@ -72,6 +97,7 @@ class Fractal_plotter():
         Note : several postproc_batches are needed whenever different 
         calculations need to be combined in an output plot, as a postproc
         batch can only map to a unique calc_name.
+        :meta private:
         """
         if postproc_batch.fractal != self.fractal:
             raise ValueError("Attempt to add a postproc_batch from a different"
@@ -83,11 +109,23 @@ class Fractal_plotter():
 
     def add_layer(self, layer):
         """
-        Adds a layer field
-        Layer postname shall have been already registered in one of the plotter
-        batches.        
-        When a layer is added, a link layer-> Fractal_plotter is 
-        created ; a layer can only point to a single plotter.
+        Adds a layer field to allow subsequent graphical operations or outputs.
+        
+        Parameters
+        ----------
+        layer : `fractalshades.colors.layers.Virtual_layer` or a derived class
+            The layer to add
+        
+        Notes
+        -----
+
+        .. warning::
+            Layer `postname` shall have been already registered in one of the
+            plotter batches.
+
+        .. warning::
+            When a layer is added, a link layer -> Fractal_plotter is 
+            created ; a layer can only point to a single `Fractal_plotter`.
         """
         postname = layer.postname
         if postname not in (list(self.postnames) + self.postnames_2d):
@@ -108,6 +146,12 @@ class Fractal_plotter():
                 layer_name, list(l.postname for l in self.layers)))
 
     def plot(self):
+        """
+        The base method to produce images.
+        
+        When called, it will got through all the instance-registered layers
+        and plot each layer for which the `output` attribute is set to `True`.
+        """
         self.store_postprocs()
         self.compute_scalings()
         self.write_postproc_report()
@@ -117,6 +161,7 @@ class Fractal_plotter():
 
     def store_postprocs(self):
         """ Computes and stores posprocessed data in a temporary mmap
+        :meta private:
         """
         self.open_temporary_mmap()
         inc_posproc_rank = 0
@@ -237,7 +282,10 @@ class Fractal_plotter():
         pnginfo = PIL.PngImagePlugin.PngInfo()
         for k, v in tag_dict.items():
             pnginfo.add_text(k, str(v))
-        img.save(img_path, pnginfo=pnginfo)
+        if fssettings.output_mode == "Pillow":
+            fssettings.add_figure(_Pillow_figure(img, pnginfo))
+        else:
+            img.save(img_path, pnginfo=pnginfo)
 
     def push_layers_to_images(self):
         for i, layer in enumerate(self.layers):
@@ -259,7 +307,7 @@ class Fractal_plotter():
 
 
 
-class Fractal():
+class Fractal:
     
     REPORT_ITEMS = [
         "chunk1d_begin",
@@ -277,22 +325,111 @@ class Fractal():
         "U",
         "stop_reason",
         "stop_iter"]
-    
-    """
-    Abstract base class
-    Derived classes are reponsible for computing, storing and reloading the raw
-    data composing a fractal image.
-    
-    ref:
-https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbrot_set
-    """
 
     def __init__(self, directory):
         """
-        Parameters
-    *directory*   The working base directory
-    *complex_type*  numpy type or ("Xrange", numpy type)
-        """
+The base class for all escape-time fractals calculations.
+
+Derived class should implement the actual calculation methods used in the
+innner loop. This class provides the outer looping (calculation is run on 
+successive tiles), enables multiprocessing, and manage raw-result storing 
+and retrieving.
+
+Parameters
+----------
+directory : str
+    Path for the working base directory
+
+Attributes
+----------
+directory : str
+    the working directory
+iref : int
+    the reference point index, when using perturbation technique (if
+    not, shall be None)
+glitch_max_attempt : int
+    The maximal number of glitch correction loops
+subset
+    A boolean array-like of the size of the image, when False the
+    calculation is skipped for this point. It is usually the result
+    of a previous calculation that can be passed via a Fractal_array
+    wrapper.
+    If None (default) all points will be calculated.
+glitch_stop_index : int
+    A calculation can exit for several reasons which are tracked in 
+    `stop_reason` int-array (see below the description of the raw data
+    arrays). Values of `stop_reason` above `glitch_stop_index` indicate
+    glitched pixels, for which the calculation is deemed invalid.
+complex_type :
+    the datatype used for Z output arrays
+codes :
+    the string identifier codes for the saved arrays:
+    (`complex_codes`, `int_codes`, `termination_codes`)
+
+Notes
+-----
+
+These notes describe implementation details and should be useful mostly to
+advanced users when subclassing.
+
+.. note::
+
+    **Special methods**
+    
+    this class and its subclasses may define several methods decorated with
+    specific tags:
+    
+    @`fsutils.zoom_options`
+        decorates the methods used to define the zoom
+    @fsutils.calc_options
+        decorates the methods defining the calculation inner-loop
+    @fsutils.interactive 
+        decorates the methods that can be called
+        interactively from the GUI (right-click then context menu selection).
+        The coordinates of the click are passed to the called method.
+
+.. note::
+    
+    **Calculation parameters**
+
+    To lanch a calculation, call `~fractalshades.Fractal.run`. The parameters
+    from the last 
+    @ `fractalshades.zoom_options` call and last 
+    @ `fractalshades.calc_options` call will be used. 
+    They are stored as class attributes, above a list of such attributes and
+    their  meaning (non-exhaustive as derived class cmay define their own).
+    Note that they should normally not be directly accessed but defined in
+    derived class through zoom and calc methods.
+
+.. note::
+
+    **Saved data**
+    
+        The calculation results (raw output of the inner loop at exit) are
+        saved to disk and internally accessed during plotting phase through
+        memory-mapping. These are:
+
+        chunk_mask    
+            boolean - alias for `subset`
+            Saved to disk as ``calc_name``\_Z.arr in ``data`` folder
+        Z
+            Complex fields, several fields can be defined and accessed through
+            a field string identifier.
+            Saved to disk as ``calc_name``\_Z.arr in ``data`` folder
+        U
+            Integer fields, several fields can be defined and accessed through
+            a field string identifier.
+            Saved to disk as ``calc_name``\_U.arr in ``data`` folder
+        stop_reason
+            Byte codes: the reasons for loop exit (max iteration reached ?
+            overflow ? other ?) A string identifier
+            Saved to disk as ``calc_name``\_stop_reason.arr in ``data`` folder
+        stop_iter
+            Integer: iterations count at loop exit
+            Saved to disk as ``calc_name``\_stop_iter.arr in ``data`` folder
+
+        The string identifiers are stored in ``codes`` attributes.
+"""
         self.directory = directory
         self.iref = None # None when no reference point used / needed
         self.glitch_max_attempt = 0
@@ -320,23 +457,43 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
              projection: str="cartesian",
              antialiasing: bool=False):
         """
+        Define and stores as class-attributes the zoom parameters for the next
+        calculation.
+        
         Parameters
-    *x* *y*  coordinates of the central point
-    *dx*     reference data range (on x axis). Definition depends of the
-        projection selected, for 'cartesian' (default) this is the total span.
-    *nx*     number of pixels of the image along x axis
-    *xy_ratio*  ratio of dx / dy and nx / ny
-    *theta_deg*    Pre-rotation of the calculation domain
-    *complex_type*  numpy type or ("Xrange", numpy type)
-    *projection*   "cartesian" "spherical" "exp_map"
+        ----------
+        x : float
+            x-coordinate of the central point
+        y : float 
+            y-coordinate of the central point
+        dx : float
+            span of the view rectangle along the x-axis
+        nx : int
+            number of pixels of the image along the x-axis
+        xy_ratio: float
+            ratio of dx / dy and nx / ny
+        theta_deg : float
+            Pre-rotation of the calculation domain, in degree
+        projection : "cartesian" | "spherical" | "exp_map"
+            Kind of projection used (default to cartesian)
+        antialiasing : bool
+            If True, some degree of randomization is applied
         """
         # We're all set, the job is done by `zoom_options` wrapper...
 
     def run(self):
         """
-        Lauch a full calculation
+        Lauch a full calculation.
+                
+        The parameters from the last 
+        @ `fractalshades.zoom_options`\-tagged method call and last
+        @ `fractalshades.calc_options`\-tagged method call will be used.
+
+        If calculation results are already there, the parameters will be
+        compared and if identical, the calculation will be skipped. This is
+        done for each tile and each glitch correction iteration, so i enables
+        calculation to restart from an unfinished status.
         """
-        
         if not(self.res_available()):
             # We write the param file and initialize the
             # memmaps for progress reports and calc arrays
@@ -373,12 +530,14 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
     @property
     def multiprocess_dir(self):
         """ Directory used for multiprocess stdout stderr streams redirection
+        :meta private:
         """
         return os.path.join(self.directory, "multiproc_calc")
 
     @property
     def Xrange_complex_type(self):
         """ Return True if the data type is a xrange array
+        :meta private:
         """
         if type(self.complex_type) is tuple:
             type_modifier, _ = self.complex_type
@@ -402,6 +561,7 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
     def params(self):
         """ Used to tag an output image or check if data is already computed
         and stored
+        :meta private:
         """
         software_params = {
                 "Software": "fractalshades " + fs.__version__,
@@ -422,7 +582,13 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
 
 
     def clean_up(self, calc_name):
-        """ Deletes all data files associated with a given calc_name
+        """ Deletes all saved data files associated with a given `calc_name`.
+        
+        Parameters
+        ----------
+        calc_name : str
+            The string identifying the calculation run for which we want to
+            delete the files. 
         """
         for pattern in [
                 calc_name + "_*.arr",
@@ -442,7 +608,9 @@ https://en.wikibooks.org/wiki/Pictures_of_Julia_and_Mandelbrot_Sets/The_Mandelbr
     @property
     def pts_count(self):
         """ Return the total number of points for the current calculation 
-        taking into account the `subset` parameter """
+        taking into account the `subset` parameter
+        :meta private:
+        """
         if self.subset is not None:
 #            print("in pts_count", self.subset)
 #            print("in pts_count", np.sum(self.subset[None]),

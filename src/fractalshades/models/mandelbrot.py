@@ -7,12 +7,20 @@ import fractalshades.utils as fsutils
 
 
 class Mandelbrot(fs.Fractal):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, directory):
+        """
+        A standard power-2 Mandelbrot Fractal. 
+        
+        Parameters
+        ==========
+        directory : str
+            Path for the working base directory
+        """
+        super().__init__(directory)
         # default values used for postprocessing (potential)
         self.potential_kind = "infinity"
         self.potential_d = 2
         self.potential_a_d = 1.
-        super().__init__(*args, **kwargs)
 
     @fsutils.calc_options
     def base_calc(self, *,
@@ -23,13 +31,40 @@ class Mandelbrot(fs.Fractal):
             epsilon_stationnary: float,
             datatype):
         """
-        Basic iterations for Mandelbrot standard set
+    Basic iterations for Mandelbrot standard set (power 2).
+
+    Parameters
+    ==========
+    calc_name : str
+         The string identifier for this calculation
+    subset : `fractalshades.postproc.Fractal_array`
+        A boolean array-like, where False no calculation is performed
+        If `None`, all points are calculated. Defaults to `None`.
+    max_iter : int
+        the maximum iteration number. If reached, the loop is exited with
+        exit code "max_iter".
+    M_divergence : float
+        The diverging radius. If reached, the loop is exited with exit code
+        "divergence"
+    epsilon_stationnary : float
+        A small float to early exit non-divergent cycles (based on
+        cumulated dzndz product). If reached, the loop is exited with exit
+        code "stationnary" (Those points should belong to Mandelbrot set
+        interior). A typical value is 1.e-3
+    datatype :
+        The dataype for operation on complex. Usually `np.complex128`
+        
+    Notes
+    =====
+    The following complex fields will be calculated: *zn* and its
+    derivatives (*dzndz*, *dzndc*, *d2zndc2*).
+    Exit codes are *max_iter*, *divergence*, *stationnary*.
         """
         complex_codes = ["zn", "dzndz", "dzndc", "d2zndc2"]
         int_codes = []
         stop_codes = ["max_iter", "divergence", "stationnary"]
         self.codes = (complex_codes, int_codes, stop_codes)
-        self.init_data_types(np.complex128)
+        self.init_data_types(datatype)
 
         self.potential_M = M_divergence
 
@@ -49,7 +84,7 @@ class Mandelbrot(fs.Fractal):
             @numba.njit
             def numba_impl(Z, U, c, stop_reason, n_iter):
                 if n_iter >= max_iter:
-                    stop_reason[0] = 0 # TODO should we return here
+                    stop_reason[0] = 0
 
                 Z[3] = 2 * (Z[3] * Z[0] + Z[2]**2)
                 Z[2] = 2 * Z[2] * Z[0] + 1.
@@ -77,24 +112,68 @@ class Mandelbrot(fs.Fractal):
             eps_newton_cv,
             datatype):
         """
-        Newton iterations for Mandelbrot standard set interior
+    Newton iterations for Mandelbrot standard set interior (power 2).
+
+    Parameters
+    ==========
+    calc_name : str
+         The string identifier for this calculation
+    subset : 
+        A boolean array-like, where False no calculation is performed
+        If `None`, all points are calculated. Defaults to `None`.
+    known_orders : None | int list 
+        If not `None`, only the integer listed of their multiples will be 
+        candidates for the cycle order, the other rwill be disregarded.
+        If `None` all order between 1 and `max_order` will be considered.
+    max_order : int
+        The maximum value for ccyle 
+    eps_newton_cv : float
+        A small float to qualify the convergence of the Newton iteration
+        Usually a fraction of a view pixel.
+    datatype :
+        The dataype for operation on complex. Usually `np.complex128`
         
-        References:
-          https://mathr.co.uk/blog/2013-04-01_interior_coordinates_in_the_mandelbrot_set.html
-          https://mathr.co.uk/blog/2014-11-02_practical_interior_distance_rendering.html
-          https://en.wikibooks.org/wiki/Fractals/Iterations_in_the_complex_plane/Mandelbrot_set_interior
-          https://fractalforums.org/fractal-mathematics-and-new-theories/28/interior-colorings/3352
+    Notes
+    =====
+    
+    .. note::
+
+        The following complex fields will be calculated:
+    
+        *zr*
+            A (any) point belonging to the attracting cycle
+        *attractivity*
+            The cycle attractivity (for a convergent cycle it is a complex
+            of norm < 1.)
+        *dzrdc*
+            Derivative of *zr*
+        *dattrdc*
+            Derivative of *attractivity*
+    
+        The following integer field will be calculated:
+    
+        *order*
+            The cycle order
+    
+        Exit codes are *max_order*, *order_confirmed*.
+
+    References
+    ==========
+    .. [1] <https://mathr.co.uk/blog/2013-04-01_interior_coordinates_in_the_mandelbrot_set.html>
+
+    .. [2] <https://mathr.co.uk/blog/2014-11-02_practical_interior_distance_rendering.html>
         """
-        complex_codes = ["zr", "attractivity", "dzrdc", "dattrdc", "d2attrdc2"]
+        complex_codes = ["zr", "attractivity", "dzrdc", "dattrdc",
+                         "_partial", "_zn"]
         int_codes = ["order"]
         stop_codes = ["max_order", "order_confirmed"]
         self.codes = (complex_codes, int_codes, stop_codes)
-        self.init_data_types(np.complex128)
+        self.init_data_types(datatype)
 
         def initialize():
             def func(Z, U, c, chunk_slice):
-                print("#################### initialize")
-                Z[4, :] = 0.
+                Z[5, :] = 0.
+                Z[4, :] = 1.e6 # bigger than any reasonnable np.abs(zn)
                 Z[3, :] = 0.
                 Z[2, :] = 0.
                 Z[1, :] = 0.
@@ -110,8 +189,17 @@ class Mandelbrot(fs.Fractal):
                     stop_reason[0] = 0
                     return
 
-                # n is the candidate cycle order. Early exit if it is not a
-                # multiple of one of the known_orders
+                # If n is not a 'partial' for this point it cannot be the 
+                # cycle order : early exit
+                Z[5] = Z[5]**2 + c
+                m = np.abs(Z[5])
+                if m < Z[4].real:
+                    Z[4] = m # Cannot assign to the real part 
+                else:
+                    return
+
+                # Early exit if n it is not a multiple of one of the
+                # known_orders (provided by the user)
                 if known_orders is not None:
                     valid = False
                     for order in known_orders:

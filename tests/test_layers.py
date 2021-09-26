@@ -369,7 +369,7 @@ class Test_layers(unittest.TestCase):
         # Overlay : alpha composite
         overlay_mode = Overlay_mode("alpha_composite")
         plotter[layer_name].shade(plotter["DEM_map"], light)
-        plotter[layer_name].overlay(plotter["attr"], blend_mode=overlay_mode)
+        plotter[layer_name].overlay(plotter["attr"], overlay_mode=overlay_mode)
 
         plotter.plot()
         self.layer = plotter[layer_name]

@@ -14,13 +14,20 @@ import fractalshades.settings as settings
 
 class Perturbation_mandelbrot(fs.PerturbationFractal):
     
-    def __init__(self, *args, **kwargs):
+    def __init__(self, directory):
+        """
+        An arbitrary precision power-2 Mandelbrot Fractal. 
+
+        Parameters
+        ----------
+        directory : str
+            Path for the working base directory
+        """
+        super().__init__(directory)
         # Sets default values used for postprocessing (potential)
         self.potential_kind = "infinity"
         self.potential_d = 2
         self.potential_a_d = 1.
-        super().__init__(*args, **kwargs)
-
 
     @staticmethod
     def _ball_method1(c, px, maxiter, M_divergence):#, M_divergence):
@@ -283,26 +290,73 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
     @fsutils.calc_options
     def calc_std_div(self, *,
         calc_name: str,
-        complex_type,
+        datatype,
         subset,
         max_iter: int,
         M_divergence: float,
         epsilon_stationnary: float,
-        pc_threshold: float=0.1,
         SA_params=None,
         glitch_eps=None,
         interior_detect: bool=False,
         glitch_max_attempt: int=0):
         """
-        Computes the full data and derivatives
-        - "zn"
-        - "dzndz" (only if *interior_detect* is True)
-        - "dzndc"
+    Perturbation iterations (arbitrary precision) for Mandelbrot standard set
+    (power 2).
+
+    Parameters
+    ==========
+    calc_name : str
+         The string identifier for this calculation
+    datatype :
+        The dataype for operation on complex. Usually `np.complex128`
+    subset : 
+        A boolean array-like, where False no calculation is performed
+        If `None`, all points are calculated. Defaults to `None`.
+    max_iter : int
+        the maximum iteration number. If reached, the loop is exited with
+        exit code "max_iter".
+    M_divergence : float
+        The diverging radius. If reached, the loop is exited with exit code
+        "divergence"
+    epsilon_stationnary : float
+        EXPERIMENTAL for perturbation.
+        A small float to early exit non-divergent cycles (based on
+        cumulated dzndz product). If reached, the loop is exited with exit
+        code "stationnary" (Those points should belong to Mandelbrot set)
+        Used only if interior_detect is True
+    SA_params :
+        The dictionnary of parameters for Series-Approximation :
+
+        .. list-table:: 
+           :widths: 20 80
+           :header-rows: 1
+
+           * - keys
+             - values 
+           * - cutdeg
+             - int: polynomial degree used for first iteration  
+           * - cutdeg_glitch
+             - int: polynomial degree used for glitch correction 
+           * - SA_err
+             - float: maximal relative error before stopping SA 
+
+        if `None` SA is not activated.
+    glitch_eps : float
+        A small float to qualify the glitched pixel. Typical value 1.e-4
+    interior_detect : bool
+        EXPERIMENTAL for perturbation.
+        If True activates interior point detection
+    glitch_max_attempt: int
+        The maximal number of attempt for glitched pixel correction
         
-        Note: if *interior_detect* is false we still allocate the arrays for
-        *dzndz* but we do not iterate.
+    References
+    ==========
+    .. [1] <https://mathr.co.uk/blog/2021-05-14_deep_zoom_theory_and_practice.html>
+
+    .. [2] <http://www.fractalforums.com/announcements-and-news>
+        
         """
-        self.init_data_types(complex_type)
+        self.init_data_types(datatype)
         
         # used for potential post-processing
         self.potential_M = M_divergence
@@ -489,33 +543,31 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
 
 
 
-
-
-
-
-
     @fsutils.calc_options
     def calc_fast(self, *,
         calc_name: str,
-        complex_type,
+        datatype,
         subset,
         max_iter: int,
         M_divergence: float,
         epsilon_stationnary: float,
-        pc_threshold: float=0.1,
         SA_params=None,
         glitch_eps=None,
         glitch_max_attempt: int=0):
-        """
-        Computes the full data and derivatives
-        - "zn"
-        - "dzndz" (only if *interior_detect* is True)
-        - "dzndc"
         
-        Note: if *interior_detect* is false we still allocate the arrays for
-        *dzndz* but we do not iterate.
         """
-        self.init_data_types(complex_type)
+        Faster options for perturbation iterations (arbitrary precision) of
+        Mandelbrot standard set (power 2).
+        
+        Refer to `calc_std_div` for the explanation of input parameters used.
+        Compared to `calc_std_div` this method should preferably be used for
+        exploration as it makes a few approximations and does not computes
+        derivatives
+        (Plotting options likes scene-lighting will not be available ;
+        field lines might show noticeable banding)
+        """
+
+        self.init_data_types(datatype)
         
         # used for potential post-processing
         self.potential_M = M_divergence
@@ -685,15 +737,6 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         # Parameters for glitch detection and solving
         self.glitch_stop_index = 2 #reason_dyn_glitch
         self.glitch_sort_key = "glitch_sort"
-
-
-
-
-
-
-
-
-
 
 
 

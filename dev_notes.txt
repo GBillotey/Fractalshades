@@ -200,6 +200,8 @@ my_struct = types.Record.make_c_struct([
 ])
 
 
+Add an example with :
+http://paulbourke.net/fractals/triangle/
 
 
 

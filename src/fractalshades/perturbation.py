@@ -18,9 +18,20 @@ class PerturbationFractal(fs.Fractal):
 
     def __init__(self, directory):
         """
-        Sames args and kwargs as Fractal except :
-            - expect a "precision" integer : number of significant digits
-            - x and y input as strings
+The base class for escape-time fractals calculations implementing the 
+perturbation technique.
+
+Derived class should implement the actual calculation methods used in the
+innner loop, but also reference loop calculation, and optionnaly,
+Series approximation, glitch detection.
+This class provides the outer looping (calculation is run on 
+successive tiles), enables multiprocessing, and manage raw-result storing 
+and retrieving.
+
+Parameters
+----------
+directory : str
+    Path for the working base directory
         """
         super().__init__(directory)
 
@@ -35,6 +46,31 @@ class PerturbationFractal(fs.Fractal):
              theta_deg: float,
              projection: str="cartesian",
              antialiasing: bool=False):
+        """
+        Define and stores as class-attributes the zoom parameters for the next
+        calculation.
+        
+        Parameters
+        ----------
+        precision : int
+            number of significant digits to use for reference point calculation
+        x : str or mpmath.mpf
+            x-coordinate of the central point
+        y : str or mpmath.mpf
+            y-coordinate of the central point
+        dx : str or mpmath.mpf
+            span of the view rectangle along the x-axis
+        nx : int
+            number of pixels of the image along the x-axis
+        xy_ratio: float
+            ratio of dx / dy and nx / ny
+        theta_deg : float
+            Pre-rotation of the calculation domain, in degree
+        projection : "cartesian"
+            Kind of projection used (only "cartesian" supported)
+        antialiasing : bool
+            If True, some degree of randomization is applied
+        """
         mpmath.mp.dps = precision
         # In case the user inputs were strings, we override with mpmath scalars
         self.x = mpmath.mpf(x)
@@ -235,22 +271,30 @@ class PerturbationFractal(fs.Fractal):
             SA_params = pickle.load(tmpfile)
         return SA_params
 
-    def run(self):#, FP_loop, FP_params, SA_init, SA_loop, SA_params, max_iter,
-               # initialize, iterate, subset, codes,
-               # calc_name, pc_threshold, iref=0, glitch_stop_index=None,
-               # glitch_sort_key=None, glitch_max_attempt=0):
+    def run(self):
         """
-        glitch_stop_index : All points with a stop_reason >= glitch_stop_index
-                are considered glitched (early ref exit glitch, or dynamic
-                glitch). Subset of pixel for which 
-                stop_reason == glitch_stop_index will be sorted according to 
-                minimum value of field `glitch_sort_key` the minimal  point
-                used as new reference.
-                if None, no glitch correction.
-                
-        glitch_sort_key : the complex (Z array) field where is stored our
-            'priority value' to select the next reference pixel.
+        Launch a full perturbation calculation with glitch correction.
+
+        The parameters from the last 
+        @ `fractalshades.zoom_options`\-tagged method call and last
+        @ `fractalshades.calc_options`\-tagged method call will be used.
+
+        If calculation results are already there, the parameters will be
+        compared and if identical, the calculation will be skipped. This is
+        done for each tile and each glitch correction iteration, so i enables
+        calculation to restart from an unfinished status.
         """
+        #  glitch_stop_index : All points with a stop_reason >= glitch_stop_index
+        #          are considered glitched (early ref exit glitch, or dynamic
+        #          glitch). Subset of pixel for which 
+        #          stop_reason == glitch_stop_index will be sorted according to 
+        #          minimum value of field `glitch_sort_key` the minimal  point
+        #          used as new reference.
+        #          if None, no glitch correction.
+        #                
+        #  glitch_sort_key : the complex (Z array) field where is stored our
+        #          'priority value' to select the next reference pixel.
+
         if not(self.res_available()):
             # We write the param file and initialize the
             # memmaps for progress reports and calc arrays

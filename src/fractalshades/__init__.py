@@ -1,11 +1,7 @@
 # -*- coding: utf-8 -*-
-__version__ = "0.2.0"
+__version__ = "0.3.b1"
 
-
-from .core import *
-from .perturbation import *
-
-#global imported_numba_xr
-#if not "imported_numba_xr" in globals():
-#    import fractalshades.numpy_utils.numba_xr as numba_xr
-
+from .settings import get_figures, close
+from .utils import zoom_options, calc_options
+from .core import Fractal, Fractal_plotter, _Pillow_figure
+from .perturbation import PerturbationFractal
