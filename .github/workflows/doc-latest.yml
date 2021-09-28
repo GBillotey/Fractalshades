@@ -50,6 +50,8 @@ jobs:
   
       - name: Push documentation to github pages
         run: |
+          git config --global user.email "geoffroy.billotey@gmail.com"
+          git config --global user.name "GBillotey"
           docroot=`mktemp -d`
           rsync -av "docs/_build/html/" "${docroot}/"
           pushd "${docroot}"
