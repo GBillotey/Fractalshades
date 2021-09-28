@@ -1,5 +1,7 @@
 [![test-linux](https://github.com/GBillotey/Fractalshades/actions/workflows/test-linux.yml/badge.svg)](https://github.com/GBillotey/Fractalshades/actions/workflows/test-linux.yml)
 
+[![doc-latest](https://github.com/GBillotey/Fractalshades/actions/workflows/doc-latest.yml/badge.svg)](https://github.com/GBillotey/Fractalshades/actions/workflows/doc-latest.yml)
+
 # Fractal-shades
 The pupose of this python package is to propose standard or deep-zoom exploration (under 1.e-300) of a few fractals.
 
