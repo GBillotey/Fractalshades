@@ -1,9 +1,7 @@
 Color mapping
 ~~~~~~~~~~~~~
 
-.. module:: fractalshades.colors
-
-This section describe the objects provided to map real areas to colors.
+This section describe the objects provided to map reals to colors.
 
 `Fractal_colormap`/s are usually defined through the GUI interface (which
 can export them to python readable format).
@@ -11,7 +9,12 @@ can export them to python readable format).
 For convenience, a `classic_colormap` is provided (blue and orange-brown
 tones), a few examples of the :doc:`../examples/index` use it.
 
-.. autoclass:: Fractal_colormap
-    :members: __init__
+.. module:: fractalshades.colors
 
-.. autodata:: classic_colormap
+.. toctree::
+   :maxdepth: 1
+   :caption: Contents:
+
+   colors/Fractal_colormap
+   colors/constants
+

@@ -616,11 +616,25 @@ class Normal_map_layer(Color_layer):
     default_mask_color = (0.5, 0.5, 1.)
 
     def __init__(self, postname, max_slope=70, output=True):
-        """  Defines a normal map layer that can be exported to blender
-        (OpenGL normal map format - normal = (2*color)-1 // on each component)
-        color = 0.5 * (normal + 1)
-        `max_slope`: maximal angle (in degree) of the normal map, will be used
-                     for re-normalisation
+        """  
+        Defines a normal map layer
+        
+        This layer can be either:
+
+        - plotted directly (OpenGL normal map format)
+          and used in a post-processing Workflow - e.g. Blender 
+
+        - or used to apply shading to a `Color_layer.shade`
+
+        Parameters
+        ----------
+        postname : str
+            passed to `Virtual_layer` constructor
+        max_slope : float
+            maximal angle (in degree) of the normal map, will be used
+            for re-normalisation
+        output : bool
+            passed to `Virtual_layer` constructor
         """
         super().__init__(postname, None, colormap=None, output=output)
         self.max_slope = max_slope * np.pi / 180

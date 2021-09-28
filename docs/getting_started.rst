@@ -16,7 +16,7 @@ or, to install directly the latest version from Github master:
 
 .. code-block:: console
 
-    python -m pip install https://github.com/GBillotey/Fractalshades.git
+    python -m pip install git+https://github.com/GBillotey/Fractalshades.git
 
 This package relies on the following dependencies:
 
@@ -59,6 +59,9 @@ to install them manually. For instance under Linux:
 A 5-minutes guide to fractalshades
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+The best way to start is probably to have a look at the 
+:doc:`examples/index` section.
+
 Fractalshades exposes 3 kinds of component each implementing a different
 functionality:
 
@@ -79,7 +82,5 @@ functionality:
     Fractalshades comes with a very flexible and user-configurable graphical
     interface based on PyQt5 framework.
 
-The best way to start is probably to have a look at the 
-:doc:`examples/index` section.
 
 

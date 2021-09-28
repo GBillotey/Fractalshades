@@ -8,31 +8,20 @@ generic postprocessing are availables. This section describes them.
 .. module:: fractalshades.postproc
 
 
-.. autoclass:: Postproc
+.. toctree::
+   :maxdepth: 1
+   :caption: Contents:
 
-.. autoclass:: Raw_pp
-    :members:  __init__
+   postproc/Postproc
+   postproc/Raw_pp
+   postproc/Continuous_iter_pp
+   postproc/DEM_normal_pp
+   postproc/DEM_pp
+   postproc/Attr_normal_pp
+   postproc/Attr_pp
+   postproc/Postproc_batch
+   postproc/Fractal_array
 
-.. autoclass:: Continuous_iter_pp
-    :members:  __init__
-
-.. autoclass:: DEM_normal_pp
-    :members:  __init__
-
-.. autoclass:: DEM_pp
-    :members:  __init__
-
-.. autoclass:: Attr_normal_pp
-    :members:  __init__
-
-.. autoclass:: Attr_pp
-    :members:  __init__
-
-.. autoclass:: Postproc_batch
-    :members: __init__, add_postproc
-
-.. autoclass:: Fractal_array
-    :members:  __init__
 
 
 
