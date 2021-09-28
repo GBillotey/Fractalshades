@@ -1,0 +1,65 @@
+# This is a basic workflow to help you get started with Actions
+
+name: doc-latest
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow manually from the Actions tab
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  build:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install GMP MPFR MPC needed for gmpy2
+        run: |
+          sudo apt-get install libgmp-dev
+          sudo apt-get install libmpfr-dev
+          sudo apt-get install libmpc-dev
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install flake8 pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: install Fractalshades from current commit
+        run: |
+          python -m pip install git+git://github.com/${{ github.repository }}.git@${{ github.sha }}
+
+      - name: install dependencies to build the documentation
+        run: |
+          python -m pip install sphinx sphinx_rtd_theme sphinx-gallery numpydoc matplotlib
+
+      - name: Build documentation
+        run: |
+          make -C docs clean
+          make -C docs html
+  
+      - name: Push documentation to github pages
+        run: |
+          git config --global user.email "geoffroy.billotey@gmail.com"
+          git config --global user.name "GBillotey"
+          docroot=`mktemp -d`
+          rsync -av "docs/_build/html/" "${docroot}/"
+          pushd "${docroot}"
+          # don't bother maintaining history; just generate fresh
+          git init
+          git remote add deploy "https://token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          git checkout -b doc-stable
+          git add .
+          git commit -am "automatic triggered doc build"
+          git push deploy doc-stable --force
+          popd
