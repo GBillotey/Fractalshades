@@ -43,7 +43,7 @@ jobs:
           python -m pip install git+git://github.com/${{ github.repository }}.git@${{ github.sha }}
       - name: install dependencies to build the documentation
         run: |
-          python -m pip install sphinx sphinx_rtd_theme sphinx-gallery
+          python -m pip install sphinx sphinx_rtd_theme sphinx-gallery numpydoc
         # Runs a single command using the runners shell
       - name: Build documentation for master
         run: |
