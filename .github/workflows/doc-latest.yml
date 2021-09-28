@@ -4,13 +4,7 @@ name: doc-latest
 
 # Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the master branch
-#  push:
-#    branches: [ master ]
-#  pull_request:
-#    branches: [ master ]
-
-  # Allows you to run this workflow manually from the Actions tab
+  # Triggers the workflow manually from the Actions tab
   workflow_dispatch:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
@@ -28,25 +22,42 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: ${{ matrix.python-version }}
+
       - name: Install GMP MPFR MPC needed for gmpy2
         run: |
           sudo apt-get install libgmp-dev
           sudo apt-get install libmpfr-dev
           sudo apt-get install libmpc-dev
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install flake8 pytest
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-      - name: install Fractalshades
+
+      - name: install Fractalshades from current commit
         run: |
           python -m pip install git+git://github.com/${{ github.repository }}.git@${{ github.sha }}
+
       - name: install dependencies to build the documentation
         run: |
           python -m pip install sphinx sphinx_rtd_theme sphinx-gallery numpydoc matplotlib
-        # Runs a single command using the runners shell
-      - name: Build documentation for master
+
+      - name: Build documentation
         run: |
-          cd docs
-          make clean
-          make html
+          make -C docs clean
+          make -C docs html
+  
+      - name: Push documentation to github pages
+        run: |
+          docroot=`mktemp -d`
+          rsync -av "docs/_build/html/" "${docroot}/"
+          pushd "${docroot}"
+          # don't bother maintaining history; just generate fresh
+          git init
+          git remote add deploy "https://token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          git checkout -b doc-latest
+          git add .
+          git commit -am "automatic triggered doc build"
+          git push deploy doc-latest --force
+          popd
