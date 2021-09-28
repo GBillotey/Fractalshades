@@ -1,5 +1,4 @@
 [![test-linux](https://github.com/GBillotey/Fractalshades/actions/workflows/test-linux.yml/badge.svg)](https://github.com/GBillotey/Fractalshades/actions/workflows/test-linux.yml)
-
 [![doc-latest](https://github.com/GBillotey/Fractalshades/actions/workflows/doc-latest.yml/badge.svg)](https://github.com/GBillotey/Fractalshades/actions/workflows/doc-latest.yml)
 
 # Fractal-shades
