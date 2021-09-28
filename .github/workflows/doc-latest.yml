@@ -24,13 +24,26 @@ jobs:
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
-
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
-
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install GMP MPFR MPC needed for gmpy2
         run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+          sudo apt-get install libgmp-dev
+          sudo apt-get install libmpfr-dev
+          sudo apt-get install libmpc-dev
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install flake8 pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: install Fractalshades
+        run: |
+          python -m pip install git+git://github.com/${{ github.repository }}.git@${{ github.sha }}
+        # Runs a single command using the runners shell
+      - name: Run a one-line script
+        run: |
+          cd doc
+          make clean
+          make html
