@@ -46,11 +46,29 @@ class Virtual_layer:
     default_mask_color = None
 
     def __init__(self, postname, func, output=True):
-        """ Base class for all layer objects.
-        postname : str, key in linked plotter postproc dictionary
-        func : None | mapping applied to the post as prelim step
-        output : bool, if True : an image will be saved
-        """
+        """ 
+    Base class for all layer objects.
+    
+    Parameters
+    ----------
+    postname : str
+        Unique identifier key for this layer. When added to a 
+        `fractalshades.Fractal_plotter` plotter (see 
+        `fractalshades.Fractal_plotter.add_layer`) the layer can then be
+        accessed through this key :
+            
+            layer = plotter["postname"]
+        
+        The `postname` must match a `fractalshades.postproc.Postproc`
+        associated with this plotter.
+
+    func : None | callable
+        mapping applied during the post-processing initial step
+
+    output : bool
+        If True : an image will be saved when
+        `fractalshades.Fractal_plotter.add_layer` directive issued.
+    """
         self.postname = postname
         self.min = np.inf     # neutral value for np.nanmin
         self.max = -np.inf    # neutral value for np.nanmax
@@ -86,10 +104,17 @@ class Virtual_layer:
 
     def set_mask(self, layer, mask_color=None):
         """
+        Masks the base-layer
+
         Parameters
         ----------
-        layer : Layer_mask
-        mask_color : 3 or 4 - uplet or None
+        layer : `Bool_layer` | `Grey_layer`
+            The layer mask
+        mask_color : None | 3-uplet or 4_uplet of floats belonging to [0., 1.]
+            If None, a default value will be provided depending on the masked
+            array subclass
+            If a n-uplet is provided, it shall be with RGB or RGBA values for a
+            colored layer
         """
         if mask_color is None: # default class-implementation
             mask_color = self.default_mask_color
@@ -237,12 +262,27 @@ class Color_layer(Virtual_layer):
 
     def __init__(self, postname, func, colormap, probes_z=[0, 1],
                  probes_kind="relative", output=True):
-        """ A RGB or RGBA layer
-        func   a function or string
-        colormap a Colormap
-        probe_values a 2-array of floats
-        probes_kind "relative" / "absolute"
-        output boolean
+        """
+        A colored layer.
+        
+        Parameters
+        ----------
+        postname : str
+            passed to `Virtual_layer` constructor
+        func :
+            passed to `Virtual_layer` constructor
+        colormap : fractalshades.colors.Fractal_colormap
+            a colormap
+        probes_z : 2-floats list
+            The preprocessing affine rescaling. If [0., 1.] and probes_kind is 
+            `relative` (default) the minimum value of the field will be mapped
+            to 0. and the maximum to 1.
+        probes_kind : "relative" | "absolute"
+            The key for  probes_z values. If relative, they are expressed
+            relatively to min and max field values (0. <-> min, 1. <-> max) ;
+            if absolute they are used directly
+        output : bool
+            passed to `Virtual_layer` constructor
         """
         super().__init__(postname, func, output)
         # Will only become RGBA if 
@@ -271,32 +311,58 @@ class Color_layer(Virtual_layer):
         else:
             raise ValueError(self.mask_kind)
 
-    def overlay(self, layer, blend_mode):
+    def overlay(self, layer, overlay_mode):
         """
-        public API
-        Layer : Color_layer / Greyscale_layer
+        Combine the output of current layer with an overlayed layer *after*
+        color-mapping.
+
+        Parameters
+        ----------
+        layer : `Color_layer` | `Grey_layer`
+            The layer to overlay. See `Overlay_mode` documentation for the
+            options and restrictions.
+        overlay_mode : `Overlay_mode`
+            Object describing the kind of overlay used.
         """
-        self._modifiers += [("overlay", layer, blend_mode)]
+        self._modifiers += [("overlay", layer, overlay_mode)]
 
     def shade(self, layer, lighting):
         """
-        public API
-        layer : Normal_map_layer
-        lighting : Lighting_model
+        Adds scene lighting to the layer through a normal map effect.
+
+        Parameters
+        ----------
+        layer : `Normal_map_layer`
+            The layer holding the normal vector field.
+        lighting : `Blinn_lighting`
+            Object describing the scene lighting.
         """
         self._modifiers += [("shade", layer, lighting)]
 
     def set_twin_field(self, layer, scale):
         """ 
-        public API
+        Combine two postprocessing in one.
 
-        Combine (add with scaling) the 2 arrays before color-mapping
-        
-        `layer` the combined layer (VirtualLayer)
-        `scale` the scaling coefficient ; if 1. both layer will have the same
-                min-max contribtion 
+        Combine the current layer with another layer *before* color-mapping.
+        (i.e. add directly the underlying float
+        `fractalshades.postproc.Postproc` arrays), tuning the intensity of
+        the effect with a scaling coefficient.
 
-        Note : The mask of the current layer will be applied to its twin 
+        Parameters
+        ----------
+        layer : `Virtual_Layer` instance
+            The combined layer
+        scale : float
+            The scaling coefficient ; if 1. both layer will have the same
+            min-max contribtion. If 0.1 the combined layer will only contribute
+            to 10 % (This is based on min and max values reached for each
+            layer)
+
+        Notes
+        -----
+
+        .. note::
+            Note : The mask of the current layer will be applied.
         """
         if layer is None:
             self._twin_field = None
@@ -409,8 +475,31 @@ class Grey_layer(Virtual_layer):
     default_mask_color = 0.
     mode = "L"
 
-    def __init__(self, postname, func, curve=None, probes_z=[0, 1],
+    def __init__(self, postname, func, curve=None, probes_z=[0., 1.],
                  probes_kind="relative", output=True):
+        """
+        A grey layer.
+        
+        Parameters
+        ----------
+        postname : str
+            passed to `Virtual_layer` constructor
+        func :
+            passed to `Virtual_layer` constructor
+        curve : None | callable
+            A mapping from [0, 1] to [0, 1] applied *after* rescaling (this is 
+            the equivalent of a colormap in greyscale)
+        probes_z : 2-floats list
+            The preprocessing affine rescaling. If [0., 1.] and probes_kind is 
+            `relative` (default) the minimum value of the field will be mapped
+            to 0. and the maximum to 1.
+        probes_kind : "relative" | "absolute"
+            The key for  probes_z values. If relative, they are expressed
+            relatively to min and max field values (0. <-> min, 1. <-> max) ;
+            if absolute they are used directly
+        output : bool
+            passed to `Virtual_layer` constructor
+        """
         super().__init__(postname, func, output)
         # Will only become RGBA if masked & mask_color has transparency
         self.curve = curve
@@ -419,10 +508,17 @@ class Grey_layer(Virtual_layer):
 
     def set_mask(self, layer, mask_color=None):
         """
+        Masks the base-layer
+
         Parameters
         ----------
-        layer : Layer_mask
-        mask_color : float
+        layer : Bool_layer | Grey_layer
+            The layer mask
+        mask_color : None | float belonging to [0., 1.]
+            If None, a default value will be provided depending on the masked
+            array subclass
+            If a value is provided, it shall be with :
+            a float belonging to [0. (black) ; 1. (white)] interval
         """
         if mask_color is None: # default class-implementation
             mask_color = self.default_mask_color
@@ -505,6 +601,13 @@ class Grey_layer(Virtual_layer):
             raise ValueError(self.mask_kind)
 
 class Disp_Layer(Grey_layer):
+    """
+    Grey layer with 32-bits precision.
+    
+    Same functionnality as a `Grey_layer` but the image export is with 32-bits
+    precision (useful when used as an height map for 3d processing like
+    Blender)
+    """
     mode = "I"
     def get_grey(self, arr):
         return np.int32(arr * 65535) # 2**16-1
@@ -519,7 +622,7 @@ class Normal_map_layer(Color_layer):
         `max_slope`: maximal angle (in degree) of the normal map, will be used
                      for re-normalisation
         """
-        super().__init__(postname, None, output)
+        super().__init__(postname, None, colormap=None, output=output)
         self.max_slope = max_slope * np.pi / 180
     
     def crop(self, chunk_slice):
@@ -605,39 +708,54 @@ class Blinn_lighting:
     def __init__(self, k_Ambient, color_ambient):
         """
         This class holds the properties for the scene lightsources. Its
-        instances can be passed as a parameter to a Color_layer 'shade' method.
-        k_Ambient : ambient lighting pourcentage
-        color_ambient: a RGB 3-tuple, channels val in [0, 1]
+        instances can be passed as a parameter to `Color_layer.shade`.
+        
+        Parameters
+        ==========
+        k_Ambient : 
+            ambient lighting coefficient. A typical value is 0.2
+        color_ambient: 3-uplet float
+            a RGB 3-tuple, channels values in [0, 1] : the ambient lighting
+            color. Usually white (1., 1., 1.)
         """
         # ref : https://en.wikipedia.org/wiki/Blinn%E2%80%93Phong_reflection_model
         # http://www.codinglabs.net/article_physically_based_rendering_cook_torrance.aspx
         self.k_Ambient = k_Ambient
-        self.color_ambient = color_ambient
+        self.color_ambient = np.asarray(color_ambient)
         self.light_sources = []
 
     def add_light_source(self, k_diffuse, k_specular, shininess,
                          angles, coords=None, color=np.array([1., 1., 1.]),
                          material_specular_color=None):
         """
-        k_diffuse : diffuse lighting pourcentage, as RGB
-        k_specular : diffuse lighting pourcentage, as RGB
-        shininess : Phong exponent for specular model
-        angles : angles (theta, phi) of light source at infinity, in degree
-                      theta = 0 : aligned to x
-                      phi = 0 : normal to z (= in xy plane) 
-        coords : position of lightsource from image center,
-                     in pourcentage of current image
-                    (if None (default), source is at infinity ; if non-null,
-                    LS_angle has no effect)
+        Adds a lightsource to the scene
+        
+        Parameters
+        ==========
+        k_diffuse : 3-uplet float
+            diffuse lighting coefficients, as RGB
+        k_specular : 3-uplet float
+            diffuse lighting pourcentage, as RGB
+        shininess : float
+            Phong exponent for specular model
+        angles : 2-uplet float
+            angles (theta, phi) of light source at infinity, in degree
+            theta = 0 : aligned to x
+            phi = 0 : normal to z (= in xy plane) 
+        coords : 2-uplet float
+            position of lightsource from image center,
+            in pourcentage of current image
+            (if None (default), source is at infinity ; 
+            if non-null, LS_angle has no effect)
         """
         self.light_sources += [{
-            "k_diffuse": k_diffuse,
-            "k_specular": k_specular,
+            "k_diffuse": np.asarray(k_diffuse),
+            "k_specular": np.asarray(k_specular),
             "shininess": shininess,
             "_angles": angles, 
             "angles": tuple(a * np.pi / 180. for a in angles),
             "coords": coords,
-            "color": color,
+            "color": np.asarray(color),
             "material_specular_color": material_specular_color
         }]
 
@@ -690,19 +808,22 @@ class Overlay_mode:
     def __init__(self, mode, **mode_options):
         """
         This class holds the properties for overlaying. Its instances can be
-        passed as a parameter to a Color_layer 'overlay' method.
+        passed as a parameter to `Color_layer.overlay` method.
 
         Parameters
         ----------
         mode:   "alpha_composite" | "tint_or_shade"
                 the kind of overlay  applied
-                alpha_composite : alpha-compositing of 2 color layers (its is
-                the mask of the upper layer which will be considered for
-                compositing)
-                tint_or_shade : the color of the lower layer will be adjusted
-                (tinted of shaded) depending of the upper layer value (tinted
-                above 0.5, sahded below 0.5). The upper layer in this case
-                shall be a Grey_layer instance.
+                
+                - alpha_composite :
+                    alpha-compositing of 2 color layers (its is
+                    the mask of the upper layer which will be considered for
+                    compositing)
+                - tint_or_shade : 
+                    the color of the lower layer will be adjusted
+                    (tinted of shaded) depending of the upper layer value
+                    (tinted above 0.5, shaded below 0.5). The upper layer in
+                    this case shall be a `Grey_layer` instance.
 
         mode_options : a dict with the applicable option for each mode:
 

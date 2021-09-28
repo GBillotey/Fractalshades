@@ -6,12 +6,22 @@ dist/
 dev/
 dev_pyQt/
 *.egg-info
-/tests/image_comparison
 *plot_multiproc*
 *multiproc_calc*
 *_local_test*
 *_temp*
+
+# ignore temporary files in tests - keep REFERENCE_DATA !
+/tests/image_comparison
 /tests/known_fails/_data/
 tests/_images_comparison/
-examples/*
-\!examples/*.py
+
+# ignore the files in examples folders except those matching extensions
+examples/**/*.*
+!examples/**/*.py
+!examples/**/*.rst
+
+# ignore the doc build files
+docs/examples/
+docs/_build/
+

@@ -47,7 +47,10 @@ def _store_kwargs(dic_name):
 
 
 class _store_kwargs_and_func_name:
-    """ Decorator for an instance method.
+    def __new__(cls, dic_name):
+        """ 
+    Decorator for an instance method.
+
     Parameters
     ----------
     dicname, str
@@ -70,7 +73,6 @@ class _store_kwargs_and_func_name:
         - this decorator will raise a ValueError if method is called with any
          positional arguments.
     """
-    def __new__(cls, dic_name):
         cls.dic_name = dic_name
         return object.__new__(cls)
 
@@ -94,9 +96,11 @@ class _store_kwargs_and_func_name:
         return {name: method for name, method in m_iter()}
 
 
-# Decorator for the zooming method (normally only one per class)
+
+#: Decorator for the zooming method (normally only one per class)
 zoom_options = _store_kwargs("zoom_options")
 
-# Decorator for the calculation methods (can be several per class)
+#: Decorator for the calculation methods (can be several per class)
 calc_options = _store_kwargs_and_func_name("calc_options")
+
 

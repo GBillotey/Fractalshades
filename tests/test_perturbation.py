@@ -459,26 +459,24 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
         if calc_fast:
             mandelbrot.calc_fast(
-                complex_type=complex_type,
+                datatype=complex_type,
                 calc_name=calc_name,
                 subset=None,
                 max_iter=max_iter,
                 M_divergence=1.e3,
                 epsilon_stationnary=1.e-3,
-                pc_threshold=0.1,
                 SA_params=SA_params,
                 glitch_eps=1.e-6,
                 glitch_max_attempt=glitch_max_attempt)
         else:
             mandelbrot.calc_std_div(
-                complex_type=complex_type,
+                datatype=complex_type,
                 calc_name=calc_name,
                 subset=None,
                 max_iter=max_iter,
                 M_divergence=1.e3,
                 epsilon_stationnary=1.e-3,
                 interior_detect=interior_detect,
-                pc_threshold=0.1,
                 SA_params=SA_params,
                 glitch_eps=1.e-6,
                 glitch_max_attempt=glitch_max_attempt)
@@ -502,7 +500,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         self.assertTrue(err < err_max)
 
 if __name__ == "__main__":
-    full_test = False
+    full_test = True
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_Perturbation_mandelbrot]))

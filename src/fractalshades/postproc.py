@@ -11,8 +11,22 @@ import fractalshades.numpy_utils.expr_parser as fs_parser
 
 class Postproc_batch:
     def __init__(self, fractal, calc_name):
-        """ Container for data common to different Postproc instances,
-        for a given chunk_slice"""
+        """
+        Container for several postprocessing objects (instances of `Postproc`)
+        which share the same Fractal & calculation (*calc_name*)
+        
+        It is usefull to have such container to avoid re-calculation of data
+        that can be shared between several post-proicessing objects.
+        
+        Parameters
+        ==========
+        fractal : fractalshades.Fractal instance
+            The shared fractal object
+        calc_name : str 
+            The string identifier for the shared calculation
+            
+        
+        """
         self.fractal = fractal
         self.calc_name = calc_name
         self.posts = dict()
@@ -24,18 +38,33 @@ class Postproc_batch:
     def postnames(self):
         return self.posts.keys()
 
-    def add_postproc(self, name, postproc):
+    def add_postproc(self, postname, postproc):
         """
-        Add successive post and ensure they have consistent fractal & calc_name
+        Add successive postprocessing and ensure they have consistent
+        fractal & calc_name
+        
+        Parameters
+        ==========
+        postname : str
+            The string identifier that will be associated with this
+            post-processing object
+        postproc : `Postproc` instance
+            The post-processing object to be added
+
+        Notes
+        =====
+
+        .. warning::
+
+            A Postproc can only be added to one batch.
         """
-        if postproc.batch is not None: # and != self.fractal:
+        if postproc.batch is not None:
             raise ValueError("Postproc can only be linked to one batch")
-#        if postproc.calc_name is not None: #!= self.calc_name:
-#            raise ValueError("Postproc from a different calculation provided")
+
 
         postproc.link_batch(self) # Give access to batch members from postproc
         if postproc.field_count == 1:
-            self.posts[name] = postproc
+            self.posts[postname] = postproc
 
         elif postproc.field_count == 2:
             # We need to add 2 separate fields
@@ -45,9 +74,9 @@ class Postproc_batch:
             y_field.link_sibling(x_field)
             x_field.link_batch(self)
             y_field.link_batch(self)
-            self.posts[name + "_x"] = x_field
-            self.posts[name + "_y"] = y_field
-            self.postnames_2d += [name]
+            self.posts[postname + "_x"] = x_field
+            self.posts[postname + "_y"] = y_field
+            self.postnames_2d += [postname]
         else:
             raise ValueError("postproc.field_count bigger than 2: {}".format(
                     postproc.field_count))
@@ -74,15 +103,21 @@ class Postproc_batch:
 
 
 class Postproc:
-    """ Abstract base class """
+    """
+    Abstract base class for all postprocessing objects.
+    """
     field_count = 1
-    def __init__(self): #, **post_dic):
+    def __init__(self):
         """ Filter None values : removing them from post_dic.
         """
         self.batch = None
 
     def link_batch(self, batch):
-        """ Link to Postproc group """
+        """
+        Link to Postproc group
+
+        :meta private:
+        """
         self.batch = batch
 
     @property
@@ -102,7 +137,10 @@ class Postproc:
         return self.batch.context
 
     def ensure_context(self, key):
-        """ Check that the provided context contains the expected data
+        """
+        Check that the provided context contains the expected data
+
+        :meta private:
         """
         try:
             return self.context[key]
@@ -122,11 +160,17 @@ class Raw_pp(Postproc):
     def __init__(self, key, func=None):
         """
         A raw postproc provide direct access to the res data stored (memmap)
-        during calculation. (Similar to what does Fractal_array but within a
-        Postproc batch)
-        key : the raw data key
+        during calculation. (Similar to what does `Fractal_array`  but 
+        here within a `Postproc_batch`)
+
+        Parameters
+        ==========
+        key : 
+            The raw data key. Should be one of the *complex_codes*,
+            *int_codes*, *termination_codes* for this calculation.
         func: None | callable | a str of variable x (e.g. "np.sin(x)")
-              will be applied to the raw data if not None
+              will be applied as a pre-processing step to the raw data if not
+              `None`
         """
         super().__init__()
         self.key = key
@@ -166,16 +210,33 @@ class Raw_pp(Postproc):
 class Continuous_iter_pp(Postproc):
     def __init__(self, kind=None, d=None, a_d=None, M=None, epsilon_cv=None):
         """
-        kind : "infinity" | "convergent" | "transcendent"
-        "d": degree of polynome d >= 2 if kind = "infinity"
-        "a_d": coeff of higher order monome if kind = "infinity"
-        "M": High number for sopping iteration if kind = "infinity"
-        "epsilon_cv": Small number for sopping iteration if kind = "convergent"
-        
-        Note: if parameters are not provided, will defaut to the attribute of 
-        associated fractal with name "potential_<attr>"
-        eg : self.fractal.potential_kind for "kind"
-        (see logic in potential_dic).
+        Return a continuous iteration number
+
+        Parameters
+        ==========
+        kind :  str "infinity" | "convergent" | "transcendent"
+            the number of orbit points used for the average
+        d : None | int
+            degree of polynome d >= 2 if kind = "infinity"
+        a_d : None | float
+            coeff of higher order monome if kind = "infinity"
+        M : None | float
+            High number corresponding to the criteria for stopping iteration
+            if kind = "infinity"
+        epsilon_cv : None | float
+            Small number corresponding to the criteria for stopping iteration
+            if kind = "convergent"
+
+        Notes
+        =====
+
+        .. note::
+
+            Usually it is not recommended to pass any parameter ; 
+            if a parameter <param>
+            is not provided, it will defaut to the attribute of 
+            the fractal with name "potential_<param>", which should be the 
+            recommended value.
         """
         super().__init__()
         post_dic = {
@@ -269,7 +330,30 @@ class Continuous_iter_pp(Postproc):
 
 class Fieldlines_pp(Postproc):
     def __init__(self, n_iter=5, swirl=1., damping_ratio=0.1):
-        """ Field lines """
+        """
+        Return a continuous orbit-averaged angular value, allowing to reveal
+        fieldlines
+
+        Parameters
+        ==========
+        n_iter :  int
+            the number of orbit points used for the average
+        swirl : float between -1. and 1.
+            adds a random dephasing effect between each successive orbit point
+        damping_ratio : float
+            a geometric damping is used, damping ratio represent the ratio
+            between the scaling coefficient of the last orbit point and 
+            the first orbit point. 
+            For no damping (arithmetic mean) use 1.
+
+        Notes
+        =====
+
+        .. note::
+
+            The Continuous iteration number  shall have been calculated before
+            in the same `Postproc_batch`
+        """
         super().__init__()
         self.n_iter = n_iter
         self.swirl = swirl
@@ -329,7 +413,7 @@ class Fieldlines_pp(Postproc):
 
 class TIA_pp(Postproc):
     def __init__(self, n_iter=5):
-        """ Triangular average inequality """
+        """ Triangular average inequality - TODO """
         super().__init__()
         self.n_iter = n_iter
 
@@ -362,11 +446,37 @@ class TIA_pp(Postproc):
 class DEM_normal_pp(Postproc):
     field_count = 2
     def __init__(self, kind="potential"):
+        
         """ 
-        This is a special case as it returns a complex array, hence 
-        field_count = 2. Internally 2 fields will be created (through helper
-        class XYCoord_wrapper_pp)
-        `kind`: "Milnor" | "potential"
+        Return the 2 components of the distance estimation method derivative
+        (*normal map*).
+
+        This postproc is normally used in combination with a
+        `fractalshades.colors.layers.Normal_map_layer`
+
+        Parameters
+        ==========
+        `kind`:  str
+            if "potential" (default) DEM is base on the potential.
+            For Mandelbrot power 2, "Milnor" option is also available which 
+            gives similar but esthetically slightly different results.
+
+        Notes
+        =====
+
+        .. note::
+
+            The Continuous iteration number  shall have been calculated before
+            in the same `Postproc_batch`
+
+            Alternatively, if kind="Milnor", the following raw complex fields
+            must be available from the calculation:
+
+                - "zn", "dzndc", "d2zndc2"
+
+        References
+        ==========
+        .. [1] <https://www.math.univ-toulouse.fr/~cheritat/wiki-draw/index.php/Mandelbrot_set>
         """
         super().__init__()
         self.kind = kind
@@ -454,10 +564,21 @@ class DEM_pp(Postproc):
     field_count = 1
     def __init__(self, px_snap=None):
         """ 
-        return the height map of the distance estimation method for the
-        potential associated with this postproc batch.
-        `px_snap`:  None | float   pixels at a distance from the fractal lower
-                    than `px_snap` (in pixel) will be snapped to 0.
+        Return a distance estimation of the pixel to the fractal set.
+        
+        Parameters
+        ==========
+        `px_snap`:  None | float
+            if not None, pixels at a distance from the fractal lower
+            than `px_snap` (expressed in image pixel) will be snapped to 0.
+
+        Notes
+        =====
+    
+        .. note::
+
+            The Continuous iteration number  shall have been calculated before
+            in the same `Postproc_batch`
         """
         super().__init__(px_snap)
 
@@ -491,10 +612,22 @@ class Attr_normal_pp(Postproc):
     field_count = 2
     def __init__(self):
         """ 
-        This is a special case as it returns a complex array, hence 
-        field_count = 2. Internally 2 fields will be created (through helper
-        class XYCoord_wrapper_pp)
-        Attr is the cycle attractivity
+        Return the 2 components of the cycle attractivity derivative (*normal
+        map*).
+
+        This postproc is normally used in combination with a
+        `fractalshades.colors.layers.Normal_map_layer`
+
+        Notes
+        =====
+    
+        .. note::
+
+            The following complex fields must be available from a previously
+            run calculation:
+
+                - "attractivity"
+                - "order" (optionnal)
         """
         super().__init__()
 
@@ -531,7 +664,24 @@ class Attr_pp(Postproc):
     field_count = 1
     def __init__(self, scale_by_order=False):
         """ 
-        Attr is the cycle attractivity
+        Return the cycle attractivity
+        
+        Parameters
+        ==========
+        scale_by_order : bool
+            If True return the attractivity divided by ccyle order (this
+            allows more realistic 3d-view exports)
+
+        Notes
+        =====
+    
+        .. note::
+
+            The following complex fields must be available from a previously
+            run calculation:
+
+                - "attractivity"
+                - "order" (optionnal)
         """
         super().__init__()
         self.scale_by_order = scale_by_order
@@ -543,27 +693,36 @@ class Attr_pp(Postproc):
             termination_dic) = self.raw_data
         # Plotting the 'domed' height map for the cycle attractivity
         attr = Z[complex_dic["attractivity"], :]
-        r = U[int_dic["order"], :]
         abs2_attr = np.real(attr)**2 + np.imag(attr)**2
         abs2_attr = np.clip(abs2_attr, None, 1.)
         # divide by the cycle order
         val = np.sqrt(1. - abs2_attr) # / r
         if self.scale_by_order:
+            r = U[int_dic["order"], :]
             val *= (1. / r)
         return val, {}
 
 class Fractal_array:
     def __init__(self, fractal, calc_name, key, func=None):
         """
-        A Fractal_array provide direct access to the res data stored (memmap)
-        during calculation (Similar to what does Fractal_array but within a
-        Postproc batch)
-        fractal : The reference Fracal object
-        calc_name : the calculation name
-        key : the raw data key
+        Class which provide a direct access to the res data stored (memory
+        mapping)  during calculation.
+
+        One application, it can be passed as a *subset* parameter to most
+        calculation models, e.g. : `fractalshades.models.Mandelbrot.base_calc`
+
+        Parameters
+        ==========
+        fractal : `fractalshades.Fractal` derived class
+            The reference fracal object
+        calc_name : str 
+            The calculation name
+        key : 
+            The raw data key. Should be one of the *complex_codes*,
+            *int_codes*, *termination_codes* for this calculation.
         func: None | callable | a str of variable x (e.g. "np.sin(x)")
-              will be applied to the raw data if not None
-        A raw postproc 
+              will be applied as a pre-processing step to the raw data if not
+              `None`
         """
         self.fractal = fractal
         self.calc_name = calc_name
