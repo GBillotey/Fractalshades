@@ -7,25 +7,15 @@ or can be used to modify another layer.
 
 .. module:: fractalshades.colors.layers
 
-.. autoclass:: Virtual_layer
-    :members: __init__, set_mask
+.. toctree::
+   :maxdepth: 1
+   :caption: Contents:
 
-.. autoclass:: Bool_layer
-    :members:  __init__
-
-.. autoclass:: Color_layer
-    :members:  __init__, set_mask, shade, overlay, set_twin_field 
-
-.. autoclass:: Normal_map_layer
-
-.. autoclass:: Grey_layer
-    :members:  __init__, set_mask
-
-.. autoclass:: Disp_Layer
-    :members:
-
-.. autoclass:: Blinn_lighting
-    :members: __init__, add_light_source
-
-.. autoclass:: Overlay_mode
-    :members: __init__
+   layers/Virtual_layer
+   layers/Bool_layer
+   layers/Color_layer
+   layers/Normal_map_layer
+   layers/Grey_layer
+   layers/Disp_Layer
+   layers/Blinn_lighting
+   layers/Overlay_mode

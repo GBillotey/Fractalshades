@@ -1,18 +1,18 @@
 Core components
 ~~~~~~~~~~~~~~~
 
+This section describes the core components.
+
 .. module:: fractalshades
 
-.. autoclass:: Fractal
-    :members: __init__, zoom, run, clean_up
 
-.. autoclass:: PerturbationFractal
-    :members:  __init__, zoom, run
+.. toctree::
+   :maxdepth: 1
+   :caption: Contents:
 
-.. autoclass:: Fractal_plotter
-    :members:  __init__, add_layer, plot
+   core/Fractal
+   core/PerturbationFractal
+   core/Fractal_plotter
+   core/decorators
 
-.. autodata:: zoom_options
-
-.. autodata:: calc_options
 

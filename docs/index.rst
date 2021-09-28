@@ -1,14 +1,16 @@
 
-.. title:: Fractalshades documentation
-
 .. module:: fractalshades
 
+.. title:: Fractalshades |version| documentation
 
-Fractalshades |version| documentation
-=====================================
 
-Fractalshades is a library for creating static and interactive visualizations 
-or Fractals in Python.
+
+
+Fractalshades documentation
+===========================
+
+Fractalshades is a Python package for creating static and interactive 
+visualisations of 2d fractals.
 
 
 .. toctree::

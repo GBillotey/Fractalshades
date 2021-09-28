@@ -6,9 +6,10 @@ This section describes the concrete implementation of
 
 .. module:: fractalshades.models
 
-.. autoclass:: fractalshades.models.Mandelbrot
-    :members: __init__, zoom, base_calc, newton_calc
+.. toctree::
+   :maxdepth: 1
+   :caption: Contents:
 
-.. autoclass:: fractalshades.models.Perturbation_mandelbrot
-    :members:  __init__, zoom, calc_std_div, calc_fast
+   models/Mandelbrot
+   models/Perturbation_mandelbrot
 
