@@ -1,6 +1,4 @@
 Postproc
 ~~~~~~~~
 
-.. module:: fractalshades.postproc
-
-.. autoclass:: Postproc
+.. autoclass:: fractalshades.postproc.Postproc

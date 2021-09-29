@@ -1,7 +1,5 @@
 DEM_pp
 ~~~~~~
 
-.. module:: fractalshades.postproc
-
-.. autoclass:: DEM_pp
+.. autoclass:: fractalshades.postproc.DEM_pp
     :members:  __init__

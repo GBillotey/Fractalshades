@@ -1,6 +1,4 @@
 constants
 ~~~~~~~~~
 
-.. module:: fractalshades.colors
-
-.. autodata:: classic_colormap
+.. autodata:: fractalshades.colors.classic_colormap

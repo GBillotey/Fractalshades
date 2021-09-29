@@ -1,8 +1,8 @@
 decorators
 ~~~~~~~~~~
 
-.. module:: fractalshades
 
-.. autodata:: zoom_options
 
-.. autodata:: calc_options
+.. autodata:: fractalshades.zoom_options
+
+.. autodata:: fractalshades.calc_options

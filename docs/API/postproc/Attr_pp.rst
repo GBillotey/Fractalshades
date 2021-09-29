@@ -1,7 +1,5 @@
 Attr_pp
 ~~~~~~~
 
-.. module:: fractalshades.postproc
-
-.. autoclass:: Attr_pp
+.. autoclass:: fractalshades.postproc.Attr_pp
     :members:  __init__

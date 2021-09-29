@@ -839,12 +839,11 @@ class Overlay_mode:
                     (tinted above 0.5, shaded below 0.5). The upper layer in
                     this case shall be a `Grey_layer` instance.
 
-        mode_options : a dict with the applicable option for each mode:
-
-        Optional Parameters
-        -------------------
-        `shade_type`:  for alpha_composite 
-        `ref_white`:   for tint_or_shade
+        Other Parameters
+        ----------------
+        ref_white: 3-uplet float
+            reference white light RGB coeff for ``mode`` "tint_or_shade"
+             Default to CIE LAB constants Illuminant D65
         """
         self.mode = mode
         self.mode_options = mode_options

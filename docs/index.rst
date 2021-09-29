@@ -1,13 +1,10 @@
-
-.. module:: fractalshades
-
-.. title:: Fractalshades |version| documentation
+.. title:: Fractalshades documentation
 
 
 
 
-Fractalshades documentation
-===========================
+Fractalshades |version| documentation
+=====================================
 
 Fractalshades is a Python package for creating static and interactive 
 visualisations of 2d fractals.

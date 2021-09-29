@@ -1,7 +1,5 @@
 Fractal_array
 ~~~~~~~~~~~~~
 
-.. module:: fractalshades.postproc
-
-.. autoclass:: Fractal_array
+.. autoclass:: fractalshades.postproc.Fractal_array
     :members:  __init__

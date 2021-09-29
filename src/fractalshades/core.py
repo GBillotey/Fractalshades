@@ -43,8 +43,9 @@ class Fractal_plotter:
         A Fractal plotter :
 
         - points to a single Fractal
-        - can hold several postproc_batches each one point to a single
-          (fracal, calculation) couple
+        - can hold several `fractalshades.postproc.Postproc_batch` each one
+          point to a single
+          (`Fracal`, ``calculation``) couple
         - can hold several post-processing layers
          
         Parameters
@@ -57,8 +58,9 @@ class Fractal_plotter:
         -----
 
         .. warning::
-            When passed multiples `Postproc_batches`, each one shall point to
-            the same `Fractal` object
+            When passed a list of `fractalshades.postproc.Postproc_batch`
+            objects, each one shall point to
+            the same `Fractal`.
         """
         # postproc_batchescan be single or an enumeration
         postproc_batches = postproc_batch
@@ -582,7 +584,8 @@ advanced users when subclassing.
 
 
     def clean_up(self, calc_name):
-        """ Deletes all saved data files associated with a given `calc_name`.
+        """
+        Deletes all saved data files associated with a given ``calc_name``.
         
         Parameters
         ----------
@@ -1407,7 +1410,7 @@ advanced users when subclassing.
         return bool_subset
 
     def postproc(self, postproc_batch, chunk_slice):
-        """ Computes the output of postproc_batch for chunk_slice
+        """ Computes the output of ``postproc_batch`` for chunk_slice
         Return
           post_array of shape(nposts, chunk_n_pts)
           chunk_mask

@@ -1,6 +1,4 @@
 Disp_Layer
 ~~~~~~~~~~
 
-.. module:: fractalshades.colors.layers
-
-.. autoclass:: Disp_Layer
+.. autoclass:: fractalshades.colors.layers.Disp_Layer

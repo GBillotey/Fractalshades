@@ -100,6 +100,14 @@ html_theme = 'sphinx_rtd_theme' # 'alabaster'
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
 
+# These paths are either relative to html_static_path
+# or fully qualified paths (eg. https://...)
+html_css_files = [
+    'css/ribbon.css',
+]
+
+
+
 # Custom sidebar templates, must be a dictionary that maps document names
 # to template names.
 #
@@ -194,6 +202,12 @@ epub_exclude_files = ['search.html']
 # Used by also by sphinx.ext.githubpages CNAME
 html_baseurl = ""
 html_logo = "_static/logo2.jpg"
+html_theme_options = {
+    "collapse_navigation": False,
+    #"navbar_center": ["mpl_nav_bar.html"],
+}
+
+
 
 default_role = 'py:obj'
 
@@ -240,3 +254,7 @@ sphinx_gallery_conf = {
      'image_scrapers': (fractalshades_scraper),
      # 'plot_gallery': 'False',  # Activate this to skip the calculation
 }
+
+####
+# GitHub extension
+github_project_url = "https://github.com/matplotlib/matplotlib/"
