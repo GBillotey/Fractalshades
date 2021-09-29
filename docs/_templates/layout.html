@@ -1,0 +1,10 @@
+{% extends '!layout.html' %}
+{% block extrahead %}
+<link rel="stylesheet" href="_static/css/ribbons.css" type="text/css" />
+{% endblock %}
+{% block document %}
+{{super()}}
+<div class="ribbon">
+  <a href="https://github.com/GBillotey/Fractalshades">Fork me on GitHub</a>
+</div>
+{% endblock %}

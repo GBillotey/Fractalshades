@@ -21,7 +21,8 @@ examples/**/*.*
 !examples/**/*.py
 !examples/**/*.rst
 
-# ignore the doc build files
+# ignore the doc build files includes _template (not a _temp !)
 docs/examples/
 docs/_build/
+!docs/_templates
 
