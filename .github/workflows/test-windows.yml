@@ -29,6 +29,9 @@ jobs:
         python-version: ${{ matrix.python-version }}
     # pip install need to specify the gmpy wheel : gmpy2-2.1.0rc1-cp37-cp37-win_amd64.whl
     # see https://stackoverflow.com/questions/47032323/installing-gmpy2-on-windows-using-pre-compiled-binaries
+    # https://stackoverflow.com/questions/19723124/how-to-rebuild-the-mpfr-svn-build-vc10-zip-in-my-own-computer/19732914#19732914
+    # https://stackoverflow.com/questions/28107123/cannot-install-numpy-from-wheel-format/28111899#28111899
+    
     # cpxx is the cpython version (3.7)
     #         installroot=`mktemp -d`
     #     echo  1 "${installroot}"
@@ -45,7 +48,16 @@ jobs:
     #     echo 3 "${path}"
     - name: Install GMP MPFR MPC needed for gmpy2
       run: |
-         pip install --no-index --find-links https://www.lfd.uci.edu/~gohlke/pythonlibs/ numpy
+        installroot=`mktemp -d`
+        pushd "${installroot}"
+        weel="gmpy2-2.0.8-cp37-none-win_amd64.whl"
+        curl -o "${weel}" https://download.lfd.uci.edu/pythonlibs/y2rycu7g/gmpy2-2.0.8-cp37-cp37m-win_amd64.whl
+        path="${installroot}"/"${weel}"
+        echo 1, path
+        pwd
+        dir
+        python -m install path
+      
 
          
 #        choco install --yes go-msi
