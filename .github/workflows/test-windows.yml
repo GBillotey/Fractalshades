@@ -27,49 +27,27 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
-    # pip install need to specify the gmpy wheel : gmpy2-2.1.0rc1-cp37-cp37-win_amd64.whl
-    # see https://stackoverflow.com/questions/47032323/installing-gmpy2-on-windows-using-pre-compiled-binaries
-    # https://stackoverflow.com/questions/19723124/how-to-rebuild-the-mpfr-svn-build-vc10-zip-in-my-own-computer/19732914#19732914
-    # https://stackoverflow.com/questions/28107123/cannot-install-numpy-from-wheel-format/28111899#28111899
-    
-    # cpxx is the cpython version (3.7)
-    #         installroot=`mktemp -d`
-    #     echo  1 "${installroot}"
-    #     weel="gmpy2.whl"
-    #     echo 2 "${weel}"
-    #     
-    #     pwd
-    #     pushd "${installroot}"
-    #     pwd
-    #     dir
-    #     curl -o "${weel}" https://download.lfd.uci.edu/pythonlibs/y2rycu7g/gmpy2-2.0.8-cp37-cp37m-win_amd64.whl
-    #     echo "voila"
-    #     path="${installroot}"/"${weel}"
-    #     echo 3 "${path}"
+
     - name: Install GMP MPFR MPC needed for gmpy2
       run: |
         python -m pip install --upgrade pip
         python -m pip install https://download.lfd.uci.edu/pythonlibs/y2rycu7g/gmpy2-2.0.8-cp37-cp37m-win_amd64.whl
 
-      
-
-         
-#        choco install --yes go-msi
-#        sudo apt-get install libgmp-dev
-#        sudo apt-get install libmpfr-dev
-#        sudo apt-get install libmpc-dev
     - name: Install dependencies
       run: |
         python -m pip install flake8 pytest
+
     - name: install Fractalshades
       run: |
         python -m pip install git+git://github.com/${{ github.repository }}.git@${{ github.sha }}
+
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
     - name: Test with pytest
       run: |
         python -m pytest
