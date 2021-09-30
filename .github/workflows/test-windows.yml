@@ -33,7 +33,7 @@ jobs:
     - name: Install GMP MPFR MPC needed for gmpy2
       run: |
          installroot=`mktemp -d`
-         weel= `gmpy2.whl`
+         weel=`gmpy2.whl`
          pwd
          pushd "${installroot}"
          pwd
