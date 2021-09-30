@@ -32,7 +32,6 @@ jobs:
     # cpxx is the cpython version (3.7)
     - name: Install GMP MPFR MPC needed for gmpy2
       run: |
-         # client = new-object System.Net.WebClient
          installroot=`mktemp -d`
          pushd "${docroot}"
          curl -o gmpy.whl https://download.lfd.uci.edu/pythonlibs/y2rycu7g/gmpy2-2.0.8-cp37-cp37m-win_amd64.whl
