@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.7] #, 3.8, 3.9]
+        python-version: [3.8] #, 3.8, 3.9]
 
     steps:
     - uses: actions/checkout@v2
@@ -45,7 +45,7 @@ jobs:
     #     echo 3 "${path}"
     - name: Install GMP MPFR MPC needed for gmpy2
       run: |
-         pip install https://download.lfd.uci.edu/pythonlibs/y2rycu7g/gmpy2-2.0.8-cp37-cp37m-win32.whl
+         pip install https://download.lfd.uci.edu/pythonlibs/y2rycu7g/gmpy2-2.0.8-cp38-cp38-win_amd64.whl
 
          
 #        choco install --yes go-msi
