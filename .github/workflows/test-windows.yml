@@ -48,9 +48,10 @@ jobs:
     #     echo 3 "${path}"
     - name: Install GMP MPFR MPC needed for gmpy2
       run: |
+        python -m pip install --upgrade pip
         installroot=`mktemp -d`
         pushd "${installroot}"
-        weel="gmpy2-2.0.8-cp37-none-win_amd64.whl"
+        weel="gmpy2-2.0.8-cp37-any-win_amd64.whl"
         curl -o "${weel}" https://download.lfd.uci.edu/pythonlibs/y2rycu7g/gmpy2-2.0.8-cp37-cp37m-win_amd64.whl
         path="${installroot}"/"${weel}"
         echo 1, "${path}"
@@ -66,7 +67,6 @@ jobs:
 #        sudo apt-get install libmpc-dev
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
         python -m pip install flake8 pytest
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     - name: install Fractalshades
