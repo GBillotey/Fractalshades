@@ -52,7 +52,7 @@ jobs:
         python -m  pip debug --verbose
         installroot=`mktemp -d`
         pushd "${installroot}"
-        weel="gmpy2-2.0.8-cp37-any-win_amd64.whl"
+        weel="gmpy2-2.0.8-py3-none-any.whl"
         curl -o "${weel}" https://download.lfd.uci.edu/pythonlibs/y2rycu7g/gmpy2-2.0.8-cp37-cp37m-win_amd64.whl
         path="${installroot}"/"${weel}"
         echo 1, "${path}"
