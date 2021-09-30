@@ -33,8 +33,13 @@ jobs:
     - name: Install GMP MPFR MPC needed for gmpy2
       run: |
          installroot=`mktemp -d`
-         pushd "${docroot}"
+         pwd
+         pushd "${installroot}"
+         pwd
+         dir
          curl -o gmpy.whl https://download.lfd.uci.edu/pythonlibs/y2rycu7g/gmpy2-2.0.8-cp37-cp37m-win_amd64.whl
+         echo "voila"
+         dir
          pip install gmpy.whl
          popd
          
