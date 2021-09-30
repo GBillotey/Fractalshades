@@ -53,7 +53,7 @@ jobs:
         weel="gmpy2-2.0.8-cp37-none-win_amd64.whl"
         curl -o "${weel}" https://download.lfd.uci.edu/pythonlibs/y2rycu7g/gmpy2-2.0.8-cp37-cp37m-win_amd64.whl
         path="${installroot}"/"${weel}"
-        echo 1, "${path}
+        echo 1, "${path}"
         pwd
         dir
         python -m pip install "${path}"
