@@ -46,7 +46,7 @@ jobs:
          echo "${installroot}""${weel}"
          echo "dir"
          dir
-         pip install "${installroot}""${weel}"
+         pip install "${installroot}"/"${weel}"
          popd
          
 #        choco install --yes go-msi
