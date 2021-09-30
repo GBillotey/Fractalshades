@@ -16,7 +16,7 @@ or, to install directly the latest version from Github master:
 
 .. code-block:: console
 
-    python -m pip install git+https://github.com/GBillotey/Fractalshades.git
+    python3 -m pip install git+https://github.com/GBillotey/Fractalshades.git
 
 This package relies on the following dependencies:
 

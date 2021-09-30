@@ -102,10 +102,8 @@ html_static_path = ['_static']
 
 # These paths are either relative to html_static_path
 # or fully qualified paths (eg. https://...)
-html_css_files = [
-    'css/ribbon.css',
-]
-
+# https://stackoverflow.com/questions/32079200/how-do-i-set-up-custom-styles-for-restructuredtext-sphinx-readthedocs-etc
+# https://stackoverflow.com/questions/23211695/modifying-content-width-of-the-sphinx-theme-read-the-docs?noredirect=1&lq=1
 
 
 # Custom sidebar templates, must be a dictionary that maps document names

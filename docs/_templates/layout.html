@@ -1,10 +1,20 @@
+<!== Adding "Fork me on Github" ribbon ==>
 {% extends '!layout.html' %}
+
 {% block extrahead %}
-<link rel="stylesheet" href="_static/css/ribbons.css" type="text/css" />
+    <link href="{{ pathto("_static/ribbon.css", True) }}" rel="stylesheet" type="text/css">
 {% endblock %}
+
 {% block document %}
 {{super()}}
 <div class="ribbon">
   <a href="https://github.com/GBillotey/Fractalshades">Fork me on GitHub</a>
 </div>
+{% endblock %}
+
+{% block footer %}
+{{ super() }}
+<style>
+  .wy-nav-content { max-width: 1250px !important; }
+</style>
 {% endblock %}
