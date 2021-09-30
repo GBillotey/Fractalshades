@@ -44,6 +44,9 @@ jobs:
          curl -o "${weel}" https://download.lfd.uci.edu/pythonlibs/y2rycu7g/gmpy2-2.0.8-cp37-cp37m-win_amd64.whl
          echo "voila"
          echo "${installroot}""${weel}"
+         echo "${installroot}"/"${weel}"
+         echo "${installroot}"\"${weel}"
+         echo "${installroot}//${weel}"
          echo "dir"
          dir
          pip install "${installroot}"/"${weel}"
