@@ -45,7 +45,7 @@ jobs:
     #     echo 3 "${path}"
     - name: Install GMP MPFR MPC needed for gmpy2
       run: |
-         pip install https://download.lfd.uci.edu/pythonlibs/y2rycu7g/gmpy2-2.0.8-cp38-cp38-win_amd64.whl
+         pip install --no-index --find-links https://pypi.bartbroe.re/gmpy2/ gmpy2
 
          
 #        choco install --yes go-msi
