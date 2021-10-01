@@ -4,12 +4,58 @@ import unittest
 
 import numpy as np
 from numpy.lib.format import open_memmap
+import sys
 
 import fractalshades.utils as fsutils
-from fractalshades.mprocessing import Multiprocess_filler
+from fractalshades.mprocessing import Multiprocess_filler #, globalize
 import test_config
 
+class Runner:
+    def __init__(self, count, directory, mmap_file):
+        # OK with C order
+        self.count = count
+        self.directory = directory
+        self.filepath = os.path.join(directory, mmap_file)
+    
+    @property
+    def output(self):
+        return "output"
 
+    def crange(self):
+        for item in range(self.count):
+            yield item
+
+    @Multiprocess_filler(iterable_attr="crange", iter_kwargs="item",
+                         redirect_path_attr="output")
+    def run(self, item):
+        # OK with C order
+        mmap = open_memmap(
+            filename=os.path.join(self.directory, mmap_file), 
+            mode='r+')
+        # print("mmap", mmap)
+        nx, ny = mmap.shape
+        mmap[item, 1:ny] = item * 10
+        mmap[item, -1] = item * 100
+        # DO NOT mmap.flush() here - performance hit and no benefit
+        #mmap.flush()
+        # print("mmap", mmap)
+        # del mmap
+
+    
+    @Multiprocess_filler(iterable_attr="crange", iter_kwargs="item")
+    def run_fancy(self, item):
+        # OK with C order
+        mmap = open_memmap(
+            filename=os.path.join(self.directory, mmap_file), 
+            mode='r+')
+        nx, ny = mmap.shape
+        fancy = np.empty((ny, ), bool)
+        fancy[:] = 1 + (-1)**np.arange(ny)
+        mmap[item, fancy] = 100
+        mmap[item, ~fancy] = -200
+        
+        # mmap.flush()
+        # del mmap
 
 class Test_mproc(unittest.TestCase):
     
@@ -27,43 +73,7 @@ class Test_mproc(unittest.TestCase):
         count = 10000
         cols = 5000 # > 3
 
-        class Runner:
-            def __init__(self, count, directory, mmap_file):
-                # OK with C order
-                self.count = count
-                self.directory = directory
-                self.filepath = os.path.join(directory, mmap_file)
-
-            def crange(self):
-                for item in range(self.count):
-                    yield item
-
-            @Multiprocess_filler(iterable_attr="crange", iter_kwargs="item")
-            def run(self, item):
-                # OK with C order
-                mmap = open_memmap(
-                    filename=os.path.join(self.directory, mmap_file), 
-                    mode='r+')
-                nx, ny = mmap.shape
-                mmap[item, 1:ny] = item * 10
-                mmap[item, -1] = item * 100
-                # DO NOT mmap.flush() here - performance hit and no benefit
-                #del mmap
-            
-            @Multiprocess_filler(iterable_attr="crange", iter_kwargs="item")
-            def run_fancy(self, item):
-                # OK with C order
-                mmap = open_memmap(
-                    filename=os.path.join(self.directory, mmap_file), 
-                    mode='r+')
-                nx, ny = mmap.shape
-                fancy = np.empty((ny, ), bool)
-                fancy[:] = 1 + (-1)**np.arange(ny)
-                mmap[item, fancy] = 100
-                mmap[item, ~fancy] = -200
-                #del mmap
-
-
+        global mmap_file
         mmap_file = "runners"
         mmap = open_memmap(
             filename=os.path.join(self.mproc_dir, mmap_file), 
@@ -72,7 +82,7 @@ class Test_mproc(unittest.TestCase):
             shape=(count, cols),
             fortran_order=False,
             version=None)
-        # mmap.flush()
+        mmap.flush()
         del mmap
 
         runner = Runner(count, self.mproc_dir, mmap_file)
@@ -89,7 +99,8 @@ class Test_mproc(unittest.TestCase):
         res = mmap[:, cols - 1]
         expected = np.arange(count, dtype=np.int32) * 100
         np.testing.assert_array_equal(res, expected)
-        del mmap
+#        mmap.flush()
+#        del mmap
 #        
         runner.run_fancy()
         mmap = open_memmap(
@@ -107,11 +118,11 @@ class Test_mproc(unittest.TestCase):
         del mmap
         
         
-        
-
 
 
 if __name__ == "__main__":
+    import fractalshades.settings as fssettings
+    fssettings.multiprocessing_context_spawn = False
     full_test = False
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:

@@ -9,6 +9,7 @@ this = sys.modules[__name__]
 
 
 enable_multiprocessing = True # True
+multiprocessing_context_spawn = False
 skip_calc = False
 
 # Glitch correction off for last reference point run.
