@@ -27,23 +27,36 @@ class Runner:
 
     @Multiprocess_filler(iterable_attr="crange", iter_kwargs="item",
                          redirect_path_attr="output")
-    def run(self, item):
+    def run(self, item=None):
+        return self._wrapped_run(self, item=None)
+
+    def _wrapped_run(self, item=None):
+        from numpy.lib.format import open_memmap
         # OK with C order
+        print("ZAZA0")
+        print("open_memmap")
+        print("open_memmap", open_memmap)
         mmap = open_memmap(
-            filename=os.path.join(self.directory, mmap_file), 
-            mode='r+')
-        # print("mmap", mmap)
+            filename=os.path.join(self.directory, mmap_file + "1"), 
+            mode='r')
+        print("ZAZA1")
+        print("mmap", os.path.join(self.directory, mmap_file + "1"))
+        print("ZAZA2")
         nx, ny = mmap.shape
         mmap[item, 1:ny] = item * 10
         mmap[item, -1] = item * 100
         # DO NOT mmap.flush() here - performance hit and no benefit
-        #mmap.flush()
+        mmap.flush()
         # print("mmap", mmap)
-        # del mmap
+        del mmap
+        sys.stdout.flush()
 
     
     @Multiprocess_filler(iterable_attr="crange", iter_kwargs="item")
-    def run_fancy(self, item):
+    def run_fancy(self, item=None):
+        return self.wrapped_run_fancy(self, item=None)
+
+    def wrapped_run_fancy(self, item=None):
         # OK with C order
         mmap = open_memmap(
             filename=os.path.join(self.directory, mmap_file), 
@@ -70,8 +83,8 @@ class Test_mproc(unittest.TestCase):
         /!\ Note that we do not use mmap.flush() in each subprocess
         """
         # Create a 200 Mb file
-        count = 10000
-        cols = 5000 # > 3
+        count = 10
+        cols = 5 # > 3
 
         global mmap_file
         mmap_file = "runners"
@@ -102,27 +115,27 @@ class Test_mproc(unittest.TestCase):
 #        mmap.flush()
 #        del mmap
 #        
-        runner.run_fancy()
-        mmap = open_memmap(
-            filename=os.path.join(self.mproc_dir, mmap_file), 
-            mode='r')
-        fancy = np.empty((cols, ), bool)
-        fancy[:] = 1 + (-1)**np.arange(cols)
-        
-        expected = np.empty(cols, dtype=np.int32)
-        expected[:] = -200
-        expected[fancy] = 100
-        mid_count = int(count * 0.5)
-        res = mmap[mid_count, :]
-        np.testing.assert_array_equal(res, expected)
-        del mmap
+#        runner.run_fancy()
+#        mmap = open_memmap(
+#            filename=os.path.join(self.mproc_dir, mmap_file), 
+#            mode='r')
+#        fancy = np.empty((cols, ), bool)
+#        fancy[:] = 1 + (-1)**np.arange(cols)
+#        
+#        expected = np.empty(cols, dtype=np.int32)
+#        expected[:] = -200
+#        expected[fancy] = 100
+#        mid_count = int(count * 0.5)
+#        res = mmap[mid_count, :]
+#        np.testing.assert_array_equal(res, expected)
+#        del mmap
         
         
 
 
 if __name__ == "__main__":
     import fractalshades.settings as fssettings
-    fssettings.multiprocessing_context_spawn = False
+    fssettings.multiprocessing_context_spawn = True
     full_test = False
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
