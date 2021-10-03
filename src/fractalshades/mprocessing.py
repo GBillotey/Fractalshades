@@ -17,9 +17,9 @@ import uuid
 import contextlib
 
 from inspect import signature, getsource
-import dill
-import marshal
-from types import FunctionType
+#import dill
+#import marshal
+#from types import FunctionType
 
 
 # https://gist.github.com/EdwinChan/3c13d3a746bb3ec5082f
@@ -36,10 +36,10 @@ def globalized(func):
         func.__name__, func.__qualname__ = name, qualname
 
 # https://newbedev.com/python-multiprocessing-picklingerror-can-t-pickle-type-function
-def run_dill_encoded(payload):
-    import numpy as np
-    fun, args = dill.loads(payload)
-    return fun(*args)
+#def run_dill_encoded(payload):
+#    import numpy as np
+#    fun, args = dill.loads(payload)
+#    return fun(*args)
 
 
 def redirect_output(redirect_path):
@@ -65,32 +65,32 @@ def spawn_process_job(instance, wrapped_name, args, kwargs, iter_kwarg, key):
 
 
 
-def _applicable(*args, **kwargs):
-    name = kwargs['__pw_name']
-    code = marshal.loads(kwargs['__pw_code'])
-    gbls = globals() #gbls = marshal.loads(kwargs['__pw_gbls'])
-    defs = marshal.loads(kwargs['__pw_defs'])
-    clsr = marshal.loads(kwargs['__pw_clsr'])
-    fdct = marshal.loads(kwargs['__pw_fdct'])
-    func = FunctionType(code, gbls, name, defs, clsr)
-    func.fdct = fdct
-    del kwargs['__pw_name']
-    del kwargs['__pw_code']
-    #del kwargs['__pw_gbls']
-    del kwargs['__pw_defs']
-    del kwargs['__pw_clsr']
-    del kwargs['__pw_fdct']
-    return func(*args, **kwargs)
-
-def make_applicable(f, *args, **kwargs):
-    if not isinstance(f, FunctionType): raise ValueError('argument must be a function')
-    kwargs['__pw_name'] = f.__name__
-    kwargs['__pw_code'] = marshal.dumps(f.__code__)
-    #kwargs['__pw_gbls'] = marshal.dumps(f.func_globals)
-    kwargs['__pw_defs'] = marshal.dumps(f.__defaults__)
-    kwargs['__pw_clsr'] = marshal.dumps(f.__closure__)
-    kwargs['__pw_fdct'] = marshal.dumps(f.__dict__)
-    return _applicable, args, kwargs
+#def _applicable(*args, **kwargs):
+#    name = kwargs['__pw_name']
+#    code = marshal.loads(kwargs['__pw_code'])
+#    gbls = globals() #gbls = marshal.loads(kwargs['__pw_gbls'])
+#    defs = marshal.loads(kwargs['__pw_defs'])
+#    clsr = marshal.loads(kwargs['__pw_clsr'])
+#    fdct = marshal.loads(kwargs['__pw_fdct'])
+#    func = FunctionType(code, gbls, name, defs, clsr)
+#    func.fdct = fdct
+#    del kwargs['__pw_name']
+#    del kwargs['__pw_code']
+#    #del kwargs['__pw_gbls']
+#    del kwargs['__pw_defs']
+#    del kwargs['__pw_clsr']
+#    del kwargs['__pw_fdct']
+#    return func(*args, **kwargs)
+#
+#def make_applicable(f, *args, **kwargs):
+#    if not isinstance(f, FunctionType): raise ValueError('argument must be a function')
+#    kwargs['__pw_name'] = f.__name__
+#    kwargs['__pw_code'] = marshal.dumps(f.__code__)
+#    #kwargs['__pw_gbls'] = marshal.dumps(f.func_globals)
+#    kwargs['__pw_defs'] = marshal.dumps(f.__defaults__)
+#    kwargs['__pw_clsr'] = marshal.dumps(f.__closure__)
+#    kwargs['__pw_fdct'] = marshal.dumps(f.__dict__)
+#    return _applicable, args, kwargs
 
 
 
