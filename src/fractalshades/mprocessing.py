@@ -146,7 +146,10 @@ class Multiprocess_filler:
             if (fssettings.enable_multiprocessing and 
                     not(self.veto_multiprocess)):
                 # https://docs.python.org/3/library/os.html#os.cpu_count
-                cpu_count = len(os.sched_getaffinity(0))
+                if os.name == "posix":
+                    cpu_count = len(os.sched_getaffinity(0))
+                else:
+                    cpu_count = os.cpu_count()
 
                 redirect_path = None
                 if self.redirect_path_attr is not None:
