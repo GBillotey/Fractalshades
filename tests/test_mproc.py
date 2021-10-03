@@ -7,13 +7,15 @@ from numpy.lib.format import open_memmap
 import sys
 
 import fractalshades.utils as fsutils
+import fractalshades.settings as fssettings
 from fractalshades.mprocessing import Multiprocess_filler #, globalize
 import test_config
 
 class Runner:
-    def __init__(self, count, directory, mmap_file):
+    def __init__(self, count, cols, directory, mmap_file):
         # OK with C order
         self.count = count
+        self.cols = cols
         self.directory = directory
         self.filepath = os.path.join(directory, mmap_file)
     
@@ -26,35 +28,45 @@ class Runner:
             yield item
 
     @Multiprocess_filler(iterable_attr="crange", iter_kwargs="item",
-                         redirect_path_attr="output")
+                         redirect_path_attr="output",
+                         finalize_attr="_finalize_run")
     def run(self, item=None):
-        return self._wrapped_run(self, item=None)
+        return self._wrapped_run(item)
 
     def _wrapped_run(self, item=None):
-        from numpy.lib.format import open_memmap
-        # OK with C order
-        print("ZAZA0")
-        print("open_memmap")
-        print("open_memmap", open_memmap)
+        vec = item * 10 * np.ones([self.cols - 1])
+        val = item * 100
+        context = self.multiprocessing_start_method
+        if context == "fork":
+            self._finalize_run((item, vec, val))
+        else:
+          return item, vec, val
+
+    def _finalize_run(self, args):
+        try:
+            item, vec, val = args
+        except TypeError:
+            # If called from a spawned process
+            item, vec, val = args.get()
+
         mmap = open_memmap(
-            filename=os.path.join(self.directory, mmap_file + "1"), 
-            mode='r')
-        print("ZAZA1")
-        print("mmap", os.path.join(self.directory, mmap_file + "1"))
-        print("ZAZA2")
+            filename=os.path.join(self.directory, mmap_file), 
+            mode='r+')
+
         nx, ny = mmap.shape
-        mmap[item, 1:ny] = item * 10
-        mmap[item, -1] = item * 100
+        mmap[item, 1:ny] = vec #item * 10
+        mmap[item, -1] = val #item * 100
         # DO NOT mmap.flush() here - performance hit and no benefit
-        mmap.flush()
-        # print("mmap", mmap)
+#        mmap.flush()
+
         del mmap
         sys.stdout.flush()
+        
 
     
     @Multiprocess_filler(iterable_attr="crange", iter_kwargs="item")
     def run_fancy(self, item=None):
-        return self.wrapped_run_fancy(self, item=None)
+        return self.wrapped_run_fancy(self, item)
 
     def wrapped_run_fancy(self, item=None):
         # OK with C order
@@ -83,8 +95,8 @@ class Test_mproc(unittest.TestCase):
         /!\ Note that we do not use mmap.flush() in each subprocess
         """
         # Create a 200 Mb file
-        count = 10
-        cols = 5 # > 3
+        count = 1000
+        cols = 50000 # > 3
 
         global mmap_file
         mmap_file = "runners"
@@ -98,7 +110,7 @@ class Test_mproc(unittest.TestCase):
         mmap.flush()
         del mmap
 
-        runner = Runner(count, self.mproc_dir, mmap_file)
+        runner = Runner(count, cols, self.mproc_dir, mmap_file)
         runner.run()
 
         mmap = open_memmap(
@@ -134,8 +146,8 @@ class Test_mproc(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import fractalshades.settings as fssettings
-    fssettings.multiprocessing_context_spawn = True
+
+    fssettings.multiprocessing_start_method = "fork"
     full_test = False
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:

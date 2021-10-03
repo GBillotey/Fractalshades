@@ -30,26 +30,13 @@ def globalized(func):
         func.__name__, func.__qualname__ = name, qualname
 
 
-def spawn_process_job(instance, method_name, args, kwargs, iter_kwarg, key):
-    """ We change the value of the iterated kwarg, than call the wrapped
-    function (/!\ do not call the decorated function of you will try to launch
-    an infinite loop of subprocesses"""
-    method = getattr(instance, method_name) # bound method
-    wrapped_method = getattr(instance, "_wrapped_" + method_name)
-    print("____________________")
-    print("in spawn_process_job")
-    print("instance:", instance)
-    print("method:", getattr(instance, method_name))
-    print("wrapped_method:", wrapped_method)
-    print("args:", args)
-    print("kwargs:", kwargs)
-    kwargs[iter_kwarg] = key
-    print("kwargs for run:", kwargs)
-    print(signature(method))
-    print(signature(wrapped_method))
-    print("data", instance.directory, instance.filepath)
-    wrapped_method(*args, **kwargs) # Bound method
 
+#def fork_process_job(instance, wrapped_name, args, kwargs, iter_kwarg, key):
+#    """ We change the value of the iterated kwarg, than call the 
+#    function """
+#    wrapped_method = getattr(instance, wrapped_name)
+#    kwargs[iter_kwarg] = key
+#    return wrapped_method(*args, **kwargs) # Bound method
 
 def redirect_output(redirect_path):
     """
@@ -64,6 +51,14 @@ def redirect_output(redirect_path):
         sys.stdout = open(os.path.join(redirect_path, out_file + ".out"), "a")
         sys.stderr = open(os.path.join(redirect_path, out_file + ".err"), "a")
 
+def spawn_process_job(instance, wrapped_name, args, kwargs, iter_kwarg, key):
+    """ We change the value of the iterated kwarg, than call the wrapped
+    function (/!\ do not call the decorated function of you will try to launch
+    an infinite loop of subprocesses"""
+    wrapped_method = getattr(instance, wrapped_name)
+    kwargs[iter_kwarg] = key
+    return wrapped_method(*args, **kwargs) # Bound method
+
 #def job_proxy(key):
 #    """ returns result of global job variable from the child-process """
 #    global process_job
@@ -71,14 +66,15 @@ def redirect_output(redirect_path):
 
 class Multiprocess_filler:
     def __init__(self, iterable_attr, res_attr=None, redirect_path_attr=None,
-                 iter_kwargs="key", veto_multiprocess=False):
+                 iter_kwargs="key", veto_multiprocess=False,
+                 finalize_attr=None):
         """
         Decorator class for an instance-method *method*
 
         *iterable_attr* : string, getattr(instance, iterable_attr) is a
             Generator function (i.e. `yields` the successive values).
-        *res_attr* : string or None, if not None (instance, res_attr) is a
-            dict-like.
+#        *res_attr* : string or None, if not None (instance, res_attr) is a
+#            dict-like.
         *redirect_path_attr* : string or None. If veto_multiprocess is False,
             getattr(instance, redirect_path_attr) is the directory where
             processes redirects sys.stdout and sys.stderr.
@@ -104,24 +100,25 @@ class Multiprocess_filler:
         self.redirect_path_attr = redirect_path_attr
         self.iter_kwarg = iter_kwargs
         self.veto_multiprocess = veto_multiprocess
+        self.finalize_attr = finalize_attr
 
     def __call__(self, method):
 
         @functools.wraps(method)
         def wrapper(instance, *args, **kwargs):
-            print("in wrapper", instance, args, kwargs)
+#            print("in wrapper", instance, args, kwargs)
             
-            try:
-                if kwargs[self.iter_kwarg] is not None:
-                    raise RuntimeError("in subprocess !")
-#                    print("in subprocess !")
-#                    print(signature(method))
-#                    print(getsource(method))
-##                    print(signature(method.__wrapped__))
-##                    print(getsource(method.__wrapped__))
-#                    return method(instance, args, kwargs)
-            except KeyError:
-                pass
+#            try:
+#                if kwargs[self.iter_kwarg] is not None:
+#                    raise RuntimeError("in subprocess !")
+##                    print("in subprocess !")
+##                    print(signature(method))
+##                    print(getsource(method))
+###                    print(signature(method.__wrapped__))
+###                    print(getsource(method.__wrapped__))
+##                    return method(instance, args, kwargs)
+#            except KeyError:
+#                pass
             
             
             if (fssettings.enable_multiprocessing and 
@@ -133,13 +130,14 @@ class Multiprocess_filler:
                 if self.redirect_path_attr is not None:
                     redirect_path = getattr(instance, self.redirect_path_attr)
 
-                context = "fork"
                 # Allow to test "spawn" on a UNIX machine (debuggin purpose)
-                if ((os.name != "posix")
-                        or fssettings.multiprocessing_context_spawn):
-                    context = "spawn"
+                context = fssettings.multiprocessing_start_method
+                instance.multiprocessing_start_method = context
+                
+                print("call multiproc", context)
+            
                 if context == "fork":
-                    # *nix
+                    # Default for *nix
                     self.call_mp_fork(cpu_count, redirect_path,
                                       instance, method, args, kwargs)
                 elif context == "spawn":
@@ -160,11 +158,11 @@ class Multiprocess_filler:
 #        def process_job(key):
 #            kwargs[self.iter_kwarg] = key
 #            method(instance, *args, **kwargs)
-        print("call_mp_fork", instance, args, kwargs)
+
         def process_job(key):
             kwargs[self.iter_kwarg] = key
             method(instance, *args, **kwargs)
-        
+
         with  globalized(process_job
                 ), multiprocessing.get_context("fork").Pool(
                         initializer=redirect_output,
@@ -186,7 +184,8 @@ class Multiprocess_filler:
 #        setattr(instance, wrapped_name, method)
 #        print("__wrapped__:", wrapped_name, getattr(instance, wrapped_name))
 
-        with  multiprocessing.get_context("spawn").Pool(
+
+        with multiprocessing.get_context("spawn").Pool(
                         initializer=redirect_output,
                         initargs=(redirect_path,),
                         processes=cpu_count
@@ -194,17 +193,25 @@ class Multiprocess_filler:
             
             wrapped_name = "_wrapped_" + method.__name__
 #            setattr(instance, wrapped_name, method)
+            finalize = None
+            if self.finalize_attr is not None:
+                finalize = getattr(instance, self.finalize_attr)
 
             for key in getattr(instance, self.iterable)():
-                print("spawn_process_job", spawn_process_job)
-                pool.apply_async(spawn_process_job, (
-                        instance,
-                        method.__name__,
-                        args,
-                        kwargs,
-                        self.iter_kwarg,
-                        key
-                        ))
+#                print("spawn_process_job", spawn_process_job)
+                spawn_process_args = (
+                    instance,
+                    wrapped_name,
+                    args,
+                    kwargs,
+                    self.iter_kwarg,
+                    key
+                )
+                if finalize is None:
+                    pool.apply_async(spawn_process_job, spawn_process_args)
+                else:
+                    finalize(pool.apply_async(spawn_process_job,
+                                              spawn_process_args))
             pool.close()
             pool.join()
 

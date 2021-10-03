@@ -202,7 +202,7 @@ class Fractal_plotter:
         del mmap
 
     @Multiprocess_filler(iterable_attr="chunk_slices",
-        iter_kwargs="chunk_slice", veto_multiprocess=False)
+        iter_kwargs="chunk_slice", veto_multiprocess=True) # False
     def store_temporary_mmap(self, chunk_slice, batch, inc_posproc_rank):
         """ Compute & store temporary arrays for this postproc batch
             Note : inc_posproc_rank rank shift to take into account potential
@@ -916,8 +916,13 @@ advanced users when subclassing.
 
     @Multiprocess_filler(iterable_attr="chunk_slices",
                          redirect_path_attr="multiprocess_dir",
-                         iter_kwargs="chunk_slice")
+                         iter_kwargs="chunk_slice",
+                         finalize_attr="_finalize_cycles")
     def cycles(self, chunk_slice=None, SA_params=None):
+        return self._wrapped_cycles(chunk_slice, SA_params)
+
+    def _wrapped_cycles(self, chunk_slice=None, SA_params=None):
+        
         """
         Fast-looping for Julia and Mandelbrot sets computation.
 
@@ -952,7 +957,7 @@ advanced users when subclassing.
             *stop_iter*     Numbers of iterations when stopped [:]     np.int32
         """
 
-#        print("**CALLING cycles +++")
+        print("**CALLING cycles +++")
         if self.res_available(chunk_slice):
             return
 
@@ -985,7 +990,27 @@ advanced users when subclassing.
             numba_cycles_perturb(Z, U, c, stop_reason, stop_iter, bool_active,
                 iref, n_iter, SA_iter, ref_div_iter, ref_path, iterate,
                 last_iref)
+        
+        # Save data to disk
+        context = self.multiprocessing_start_method
+        if context == "fork":
+            self._finalize_cycles(
+                (chunk_slice, Z, U, stop_reason, stop_iter, modified_in_cycle))
+        else:
+          return (chunk_slice, Z, U, stop_reason, stop_iter, modified_in_cycle)
 
+
+    def _finalize_cycles(self, args):
+        """ Used for compatibility with WIndows / MAC : "spawn" subprocesses
+        not compatible with memmap
+        """
+        try:
+            (chunk_slice, Z, U, stop_reason, stop_iter, modified_in_cycle
+             ) = args
+        except TypeError:
+            # If called from a spawned process
+            (chunk_slice, Z, U, stop_reason, stop_iter, modified_in_cycle
+             ) = args.get()
         # Saving the results after cycling
         self.update_report_mmap(chunk_slice, stop_reason)
         self.update_data_mmaps(chunk_slice, Z, U, stop_reason, stop_iter,

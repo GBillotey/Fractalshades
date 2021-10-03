@@ -283,6 +283,11 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
 #        th.start()
 #        print("#######THREAD LAUNCHED")
 #        th.join()
+        # Something like this ? but with memmap : to be checked
+        # with futures.ProcessPoolExecutor(max_workers=1) as subprocess:
+        #  subprocess.submit(generate_array_on_disk, m, n).result()
+        # separate sub-process is started, the callable is executed
+        # the process with all its memory usage is killed
         self.func_performed.emit()
 
     def show_func_params(self):

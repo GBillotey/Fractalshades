@@ -3,13 +3,14 @@
 General settings for the package
 """
 import sys
+import multiprocessing
 
 # this is a pointer to the module object instance itself.
 this = sys.modules[__name__]
 
 
 enable_multiprocessing = True # True
-multiprocessing_context_spawn = False
+multiprocessing_start_method = multiprocessing.get_start_method()
 skip_calc = False
 
 # Glitch correction off for last reference point run.

@@ -3,6 +3,7 @@
 recursive-include tests *
 recursive-exclude tests/_temporary_data *
 recursive-exclude tests/known_fails/_data *
+recursive-exclude tests/output *
 # Examples
 recursive-include examples* *.py
 # Global exclusions
