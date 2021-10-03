@@ -40,9 +40,10 @@ def plot(plot_dir):
     # A simple showcase using perturbation technique
     x = "-1.768667862837488812627419470"
     y = "0.001645580546820209430325900"
-    dx = "7.0e-22"
+    dx = "16.e-22"
     precision = 30
-    nx = 800
+    nx = 1600
+    xy_ratio = 2.0
 
     calc_name="mandelbrot"
     
@@ -63,7 +64,7 @@ def plot(plot_dir):
             y=y,
             dx=dx,
             nx=nx,
-            xy_ratio=1.0,
+            xy_ratio=xy_ratio,
             theta_deg=0., 
             projection="cartesian",
             antialiasing=False)

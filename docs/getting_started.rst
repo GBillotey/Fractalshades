@@ -38,7 +38,7 @@ This package relies on the following dependencies:
 They should install automatically through `pip`. A special case is gmpy2 as it
 needs the most recent versions of GMP, MPFR and MPC multi-precision
 arithmetic libraries. If your distribution does not include them you will have
-to install them manually. For instance under Linux:
+to install them manually :
 
 .. code-block:: console
 

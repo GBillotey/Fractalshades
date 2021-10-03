@@ -8,6 +8,9 @@ Fractalshades |version| documentation
 
 Fractalshades is a Python package for creating static and interactive 
 visualisations of 2d fractals.
+Fractalshades targets currently only UNIX-like
+operating systems, as  its multiprocessing implementation relies
+on forking.
 
 
 .. toctree::

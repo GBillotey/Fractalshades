@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import sys
 import unittest
 
 import numpy as np
@@ -33,14 +34,19 @@ class Test_mproc(unittest.TestCase):
                 self.count = count
                 self.directory = directory
                 self.filepath = os.path.join(directory, mmap_file)
+                self.multiprocess_dir = os.path.join(directory,
+                                                     "multiprocess_dir")
 
             def crange(self):
                 for item in range(self.count):
                     yield item
 
-            @Multiprocess_filler(iterable_attr="crange", iter_kwargs="item")
+            @Multiprocess_filler(iterable_attr="crange", iter_kwargs="item",
+                                 redirect_path_attr="multiprocess_dir")
             def run(self, item):
                 # OK with C order
+                print("in run", item)
+                sys.stdout.flush()
                 mmap = open_memmap(
                     filename=os.path.join(self.directory, mmap_file), 
                     mode='r+')
@@ -50,7 +56,8 @@ class Test_mproc(unittest.TestCase):
                 # DO NOT mmap.flush() here - performance hit and no benefit
                 #del mmap
             
-            @Multiprocess_filler(iterable_attr="crange", iter_kwargs="item")
+            @Multiprocess_filler(iterable_attr="crange", iter_kwargs="item",
+                                 redirect_path_attr="multiprocess_dir")
             def run_fancy(self, item):
                 # OK with C order
                 mmap = open_memmap(
@@ -75,6 +82,7 @@ class Test_mproc(unittest.TestCase):
         # mmap.flush()
         del mmap
 
+        print("runner")
         runner = Runner(count, self.mproc_dir, mmap_file)
         runner.run()
 
