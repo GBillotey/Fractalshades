@@ -31,7 +31,7 @@ jobs:
     - name: Install GMP MPFR MPC needed for gmpy2
       run: |
         python -m pip install --upgrade pip
-        python -m pip install https://download.lfd.uci.edu/pythonlibs/y2rycu7g/gmpy2-2.0.8-cp37-cp37m-win_amd64.whl
+        python -m pip install --no-index --find-links https://pypi.bartbroe.re/gmpy2/ 
 
     - name: Install dependencies
       run: |
