@@ -272,18 +272,20 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
                 + "left: 15px;}")# ;
 
     def run_func(self):
-        sm = self._submodel
-        sm._func(**sm.getkwargs())
-        # Run in separate thread TODO 
-        # PS do NOT use QThread 
-        # https://doc.qt.io/archives/qt-4.8/qthread.html#details
-        # https://codereview.stackexchange.com/questions/208766/capturing-stdout-in-a-qthread-and-update-gui
-#        print("#######THREAD LAUNCHING")
-#        th = threading.Thread(target=sm._func, kwargs=sm.getkwargs())
-#        th.start()
-#        print("#######THREAD LAUNCHED")
-#        th.join()
-        self.func_performed.emit()
+
+        def thread_job():
+            sm = self._submodel
+            self._run.setStyleSheet("background-color: red")
+            sm._func(**sm.getkwargs())
+            self._run.setStyleSheet("background-color: #646464")
+            self.func_performed.emit()
+
+        threading.Thread(target=thread_job).start()
+        
+        
+        
+
+
 
     def show_func_params(self):
         sm = self._submodel
