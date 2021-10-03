@@ -34,6 +34,7 @@ class Runner:
         return self._wrapped_run(item)
 
     def _wrapped_run(self, item=None):
+        import numpy as np
         vec = item * 10 * np.ones([self.cols - 1])
         val = item * 100
         context = self.multiprocessing_start_method
@@ -147,7 +148,7 @@ class Test_mproc(unittest.TestCase):
 
 if __name__ == "__main__":
 
-    fssettings.multiprocessing_start_method = "fork"
+    fssettings.multiprocessing_start_method = "spawn"
     full_test = False
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:

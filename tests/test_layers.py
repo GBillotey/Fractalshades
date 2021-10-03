@@ -467,6 +467,8 @@ class Test_layers(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    import fractalshades.settings as fssettings
+    fssettings.multiprocessing_start_method = 'spawn'
     runner = unittest.TextTestRunner(verbosity=2)
     full_test = True
     if full_test:

@@ -8,6 +8,8 @@ import os
 import sys
 import functools
 
+import concurrent.futures
+
 
 import fractalshades.utils as fsutils
 import fractalshades.settings as fssettings
@@ -15,6 +17,10 @@ import uuid
 import contextlib
 
 from inspect import signature, getsource
+import dill
+import marshal
+from types import FunctionType
+
 
 # https://gist.github.com/EdwinChan/3c13d3a746bb3ec5082f
 @contextlib.contextmanager
@@ -29,14 +35,12 @@ def globalized(func):
         delattr(namespace, func.__name__)
         func.__name__, func.__qualname__ = name, qualname
 
+# https://newbedev.com/python-multiprocessing-picklingerror-can-t-pickle-type-function
+def run_dill_encoded(payload):
+    import numpy as np
+    fun, args = dill.loads(payload)
+    return fun(*args)
 
-
-#def fork_process_job(instance, wrapped_name, args, kwargs, iter_kwarg, key):
-#    """ We change the value of the iterated kwarg, than call the 
-#    function """
-#    wrapped_method = getattr(instance, wrapped_name)
-#    kwargs[iter_kwarg] = key
-#    return wrapped_method(*args, **kwargs) # Bound method
 
 def redirect_output(redirect_path):
     """
@@ -58,6 +62,37 @@ def spawn_process_job(instance, wrapped_name, args, kwargs, iter_kwarg, key):
     wrapped_method = getattr(instance, wrapped_name)
     kwargs[iter_kwarg] = key
     return wrapped_method(*args, **kwargs) # Bound method
+
+
+
+def _applicable(*args, **kwargs):
+    name = kwargs['__pw_name']
+    code = marshal.loads(kwargs['__pw_code'])
+    gbls = globals() #gbls = marshal.loads(kwargs['__pw_gbls'])
+    defs = marshal.loads(kwargs['__pw_defs'])
+    clsr = marshal.loads(kwargs['__pw_clsr'])
+    fdct = marshal.loads(kwargs['__pw_fdct'])
+    func = FunctionType(code, gbls, name, defs, clsr)
+    func.fdct = fdct
+    del kwargs['__pw_name']
+    del kwargs['__pw_code']
+    #del kwargs['__pw_gbls']
+    del kwargs['__pw_defs']
+    del kwargs['__pw_clsr']
+    del kwargs['__pw_fdct']
+    return func(*args, **kwargs)
+
+def make_applicable(f, *args, **kwargs):
+    if not isinstance(f, FunctionType): raise ValueError('argument must be a function')
+    kwargs['__pw_name'] = f.__name__
+    kwargs['__pw_code'] = marshal.dumps(f.__code__)
+    #kwargs['__pw_gbls'] = marshal.dumps(f.func_globals)
+    kwargs['__pw_defs'] = marshal.dumps(f.__defaults__)
+    kwargs['__pw_clsr'] = marshal.dumps(f.__closure__)
+    kwargs['__pw_fdct'] = marshal.dumps(f.__dict__)
+    return _applicable, args, kwargs
+
+
 
 #def job_proxy(key):
 #    """ returns result of global job variable from the child-process """
@@ -106,19 +141,6 @@ class Multiprocess_filler:
 
         @functools.wraps(method)
         def wrapper(instance, *args, **kwargs):
-#            print("in wrapper", instance, args, kwargs)
-            
-#            try:
-#                if kwargs[self.iter_kwarg] is not None:
-#                    raise RuntimeError("in subprocess !")
-##                    print("in subprocess !")
-##                    print(signature(method))
-##                    print(getsource(method))
-###                    print(signature(method.__wrapped__))
-###                    print(getsource(method.__wrapped__))
-##                    return method(instance, args, kwargs)
-#            except KeyError:
-#                pass
             
             
             if (fssettings.enable_multiprocessing and 
@@ -134,7 +156,7 @@ class Multiprocess_filler:
                 context = fssettings.multiprocessing_start_method
                 instance.multiprocessing_start_method = context
                 
-                print("call multiproc", context)
+                print("call multiproc with context: ", context)
             
                 if context == "fork":
                     # Default for *nix
@@ -183,6 +205,7 @@ class Multiprocess_filler:
 #        wrapped_name = "__wrapped__" + method.__name__
 #        setattr(instance, wrapped_name, method)
 #        print("__wrapped__:", wrapped_name, getattr(instance, wrapped_name))
+        
 
 
         with multiprocessing.get_context("spawn").Pool(
@@ -207,9 +230,14 @@ class Multiprocess_filler:
                     self.iter_kwarg,
                     key
                 )
+                # payload = dill.dumps((spawn_process_job, spawn_process_args))
+                
                 if finalize is None:
+                    # pool.apply_async(run_dill_encoded, (payload,))
                     pool.apply_async(spawn_process_job, spawn_process_args)
                 else:
+                    # finalize(pool.apply_async(run_dill_encoded,
+                    #                          (payload,)))
                     finalize(pool.apply_async(spawn_process_job,
                                               spawn_process_args))
             pool.close()
@@ -220,10 +248,10 @@ class Multiprocess_filler:
         
         for key in getattr(instance, self.iterable)():
             kwargs[self.iter_kwarg] = key
+            # Still some multithreading
+#            with concurrent.futures.ThreadPoolExecutor(
+#                    max_workers=1) as threadpool:
+#                full_args = (instance,) + args
+#                threadpool.submit(method, full_args, kwargs).result()
             method(instance, *args, **kwargs)
-
-                
-                    
-
-
-        
+  

@@ -246,3 +246,34 @@ class Mandelbrot(fs.Fractal):
 
             return numba_impl
         self.iterate = iterate
+    
+
+        
+
+#def Mandelbrot__getstate__(self):
+#    # Copy the object's state from self.__dict__ which contains
+#    # all our instance attributes. Always use the dict.copy()
+#    # method to avoid modifying the original state.
+#    state = self.__dict__.copy()
+#    # delete unpickable entries
+#    print("delete state", state, self)
+#    calc_methods = fsutils.calc_options.methods(self)#.calc_options.methods
+##        all_methods = [method_name for method_name in dir(self)
+##                          if callable(getattr(self, method_name))]
+##        print(all_methods)
+#    print(calc_methods)
+#    for calc_method in calc_methods.keys():
+#        print("remove", calc_method)
+#        print(state.keys())
+#        if calc_method in state.keys():
+#            del state[calc_method]
+#    return state
+##
+#def Mandelbrot__setstate__(self, state):
+#    # Restore instance attributes (i.e., filename and lineno).
+#    raise RuntimeError()
+#    print("setstaater")
+#    self.__dict__.update(state)
+#        
+#Mandelbrot.__getstate__ = Mandelbrot__getstate__
+#Mandelbrot.__setstate__ = Mandelbrot__setstate__

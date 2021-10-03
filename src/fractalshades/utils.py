@@ -47,7 +47,7 @@ def _store_kwargs(dic_name):
 
 
 class _store_kwargs_and_func_name:
-    def __new__(cls, dic_name):
+    def __init__(self, dic_name):
         """ 
     Decorator for an instance method.
 
@@ -73,8 +73,8 @@ class _store_kwargs_and_func_name:
         - this decorator will raise a ValueError if method is called with any
          positional arguments.
     """
-        cls.dic_name = dic_name
-        return object.__new__(cls)
+        self.dic_name = dic_name
+#        return object.__new__(cls)
 
     def __call__(self, method):
         dic_name = self.dic_name
@@ -86,9 +86,9 @@ class _store_kwargs_and_func_name:
         setattr(wrapper, "_@" + dic_name, True)
         return wrapper
 
-    @classmethod
-    def methods(cls, subject):
-        dic_name = cls.dic_name
+    #@classmethod
+    def methods(self, subject):
+        dic_name = self.dic_name
         def m_iter():
             for name, method in vars(subject).items():
                 if callable(method) and hasattr(method, "_@" + dic_name):

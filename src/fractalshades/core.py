@@ -433,10 +433,17 @@ advanced users when subclassing.
         The string identifiers are stored in ``codes`` attributes.
 """
         self.directory = directory
-        self.iref = None # None when no reference point used / needed
-        self.glitch_max_attempt = 0
-        self.subset = None
-        self.glitch_stop_index = None
+        self.init_context(dict())
+        
+    def init_context(self, context_dict):
+        self.iref = context_dict.get("iref", None) # None when no reference point used / needed
+        self.glitch_max_attempt = context_dict.get("glitch_max_attempt", 0)
+        self.subset = context_dict.get("subset", None)
+        self.glitch_stop_index = context_dict.get("glitch_stop_index", None)
+        self.multiprocessing_start_method = context_dict.get(
+                "multiprocessing_start_method",
+                fssettings.multiprocessing_start_method)
+
 
     def init_data_types(self, complex_type):
         if type(complex_type) is tuple:
@@ -496,6 +503,10 @@ advanced users when subclassing.
         done for each tile and each glitch correction iteration, so i enables
         calculation to restart from an unfinished status.
         """
+        self.prepare_cycles()
+        self.cycles()
+
+    def prepare_cycles(self):
         if not(self.res_available()):
             # We write the param file and initialize the
             # memmaps for progress reports and calc arrays
@@ -512,8 +523,6 @@ advanced users when subclassing.
         # JIT-compiled function
         # self.jitted_numba_cycles = numba.njit(numba_cycles)
         self._iterate = self.iterate()
-        self.cycles()
-
 
     @property
     def ny(self):
@@ -1470,6 +1479,41 @@ advanced users when subclassing.
         postproc_batch.clear_chunk_data()
 
         return post_array, chunk_mask
+    
+    def reduce_callable(self, obj, state):
+        print("in reduce callable", state)
+        obj.init_context(state)
+        obj.init_data_types(state["complex_type"])
+        obj.zoom(**state["zoom_options"])
+        getattr(obj, state["calc_options_lastcall"])(**state["calc_options"])
+        obj.prepare_cycles()
+    
+    def __reduce__(self):
+        print("in reduce", self.__dict__)
+        state = {
+            'complex_type': self.complex_type,
+#            'float_postproc_type': self.float_postproc_type,
+#            'int_type': self.int_type,
+#            'termination_type': self.termination_type,
+            'iref' : self.iref,
+            'glitch_max_attempt' : self.glitch_max_attempt,
+            'subset' : self.subset,
+            'glitch_stop_index' : self.glitch_stop_index,
+            "multiprocessing_start_method": self.multiprocessing_start_method,
+            'zoom_options': self.zoom_options,
+            'calc_options': self.calc_options,
+            'calc_name': self.calc_name,
+            'codes': self.codes,
+            'calc_options_lastcall': self.calc_options_lastcall
+        }
+        return (
+            self.__class__,
+            (self.directory,),
+            state,
+            None,
+            None,
+            self.reduce_callable # callable - (obj, state)
+        )
 
 
 # Numba JIT functions =========================================================

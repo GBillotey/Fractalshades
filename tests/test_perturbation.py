@@ -500,6 +500,8 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         self.assertTrue(err < err_max)
 
 if __name__ == "__main__":
+    import fractalshades.settings as fssettings
+    fssettings.multiprocessing_start_method = 'fork'
     full_test = True
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
