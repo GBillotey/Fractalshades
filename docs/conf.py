@@ -218,7 +218,7 @@ numpydoc_show_class_members = False
 # Automatic build of the gallery
 import sphinx_gallery
 # We will not write to disk but feed fractalshades_scraper
-fractalshades.settings.output_mode = "Pillow" 
+fractalshades.settings.output_context["doc"] = True 
 
 # https://sphinx-gallery.github.io/stable/advanced.html?highlight=scrapers#example-2-detecting-image-files-on-disk
 def fractalshades_scraper(block, block_vars, gallery_conf):

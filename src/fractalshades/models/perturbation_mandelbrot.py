@@ -8,7 +8,7 @@ import fractalshades as fs
 import fractalshades.numpy_utils.xrange as fsx
 import fractalshades.numpy_utils.numba_xr as fsxn
 import fractalshades.utils as fsutils
-import fractalshades.settings as settings
+import fractalshades.settings as fssettings
 
 
 
@@ -28,6 +28,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         self.potential_kind = "infinity"
         self.potential_d = 2
         self.potential_a_d = 1.
+        self.critical_pt = 0.
 
     @staticmethod
     def _ball_method1(c, px, maxiter, M_divergence):#, M_divergence):
@@ -458,9 +459,15 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             reason_stationnary = 2
             reason_dyn_glitch = 3
             reason_div_glitch = 4
-            glitch_off_last_iref = settings.glitch_off_last_iref
+            glitch_off_last_iref = fssettings.glitch_off_last_iref
             no_SA = (SA_params is None)
             dzndc_iter_1 = float(self.dx) # TODO need adaptation if Xrange
+            
+            interior_detect_activated = (
+                interior_detect 
+                and (self.dx > fssettings.newton_zoom_level)
+            )
+                
 
             @numba.njit
             def numba_impl(Z, U, c, stop_reason, n_iter, SA_iter,
@@ -483,8 +490,8 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                 if no_SA and (n_iter == 1):
                     Z[dzndc] = dzndc_iter_1 # Heuristic to 'kick-off'
 
-                if interior_detect and (n_iter > SA_iter + 1):
-                    Z[dzndz] = 2. * (ref_path[zn] * Z[dzndz] + Z[zn] * Z[dzndz])
+                if interior_detect_activated and (n_iter > 1): # SA_iter +1
+                    Z[dzndz] = 2. * (Z[zn] * Z[dzndz]) # + ref_path[zn] * Z[dzndz] +
 
                 Z[zn] = Z[zn] * (Z[zn] + 2. * ref_path[zn]) + c
 
@@ -498,11 +505,11 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                     return
 
                 # Interior points detection
-                if interior_detect and (n_iter > SA_iter):
+                if interior_detect_activated: # and (n_iter > SA_iter):
                     bool_stationnary = (
-                            (Z[1].real)**2 +  # + ref_path_next[1].real
-                            (Z[1].imag)**2 < # + ref_path_next[1].imag
-                            epsilon_stationnary_sq)
+                            (Z[dzndz].real)**2  # + ref_path_next[1].real
+                            + (Z[dzndz].imag)**2 # + ref_path_next[1].imag
+                            < epsilon_stationnary_sq)
                     if bool_stationnary:
                         stop_reason[0] = reason_stationnary
 
@@ -665,7 +672,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             # reason_stationnary = 2
             reason_dyn_glitch = 2
             reason_div_glitch = 3
-            glitch_off_last_iref = settings.glitch_off_last_iref
+            glitch_off_last_iref = fssettings.glitch_off_last_iref
 
 
             @numba.njit

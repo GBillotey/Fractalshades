@@ -4,6 +4,8 @@ import typing
 import dataclasses
 import math
 import os
+# import datetime
+import time
 # import textwrap
 #import pprint
 
@@ -18,10 +20,12 @@ import ast
 from PyQt5 import QtCore
 from PyQt5.QtCore import Qt
 #from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import pyqtSignal #, pyqtSlot
+from PyQt5.QtCore import pyqtSignal, pyqtSlot
 
 from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtWidgets import (
+    QApplication,
+    QMainWindow,
     QWidget,
     QAction,
     QDockWidget,
@@ -31,6 +35,7 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QCheckBox,
     QLabel,
+    QStatusBar,
 #    QMenuBar,
 #    QToolBar,
     QComboBox,
@@ -56,7 +61,6 @@ from PyQt5.QtWidgets import (
     QTableWidgetItem
 )
 
-from PyQt5.QtWidgets import (QMainWindow, QApplication)
 #
 
 import fractalshades as fs
@@ -191,26 +195,36 @@ class MinimizedStackedWidget(QStackedWidget):
         return self.currentWidget().sizeHint()
     def minimumSizeHint(self):
         return self.currentWidget().sizeHint()
-#{
-#  QSize sizeHint() const override
-#  {
-#    return currentWidget()->sizeHint();
-#  }
-#
-#  QSize minimumSizeHint() const override
-#  {
-#    return currentWidget()->minimumSizeHint();
-#  }
-#};
+
+class _Pixmap_figure:
+    def __init__(self, img):
+        """
+        This class is a wrapper that can be used to redirect a Fractal_plotter
+        output, for instance when generating the documentation.
+        """
+        self.img = img
+
+    def save_png(self, im_path):
+        self.img.save(im_path, format="PNG")
+
+
+
 class Action_func_widget(QFrame):#Widget):#QWidget):
     """
     A Func_widget with parameters & actions group
     """
     func_performed = pyqtSignal()
+    lock_navigation = pyqtSignal(bool)
     
-    def __init__(self, parent, func_smodel, action_setting=None):
+    def __init__(self, parent, func_smodel, action_setting=None,
+                 callback=False, may_interrupt=False,
+                 locks_navigation=False):
         super().__init__(parent)
         self._submodel = func_smodel
+        self.may_interrupt = may_interrupt
+        self.locks_navigation = locks_navigation
+        
+        
         # Parameters and action boxes
         param_box = self.add_param_box(func_smodel)
         action_box = self.add_action_box()
@@ -225,9 +239,11 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
         # Connect events
         self._source.clicked.connect(self.show_func_source)
         self._params.clicked.connect(self.show_func_params)
+        if may_interrupt:
+            self._interrupt.clicked.connect(self.raise_interruption)
         self._run.clicked.connect(self.run_func)
         
-        # adds a binding to the image modified
+        # adds a binding to the image modified of other setting
         if action_setting is not None:
             (setting, keys) = action_setting
             print("*********************action_setting", action_setting)
@@ -235,6 +251,17 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
             model.declare_setting(setting, keys)
             self.func_performed.connect(functools.partial(
                 model.setting_touched, setting))
+        
+        # adds a binding to the parent slot
+        if callback:
+            self.func_performed.connect(functools.partial(
+                parent.func_callback, self))
+        
+        # add a binding to the navigation window
+        if locks_navigation: 
+            nav_win = getmainwindow(self).centralWidget() 
+            self.lock_navigation.connect(nav_win.lock)
+            
 
     def add_param_box(self, func_smodel):
         self._param_widget = Func_widget(self, func_smodel)
@@ -250,14 +277,18 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
         return param_box
 
     def add_action_box(self):
-        self._source = QPushButton("Show source")
-        self._params = QPushButton("Show params")
-        self._run = QPushButton("Run")
-        action_box = QGroupBox("Actions")
         action_layout = QHBoxLayout()
+        self._source = QPushButton("Show source")
         action_layout.addWidget(self._source)
+        self._params = QPushButton("Show params")
         action_layout.addWidget(self._params)
+        if self.may_interrupt:
+            self._interrupt= QPushButton("Interrupt")
+            action_layout.addWidget(self._interrupt)
+        self._run = QPushButton("Run")
         action_layout.addWidget(self._run)
+        
+        action_box = QGroupBox("Actions")
         action_box.setLayout(action_layout)
         self.set_border_style(action_box)
         return action_box
@@ -271,20 +302,33 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
                 + "subcontrol-position:top left;" #padding:-6 3px;"
                 + "left: 15px;}")# ;
 
-    def run_func(self):
+    @property
+    def param0(self):
+        """ Return the value of the first parameter """
+        sm = self._submodel
+        return next(iter(sm.getkwargs().values()))
 
+    def raise_interruption(self):
+        self.param0.raise_interruption()
+
+    def lower_interruption(self):
+        self.param0.lower_interruption()
+
+    def run_func(self):
+        # Ensure that interrupted is not raised
+        self.lower_interruption()
+        # Run the function in a dedicated thread
         def thread_job():
             sm = self._submodel
+            if self.locks_navigation:
+                self.lock_navigation.emit(True)
             self._run.setStyleSheet("background-color: red")
             sm._func(**sm.getkwargs())
             self._run.setStyleSheet("background-color: #646464")
+            if self.locks_navigation:
+                self.lock_navigation.emit(False)
             self.func_performed.emit()
-
         threading.Thread(target=thread_job).start()
-        
-        
-        
-
 
 
     def show_func_params(self):
@@ -323,6 +367,10 @@ class Func_widget(QFrame):
         # Publish / subscribe signals with the submodel
         self.func_user_modified.connect(self._submodel.func_user_modified_slot)
         self._model.model_event.connect(self.model_event_slot)
+        
+        self.setSizePolicy(
+            QtWidgets.QSizePolicy.Expanding, 
+            QtWidgets.QSizePolicy.Expanding)
 
     def layout(self):
         fd = self._submodel._dict
@@ -1201,34 +1249,16 @@ class Qcmap_editor(QWidget):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class QDict_viewer(QWidget):
     def __init__(self, parent, qdict):
         super().__init__(parent)
         self._layout = QGridLayout(self)
         self.setLayout(self._layout)
         self.widgets_reset(qdict)
+        
+        self.setSizePolicy(
+            QtWidgets.QSizePolicy.Minimum, 
+            QtWidgets.QSizePolicy.Minimum)
 
     def widgets_reset(self, qdict):
         """
@@ -1243,9 +1273,9 @@ class QDict_viewer(QWidget):
             self._layout.addWidget(QLabel(str(v)), row, 1, 1, 1)
             self._key_row[k] = row
             row += 1
-        spacer = QSpacerItem(1, 1,
-                             QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self._layout.addItem(spacer, row, 1, 1, 1)
+#        spacer = QSpacerItem(1, 1,
+#                             QSizePolicy.Expanding, QSizePolicy.Expanding)
+#        self._layout.addItem(spacer, row, 1, 1, 1)
 
     def values_update(self, update_dic):
         """
@@ -1267,6 +1297,7 @@ class QDict_viewer(QWidget):
                 # w.deleteLater()
 
 
+
 class Image_widget(QWidget):
     param_user_modified = pyqtSignal(object) # (px1, py1, px2, px2)
     # zoom_params = ["x", "y", "dx", "xy_ratio"]
@@ -1277,6 +1308,9 @@ class Image_widget(QWidget):
         self._model = view_presenter._model
         self._mapping = view_presenter._mapping
         self._presenter = view_presenter# model[func_keys]
+        
+        # sets lock:
+        self._lock = 0
             
 #        if xy_ratio is None:
 #            self._im = parent._im
@@ -1350,9 +1384,17 @@ class Image_widget(QWidget):
 #        self._scene.addAction(useless_action)
 #        useless_action.triggered.connect(self.useless)
 
-
-        
+    @pyqtSlot(bool)
+    def lock(self, val):
+        if val:
+            self._lock += 1
+        else:
+            self._lock -= 1
     
+    @property
+    def is_locked(self):
+        return self._lock > 0
+        
     def on_context_menu(self, event):
         menu = QMenu(self)
         NoAction = QAction("Does nothing", self)
@@ -1542,11 +1584,15 @@ class Image_widget(QWidget):
             return False
 
     def on_mouse_left_press(self, event):
+        if self.is_locked:
+            return
         self._drawing_rect = True
         self._dragging_rect = False
         self._rect_pos0 = event.scenePos()
 
     def on_mouse_left_release(self, event):
+        if self.is_locked:
+            self.cancel_drawing_rect()
         if self._drawing_rect:
             self._rect_pos1 = event.scenePos()
             if (self._rect_pos0 == self._rect_pos1):
@@ -1709,28 +1755,19 @@ class Image_widget(QWidget):
 
 
 
-#def getapp():
-#    app = QtCore.QCoreApplication.instance()
-#    if app is None:
-#        app = QApplication([])
-#    return app
-class Fractal_MainWindow(QMainWindow):
-    # copy paste elsewhere...
-    # mp_dps_used = pyqtSignal(int)
 
+class Fractal_MainWindow(QMainWindow):
     
     def __init__(self, gui):
         super().__init__(parent=None)
         self.setStyleSheet(MAIN_WINDOW_CSS)
-#                "QDockWidget {background: #dadada; font: bold 14px;" #dadada;
-#                              "border: 2px solid  #646464;}"
-#                "QDockWidget::title {text-align: left; background: #646464;"
-#                                     "padding-left: 5px;}")
         self.build_model(gui)
         self.layout()
-        # self.mp_dps_used.connect(model.dps_used_slot)
+
     
     def build_model(self, gui):
+        
+        self._gui = gui
         model = self._model = Model()
         
         # Adds the submodels
@@ -1747,13 +1784,25 @@ class Fractal_MainWindow(QMainWindow):
         Presenter(model, mapping, register_key="image")
 
     def layout(self):
-        self.add_func_wget()
         self.add_image_wget()
+        self.add_func_wget()
+    
+    def sizeHint(self):
+        return QtCore.QSize(1200, 800) 
 
     def add_func_wget(self):
-        func_wget = Action_func_widget(self, self.from_register(("func",)),
-            action_setting=("image_updated", 
-                self.from_register("image")._mapping["image"]))
+        action_setting = (
+            "image_updated", 
+            self.from_register("image")._mapping["image"]
+        )
+        func_wget = Action_func_widget(
+            self,
+            self.from_register(("func",)),
+            action_setting,
+            callback=True,
+            may_interrupt=True,
+            locks_navigation=True
+        )
         dock_widget = QDockWidget(None, Qt.Window)
         dock_widget.setWidget(func_wget)
         # Not closable :
@@ -1763,6 +1812,19 @@ class Fractal_MainWindow(QMainWindow):
         dock_widget.setStyleSheet(DOCK_WIDGET_CSS)
         self.addDockWidget(Qt.LeftDockWidgetArea, dock_widget)
         self._func_wget = func_wget
+        
+        func_wget.run_func()
+    
+    @pyqtSlot(object)
+    def func_callback(self, func_widget):
+        """ A simple callback when the main computation is finished """
+        # output gui-image (for documentation)
+        if fs.settings.output_context["doc"]: 
+            time.sleep(1)
+            img = self.grab()
+            fs.settings.add_figure(_Pixmap_figure(img))
+            QApplication.quit()
+
 
     def add_image_wget(self):
         mw = Image_widget(self, self.from_register("image"))
@@ -1771,51 +1833,7 @@ class Fractal_MainWindow(QMainWindow):
     def from_register(self, register_key):
         return self._model._register[register_key]
 
-#    def on_image_event(self):
-#        print("image updated")
 
-#        self.setWindowTitle('Fractalshades')
-#        tb = QToolBar(self)
-#        self.addToolBar(tb)
-##            print_dict = QAction("print dict")
-#        tb.addAction("print_dict")
-#        
-#        # tb.actionTriggered[QAction].connect(self.on_tb_action)
-#        tb.actionTriggered.connect(self.on_tb_action)
-#        #self.setWindowState(Qt.WindowMaximized)
-#        # And don't forget to call setCentralWidget to your main layout widget.
-#         # fsgui.
-#
-#        wget = Action_func_widget(self, func_smodel)
-#        self._wget = wget
-#        
-##            im = os.path.join("/home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/tests/images_REF",
-##                      "test_M2_antialias_E0_2.png")
-##            mw =  Image_widget(self, im)
-#        
-##            main_frame = QFrame(self)
-##            main_frame.setFixedSize(800, 800)
-#        
-#        dock_widget = QDockWidget(None, Qt.SubWindow)
-#        dock_widget.setWidget(wget)
-#        dock_widget.setWindowTitle(func.__name__)
-#        dock_widget.setStyleSheet(
-#            "QDockWidget {color: white; font: bold 14px;"
-#                + "border: 2px solid  #646464;}"
-#            + "QDockWidget::title {text-align: left; background: #646464;"
-#                + "padding-left: 5px;}");
-#        
-#        # self.setCentralWidget(mw)
-#        
-#        self.addDockWidget(Qt.RightDockWidgetArea, dock_widget)
-#        self._wget = wget
-#        # self.setFixedSize(800, 800)
-#
-#    def on_tb_action(self, qa):
-#        print("qa", qa)
-#        d = self._wget._submodel._dict
-#        for k, v in d.items():
-#            print(k, " --> ", v)
     
     
 #
@@ -1852,7 +1870,10 @@ class Fractal_GUI:
 
     def show(self):
         app = getapp()
-        win = Fractal_MainWindow(self)
+        self.mainwin = Fractal_MainWindow(self)
 #        win = Mywindow()
-        win.show()
+        self.mainwin.show()
+        fs.settings.output_context["gui_iter"] = 1
         app.exec()
+        print("exit mainloop")
+        fs.settings.output_context["gui_iter"] = 0

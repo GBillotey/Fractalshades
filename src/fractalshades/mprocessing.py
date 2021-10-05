@@ -11,25 +11,6 @@ import fractalshades.utils as fsutils
 import fractalshades.settings as fssettings
 
 
-#def process_init(job, redirect_path):
-#    """
-#    Save *job* as a global for the child-process ; redirects stdout and stderr.
-#    -> 'On Unix a child process can make use of a shared resource created in a
-#    parent process using a global resource. However, it is better to pass the
-#    object as an argument to the constructor for the child process.'
-#    """
-#    global process_job
-#    process_job = job
-#    if redirect_path is not None:
-#        fsutils.mkdir_p(redirect_path)
-#        out_file = str(os.getpid())
-#        sys.stdout = open(os.path.join(redirect_path, out_file + ".out"), "a")
-#        sys.stderr = open(os.path.join(redirect_path, out_file + ".err"), "a")
-#
-#def job_proxy(key):
-#    """ returns result of global job variable from the child-process """
-#    global process_job
-#    return process_job(key)
 
 # https://gist.github.com/EdwinChan/3c13d3a746bb3ec5082f
 @contextlib.contextmanager
@@ -48,7 +29,11 @@ def redirect_output(redirect_path):
     """
     Redirects stdout and stderr.
     """
-    if redirect_path is not None:
+    if redirect_path is None:
+        devnull = open(os.devnull, 'w')
+        sys.stdout = devnull
+        sys.stderr = devnull
+    else:
         fsutils.mkdir_p(redirect_path)
         out_file = str(os.getpid())
         sys.stdout = open(os.path.join(redirect_path, out_file + ".out"), "a")
@@ -138,33 +123,9 @@ class Multiprocess_filler():
         
         for key in getattr(instance, self.iterable)():
             kwargs[self.iter_kwargs] = key
-            # Still some multithreading
-            with concurrent.futures.ThreadPoolExecutor(
-                    max_workers=1) as threadpool:
+            # No multipricessing but still multithreading
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1
+                    ) as threadpool:
                 full_args = (instance,) + args
                 threadpool.submit(method, *full_args, **kwargs).result()
-            # method(instance, *args, **kwargs)
 
-#                redirect_path=None
-#                if self.redirect_path_attr is not None:
-#                    redirect_path = getattr(instance, self.redirect_path_attr)
-#
-#                with multiprocessing.Pool(
-#                        initializer=process_init,
-#                        initargs=(job, redirect_path),
-#                        processes=multiprocessing.cpu_count()) as pool:
-#                    worker_res = {key: pool.apply_async(job_proxy, (key,))
-#                                  for key in iterable()}
-#                    for key, val in worker_res.items():
-#                        if res is not None:
-#                            res[key] = val.get()
-#                        else:
-#                            val.get()
-#                    pool.close()
-#                    pool.join()
-#            else:
-#                for key in iterable():
-#                    if res is not None:
-#                        res[key] = job(key)
-#                    else:
-#                        job(key)
