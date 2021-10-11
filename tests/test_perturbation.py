@@ -361,7 +361,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
         self.layer = plotter[layer_name]
         self.test_name = test_name
-        self.check_current_layer(0.05)
+        self.check_current_layer(0.15)
 
 
     @test_config.no_stdout
@@ -500,11 +500,11 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         self.assertTrue(err < err_max)
 
 if __name__ == "__main__":
-    full_test = True
+    full_test = False
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_Perturbation_mandelbrot]))
     else:
         suite = unittest.TestSuite()
-        suite.addTest(Test_Perturbation_mandelbrot("test_glitch_dyn"))
+        suite.addTest(Test_Perturbation_mandelbrot("test_glitch_divref"))
         runner.run(suite)

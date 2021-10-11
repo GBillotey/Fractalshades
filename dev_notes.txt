@@ -203,7 +203,9 @@ my_struct = types.Record.make_c_struct([
 Add an example with :
 http://paulbourke.net/fractals/triangle/
 
-
+https://web.archive.org/web/20200227202149/https://zetcode.com/articles/packageinpython/
+https://setuptools.pypa.io/en/latest/userguide/datafiles.html
+https://amir.rachum.com/blog/2017/07/28/python-entry-points/
 
 
 

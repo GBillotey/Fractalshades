@@ -1,4 +1,11 @@
 # -*- coding: utf-8 -*-
+"""
+=========================
+Example Interactive
+=========================
+Example plot
+"""
+
 import numpy as np
 import os
 from PyQt5 import QtGui
@@ -25,7 +32,7 @@ from fractalshades.colors.layers import (
 )
 
 
-def plot():
+def plot(plot_dir):
     """
     Example interactive
     """
@@ -71,9 +78,9 @@ def plot():
         extent='mirror'
     )
 
-    x = '-1.77988461357911313419974406987'
-    y = '-0.000252798289797662298555687258968'
-    dx = '2.34361776701032e-20'
+#    x = '-1.77988461357911313419974406987'
+#    y = '-0.000252798289797662298555687258968'
+#    dx = '2.34361776701032e-20'
     
     
     colormap = fscolors.Fractal_colormap(
@@ -98,8 +105,8 @@ def plot():
     # Set to True to enable multi-processing
     settings.enable_multiprocessing = True
     
-    test_dir = os.path.dirname(__file__)
-    directory = os.path.join(test_dir, "localtest_GUI")
+    # test_dir = os.path.dirname(plot_dir)
+    directory = plot_dir
     fractal = fsm.Perturbation_mandelbrot(directory)
     
     def func(fractal: fsm.Perturbation_mandelbrot=fractal,
@@ -161,7 +168,7 @@ def plot():
                 probes_kind="relative",
                 output=True))
         plotter[layer_name].set_mask(plotter["interior"],
-                                      mask_color=(0., 0., 0.))
+                                      mask_color=interior_color)
 
         light = Blinn_lighting(0.2, np.array([1., 1., 1.]))
         light.add_light_source(
@@ -186,15 +193,28 @@ def plot():
         # Renaming output to match expected from the Fractal GUI
         layer = plotter[layer_name]
         file_name = "{}_{}".format(type(layer).__name__, layer.postname)
-        old_path = os.path.join(fractal.directory, file_name + ".png")
-        new_path = os.path.join(fractal.directory, calc_name + ".png")
-        os.rename(old_path, new_path)
+        src_path = os.path.join(fractal.directory, file_name + ".png")
+        dest_path = os.path.join(fractal.directory, calc_name + ".png")
+        if os.path.isfile(dest_path):
+            os.unlink(dest_path)
+        os.link(src_path, dest_path)
 
 
     gui = fsgui.Fractal_GUI(func)
     gui.connect_image(image_param="calc_name")
     gui.connect_mouse(x="x", y="y", dx="dx", xy_ratio="xy_ratio", dps="dps")
     gui.show()
+   # gui.mainwin._func_wget.run_func()
+    
 
 if __name__ == "__main__":
-    plot()
+    # Some magic to get the directory for plotting: with a name that matches
+    # the file or a temporary dir if we are building the documentation
+    try:
+        realpath = os.path.realpath(__file__)
+        plot_dir = os.path.splitext(realpath)[0]
+        plot(plot_dir)
+    except NameError:
+        import tempfile
+        with tempfile.TemporaryDirectory() as plot_dir:
+            plot(plot_dir)

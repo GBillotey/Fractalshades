@@ -16,6 +16,7 @@ import functools
 import mpmath
 import threading
 import ast
+import importlib.resources # import path
 
 from PyQt5 import QtCore
 from PyQt5.QtCore import Qt
@@ -42,6 +43,9 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QStackedWidget,
     QGroupBox,
+    QTextEdit,
+    QMessageBox,
+    QFileDialog,
     QGridLayout,
     QSpacerItem,
     QSizePolicy,
@@ -73,7 +77,7 @@ from fractalshades.gui.model import (
     type_name,
 )
 
-from fractalshades.gui.QCodeEditor import QCodeEditor
+from fractalshades.gui.third_party.QCodeEditor import QCodeEditor
 import fractalshades.numpy_utils.expr_parser as fs_parser
 
 # QMainWindow
@@ -538,7 +542,7 @@ def atom_wget_factory(atom_type):
         wget_dic = {int: Atom_QLineEdit,
                     float: Atom_QLineEdit,
                     str: Atom_QLineEdit,
-                    bool: Atom_QCheckBox,
+                    bool: Atom_QBoolComboBox,# Atom_QCheckBox,
                     mpmath.mpf: Atom_QPlainTextEdit, #Atom_QLineEdit,
                     QtGui.QColor: Atom_QColor,
                     fscolors.Fractal_colormap: Atom_cmap_button,
@@ -571,6 +575,48 @@ class Atom_QCheckBox(QCheckBox, Atom_Edit_mixin):
 
     def on_model_event(self, val):
         self.setChecked(val)
+        
+class Atom_QBoolComboBox(QComboBox, Atom_Edit_mixin):
+    user_modified = pyqtSignal()
+
+    def __init__(self, atom_type, val, model, parent=None):
+        super().__init__(parent)
+        self._type = atom_type
+        self._choices = ["True", "False"]
+        self._values = [True, False]
+        self.currentTextChanged.connect(self.on_user_event)
+        self.addItems(str(c) for c in self._choices)
+        self.setCurrentIndex(self._values.index(val))
+        
+        self.setStyleSheet(COMBO_BOX_CSS)#"background:#000000")
+
+    def value(self):
+        return self._values[self.currentIndex()]
+
+    def on_user_event(self):
+        self.user_modified.emit()
+
+    def on_model_event(self, val):
+        self.setCurrentIndex(self._values.index(val))
+    
+    
+#    user_modified = pyqtSignal()
+#
+#    def __init__(self, atom_type, val, model, parent=None):
+#        super().__init__("", parent)
+#        self.setChecked(val)
+#        self._type = atom_type
+#        self.stateChanged.connect(self.on_user_event)
+#        self.setStyleSheet(CHECK_BOX_CSS)
+#
+#    def value(self):
+#        return self.isChecked()
+#
+#    def on_user_event(self):
+#        self.user_modified.emit()
+#
+#    def on_model_event(self, val):
+#        self.setChecked(val)
 
 
 class Atom_QColor(QPushButton, Atom_Edit_mixin):
@@ -1253,12 +1299,13 @@ class QDict_viewer(QWidget):
     def __init__(self, parent, qdict):
         super().__init__(parent)
         self._layout = QGridLayout(self)
+        self._layout.setSpacing(0)
         self.setLayout(self._layout)
         self.widgets_reset(qdict)
         
         self.setSizePolicy(
             QtWidgets.QSizePolicy.Minimum, 
-            QtWidgets.QSizePolicy.Minimum)
+            QtWidgets.QSizePolicy.Fixed)
 
     def widgets_reset(self, qdict):
         """
@@ -1274,7 +1321,7 @@ class QDict_viewer(QWidget):
             self._key_row[k] = row
             row += 1
 #        spacer = QSpacerItem(1, 1,
-#                             QSizePolicy.Expanding, QSizePolicy.Expanding)
+#                             QSizePolicy.Minimum, QSizePolicy.Expanding)
 #        self._layout.addItem(spacer, row, 1, 1, 1)
 
     def values_update(self, update_dic):
@@ -1296,76 +1343,33 @@ class QDict_viewer(QWidget):
                 w.setParent(None)
                 # w.deleteLater()
 
-
-
-class Image_widget(QWidget):
-    param_user_modified = pyqtSignal(object) # (px1, py1, px2, px2)
-    # zoom_params = ["x", "y", "dx", "xy_ratio"]
-
-    def __init__(self, parent, view_presenter): # im=None):#, xy_ratio=None):
-        super().__init__(parent)
-        # self.setWindowFlags(Qt.BypassGraphicsProxyWidget)
-        self._model = view_presenter._model
-        self._mapping = view_presenter._mapping
-        self._presenter = view_presenter# model[func_keys]
-        
-        # sets lock:
-        self._lock = 0
-            
-#        if xy_ratio is None:
-#            self._im = parent._im
-#        else:
-#            self._im = im
-            
-        
+#==============================================================================
+# Graphics Scene classes
+#==============================================================================                
+class Zoomable_Drawer_mixin:
+    """
+    Commom methods that allow to wheel-zoom, and draw objects
+    Pass mouse position (self._object_pos, self._object_drag) to the subclasses
+    """
+    def __init__(self):
+        """ Initiate a GaphicsScene """
+        print("in Zoomable_Drawer_mixin")
         # sets graphics scene and view
         self._scene = QGraphicsScene()
         self._group = QGraphicsItemGroup()
         self._view = QGraphicsView()
         self._scene.addItem(self._group)
         self._view.setScene(self._scene)
-        #self._view.setFrameStyle(QFrame.Box)
-        
-
-        
-#        # always scrollbars
-#        self._view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-#        self._view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        # special sursor
         self._view.setCursor(QtGui.QCursor(Qt.CrossCursor))
         
-        # sets property widget
-        self._labels = QDict_viewer(self,
-            {"Image metadata": None, "px": None, "py": None, "zoom": None})
-
-        # sets layout
-        self._layout = QVBoxLayout(self)
-        self.setLayout(self._layout)
-        self._layout.addWidget(self._view, stretch=1)
-        #self._layout.addStretch(1)
+        # Initialize the object drawn
+        self._object_pos = tuple() # No coords
+        self._object_drag = None
+        self._drawing = False
+#        self._dragging = False
         
-        dock_widget = QDockWidget(None, Qt.Window)
-        dock_widget.setWidget(self._labels)
-        # Not closable :
-        dock_widget.setFeatures(QDockWidget.DockWidgetFloatable | 
-                                QDockWidget.DockWidgetMovable)
-        dock_widget.setWindowTitle("Image")
-        dock_widget.setStyleSheet(DOCK_WIDGET_CSS)
-        parent.addDockWidget(Qt.LeftDockWidgetArea, dock_widget)
-        # self._layout.addWidget(self._labels, stretch=0)
-
-        # Zoom rectangle disabled
-        self._rect = None
-        self._rect_under = None
-        self._drawing_rect = False
-        self._dragging_rect = False
-
-        # Sets Image
-        self._qim = None
-        self.reset_im()
-
         # zooms anchors for wheel events - note this is only active 
-        # when the 
+        # when the image fully occupies the widget
         self._view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self._view.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
         self._view.setAlignment(Qt.AlignCenter)
@@ -1373,27 +1377,216 @@ class Image_widget(QWidget):
         # events filters
         self._view.viewport().installEventFilter(self)
         self._scene.installEventFilter(self)
-        
-        # Publish / subscribe signals with the submodel
-        # self.zoom_user_modified.connect(self._model.)
-        self._model.model_event.connect(self.model_event_slot)
 
-#        self._view.setContextMenuPolicy(Qt.ActionsContextMenu)
-#        self._scene.customContextMenuRequested.connect(self.useless)
-#        useless_action = QAction("DoNothing", self)
-#        self._scene.addAction(useless_action)
-#        useless_action.triggered.connect(self.useless)
+        # Locker
+        self._lock = 0
 
+    # Activates / desactivates locking ========================================
     @pyqtSlot(bool)
     def lock(self, val):
         if val:
             self._lock += 1
         else:
             self._lock -= 1
-    
+
     @property
     def is_locked(self):
         return self._lock > 0
+
+    # Mouse interaction =======================================================
+    def eventFilter(self, source, event):
+        # ref: https://doc.qt.io/qt-5/qevent.html
+        if source is self._scene:
+            if type(event) is QtWidgets.QGraphicsSceneMouseEvent:
+                return self.on_viewport_mouse(event)
+            elif type(event) is QtGui.QEnterEvent:
+                return self.on_enter(event)
+            elif (event.type() == QtCore.QEvent.Leave):
+                return self.on_leave(event)
+
+        elif source is self._view.viewport():
+            # Catch context menu
+            if type(event) == QtGui.QContextMenuEvent:
+                return self.on_context_menu(event)
+            elif event.type() == QtCore.QEvent.Wheel:
+                return self.on_wheel(event)
+            elif event.type() == QtCore.QEvent.ToolTip:
+                return True
+
+        return False
+
+    def on_enter(self, event):
+#        print("enter")
+        return False
+
+    def on_leave(self, event):
+#        print("leave")
+        return False
+
+    def on_wheel(self, event):
+        """
+        - Updates the zoom
+        - Send the current zoom vlue to `pos_tracker` if exists 
+        """
+        if self._qim is not None:
+            view = self._view
+            if event.angleDelta().y() > 0:
+                factor = 1.25
+            else:
+                factor = 0.8
+            view.scale(factor, factor)
+            if hasattr(self, "pos_tracker"):
+                self.pos_tracker(kind="zoom", val=self.zoom)
+        return True
+
+    @property
+    def zoom(self):
+        view = self._view
+        pc = 100. * math.sqrt(view.transform().determinant())
+        return "{0:.2f} %".format(pc)
+    
+    def fit_image(self):
+        """ Reset the zoom so that the image fits in the widget """
+        if self._qim is None:
+            return
+        rect = QtCore.QRectF(self._qim.pixmap().rect())
+        if not rect.isNull():
+            #        # always scrollbars off
+            self._view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self._view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            
+            view = self._view
+            view.setSceneRect(rect)
+            unity = view.transform().mapRect(QtCore.QRectF(0, 0, 1, 1))
+            view.scale(1. / unity.width(), 1. / unity.height())
+            viewrect = view.viewport().rect()
+            scenerect = view.transform().mapRect(rect)
+            factor = min(viewrect.width() / scenerect.width(),
+                         viewrect.height() / scenerect.height())
+            view.scale(factor, factor)
+            
+            self._view.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self._view.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+            if hasattr(self, "pos_tracker"):
+                self.pos_tracker(kind="zoom", val=self.zoom)
+
+
+    def on_viewport_mouse(self, event):
+
+        if event.type() == QtCore.QEvent.GraphicsSceneMouseMove:
+            # print("viewport_mouse")
+            self.on_mouse_move(event)
+            return True
+
+        elif (event.type() == QtCore.QEvent.GraphicsSceneMousePress
+              and event.button() == Qt.LeftButton):
+            self.on_mouse_left_press(event)
+            return True
+
+        elif (event.type() == QtCore.QEvent.GraphicsSceneMouseDoubleClick
+              and event.button() == Qt.LeftButton):
+            self.on_mouse_double_left_click(event)
+            return True
+
+        else:
+            # print("Uncatched mouse event", event.type())
+            return False
+
+    def on_mouse_left_press(self, event):
+        """ Left-clicking adds the point and might finish editing if max
+        number of points reached """
+        if self.is_locked:
+            return
+        self._drawing = True
+#        self._dragging_object = False
+        self._object_pos += (event.scenePos(),)
+        if len(self._object_pos) == self.object_max_pts:
+            self._drawing = False
+            self.publish_object()
+            self._object_pos = tuple()
+
+    def on_mouse_double_left_click(self, event):
+        """ Double-left-clicking finishes editing """
+        if self.is_locked:
+            return
+        # self._object_pos += (event.scenePos(),)
+        self._drawing = False
+        self.publish_object()
+        self._object_pos = tuple()
+
+    def on_mouse_move(self, event):
+        """ 
+        - Publish the position to a pos tracker if exists 
+        - If object is being drawn, send a draw_object
+        """
+        if hasattr(self, "pos_tracker"):
+            self.pos_tracker(kind="pos", val=event.scenePos())
+        if self._drawing:
+            self._object_drag = event.scenePos()
+            self.draw_object()
+#            self.draw_rect(self._rect_pos0, self._rect_pos1)
+
+#    @property
+#    def object_max_pts(self):
+#        """ Maximal number of points to define an object """
+#        raise NotImplementedError("Derived classes should implement")
+
+    def publish_object(self):
+        """ Object has been drawn """
+        raise NotImplementedError("Derived classes should implement")
+
+    def draw_object(self):
+        """ Object is being drawn """
+        raise NotImplementedError("Derived classes should implement")
+
+
+#==============================================================================
+# Base widget for displaying the fractal
+#==============================================================================
+class Image_widget(QWidget, Zoomable_Drawer_mixin):
+    param_user_modified = pyqtSignal(object)
+
+    def __init__(self, parent, view_presenter):
+        super().__init__(parent)
+        self.setSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, 
+            QtWidgets.QSizePolicy.Expanding)
+
+        self._model = view_presenter._model
+        self._mapping = view_presenter._mapping
+        self._presenter = view_presenter# model[func_keys]
+
+        # Sets layout, with only one Widget, the image itself
+        self._layout = QVBoxLayout(self)
+        self.setLayout(self._layout)
+        self._layout.addWidget(self._view, stretch=1)
+        
+        # Sets property widget "image_doc_widget"
+        self._labels = QDict_viewer(self,
+            {"Image metadata": None, "px": None, "py": None, "zoom": None})
+        dock_widget = QDockWidget(None, Qt.Window)
+        dock_widget.setWidget(self._labels)
+        # Not closable :
+        dock_widget.setFeatures(QDockWidget.DockWidgetFloatable | 
+                                QDockWidget.DockWidgetMovable)
+        dock_widget.setWindowTitle("Image")
+        dock_widget.setStyleSheet(DOCK_WIDGET_CSS)
+        self.image_doc_widget = dock_widget
+
+        # Sets the objects being drawn
+        self._rect= None
+        self._rect_under = None
+        self.object_max_pts = 2
+
+        # Sets Image
+        self._qim = None
+        self.reset_im()
+        
+        # Publish / subscribe signals with the submodel
+        # self.zoom_user_modified.connect(self._model.)
+        self._model.model_event.connect(self.model_event_slot)
+
         
     def on_context_menu(self, event):
         menu = QMenu(self)
@@ -1406,18 +1599,16 @@ class Image_widget(QWidget):
     def doesnothing(self, event):
         print("voili voilou")
 
-    @property
-    def zoom(self):
-        view = self._view
-        pc = 100. * math.sqrt(view.transform().determinant())
-        return "{0:.2f} %".format(pc)
+    def pos_tracker(self, kind, val):
+        """ Updated the displayed info """
+        if kind == "pos": # val is event.scenePos()
+           self._labels.values_update({"px": val.x(), "py": val.y()})
+        elif kind == "zoom":
+            self._labels.values_update({"zoom": val})
 
     @property
     def xy_ratio(self):
         return self._presenter["xy_ratio"]
-
-#        return self.parent().xy_ratio
-
 
     def reset_im(self):
         image_file = os.path.join((self._presenter["fractal"]).directory, 
@@ -1492,120 +1683,7 @@ class Image_widget(QWidget):
         self._labels.values_update({"Image metadata": 
             message[self.validated]})
 
-    def fit_image(self):
-        if self._qim is None:
-            return
-        rect = QtCore.QRectF(self._qim.pixmap().rect())
-        if not rect.isNull():
-            #        # always scrollbars off
-            self._view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            self._view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            
-            view = self._view
-            view.setSceneRect(rect)
-            unity = view.transform().mapRect(QtCore.QRectF(0, 0, 1, 1))
-            view.scale(1 / unity.width(), 1 / unity.height())
-            viewrect = view.viewport().rect()
-            scenerect = view.transform().mapRect(rect)
-            factor = min(viewrect.width() / scenerect.width(),
-                         viewrect.height() / scenerect.height())
-            view.scale(factor, factor)
-            
-            self._view.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-            self._view.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-            
-            self._labels.values_update({"zoom": self.zoom})
 
-    def eventFilter(self, source, event):
-        # ref: https://doc.qt.io/qt-5/qevent.html
-        if source is self._scene:
-            if type(event) is QtWidgets.QGraphicsSceneMouseEvent:
-                return self.on_viewport_mouse(event)
-            elif type(event) is QtGui.QEnterEvent:
-                return self.on_enter(event)
-            elif (event.type() == QtCore.QEvent.Leave):
-                return self.on_leave(event)
-
-        elif source is self._view.viewport():
-            # Catch context menu
-            if type(event) == QtGui.QContextMenuEvent:
-                return self.on_context_menu(event)
-            elif event.type() == QtCore.QEvent.Wheel:
-                return self.on_wheel(event)
-            elif event.type() == QtCore.QEvent.ToolTip:
-                return True
-
-        return False
-
-    def on_enter(self, event):
-#        print("enter")
-        return False
-
-    def on_leave(self, event):
-#        print("leave")
-        return False
-
-    def on_wheel(self, event):
-        if self._qim is not None:
-            view = self._view
-            if event.angleDelta().y() > 0:
-                factor = 1.25
-            else:
-                factor = 0.8
-            view.scale(factor, factor)
-            self._labels.values_update({"zoom": self.zoom})
-        return True
-
-
-    def on_viewport_mouse(self, event):
-
-        if event.type() == QtCore.QEvent.GraphicsSceneMouseMove:
-            # print("viewport_mouse")
-            self.on_mouse_move(event)
-            return True
-
-        elif (event.type() == QtCore.QEvent.GraphicsSceneMousePress
-              and event.button() == Qt.LeftButton):
-            self.on_mouse_left_press(event)
-            return True
-
-        elif (event.type() == QtCore.QEvent.GraphicsSceneMouseRelease
-              and event.button() == Qt.LeftButton):
-            self.on_mouse_left_release(event)
-            return True
-
-        elif (event.type() == QtCore.QEvent.GraphicsSceneMouseDoubleClick
-              and event.button() == Qt.LeftButton):
-            self.on_mouse_double_left_click(event)
-            return True
-
-        else:
-            # print("Uncatched mouse event", event.type())
-            return False
-
-    def on_mouse_left_press(self, event):
-        if self.is_locked:
-            return
-        self._drawing_rect = True
-        self._dragging_rect = False
-        self._rect_pos0 = event.scenePos()
-
-    def on_mouse_left_release(self, event):
-        if self.is_locked:
-            self.cancel_drawing_rect()
-        if self._drawing_rect:
-            self._rect_pos1 = event.scenePos()
-            if (self._rect_pos0 == self._rect_pos1):
-                self._group.removeFromGroup(self._rect)
-                self._rect = None
-                self._group.removeFromGroup(self._rect_under)
-                self._rect_under = None
-                print("cancel drawing RECT")
-                self.cancel_drawing_rect()
-            else:
-                print("finish drawing RECT", self._rect_pos0, self._rect_pos1)
-                self.publish_drawing_rect()
-            self._drawing_rect = False
             
     def cancel_drawing_rect(self, dclick=False):
         if self._qim is None:
@@ -1621,24 +1699,49 @@ class Image_widget(QWidget):
                 # TODO: avoid update cancel xy_ratio 1.0 <class 'str'>
                 print("update cancel", key, value, type(value))
                 self._presenter[key] = value
+        # Removes the objects
+        if self._rect is not None:
+            self._group.removeFromGroup(self._rect)
+            self._rect = None
+        if self._rect_under is not None:
+            self._group.removeFromGroup(self._rect_under)
+            self._rect_under = None
 
-    def publish_drawing_rect(self):
-        print("------*----- publish zoom")
+
+    def publish_object(self):
+        """
+        
+        """
+
         if self._qim is None:
             return
-#        print("publish", self._rect_pos0, self._rect_pos1)
-#        print("fractal", self._presenter["fractal"])
-#        print("fractal", self._presenter["image"])
+
+        cancel = False
+        dclick = False
+        if len(self._object_pos) != 2:
+            # We can only be there if double-click
+            cancel = True
+            dclick = True
+        else:
+            rect_pos0, rect_pos1 = self._object_pos
+            if (self._rect_pos0 == self._rect_pos1):
+                cancel = True # zoom is invalid
+
+        if cancel:
+            print("INVALID _object_pos")
+            self.cancel_drawing_rect(dclick=dclick)
+            if dclick:
+                self.fit_image()
+            return
+        
         nx = self._fractal_zoom_init["nx"]
         ny = self._fractal_zoom_init["ny"]
         # new center offet in pixel
-        topleft, bottomRight = self.selection_corners(self._rect_pos0,
-                                                      self._rect_pos1)
+        topleft, bottomRight = self.selection_corners(rect_pos0, rect_pos1)
         center_off_px = 0.5 * (topleft.x() + bottomRight.x() - nx)
         center_off_py = 0.5 * (ny - topleft.y() - bottomRight.y())
         dx_pix = abs(topleft.x() - bottomRight.x())
-#        print("center px", center_off_px)
-#        print("center py", center_off_py)
+
         ref_zoom = self._fractal_zoom_init.copy()
         # str -> mpf as needed
         to_mpf = {k: isinstance(self._fractal_zoom_init[k], str) for k in
@@ -1650,23 +1753,15 @@ class Image_widget(QWidget):
         with mpmath.workdps(6):
             # Sets the working dps to 10e-8 x pixel size
             ref_zoom["dps"] = int(-mpmath.log10(pix * dx_pix / nx) + 8)
-        print("------*----- NEW dps from zoom", ref_zoom["dps"])
 
-#        if ref_zoom["dps"] > mpmath.dps:
-#        zoom_dps = max(ref_zoom["dps"], mpmath.mp.dps)
         with mpmath.workdps(ref_zoom["dps"]):
             for k in ["x", "y"]:
                 if to_mpf[k]:
                     ref_zoom[k] = mpmath.mpf(ref_zoom[k])
-    
-    #        print("is_mpf", to_mpf, ref_zoom)
-    
             ref_zoom["x"] += center_off_px * pix
             ref_zoom["y"] += center_off_py * pix
             ref_zoom["dx"] = dx_pix * pix
-    
-            
-            
+
             #  mpf -> str (back)
             for (k, v) in to_mpf.items():
                 if v:
@@ -1678,38 +1773,16 @@ class Image_widget(QWidget):
         for key in ["x", "y", "dx", "dps"]:
             self._presenter[key] = ref_zoom[key]
         
-
-        
-        
-#        keys = ["x", "y", "dx"]
-#        if dclick:
-#            keys = ["x", "y", "dx", "xy_ratio"]
-#        # resets everything except the zoom ratio 
-#        for key in keys: #, "xy_ratio"]:
-#            value = self._fractal_zoom_init[key]
-#            if value is not None:
-#                # Send a model modification request
-#                # TODO: avoid update cancel xy_ratio 1.0 <class 'str'>
-#                print("update cancel", key, value, type(value))
-#                self._presenter[key] = value
-
-
-    def on_mouse_double_left_click(self, event):
-        self.fit_image()
-        self.cancel_drawing_rect(dclick=True)
-
-    def on_mouse_move(self, event):
-        scene_pos = event.scenePos()
-        self._labels.values_update({"px": scene_pos.x(),
-                                    "py": scene_pos.y()})
-        if self._drawing_rect:
-            self._dragging_rect = True
-            self._rect_pos1 = event.scenePos()
-            self.draw_rect(self._rect_pos0, self._rect_pos1)
             
-
-    def draw_rect(self, pos0, pos1):
+    def draw_object(self):
         """ Draws the selection rectangle """
+        
+        if len(self._object_pos) != 1:
+            raise RuntimeError(f"Invalid drawing {self._object_pos}")
+        
+        (pos0,) = self._object_pos
+        pos1 = self._object_drag
+
         # Enforce the correct ratio
         topleft, bottomRight = self.selection_corners(pos0, pos1)
         rectF = QtCore.QRectF(topleft, bottomRight)
@@ -1751,8 +1824,26 @@ class Image_widget(QWidget):
                                           + "{}".format(mapped))
 
 
+class Fractal_MessageBox(QMessageBox):
+    def __init__(self, *args, **kwargs):            
+        super().__init__(*args, **kwargs)
+        self.setStyleSheet("QLabel{min-width: 700px;}")
+
+    def resizeEvent(self, event):
+        result = super().resizeEvent(event)
+        details_box = self.findChild(QTextEdit)
+        if details_box is not None:
+            details_box.setFixedHeight(details_box.sizeHint().height())
+        return result
 
 
+class Static_Image_widget(QWidget):
+    param_user_drawn= pyqtSignal(object) # (px1, py1, px2, px2)
+    # zoom_params = ["x", "y", "dx", "xy_ratio"]
+
+    def __init__(self, parent, file_path): # im=None):#, xy_ratio=None):
+        super().__init__(parent)
+        raise NotImplementedError("TODO")
 
 
 
@@ -1763,8 +1854,97 @@ class Fractal_MainWindow(QMainWindow):
         self.setStyleSheet(MAIN_WINDOW_CSS)
         self.build_model(gui)
         self.layout()
+        self.set_menubar()
 
     
+    def set_menubar(self) :
+    
+      bar = self.menuBar()
+
+      tools = bar.addMenu("Tools")
+      png_info = QAction('Png info', tools)
+      png_cbar = QAction('Png to colormap', tools)
+      tools.addActions((png_info, png_cbar))
+      tools.triggered[QAction].connect(self.actiontrig)
+
+      about = bar.addMenu("About")
+      license_txt = QAction('License', about)
+      about.addAction(license_txt)
+      about.triggered[QAction].connect(self.actiontrig)
+
+
+    def actiontrig(self, action):
+        print("IN TRIG", action.text(), action)
+        if action.text() == "License":
+            self.show_license()
+        elif action.text() == "Png info":
+            self.show_png_info()
+        elif action.text() == "Png to colormap":
+            self.png_to_cmap()
+        
+    
+    def show_license(self):
+        """
+        Displays the program license
+        """
+        with importlib.resources.path('fractalshades', 'data') as data_path:
+            license_file = os.path.join(data_path, "LICENSE.txt")
+            with open(license_file) as f:
+                license_str = f.read()
+        msg = Fractal_MessageBox()
+        msg.setWindowTitle("Fractalshades license")
+        msg.setText(license_str.splitlines()[0])
+        msg.setInformativeText(license_str.splitlines()[2])
+        msg.setDetailedText(license_str)
+        msg.exec()
+    
+    def gui_file_path(self, _filter=None):
+        """
+        Laod a file, browsing from the __main__ directory 
+        """
+        try:
+            import __main__
+            script_dir = os.path.abspath(os.path.dirname(__main__.__file__))
+        except NameError:
+            print("Failed finding __main__.__file__")
+            script_dir = None
+        file_path = QFileDialog.getOpenFileName(
+                self,
+                directory=script_dir,
+                caption="Select Directory",
+                filter=_filter
+        )
+        if isinstance(file_path, tuple):
+            file_path = file_path[0]
+        return file_path
+
+    def show_png_info(self):
+        """
+        Loads an image file and displays the associated tag info
+        """
+        file_path = self.gui_file_path(_filter="Images (*.png)")
+        if file_path != "":
+            with PIL.Image.open(file_path) as im:
+                png_info = im.info
+            data_len = len(png_info)
+            info = ""
+            for key, val in png_info.items():
+                info += f"{key} = {val}\n"
+            msg = Fractal_MessageBox()
+            msg.setWindowTitle("Image metadata")
+            msg.setText(file_path)
+            msg.setInformativeText(f"Number of fields found: {data_len}")
+            msg.setDetailedText(info)
+            msg.exec()
+        
+    def png_to_cmap(self):
+        file_path = self.gui_file_path(_filter="Images (*.png)")
+        image_display = Static_Image_widget(self, file_path)
+        image_display.exec()
+        
+            
+            
+
     def build_model(self, gui):
         
         self._gui = gui
@@ -1786,9 +1966,18 @@ class Fractal_MainWindow(QMainWindow):
     def layout(self):
         self.add_image_wget()
         self.add_func_wget()
+        self.add_image_status()
+#                self.image_doc_widget = dock_widget
+##        parent.addDockWidget(Qt.LeftDockWidgetArea, dock_widget)
+#        
+#        self.addDockWidget(Qt.LeftDockWidgetArea,self.centralWidget.image_doc_widget
     
     def sizeHint(self):
         return QtCore.QSize(1200, 800) 
+    
+    def add_image_status(self):
+        self.addDockWidget(Qt.LeftDockWidgetArea,
+                           self.centralWidget().image_doc_widget)
 
     def add_func_wget(self):
         action_setting = (
@@ -1811,10 +2000,13 @@ class Fractal_MainWindow(QMainWindow):
         dock_widget.setWindowTitle("Parameters")
         dock_widget.setStyleSheet(DOCK_WIDGET_CSS)
         self.addDockWidget(Qt.LeftDockWidgetArea, dock_widget)
+
         self._func_wget = func_wget
         
-        func_wget.run_func()
-    
+        if fs.settings.output_context["doc"]:
+            # We are building the doc we need an image
+            func_wget.run_func()
+
     @pyqtSlot(object)
     def func_callback(self, func_widget):
         """ A simple callback when the main computation is finished """

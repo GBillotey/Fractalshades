@@ -1,9 +1,14 @@
 # Below are listed extra files to include in the source distribution
+graft src/fractalshades
+prune src/fractalshades/gui/_local_test
+prune src/fractalshades/numpy_utils/_local_test
+prune src/fractalshades/colors/_local_test
 # Tests
-recursive-include tests *
-recursive-exclude tests/_temporary_data *
-recursive-exclude tests/known_fails/_data *
+graft tests
+prune tests/_temporary_data
+prune tests/known_fails/_data
 # Examples
 recursive-include examples* *.py
 # Global exclusions
 global-exclude *.py[cod] __pycache__ *.so
+
