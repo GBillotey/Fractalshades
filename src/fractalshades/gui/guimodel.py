@@ -28,6 +28,7 @@ from PyQt5.QtWidgets import (
     QApplication,
     QMainWindow,
     QWidget,
+    QDialog,
     QAction,
     QDockWidget,
     QPushButton,
@@ -54,6 +55,7 @@ from PyQt5.QtWidgets import (
     QGraphicsPixmapItem,
     QGraphicsItemGroup,
     QGraphicsRectItem,
+    QGraphicsLineItem,
     QFrame,
     QScrollArea, 
     QPlainTextEdit,
@@ -77,7 +79,9 @@ from fractalshades.gui.model import (
     type_name,
 )
 
-from fractalshades.gui.third_party.QCodeEditor import QCodeEditor
+#from fractalshades.gui.third_party.QCodeEditor import QCodeEditor
+from fractalshades.gui.QCodeEditor import Fractal_code_editor
+
 import fractalshades.numpy_utils.expr_parser as fs_parser
 
 # QMainWindow
@@ -337,19 +341,19 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
 
     def show_func_params(self):
         sm = self._submodel
-        ce = QCodeEditor(DISPLAY_LINE_NUMBERS=True,
-            HIGHLIGHT_CURRENT_LINE=True, SyntaxHighlighter=None)
+        ce = Fractal_code_editor()
         str_args = "\n".join([(k + " = " + repr(v)) for (k, v)
                               in sm.getkwargs().items()])
-        ce.setPlainText(str_args)
-        ce.show()
+        ce.set_text(str_args)
+        ce.setWindowTitle("Parameters")
+        ce.exec()
 
     def show_func_source(self):
         sm = self._submodel
-        ce = QCodeEditor(DISPLAY_LINE_NUMBERS=True,
-            HIGHLIGHT_CURRENT_LINE=True, SyntaxHighlighter=None)
-        ce.setPlainText(sm.getsource())
-        ce.show()
+        ce = Fractal_code_editor()
+        ce.set_text(sm.getsource())
+        ce.setWindowTitle("Source code")
+        ce.exec()
         
 
 class Func_widget(QFrame):
@@ -1555,7 +1559,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
 
         self._model = view_presenter._model
         self._mapping = view_presenter._mapping
-        self._presenter = view_presenter# model[func_keys]
+        self._presenter = view_presenter
 
         # Sets layout, with only one Widget, the image itself
         self._layout = QVBoxLayout(self)
@@ -1684,7 +1688,6 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             message[self.validated]})
 
 
-            
     def cancel_drawing_rect(self, dclick=False):
         if self._qim is None:
             return
@@ -1707,12 +1710,10 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             self._group.removeFromGroup(self._rect_under)
             self._rect_under = None
 
-
     def publish_object(self):
         """
-        
+        Export the zoom area at model level
         """
-
         if self._qim is None:
             return
 
@@ -1724,7 +1725,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             dclick = True
         else:
             rect_pos0, rect_pos1 = self._object_pos
-            if (self._rect_pos0 == self._rect_pos1):
+            if (rect_pos0 == rect_pos1):
                 cancel = True # zoom is invalid
 
         if cancel:
@@ -1772,8 +1773,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
 
         for key in ["x", "y", "dx", "dps"]:
             self._presenter[key] = ref_zoom[key]
-        
-            
+
     def draw_object(self):
         """ Draws the selection rectangle """
         
@@ -1810,6 +1810,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         bottomRight = QtCore.QPointF(pos0.x() + diffx0, pos0.y() + diffy0)
         return topleft, bottomRight
 
+
     def model_event_slot(self, keys, val):
         """ A model item has been modified - will it impact the widget ? """
         # Find the mathching "mapping" - None if no match
@@ -1824,6 +1825,160 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
                                           + "{}".format(mapped))
 
 
+#==============================================================================
+# Cmap picker from image
+#==============================================================================
+
+class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
+    param_user_drawn= pyqtSignal(object) # (px1, py1, px2, px2)
+    # zoom_params = ["x", "y", "dx", "xy_ratio"]
+
+    def __init__(self, parent, file_path): # im=None):#, xy_ratio=None):
+        super().__init__(parent)
+        self.file_path = file_path
+
+        # Sets Image
+        self.set_im()
+        self._cmap = fscolors.Fractal_colormap(
+            colors=[[0., 0., 0.],
+                    [1., 1., 1.]],
+            kinds=['Lch'],
+            grad_npts=[20],
+            grad_funcs=['x'],
+            extent='mirror'
+        )
+
+        # Sets the objects being drawn
+        self._line = None
+        self._line_under = None
+        self.object_max_pts = 2
+        
+        # Sets layout, with only one Widget, the image itself
+        self._layout = QVBoxLayout(self)
+        self.setLayout(self._layout)
+        self._layout.addWidget(self._view, stretch=1)
+        self._layout.addWidget(self.add_param_box(), stretch=0)
+        self._layout.addWidget(self.add_cmap_box(), stretch=0)
+
+    
+    def set_im(self):
+        self._qim = QGraphicsPixmapItem(QtGui.QPixmap.fromImage(
+                QtGui.QImage(self.file_path)))
+        self._qim.setAcceptHoverEvents(True)
+        self._group.addToGroup(self._qim)
+        self.fit_image()
+
+    def add_param_box(self):
+        param_layout = QHBoxLayout()
+        lbl_n_grad = QLabel("Number of gradients:")
+        self._n_grad = QSpinBox()
+        self._n_grad.setRange(1, 255)
+        param_layout.addWidget(lbl_n_grad)
+        param_layout.addWidget(self._n_grad)
+
+        lbl_n_pts = QLabel("Points per gradient:")
+        self._n_pts = QSpinBox()
+        self._n_pts.setRange(1, 255)
+        self._n_pts.setValue(32)
+        param_layout.addWidget(lbl_n_pts)
+        param_layout.addWidget(self._n_pts)
+
+        self._go = QPushButton("Export")
+        param_layout.addWidget(self._go)
+
+        action_box = QGroupBox("Parameters")
+        action_box.setLayout(param_layout)
+        self.set_border_style(action_box)
+
+        return action_box
+
+    def add_cmap_box(self):
+        cmap_layout = QHBoxLayout()
+        
+        self._preview = Qcmap_image(self, self._cmap)
+        cmap_layout = QHBoxLayout()
+        cmap_layout.addWidget(self._preview, stretch=1)
+
+        cmap_box = QGroupBox("Colormap")
+        cmap_box.setLayout(cmap_layout)
+        self.set_border_style(cmap_box)
+        return cmap_box
+
+    def set_border_style(self, gb):
+        """ adds borders to an action box"""
+        gb.setStyleSheet(
+            "QGroupBox{border:1px solid #646464;"
+                + "border-radius:5px;margin-top: 1ex;}"
+            + "QGroupBox::title{subcontrol-origin: margin;"
+                + "subcontrol-position:top left;" #padding:-6 3px;"
+                + "left: 15px;}")# ;
+
+    def cancel_drawing_line(self):
+        # Removes the objects
+        if self._line is not None:
+            self._group.removeFromGroup(self._line)
+            self._line = None
+        if self._line_under is not None:
+            self._group.removeFromGroup(self._line_under)
+            self._line_under = None
+
+    def publish_object(self):
+        """
+        Create a colormap from the line
+        """
+        cancel = False
+        dclick = False
+        if len(self._object_pos) != 2:
+            # We can only be there if double-click
+            cancel = True
+            dclick = True
+        else:
+            line_pos0, line_pos1 = self._object_pos
+            if (line_pos0 == line_pos1):
+                cancel = True # zoom is invalid
+
+        if cancel:
+            print("INVALID _object_pos")
+            self.cancel_drawing_line()
+            if dclick:
+                self.fit_image()
+            return
+
+        
+        # TODO : update the CAMP here
+        (pos0, pos1) = self._object_pos
+        x0, y0 = pos0.x(), pos0.y()
+        x1, y1 = pos1.x(), pos1.y()
+        n_grad, npts = self._n_grad.value(), self._n_pts.value()
+        print(x0, y0, x1, y1)
+        print(n_grad, npts)
+        
+
+            
+    def draw_object(self):
+        """ Draws the selection rectangle """
+        
+        if len(self._object_pos) != 1:
+            raise RuntimeError(f"Invalid drawing {self._object_pos}")
+        
+        (pos0,) = self._object_pos
+        pos1 = self._object_drag 
+        qlineF = QtCore.QLineF(pos0, pos1)
+        if self._line is not None:
+            self._line.setLine(qlineF)
+            self._line_under.setLine(qlineF)
+        else:
+            self._line_under = QGraphicsLineItem(qlineF)
+            self._line_under.setPen(QtGui.QPen(QtGui.QColor("red"), 0, Qt.SolidLine))
+            self._group.addToGroup(self._line_under)
+
+            self._line = QGraphicsLineItem(qlineF)
+            self._line.setPen(QtGui.QPen(QtGui.QColor("black"), 0, Qt.DotLine))
+            self._group.addToGroup(self._line)
+
+
+#==============================================================================
+
 class Fractal_MessageBox(QMessageBox):
     def __init__(self, *args, **kwargs):            
         super().__init__(*args, **kwargs)
@@ -1837,16 +1992,6 @@ class Fractal_MessageBox(QMessageBox):
         return result
 
 
-class Static_Image_widget(QWidget):
-    param_user_drawn= pyqtSignal(object) # (px1, py1, px2, px2)
-    # zoom_params = ["x", "y", "dx", "xy_ratio"]
-
-    def __init__(self, parent, file_path): # im=None):#, xy_ratio=None):
-        super().__init__(parent)
-        raise NotImplementedError("TODO")
-
-
-
 class Fractal_MainWindow(QMainWindow):
     
     def __init__(self, gui):
@@ -1858,9 +2003,7 @@ class Fractal_MainWindow(QMainWindow):
 
     
     def set_menubar(self) :
-    
       bar = self.menuBar()
-
       tools = bar.addMenu("Tools")
       png_info = QAction('Png info', tools)
       png_cbar = QAction('Png to colormap', tools)
@@ -1939,11 +2082,9 @@ class Fractal_MainWindow(QMainWindow):
         
     def png_to_cmap(self):
         file_path = self.gui_file_path(_filter="Images (*.png)")
-        image_display = Static_Image_widget(self, file_path)
+        image_display = Cmap_Image_widget(self, file_path)
         image_display.exec()
-        
-            
-            
+
 
     def build_model(self, gui):
         
@@ -1967,10 +2108,6 @@ class Fractal_MainWindow(QMainWindow):
         self.add_image_wget()
         self.add_func_wget()
         self.add_image_status()
-#                self.image_doc_widget = dock_widget
-##        parent.addDockWidget(Qt.LeftDockWidgetArea, dock_widget)
-#        
-#        self.addDockWidget(Qt.LeftDockWidgetArea,self.centralWidget.image_doc_widget
     
     def sizeHint(self):
         return QtCore.QSize(1200, 800) 

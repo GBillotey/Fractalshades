@@ -100,6 +100,17 @@ def plot(plot_dir):
         grad_funcs=['x', 'x', 'x**4', 'x', 'x', 'x', 'x', 'x', 'x', 'x'],
         extent='mirror'
     )
+    colormap = fscolors.Fractal_colormap(
+    colors=[[0.        , 1.        , 1.        ],
+ [0.49019608, 0.50980392, 1.        ],
+ [1.        , 0.        , 1.        ]],
+    kinds=['Lab', 'Lch', 'Lch'],
+    grad_npts=[100, 100, 100],
+    grad_funcs=['x', 'x', 'x'],
+    extent='mirror'
+)
+    
+    
     probes_zmax = 0.15
 
     # Set to True to enable multi-processing
