@@ -107,7 +107,7 @@ class Model(QtCore.QObject):
         self._settings[setting_name] = setting_keys
 
     def setting(self, setting_name):
-        """ Declares a setting, eg: dps """
+        """ Declares a global setting, eg: dps """
         return self[self._settings[setting_name]]
 
     @pyqtSlot(object)

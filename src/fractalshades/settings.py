@@ -20,9 +20,22 @@ chunk_size = 200
 # Number of bins for plots
 HIST_BINS = 100
 
-# Output mode : "png" | "Pillow"
-# if "Pillow" 
-output_mode = "png"
+# output_context: "doc" True if we are building the doc (Pillow output)
+# "gui_iter" 0 if not in GUI loop otherwise, start at 1 and increment
+# at each GUI plot
+output_context = {
+    "doc": False,
+    "gui_iter": 0
+}
+
+# Signal to interrupt a calculation
+interrupted = False
+
+# Minimal zoom level for activating Newton search
+newton_zoom_level = 1.e-8
+
+# Veto all Newton iterations
+no_newton = False
 
 # figures : module-level container used if output_mode == "Pillow"
 # -> the output images are stagged and not directly written to disk.

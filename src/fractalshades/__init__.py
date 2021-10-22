@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+__author__ = "G. Billotey"
+__license__ = "MIT"
 __version__ = "0.3.b1"
 
 from .settings import get_figures, close

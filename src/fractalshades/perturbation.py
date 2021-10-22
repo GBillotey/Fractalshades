@@ -343,41 +343,21 @@ directory : str
         glitch_sort_key = self.glitch_sort_key
         glitch_stop_index = self.glitch_stop_index
 
-#        dyn_glitched = fs.Fractal_Data_array(self, calc_name=calc_name,
-#                postproc_keys=('stop_reason',
-#                lambda x: x == self.glitch_stop_index), mode="r+raw")
         dyn_glitched = fspp.Fractal_array(
                 self, calc_name, "stop_reason",
                 func=lambda x: x == glitch_stop_index)
 
         # We store this one as an attribute, as this is the pixels which will
         # need an update "escaped_or_glitched"
-#        self.all_glitched = fs.Fractal_Data_array(self,
-#                calc_name=calc_name, postproc_keys=('stop_reason',
-#                    lambda x: x >= glitch_stop_index), mode="r+raw")
         self.all_glitched = fspp.Fractal_array(
                 self, calc_name, "stop_reason",
                 func=lambda x: x >= glitch_stop_index)
 
-#        glitch_sorts = fs.Fractal_Data_array(self, file_prefix=file_prefix,
-#                    postproc_keys=(glitch_sort_key, None), mode="r+raw")
         glitch_sorts = fspp.Fractal_array(
                 self, calc_name, glitch_sort_key, func=None)
         
-
-#        stop_iters = fs.Fractal_Data_array(self, calc_name=calc_name,
-#                    postproc_keys=("stop_iter", None), mode="r+raw")
         stop_iters = fspp.Fractal_array(
                 self, calc_name, "stop_iter", func=None)
-
-#        _gcc = 0
-#        _gcc_max = self.glitch_max_attempt
-        
-        # This looping is for dynamic glitches, we loop the largest glitches
-        # first, a glitch being defined as 'same stop iteration'
-
-#        all_glitch_count = self.all_glitched.nansum()
-#        dyn_glitch_count = dyn_glitched.nansum()
         
         
         header, report = self.reload_report(None, calc_name)
@@ -392,6 +372,7 @@ directory : str
 
         while ((self.iref < self.glitch_max_attempt)
                and (all_glitch_count > 0)
+               and not(self.is_interrupted())
             ):
             self.iref += 1
             print("Launching glitch correction cycle, iref = ", self.iref)
@@ -589,18 +570,32 @@ directory : str
 
     def param_matching(self, dparams):
         """
-        If we want to do some clever sanity test (not implemented)
-        If not matching shall raise a ValueError
+        If not matching shall trigger recomputing
+        dparams is the stored computation
         """
         print("**CALLING param_matching +++", self.params)
         # TODO : note: when comparing iref should be disregarded ? 
         # or subclass specific implementation
         UNTRACKED = ["SA_params", "datetime", "debug"]
-        SPECIAL_CASE = ["prec"] # TODO increased precision should be accepted
+        SPECIAL_CASE = ["prec", "glitch_max_attempt"] # TODO increased precision should be accepted
         for key, val in self.params.items():
-            if not(key in UNTRACKED) and dparams[key] != val:
-                print("Unmatching", key, val, "-->", dparams[key])
-                return False
+            if (key in UNTRACKED):
+                continue
+            elif (key in SPECIAL_CASE):
+                if key == "prec":
+                    if dparams[key] < val:
+                        print("Higher precision requested",
+                              dparams[key], "-->",  val)
+                        return False
+                elif key == "glitch_max_attempt":
+                    if dparams[key] < val:
+                        print("Higher glitch max attempt requested",
+                              dparams[key], "-->",  val)
+                        return False
+            else: 
+                if dparams[key] != val:
+                    print("Unmatching", key, val, "-->", dparams[key])
+                    return False
             print("its a match", key, val, dparams[key] )
         print("** all good")
         return True
@@ -726,9 +721,18 @@ directory : str
             print("reloading ref point", iref, pt, "center", self.x + 1j * self.y)
             return FP_params, Z_path
 
+        # Early escape if zoom level is low
+        if self.dx > fssettings.newton_zoom_level:
+            c0 = self.critical_pt
+        
+
 #        if self.ref_point_count(calc_name) <= iref:
         if c0 is None:
             c0 = self.x + 1j * self.y
+
+        # skip Newton if settings impose it
+        if fssettings.no_newton:
+            newton = None
 
         if randomize:
             data_type = self.base_float_type
@@ -741,19 +745,19 @@ directory : str
         pt = c0
         print("Proposed ref point:\n", c0)
 
-        # If we plan a newton iteration, we lauche the process
-        # ball method to find the order, than Newton
+
+        # If we plan a newton iteration, we launch the process
+        # ball method to find the order, then Newton
         if (newton is not None) and (newton != "None"):
             if order is None:
-                k_ball = 0.1
-                order = self.ball_method(
-                    c0, max(self.dx, self.dy) * k_ball, max_iter)
+                k_ball = 0.01
+                order = self.ball_method(c0, self.dx * k_ball, max_iter)
                 if order is None: # ball method escaped... we try to recover
                     if randomize < 5:
                         randomize += 1
                         print("BALL METHOD RANDOM ", randomize)
                         self.ensure_ref_point(FP_loop, max_iter, calc_name,
-                                 iref=0, c0=None, newton="cv", order=None,
+                                 iref=0, c0=None, newton=newton, order=None,
                                  randomize=randomize)
                     else:
                         raise ValueError("Ball method failed")
@@ -766,14 +770,20 @@ directory : str
                     c0, order, max_newton=max_newton)
 
             if not(newton_cv) and (newton != "step"):
+                max_attempt = 2
                 attempt = 0
-                while not(newton_cv) and attempt < 2:
+                while not(newton_cv) and attempt < max_attempt:
                     attempt += 1
                     old_dps = mpmath.mp.dps
                     mpmath.mp.dps = int(1.25 * old_dps)
                     print("Newton not cv, dps boost to: ", mpmath.mp.dps)
-                    newton_cv, nucleus = self.find_any_nucleus(
-                        c0, order, max_newton=max_newton)
+                    if attempt < max_attempt:
+                        newton_cv, nucleus = self.find_nucleus(
+                            c0, order, max_newton=max_newton)
+                    else:
+                        newton_cv, nucleus = self.find_any_nucleus(
+                            c0, order, max_newton=max_newton)
+                        
 #                    newton_cv, nucleus = self.find_any_nucleus(
 #                        c0, order, max_newton=max_newton)
 
@@ -790,7 +800,8 @@ directory : str
                 print("With shift % from proposed coords:\n",
                       shift.real / self.dx, shift.imag / self.dy)
             else:
-                raise ValueError("Newton failed with order", order)
+                print("Newton failed with order", order)
+                nucleus = pt
 
             pt = nucleus
 

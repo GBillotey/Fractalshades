@@ -6,6 +6,7 @@ import copy
 import tempfile
 import datetime
 import pickle
+import pathlib
 
 import numpy as np
 from numpy.lib.format import open_memmap
@@ -32,7 +33,7 @@ class _Pillow_figure:
         self.pnginfo = pnginfo
 
     def save_png(self, im_path):
-        self.img.save(im_path,format="png", pnginfo=self.pnginfo)
+        self.img.save(im_path, format="png", pnginfo=self.pnginfo)
 
 
 class Fractal_plotter:
@@ -284,7 +285,8 @@ class Fractal_plotter:
         pnginfo = PIL.PngImagePlugin.PngInfo()
         for k, v in tag_dict.items():
             pnginfo.add_text(k, str(v))
-        if fssettings.output_mode == "Pillow":
+        if (fssettings.output_context["doc"]
+            and not(fssettings.output_context["gui_iter"] > 0)):
             fssettings.add_figure(_Pillow_figure(img, pnginfo))
         else:
             img.save(img_path, pnginfo=pnginfo)
@@ -514,6 +516,20 @@ advanced users when subclassing.
         self._iterate = self.iterate()
         self.cycles()
 
+
+    @property
+    def interrupt_path(self):
+        return os.path.join(self.directory, "data", "_interrupt.lck")
+
+    def raise_interruption(self):
+        pathlib.Path(self.interrupt_path).touch()
+        
+    def lower_interruption(self):
+        if os.path.isfile(self.interrupt_path):
+            os.unlink(self.interrupt_path)
+    
+    def is_interrupted(self):
+        return os.path.isfile(self.interrupt_path)
 
     @property
     def ny(self):
@@ -884,7 +900,7 @@ advanced users when subclassing.
         print("** all good")
         return True
 
-    def res_available(self, chunk_slice=None): #, calc_name=None):
+    def res_available(self, chunk_slice=None):
         """  
         If chunk_slice is None, check that stored calculation parameters
         matches.
@@ -895,7 +911,7 @@ advanced users when subclassing.
             params, codes = self.reload_params()
         except IOError:
             return False
-        matching = self.param_matching(params) # TODO if cal_name...
+        matching = self.param_matching(params)
         if not(matching):
             return False
         if chunk_slice is None:
@@ -951,6 +967,9 @@ advanced users when subclassing.
             *stop_reason*   Byte codes -> reasons for termination [:]  np.int8
             *stop_iter*     Numbers of iterations when stopped [:]     np.int32
         """
+        if self.is_interrupted():
+            print("interrupted")
+            return
 
 #        print("**CALLING cycles +++")
         if self.res_available(chunk_slice):
@@ -1190,6 +1209,11 @@ advanced users when subclassing.
             "stop_reason": self.termination_type,
             "stop_iter": self.int_type,
         }
+        if self.Xrange_complex_type:
+            data_type["Z"] = np.dtype([
+                    ('mantissa', self.base_complex_type),
+                    ('exp', np.int32)
+            ], align=False)
         data_path = self.data_path()
 
         pts_count = self.pts_count # the memmap 1st dim
