@@ -18,6 +18,8 @@ import threading
 import ast
 import importlib.resources # import path
 
+import numpy as np
+
 from PyQt5 import QtCore
 from PyQt5.QtCore import Qt
 #from PyQt5.QtGui import QIcon
@@ -67,6 +69,7 @@ from PyQt5.QtWidgets import (
     QTableWidgetItem
 )
 
+import PIL
 #
 
 import fractalshades as fs
@@ -1859,6 +1862,12 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
         self._layout.addWidget(self._view, stretch=1)
         self._layout.addWidget(self.add_param_box(), stretch=0)
         self._layout.addWidget(self.add_cmap_box(), stretch=0)
+        
+        # Event binding
+        self._n_grad.valueChanged.connect(self.update_cmap)
+        self._n_pts.valueChanged.connect(self.update_cmap)
+        self._kind.currentTextChanged.connect(self.update_cmap)
+        self._go.clicked.connect(self.display_cmap_code)
 
     
     def set_im(self):
@@ -1867,30 +1876,60 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
         self._qim.setAcceptHoverEvents(True)
         self._group.addToGroup(self._qim)
         self.fit_image()
+        # interpolator object
+        self.im_interpolator = fscolors.Image_interpolator(
+                PIL.Image.open(self.file_path))
 
     def add_param_box(self):
         param_layout = QHBoxLayout()
+
+        ngrad_layout = QVBoxLayout()
         lbl_n_grad = QLabel("Number of gradients:")
         self._n_grad = QSpinBox()
         self._n_grad.setRange(1, 255)
-        param_layout.addWidget(lbl_n_grad)
-        param_layout.addWidget(self._n_grad)
+        self._n_grad.setValue(10)
+        ngrad_layout.addWidget(lbl_n_grad)
+        ngrad_layout.addWidget(self._n_grad)
+        param_layout.addLayout(ngrad_layout)
 
+        npts_layout = QVBoxLayout()
         lbl_n_pts = QLabel("Points per gradient:")
         self._n_pts = QSpinBox()
         self._n_pts.setRange(1, 255)
         self._n_pts.setValue(32)
-        param_layout.addWidget(lbl_n_pts)
-        param_layout.addWidget(self._n_pts)
+        npts_layout.addWidget(lbl_n_pts)
+        npts_layout.addWidget(self._n_pts)
+        param_layout.addLayout(npts_layout)
 
+        kind_layout = QVBoxLayout()
+        kind = QLabel("Kind of gradient:")
+        self._kind = QComboBox()
+        self._kind.addItems(("Lch", "Lab"))
+        kind_layout.addWidget(kind)
+        kind_layout.addWidget(self._kind)
+        param_layout.addLayout(kind_layout)
+
+        go_layout = QVBoxLayout()
+        go = QLabel("Gradient code:")
         self._go = QPushButton("Export")
-        param_layout.addWidget(self._go)
+        go_layout.addWidget(go)
+        go_layout.addWidget(self._go)
+        param_layout.addLayout(go_layout)
 
         action_box = QGroupBox("Parameters")
         action_box.setLayout(param_layout)
         self.set_border_style(action_box)
 
         return action_box
+
+    def display_cmap_code(self):
+        """ displays source code for Fractal object """
+        ce = Fractal_code_editor()
+        str_args = repr(self._cmap)
+        ce.set_text(str_args)
+        ce.setWindowTitle("Fractal code")
+        ce.exec()
+        
 
     def add_cmap_box(self):
         cmap_layout = QHBoxLayout()
@@ -1943,18 +1982,45 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
             if dclick:
                 self.fit_image()
             return
-
         
-        # TODO : update the CAMP here
-        (pos0, pos1) = self._object_pos
+        self.validated_object_pos = self._object_pos
+        self.update_cmap()
+        
+
+    def update_cmap(self):
+        # Update the CMAP here
+        if not(hasattr(self, "validated_object_pos")):
+            return # Nothing to update
+        (pos0, pos1) = self.validated_object_pos
+
         x0, y0 = pos0.x(), pos0.y()
         x1, y1 = pos1.x(), pos1.y()
         n_grad, npts = self._n_grad.value(), self._n_pts.value()
-        print(x0, y0, x1, y1)
-        print(n_grad, npts)
-        
+        kinds = str(self._kind.currentText())
 
-            
+        x = np.linspace(x0, x1, n_grad + 1)
+        y = np.linspace(y0, y1, n_grad + 1)
+        colors = self.interpolate(x, y) / 255.
+
+#        print("cmap rbg", colors)
+
+        # Creates the new cmap widget, replace the old one (in-place)
+        self._cmap = fscolors.Fractal_colormap(
+            colors=colors,
+            kinds=kinds,
+            grad_npts=npts,
+            grad_funcs='x',
+            extent='mirror'
+        )
+        new_cmap = Qcmap_image(self, self._cmap)
+        containing_layout = self._preview.parent().layout()
+        containing_layout.replaceWidget(self._preview, new_cmap)
+        self._preview = new_cmap
+
+    def interpolate(self, x, y):
+        return self.im_interpolator.interpolate(x, y)
+
+
     def draw_object(self):
         """ Draws the selection rectangle """
         
@@ -2000,6 +2066,7 @@ class Fractal_MainWindow(QMainWindow):
         self.build_model(gui)
         self.layout()
         self.set_menubar()
+        self.setWindowTitle(f"Fractashades {fs.__version__}")
 
     
     def set_menubar(self) :

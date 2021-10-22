@@ -34,6 +34,9 @@ interrupted = False
 # Minimal zoom level for activating Newton search
 newton_zoom_level = 1.e-8
 
+# Veto all Newton iterations
+no_newton = False
+
 # figures : module-level container used if output_mode == "Pillow"
 # -> the output images are stagged and not directly written to disk.
 figures = list()

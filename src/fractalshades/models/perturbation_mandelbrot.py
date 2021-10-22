@@ -33,16 +33,18 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
     @staticmethod
     def _ball_method1(c, px, maxiter, M_divergence):#, M_divergence):
         #c = x + 1j * y
-        z = 0.
+        z = mpmath.mpc(0.)
         r0 = px      # first radius
         r = r0 * 1.
         az = abs(z)
-        dzdc = 0.
+        dzdc = mpmath.mpc(0.)
 
         for i in range(1, maxiter + 1):
+            if i%10000 == 0:
+                print("Ball method", i, r)
             r = (az  + r)**2 - az**2 + r0
             z = z**2 + c
-            dzdc =  2. * z * dzdc + 1.
+            dzdc =  2. * z * dzdc +  1.
             az = abs(z)
             if az > M_divergence:
                 return None
@@ -201,6 +203,10 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             n_iter
             P
         """
+        SA_stop =  SA_params.get("SA_stop", -1)
+        if SA_stop is None:
+            SA_stop = -1
+
         SA_err = SA_params.get("SA_err", 1.e-4)
         print("SA_err", SA_err)
         SA_err_sq = SA_err**2
@@ -225,7 +231,8 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         P0 = P[0]
         
         # Call jitted function for the loop
-        P0, n_iter, err = SA_run(SA_loop, P0, n_iter, ref_path, kcX, SA_err_sq)
+        P0, n_iter, err = SA_run(SA_loop, P0, n_iter, ref_path, kcX, SA_err_sq,
+                                 SA_stop)
 #        while SA_valid:
 #            n_iter +=1
 #            # keep a copy
@@ -749,28 +756,35 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
 
 
 @numba.njit
-def SA_run(SA_loop, P0, n_iter, ref_path, kcX, SA_err_sq):
+def SA_run(SA_loop, P0, n_iter, ref_path, kcX, SA_err_sq, SA_stop):
+
+    max_iter = ref_path.shape[0] # full precision max iter
+    if SA_stop == -1:
+        SA_stop = max_iter
+    else:
+        SA_stop = min(max_iter, SA_stop)
+
     SA_valid = True
     while SA_valid:
         n_iter +=1
         # keep a copy in case this iter is invalidated
         P_old0 = P0.coeffs.copy()
-        # P_old1 = P[1].coeffs.copy()
         P0 = SA_loop(P0, n_iter, ref_path[n_iter - 1, :], kcX)
         
-#        coeffs_abs2 = fsxn.extended_abs2(P0.coeffs)
         coeffs_sum = fsxn.Xrange_scalar(0., numba.int32(0))
         for i in range(len(P0.coeffs)):
             coeffs_sum = coeffs_sum + fsxn.extended_abs2(P0.coeffs[i])
         err_abs2 = P0.err[0] * P0.err[0]
 
-#        coeffs_sum = np.sum(P0.coeffs.abs2())
-        SA_valid = ((err_abs2  <= SA_err_sq * coeffs_sum)
-                    and (coeffs_sum <= 1.e6)) # 1e6 to allow 'low zoom'
+        SA_valid = (
+            (err_abs2  <= SA_err_sq * coeffs_sum)
+            and (coeffs_sum <= 1.e6) # 1e6 to allow 'low zoom'
+            and (n_iter < SA_stop)
+        )
         if not(SA_valid):
             P0_ret = fsx.Xrange_polynomial(P_old0, P0.cutdeg)
-#            P0.coeffs = P_old0
             n_iter -= 1
+
         if n_iter % 5000 == 0 and SA_valid:
             ssum = np.sqrt(coeffs_sum)
             print("SA running", n_iter, "err: ", P0.err,

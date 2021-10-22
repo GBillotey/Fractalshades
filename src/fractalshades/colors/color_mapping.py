@@ -3,7 +3,7 @@ import numpy as np
 #import matplotlib.colors
 #from matplotlib.figure import Figure
 #from matplotlib.backends.backend_agg import FigureCanvasAgg
-
+import numba
 
 import PIL
 import PIL.ImageQt
@@ -370,8 +370,8 @@ class Fractal_colormap:
             (ie, the callable is the evaluation of "lambda x: " + expr).
             Default to identity.
         extent : "clip" | "mirror" | "repeat"
-            What to do with out of range values.
-        """      
+            What to do with out-of-range values.
+        """
         self.colors = colors = np.asarray(colors)
         self.n_grads = n_grads = colors.shape[0] - 1
         self.n_probes = n_probes = colors.shape[0]
@@ -388,11 +388,10 @@ class Fractal_colormap:
         self.grad_npts = grad_npts = np.asarray(grad_npts)
         self.grad_funcs = grad_funcs # = np.asarray(grad_funcs)
         self.extent = extent
-        
+
         # Deprecated option (not compatible with GUI editor)
         if callable(grad_funcs):
             raise ValueError("Callable grad_funcs deprecated, use string")
-
 
         # Should define 2 internal arrays
         self._n_interp_colors = sum(grad_npts) - n_grads + 1
@@ -400,7 +399,6 @@ class Fractal_colormap:
                                        dtype=np.float64)
         self._probes = np.empty([n_probes], dtype=np.float32)
 
-#        print([grad_funcs[i_grad] for i_grad in range(n_grads)])
         grad_func_evals = [
             fs_parser.func_parser(["x"], grad_funcs[i_grad])
             for i_grad in range(n_grads)
@@ -411,9 +409,7 @@ class Fractal_colormap:
             grad = Color_tools.color_gradient(
                 kinds[i_grad], colors[i_grad, :], colors[i_grad + 1, :],
                 grad_npts[i_grad], grad_func_evals[i_grad])
-#            print("i_grad", i_grad)
-#            print("grad_npts[i_grad]", grad_npts[i_grad])
-#            print("grad.shape", grad.shape)
+
             self._interp_colors[i_col: i_col + grad_npts[i_grad], :] = grad
             self._probes[i_grad] = i_col
             i_col += (grad_npts[i_grad] - 1)
@@ -571,6 +567,127 @@ classic_colormap = Fractal_colormap(
     grad_funcs=['x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x'],
     extent='mirror'
 ) 
+
+
+
+
+class Image_interpolator:
+    def __init__(self, image, wrap=False, screen_coord=True):
+        """
+        Interpolation of points in an image
+        image: Pillow image
+        wrap : if True, margins are wraped
+        screen_coord : if True pixels to interpolate are in screen coords
+                       (y downwards)
+        """
+        self._im = image
+        self._wrap = wrap
+        self._screen_coord = screen_coord
+
+    def interpolate(self, x, y):
+        mode = self._im.mode 
+        if mode == "RGB":
+            return self.interpolate_rgb(x, y)
+        else:
+            raise ValueError(f"Unsupported {mode}")
+    
+    def interpolate_rgb(self, x, y):
+        """
+        x arrays of floats between [0, nx]
+        y arrays of floats between [0, ny]
+        
+        Return an RGB array of shape shape-x) + (3,), dtype np.uint8)
+        """
+        shape = x.shape
+        res = np.empty(shape + (3,), dtype=np.uint8)
+        wrap = self._wrap
+        screen_coord = self._screen_coord
+        if y.shape != shape:
+            raise ValueError("x and y shall have same shape")
+        xr= np.ravel(x)
+        yr = np.ravel(y)
+        print("channels", self._im)
+        # channels <PIL.PngImagePlugin.PngImageFile image mode=RGB size=3600x3600 at 0x7FF2C0CA20A0>
+        im_arr = np.array(self._im)
+        for ic in range(3):
+            print("channel", ic)
+            channel = im_arr[:, :, ic]#self._im.getchannel(ic)
+            out = np.empty(len(xr))
+            im_interpolate(channel, xr, yr, wrap, screen_coord, out)
+            res[..., ic] = out #/ 255.
+        return res
+        
+
+@numba.njit
+def im_interpolate(channel, x, y, wrap, screen_coord, out):
+    """
+    Numba jitted function to interpolate in an image channel
+
+    channel: The 2d image channel to interpolate 
+    x: The 1d x-axis pts for interpolation
+    y: The 1d y-axis pts for interpolation
+    wrap: if True, wraps, otherwise, clip
+    out: the res array
+    
+    # note :  channel.shape: height x width (column-major)
+    """
+    (ny, nx) =  channel.shape
+    npts, = x.shape
+    for ipt in range(npts):
+        # The x coords
+        xloc = x[ipt] - 0.5
+        divx, modx = np.divmod(xloc, 1.)
+        divx = int(divx)
+        if 0 <= divx <= nx - 2:
+            ix1 = divx
+            ix2 = ix1 + 1
+        elif divx < 0: # divx = -1
+            ix2 = 0
+            if wrap:
+                ix1 = nx - 1
+            else:
+                ix1 = 0
+        else: # divx = nx - 1
+            ix1 = nx - 1
+            if wrap:
+                ix1 = 0
+            else:
+                ix1 = nx - 1
+        # The y coords
+        if False: #screen_coord:
+            yloc = y[ipt] - ny + 0.5
+        else:
+            yloc = y[ipt] - 0.5
+        divy, mody = np.divmod(yloc, 1.)
+        divy = int(divy)
+        if 0 <= divy <= ny - 2:
+            iy1 = divy
+            iy2 = iy1 + 1
+        elif divy < 0: # divy = -1
+            iy2 = 0
+            if wrap:
+                iy1 = ny - 1
+            else:
+                iy1 = 0
+        else: # divx = ny - 1
+            iy1 = ny - 1
+            if wrap:
+                iy1 = 0
+            else:
+                iy1 = ny - 1
+        # The interpolation as barycentric coordinates
+        out[ipt] = (
+            (1. - modx) * (1. - mody) * channel[iy1, ix1]
+            + (1. - modx) * mody * channel[iy2, ix1]
+            + modx * (1. - mody) * channel[iy1, ix2]
+            + modx * mody * channel[iy2, ix2]
+        )
+            
+
+
+
+
+
 
 
 class Curve:

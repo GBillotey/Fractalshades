@@ -570,18 +570,32 @@ directory : str
 
     def param_matching(self, dparams):
         """
-        If we want to do some clever sanity test (not implemented)
-        If not matching shall raise a ValueError
+        If not matching shall trigger recomputing
+        dparams is the stored computation
         """
         print("**CALLING param_matching +++", self.params)
         # TODO : note: when comparing iref should be disregarded ? 
         # or subclass specific implementation
         UNTRACKED = ["SA_params", "datetime", "debug"]
-        SPECIAL_CASE = ["prec"] # TODO increased precision should be accepted
+        SPECIAL_CASE = ["prec", "glitch_max_attempt"] # TODO increased precision should be accepted
         for key, val in self.params.items():
-            if not(key in UNTRACKED) and dparams[key] != val:
-                print("Unmatching", key, val, "-->", dparams[key])
-                return False
+            if (key in UNTRACKED):
+                continue
+            elif (key in SPECIAL_CASE):
+                if key == "prec":
+                    if dparams[key] < val:
+                        print("Higher precision requested",
+                              dparams[key], "-->",  val)
+                        return False
+                elif key == "glitch_max_attempt":
+                    if dparams[key] < val:
+                        print("Higher glitch max attempt requested",
+                              dparams[key], "-->",  val)
+                        return False
+            else: 
+                if dparams[key] != val:
+                    print("Unmatching", key, val, "-->", dparams[key])
+                    return False
             print("its a match", key, val, dparams[key] )
         print("** all good")
         return True
@@ -706,14 +720,19 @@ directory : str
             pt = FP_params["ref_point"]
             print("reloading ref point", iref, pt, "center", self.x + 1j * self.y)
             return FP_params, Z_path
-        
+
         # Early escape if zoom level is low
         if self.dx > fssettings.newton_zoom_level:
             c0 = self.critical_pt
+        
 
 #        if self.ref_point_count(calc_name) <= iref:
         if c0 is None:
             c0 = self.x + 1j * self.y
+
+        # skip Newton if settings impose it
+        if fssettings.no_newton:
+            newton = None
 
         if randomize:
             data_type = self.base_float_type
@@ -726,8 +745,9 @@ directory : str
         pt = c0
         print("Proposed ref point:\n", c0)
 
+
         # If we plan a newton iteration, we launch the process
-        # ball method to find the order, than Newton
+        # ball method to find the order, then Newton
         if (newton is not None) and (newton != "None"):
             if order is None:
                 k_ball = 0.01

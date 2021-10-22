@@ -900,7 +900,7 @@ advanced users when subclassing.
         print("** all good")
         return True
 
-    def res_available(self, chunk_slice=None): #, calc_name=None):
+    def res_available(self, chunk_slice=None):
         """  
         If chunk_slice is None, check that stored calculation parameters
         matches.
@@ -911,7 +911,7 @@ advanced users when subclassing.
             params, codes = self.reload_params()
         except IOError:
             return False
-        matching = self.param_matching(params) # TODO if cal_name...
+        matching = self.param_matching(params)
         if not(matching):
             return False
         if chunk_slice is None:
@@ -1209,6 +1209,11 @@ advanced users when subclassing.
             "stop_reason": self.termination_type,
             "stop_iter": self.int_type,
         }
+        if self.Xrange_complex_type:
+            data_type["Z"] = np.dtype([
+                    ('mantissa', self.base_complex_type),
+                    ('exp', np.int32)
+            ], align=False)
         data_path = self.data_path()
 
         pts_count = self.pts_count # the memmap 1st dim
