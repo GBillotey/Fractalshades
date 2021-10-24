@@ -58,7 +58,8 @@ def plot(plot_dir):
     pp = Postproc_batch(f, calc_name)
     pp.add_postproc("cont_iter", Continuous_iter_pp())
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
-    plotter = fs.Fractal_plotter(pp)   
+
+    plotter = fs.Fractal_plotter(pp)
     plotter.add_layer(Bool_layer("interior", output=False))
     plotter.add_layer(Color_layer(
             "cont_iter",
@@ -68,10 +69,12 @@ def plot(plot_dir):
             probes_kind="absolute",
             output=True
     ))
+
     plotter["cont_iter"].set_mask(
             plotter["interior"],
             mask_color=(0., 0., 0.)
     )
+    
     plotter.plot()
 
 
