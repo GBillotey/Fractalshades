@@ -2,11 +2,11 @@
 import numpy as np
 import numbers
 import re
+import mpmath
 
 
 def mpc_to_Xrange(mpc, dtype=np.complex128):
     """ Convert a mpc complex to a Xrange array"""
-    import mpmath
     select = {np.dtype(np.complex64): np.float32,
               np.dtype(np.complex128): np.float64}
     float_type = select[np.dtype(dtype)]
@@ -22,13 +22,11 @@ def mpc_to_Xrange(mpc, dtype=np.complex128):
 
 def mpf_to_Xrange(mpf, dtype=np.float64):
     """ Convert a mpc complex to a Xrange array"""
-    import mpmath
     mpf_m, mpf_exp = mpmath.frexp(mpf)
     return Xrange_array(np.array(mpf_m, dtype), np.array(mpf_exp, np.int32))
 
 def Xrange_to_mpfc(arr):
     """ Convert a Xrange array of size-1 to a mpf or mpc"""
-    import mpmath
     if arr.is_complex:
         return Xrange_to_mpfc(arr.real) + 1.j * Xrange_to_mpfc(arr.imag)
     else:

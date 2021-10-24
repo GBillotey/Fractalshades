@@ -277,6 +277,7 @@ class Continuous_iter_pp(Postproc):
         (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
          termination_dic) = self.raw_data# [chunk_slice]
 
+
         n = stop_iter[0, :]
         zn = Z[complex_dic["zn"], :]
         potential_dic = self.potential_dic

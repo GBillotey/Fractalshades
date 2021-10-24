@@ -37,12 +37,14 @@ from fractalshades.colors.layers import (
 
 
 def plot(plot_dir):
+    fs.settings.enable_multiprocessing = False
+    fs.settings.inspect_calc = True
     # A simple showcase using perturbation technique
     x = "-1.768667862837488812627419470"
     y = "0.001645580546820209430325900"
     dx = "16.e-22"
     precision = 30
-    nx = 1600
+    nx = 800
     xy_ratio = 2.0
 
     calc_name="mandelbrot"
@@ -70,7 +72,7 @@ def plot(plot_dir):
             antialiasing=False)
 
     f.calc_std_div(
-            datatype=("Xrange", np.complex128),
+            datatype=("Xrange", np.complex128), # ("Xrange", np.complex128),
             calc_name=calc_name,
             subset=None,
             max_iter=200000,

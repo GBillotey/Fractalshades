@@ -515,6 +515,10 @@ advanced users when subclassing.
         # self.jitted_numba_cycles = numba.njit(numba_cycles)
         self._iterate = self.iterate()
         self.cycles()
+        
+        # Export to human-readable format
+        if fs.settings.inspect_calc:
+            self.inspect_calc()
 
 
     @property
@@ -529,7 +533,10 @@ advanced users when subclassing.
             os.unlink(self.interrupt_path)
     
     def is_interrupted(self):
-        return os.path.isfile(self.interrupt_path)
+        """ Either programmatically 'interrupted' (from the GUI) or by the user 
+        in batch mode through fs.settings.skip_calc """
+        return (os.path.isfile(self.interrupt_path)
+                or fs.settings.skip_calc)
 
     @property
     def ny(self):
@@ -968,14 +975,10 @@ advanced users when subclassing.
             *stop_iter*     Numbers of iterations when stopped [:]     np.int32
         """
         if self.is_interrupted():
-            print("interrupted")
             return
-
-#        print("**CALLING cycles +++")
         if self.res_available(chunk_slice):
             return
 
-#        print("init_cycling_arrays", type(self))
         if self.iref is None:
             (c, Z, U, stop_reason, stop_iter, n_stop, bool_active,
              index_active, n_iter) = self.init_cycling_arrays(chunk_slice)
@@ -986,16 +989,13 @@ advanced users when subclassing.
              ) = self.init_cycling_arrays(chunk_slice, SA_params)
         modified_in_cycle = np.copy(bool_active)
 
-        iterate = self._iterate # Suppressed the ()
+        iterate = self._iterate
         iref = self.iref
 
-#        print("**/CALLING cycles looping,  n_stop", n_stop)
-#        print("**/active: ", np.count_nonzero(bool_active),
-#              np.shape(bool_active))
+        print("**/CALLING cycles looping,  n_stop", n_stop)
 
         if iref is None:
             # Standard iterations
-#            print("calling numba_cycles", numba_cycles, type(numba_cycles), type(self.jitted_numba_cycles))
             numba_cycles(Z, U, c, stop_reason, stop_iter, bool_active,
                          n_iter, iterate)
         else:
@@ -1007,8 +1007,11 @@ advanced users when subclassing.
 
         # Saving the results after cycling
         self.update_report_mmap(chunk_slice, stop_reason)
+        print("#### saving", Z.dtype)
+        print("#### stop_reason", stop_reason)
         self.update_data_mmaps(chunk_slice, Z, U, stop_reason, stop_iter,
                                modified_in_cycle)
+
 
 
     def init_cycling_arrays(self, chunk_slice):
@@ -1183,6 +1186,78 @@ advanced users when subclassing.
             (mmap[rank, items.index(it)] for it in items)
         ))
         return report
+
+
+    def inspect_calc(self):
+        """
+        Outputs a report for the current calculation
+        """
+        REPORT_ITEMS, report = self.reload_report(None)
+        report_header = ("chnk_beg|chnk_end|iref|atmt|chnk_pts|"
+                         "glitched|dyn glit|")
+
+        # There are other interesting items to inspect
+        chunks_count = self.chunks_count
+
+        stop_ITEMS = ["min_stop_iter", "max_stop_iter", "mean_stop_iter"]
+        stop_report = np.zeros([chunks_count, 3], dtype = np.int32)
+        stop_header = "min_stop|max_stop|mean_stp|"
+
+        reason_ITEMS = []
+        reason_reports = []
+        reason_header = ""
+        reason_template = np.zeros([chunks_count, 1], dtype = np.int32)
+
+        for i, chunk_slice in enumerate(self.chunk_slices()):
+            chunk_mask, Z, U, stop_reason, stop_iter = self.reload_data(
+                chunk_slice)
+            # Outputs a summary of the stop iter
+            for j, it in enumerate(stop_ITEMS):
+                if it == "min_stop_iter":
+                    stop_report[i, j] = np.min(stop_iter)
+                elif it == "max_stop_iter":
+                    stop_report[i, j] = np.max(stop_iter)
+                elif it == "mean_stop_iter":
+                    stop_report[i, j] = int(np.mean(stop_iter))
+            # Outputs a summary of the stop reason
+            max_chunk_reason = np.max(stop_reason)
+            for r in range(len(reason_ITEMS), max_chunk_reason + 1):
+                reason_ITEMS += ["reason_" + str(r)]
+                reason_reports += [reason_template.copy()]
+                reason_header += ("reason_" + str(r) + "|")
+            bc = np.bincount(np.ravel(stop_reason))
+            for r, bc_r in enumerate(bc): #range(len(reason_ITEMS)):
+#                print("r", r, "i", i, "len", len(reason_ITEMS), len(reason_reports), max_chunk_reason)
+                reason_reports[r][i, 0] = bc_r
+
+        # Stack the results
+        header = REPORT_ITEMS + stop_ITEMS + reason_ITEMS
+        n_header = len(header)
+#        print("header", header, n_header)
+#        print("report", report)
+#        print("stop_report", stop_report)
+#        print("reason_reports", reason_reports)
+        full_report = np.empty((chunks_count, n_header), dtype = np.int32)
+        l1 = len(REPORT_ITEMS)
+        l2 = l1 + len(stop_ITEMS)
+        full_report[:, :l1] = report
+        full_report[:, l1:l2] = stop_report
+        for i in range(l2, n_header):
+            r = i - l2
+            full_report[:, i] = reason_reports[r][:, 0]
+#        print("full_report", full_report)
+
+        # https://numpy.org/doc/stable/reference/generated/numpy.savetxt.html
+        outpath = os.path.join(self.directory, self.calc_name + ".inspect")
+        np.savetxt(
+            outpath,
+            full_report,
+            fmt=('%8i|%8i|%4i|%4i|%8i|%8i|%8i|%8i|%8i|%8i|'
+                 + '%8i|' * len(reason_ITEMS)),
+            header=(report_header + stop_header + reason_header),
+            comments=''
+        )
+
 
     def data_path(self, calc_name=None):
         if calc_name is None:
@@ -1446,6 +1521,10 @@ advanced users when subclassing.
         calc_name = postproc_batch.calc_name
         chunk_mask, Z, U, stop_reason, stop_iter = self.reload_data(
                 chunk_slice, calc_name)
+        # View casting Z as extended-range if needed
+        if self.Xrange_complex_type:
+            Z = Z.view(fsx.Xrange_array)
+
         params, codes = self.reload_params(calc_name)
         complex_dic, int_dic, termination_dic = self.codes_mapping(*codes)
         postproc_batch.set_chunk_data(chunk_slice, chunk_mask, Z, U,
@@ -1455,7 +1534,6 @@ advanced users when subclassing.
         n_pts = Z.shape[1]  # Z of shape [n_Z, n_pts]
         post_array = np.empty((len(postproc_batch.posts), n_pts),
                                dtype=self.float_postproc_type)
-        
 
         for i, postproc in enumerate(postproc_batch.posts.values()):
 

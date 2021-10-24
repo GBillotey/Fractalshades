@@ -324,8 +324,11 @@ directory : str
             try:
                 SA_params = self.reload_SA(self.iref, calc_name)
             except FileNotFoundError:
+                        # Initialise the path and ref point
+                ref_div_iter = FP_params0.get("div_iter",
+                                              FP_params0["max_iter"]) 
                 SA_params = self.series_approx(self.SA_init(), self.SA_loop(),
-                    SA_params, self.iref, calc_name)
+                    SA_params, self.iref, ref_div_iter, calc_name)
                 self.save_SA(SA_params, self.iref, calc_name)
 
         # First a standard "perturbation" cycle, no glitch correction
@@ -473,8 +476,12 @@ directory : str
                         # -> Fall back to full SA recompute
                         if cutdeg_glitch is not None:
                             SA_params["cutdeg"] = cutdeg_glitch
+                        
+                        ref_div_iter = FP_params.get("div_iter",
+                                                      FP_params["max_iter"]) 
                         SA_params = self.series_approx(self.SA_init(),
-                            self.SA_loop(), SA_params, self.iref, calc_name)
+                            self.SA_loop(), SA_params, self.iref, ref_div_iter,
+                            calc_name)
                         self.save_SA(SA_params, self.iref, calc_name)
 
 
@@ -488,6 +495,10 @@ directory : str
             dyn_glitch_count = np.sum(report[:, header.index("dyn-glitched")])
 
             print("ANY glitched ? ", all_glitch_count)
+            
+        # Export to human-readable format
+        if fs.settings.inspect_calc:
+            self.inspect_calc()
 
 
     def largest_glitch_iter(self, stop_iters, glitched):
@@ -698,7 +709,9 @@ directory : str
 
         # Initialise the path and ref point
         FP_params, ref_path = self.reload_ref_point(iref, calc_name)
-        ref_div_iter = FP_params.get("div_iter", 2**63 - 1) # max int64
+        ref_div_iter = FP_params.get("div_iter", FP_params["max_iter"]) #2**63 - 1) # max int64
+        
+        print("###### datatype", c.dtype, Z.dtype)
 
         return (c, Z, U, stop_reason, stop_iter, n_stop, bool_active,
              index_active, n_iter, SA_iter, ref_div_iter, ref_path)
@@ -810,16 +823,14 @@ directory : str
         FP_params, Z_path = self.compute_ref_point(
                 FP_loop, pt, max_iter, iref, calc_name, order)
 
-                
-
-
         return FP_params,  Z_path
 
     def compute_ref_point(self, FP_loop, c, max_iter,
                           iref, calc_name, order=None):
         """
         Computes full precision, and stores path in normal precision
-        Note: Extended range not considered as orbit remind bounded.
+        Note:
+        - Extended range considered only if self.Xrange_complex_type
         """
         FP_params = {"ref_point": c,
                      "order": order,
@@ -830,11 +841,18 @@ directory : str
         FP_codes = FP_params["FP_codes"]
         FP_array = self.FP_init()()# copy.copy(FP_params["init_array"])
 
-        Z_path = np.empty([max_iter + 1, len(FP_codes)],
-                          dtype=self.base_complex_type)
-#        Z_path = np.zeros([max_iter + 1, len(FP_codes)],
-#                          dtype=self.base_complex_type)
-        Z_path[0, :] = np.array(FP_array)
+
+        if not(self.Xrange_complex_type):
+            Z_path = np.empty(
+                [max_iter + 1, len(FP_codes)],
+                dtype=self.base_complex_type)
+            Z_path[0, :] = np.array(FP_array) # mpc to float
+        else:
+            xr_dtype = fsx.get_xr_dtype(self.base_complex_type)
+            Z_path = np.empty([max_iter + 1, len(FP_codes)], dtype=xr_dtype
+                ).view(fsx.Xrange_array)
+            for i, _ in enumerate(FP_codes):
+                Z_path[0, i] = fsx.mpc_to_Xrange(FP_array[i])
 
         # Now looping and storing ...
 #        FP_params.pop('div_iter', None) # delete key div_iter / not needed !
@@ -845,9 +863,16 @@ directory : str
             div_iter = FP_loop(FP_array, c, n_iter)
             if div_iter is not None:
                 FP_params["div_iter"] = div_iter
-                print("Full precision loop diverging at iter", div_iter)
+                print("##### Full precision loop diverging at iter", div_iter)
                 break
-            Z_path[n_iter, :] = np.array(FP_array)
+
+            if not(self.Xrange_complex_type): 
+                Z_path[n_iter, :] = np.array(FP_array)
+            else:
+                for i, _ in enumerate(FP_codes):
+                    Z_path[n_iter, i] = fsx.mpc_to_Xrange(FP_array[i])
+
+
         self.save_ref_point(FP_params, Z_path, iref, calc_name)
         return FP_params, Z_path
 
