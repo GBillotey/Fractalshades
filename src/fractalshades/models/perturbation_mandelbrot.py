@@ -191,7 +191,8 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             b = b + 1. / l
         return 1. / (b * l * l)
 
-    def series_approx(self, SA_init, SA_loop, SA_params, iref, calc_name):
+    def series_approx(self, SA_init, SA_loop, SA_params, iref, ref_div_iter,
+                      calc_name):
         """
         Zk, zk
         C, c
@@ -232,22 +233,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         
         # Call jitted function for the loop
         P0, n_iter, err = SA_run(SA_loop, P0, n_iter, ref_path, kcX, SA_err_sq,
-                                 SA_stop)
-#        while SA_valid:
-#            n_iter +=1
-#            # keep a copy
-#            
-#            P_old0 = P0.coeffs.copy()
-#            # P_old1 = P[1].coeffs.copy()
-#            P0 = SA_loop(P0, n_iter, ref_path[n_iter - 1, :], kcX)
-#            coeffs_sum = np.sum(P0.coeffs.abs2())
-#            SA_valid = ((P0.err.abs2()  <= SA_err_sq * coeffs_sum)
-#                        & (coeffs_sum <= 1.e6)) # 1e6 to allow 
-#            if not(SA_valid):
-#                P0.coeffs = P_old0
-#                n_iter -=1
-#            if n_iter % 500 == 0:
-#                print("SA running", n_iter, "err: ", P0.err, "<<", np.sqrt(np.sum(P0.coeffs.abs2())))
+                                 SA_stop, ref_div_iter)
 
         # Storing results
         print("SA stop", n_iter, err)
@@ -468,13 +454,17 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             reason_div_glitch = 4
             glitch_off_last_iref = fssettings.glitch_off_last_iref
             no_SA = (SA_params is None)
-            dzndc_iter_1 = float(self.dx) # TODO need adaptation if Xrange
-            
+#            dzndc_iter_1 = np.array([float(self.dx)]) # need adaptation if Xrange
+#            if self.Xrange_complex_type:
+#                dzndc_iter_1 = fsx.mpc_to_Xrange(
+#                        self.dx,
+#                        dtype=self.base_complex_type
+#                )
+
             interior_detect_activated = (
                 interior_detect 
                 and (self.dx > fssettings.newton_zoom_level)
             )
-                
 
             @numba.njit
             def numba_impl(Z, U, c, stop_reason, n_iter, SA_iter,
@@ -492,10 +482,12 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                 3 -> glitched (Dynamic glitches...)
                 4 -> glitched (Ref point diverging  ...)
                 """
+                # This is an approximation as we do not store the ref pt
+                # derivatives - though, we have it through SA iterations
                 Z[dzndc] = 2. * (ref_path[zn] * Z[dzndc] + Z[zn] * Z[dzndc])
 
                 if no_SA and (n_iter == 1):
-                    Z[dzndc] = dzndc_iter_1 # Heuristic to 'kick-off'
+                    Z[dzndc] = 2. * Z[zn] # Exact term needed to 'kick-off'
 
                 if interior_detect_activated and (n_iter > 1): # SA_iter +1
                     Z[dzndz] = 2. * (Z[zn] * Z[dzndz]) # + ref_path[zn] * Z[dzndz] +
@@ -522,7 +514,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
 
                 ZZ = Z[zn] + ref_path_next[zn]
                 if Xrange_complex_type:
-                    full_sq_norm = ZZ.abs2()
+                    full_sq_norm = fsxn.extended_abs2(ZZ)
                 else:
                     full_sq_norm = ZZ.real**2 + ZZ.imag**2
 
@@ -530,12 +522,16 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                 bool_infty = (full_sq_norm > M_divergence_sq)
                 if bool_infty:
                     stop_reason[0] = reason_M_divergence
-    
+
                 # Glitch detection
                 if glitch_off_last_iref and last_iref:
                     return
 
-                ref_sq_norm = ref_path_next[zn].real**2 + ref_path_next[zn].imag**2
+                if Xrange_complex_type:
+                    ref_sq_norm = fsxn.extended_abs2(ref_path_next[zn])
+                else:
+                    ref_sq_norm = (ref_path_next[zn].real**2
+                                   + ref_path_next[zn].imag**2)
 
                 # Flagged as "dynamic glitch"
                 bool_glitched = (full_sq_norm  < (ref_sq_norm * glitch_eps_sq))
@@ -756,13 +752,20 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
 
 
 @numba.njit
-def SA_run(SA_loop, P0, n_iter, ref_path, kcX, SA_err_sq, SA_stop):
-
-    max_iter = ref_path.shape[0] # full precision max iter
+def SA_run(SA_loop, P0, n_iter, ref_path, kcX, SA_err_sq, SA_stop,
+           ref_div_iter):
+    """
+    SA_stop : user-provided max SA iter. If -1, will default to ref_path length
+    ref_div_iter : point where Reference point DV
+    """
     if SA_stop == -1:
-        SA_stop = max_iter
+        SA_stop = ref_div_iter
     else:
-        SA_stop = min(max_iter, SA_stop)
+        SA_stop = min(ref_div_iter, SA_stop)
+        
+    print_freq = max(5, int(SA_stop / 100000.))
+    print_freq *= 1000
+    print("Output every", print_freq)
 
     SA_valid = True
     while SA_valid:
@@ -785,7 +788,7 @@ def SA_run(SA_loop, P0, n_iter, ref_path, kcX, SA_err_sq, SA_stop):
             P0_ret = fsx.Xrange_polynomial(P_old0, P0.cutdeg)
             n_iter -= 1
 
-        if n_iter % 5000 == 0 and SA_valid:
+        if n_iter % print_freq == 0 and SA_valid:
             ssum = np.sqrt(coeffs_sum)
             print("SA running", n_iter, "err: ", P0.err,
                   "<< [(", ssum.mantissa, ",", ssum.exp, ")]")

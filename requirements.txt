@@ -3,5 +3,7 @@ mpmath>=1.1.0
 gmpy2
 numba>=0.52.0
 Pillow
-PyQt5==5.15.4
+PyQt5>=5.15.4
 tox>=3.24.0
+Cython>=0.29.24
+

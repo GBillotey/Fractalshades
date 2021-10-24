@@ -34,8 +34,11 @@ interrupted = False
 # Minimal zoom level for activating Newton search
 newton_zoom_level = 1.e-8
 
-# Veto all Newton iterations
+# Veto all Newton iterations- keep the ref point as is
 no_newton = False
+
+# Outputs a synthesis files of the calculation done
+inspect_calc = False
 
 # figures : module-level container used if output_mode == "Pillow"
 # -> the output images are stagged and not directly written to disk.
