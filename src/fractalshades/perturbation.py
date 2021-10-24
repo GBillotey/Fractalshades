@@ -34,6 +34,7 @@ directory : str
     Path for the working base directory
         """
         super().__init__(directory)
+        
 
     @fsutils.zoom_options
     def zoom(self, *,
@@ -78,6 +79,16 @@ directory : str
         self.dx = mpmath.mpf(dx)
         # Lazzy dictionary of reference point pathes
         self._ref_array = {}
+
+    @property
+    def Xrange_Z_path(self):
+        """ Return whether the full precision orbit shall be exported to 
+        Xrange datatype """
+        if self.base_complex_type == np.complex128:
+            return (self.dx < 1.e-300 or self.Xrange_complex_type)
+        else:
+            raise NotImplementedError(self.base_complex_type)
+
 
     def diff_c_chunk(self, chunk_slice, iref, calc_name,
                      ensure_Xr=False):
@@ -710,6 +721,8 @@ directory : str
         # Initialise the path and ref point
         FP_params, ref_path = self.reload_ref_point(iref, calc_name)
         ref_div_iter = FP_params.get("div_iter", FP_params["max_iter"]) #2**63 - 1) # max int64
+        if (self.Xrange_Z_path) and not(self.Xrange_complex_type):
+            ref_path = ref_path.to_standard()
         
         print("###### datatype", c.dtype, Z.dtype)
 
@@ -842,7 +855,7 @@ directory : str
         FP_array = self.FP_init()()# copy.copy(FP_params["init_array"])
 
 
-        if not(self.Xrange_complex_type):
+        if not(self.Xrange_Z_path):
             Z_path = np.empty(
                 [max_iter + 1, len(FP_codes)],
                 dtype=self.base_complex_type)
@@ -866,7 +879,7 @@ directory : str
                 print("##### Full precision loop diverging at iter", div_iter)
                 break
 
-            if not(self.Xrange_complex_type): 
+            if not(self.Xrange_Z_path): 
                 Z_path[n_iter, :] = np.array(FP_array)
             else:
                 for i, _ in enumerate(FP_codes):
