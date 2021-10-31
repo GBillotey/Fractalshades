@@ -4,6 +4,7 @@ import numbers
 import re
 import mpmath
 
+#import time
 
 def mpc_to_Xrange(mpc, dtype=np.complex128):
     """ Convert a mpc complex to a Xrange array"""
@@ -12,18 +13,40 @@ def mpc_to_Xrange(mpc, dtype=np.complex128):
     float_type = select[np.dtype(dtype)]
     mpcx_m, mpcx_exp = mpmath.frexp(mpc.real)
     mpcy_m, mpcy_exp = mpmath.frexp(mpc.imag)
-    return Xrange_array._build_complex(
-               Xrange_array(
-                   np.array(mpcx_m, float_type),
-                   np.array(mpcx_exp, np.int32)),
-               Xrange_array(
-                   np.array(mpcy_m, float_type),
-                   np.array(mpcy_exp, np.int32)))
+    mpcx_m = float_type(mpcx_m)
+    mpcy_m = float_type(mpcy_m)
+
+    if (mpcx_exp >  mpcy_exp):
+        m = mpcx_m + 1j * np.ldexp(mpcy_m, mpcy_exp - mpcx_exp)
+        exp = mpcx_exp
+    elif (mpcx_exp <  mpcy_exp):
+        m = 1j * mpcy_m + np.ldexp(mpcx_m, mpcx_exp - mpcy_exp)
+        exp = mpcy_exp
+    else:
+        m = mpcx_m + 1j * mpcy_m
+        exp = mpcx_exp
+    
+    return Xrange_array(m, np.int32(exp))
+                        #np.array(exp, np.int32))
+
+#    b = Xrange_array._build_complex(
+#               Xrange_array(
+#                   np.array(mpcx_m, float_type),
+#                   np.array(mpcx_exp, np.int32)),
+#               Xrange_array(
+#                   np.array(mpcy_m, float_type),
+#                   np.array(mpcy_exp, np.int32)))
+#    print(a)
+#    print(b)
+#    if str(time.time())[13] == 0:
+#        raise ValueError()
+#    return b
 
 def mpf_to_Xrange(mpf, dtype=np.float64):
-    """ Convert a mpc complex to a Xrange array"""
+    """ Convert a mpc float to a Xrange array"""
     mpf_m, mpf_exp = mpmath.frexp(mpf)
-    return Xrange_array(np.array(mpf_m, dtype), np.array(mpf_exp, np.int32))
+    return Xrange_array(dtype(mpf_m), np.int32(mpf_exp))
+            # np.array(mpf_m, dtype), np.array(mpf_exp, np.int32))
 
 def Xrange_to_mpfc(arr):
     """ Convert a Xrange array of size-1 to a mpf or mpc"""

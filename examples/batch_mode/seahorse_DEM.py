@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-======================
-Seahorse basic example
-======================
+====================
+Seahorse DEM example
+====================
 
-This basic example shows how to create a color layer, displaying the 
-"continuous iteration number" for Mandelbrot (power 2) fractal.
+This example shows how to create a color layer, displaying the 
+distance estimation for Mandelbrot (power 2) fractal.
 
 The location is a shallow one in the main Seahorse valley.
 """
@@ -18,12 +18,14 @@ import fractalshades.models as fsm
 import fractalshades.colors as fscolors
 from fractalshades.postproc import (
     Postproc_batch,
+    DEM_pp,
     Continuous_iter_pp,
     Raw_pp,
 )
 from fractalshades.colors.layers import (
     Color_layer,
     Bool_layer,
+    Virtual_layer,
 )
 
 def plot(plot_dir):
@@ -35,10 +37,10 @@ def plot(plot_dir):
     x = -0.746223962861
     y = -0.0959468433527
     dx = 0.00745
-    nx = 1600
+    nx = 2400
 
     calc_name="mandelbrot"
-    colormap = fscolors.cmap_register["classic"]
+    colormap = fscolors.cmap_register["valensole"]
 
     # Run the calculation
     f = fsm.Mandelbrot(plot_dir)
@@ -47,7 +49,7 @@ def plot(plot_dir):
     f.base_calc(
         calc_name=calc_name,
         subset=None,
-        max_iter=1000,
+        max_iter=20000,
         M_divergence=100.,
         epsilon_stationnary= 0.001,
         datatype=np.complex128)
@@ -57,20 +59,23 @@ def plot(plot_dir):
     # Plot the image
     pp = Postproc_batch(f, calc_name)
     pp.add_postproc("cont_iter", Continuous_iter_pp())
+    pp.add_postproc("DEM", DEM_pp())
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
 
     plotter = fs.Fractal_plotter(pp)
     plotter.add_layer(Bool_layer("interior", output=False))
+    
+    plotter.add_layer(Virtual_layer("cont_iter", func=None, output=False))
     plotter.add_layer(Color_layer(
-            "cont_iter",
-            func="np.log(x)",
+            "DEM",
+            func="x",
             colormap=colormap,
-            probes_z=[1., 2.],
-            probes_kind="absolute",
+            probes_z=[0.5, 1.5],
+            probes_kind="relative",
             output=True
     ))
 
-    plotter["cont_iter"].set_mask(
+    plotter["DEM"].set_mask(
             plotter["interior"],
             mask_color=(0., 0., 0.)
     )

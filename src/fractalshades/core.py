@@ -33,7 +33,18 @@ class _Pillow_figure:
         self.pnginfo = pnginfo
 
     def save_png(self, im_path):
-        self.img.save(im_path, format="png", pnginfo=self.pnginfo)
+        """
+        Saves as a png with Lanczos antialiasing if exceeds the max width
+        """
+        im = self.img
+        width, height = im.size
+        max_width = fs.settings.output_context["doc_max_width"]
+        
+        if width > max_width:
+            ratio = float(width) / float(max_width)
+            new_height = int(height / ratio)
+            im = im.resize((max_width, new_height), PIL.Image.LANCZOS)
+        im.save(im_path, format="png", pnginfo=self.pnginfo)
 
 
 class Fractal_plotter:
@@ -578,8 +589,8 @@ advanced users when subclassing.
 
     @property
     def base_float_type(self):
-        select = {np.dtype(np.complex64): np.dtype(np.float32),
-                  np.dtype(np.complex128): np.dtype(np.float64)}
+        select = {np.dtype(np.complex64): np.float32,
+                  np.dtype(np.complex128): np.float64}
         return select[np.dtype(self.base_complex_type)]
 
     @property    
@@ -987,6 +998,7 @@ advanced users when subclassing.
             (c, Z, U, stop_reason, stop_iter, n_stop, bool_active,
              index_active, n_iter, SA_iter, ref_div_iter, ref_path
              ) = self.init_cycling_arrays(chunk_slice, SA_params)
+            # print("n_iter, SA_iter, ref_div_iter", n_iter, SA_iter, ref_div_iter)
         modified_in_cycle = np.copy(bool_active)
 
         iterate = self._iterate
@@ -1212,14 +1224,22 @@ advanced users when subclassing.
             chunk_mask, Z, U, stop_reason, stop_iter = self.reload_data(
                 chunk_slice)
             # Outputs a summary of the stop iter
+            has_item = (stop_iter.size != 0)
+            
+#            print("len(stop_iter)" , len(stop_iter),  stop_iter.shape, "\n" , stop_iter)
             for j, it in enumerate(stop_ITEMS):
-                if it == "min_stop_iter":
+                if it == "min_stop_iter" and has_item:
                     stop_report[i, j] = np.min(stop_iter)
-                elif it == "max_stop_iter":
+                elif it == "max_stop_iter" and has_item:
                     stop_report[i, j] = np.max(stop_iter)
-                elif it == "mean_stop_iter":
+                elif it == "mean_stop_iter" and has_item:
                     stop_report[i, j] = int(np.mean(stop_iter))
+                else:
+                    stop_report[i, j] = -1
+
             # Outputs a summary of the stop reason
+            if (stop_reason.size == 0): # Nothing to report
+                continue
             max_chunk_reason = np.max(stop_reason)
             for r in range(len(reason_ITEMS), max_chunk_reason + 1):
                 reason_ITEMS += ["reason_" + str(r)]

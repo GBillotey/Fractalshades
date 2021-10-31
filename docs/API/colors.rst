@@ -16,5 +16,4 @@ tones), a few examples of the :doc:`../examples/index` use it.
    :caption: Contents:
 
    colors/Fractal_colormap
-   colors/constants
 

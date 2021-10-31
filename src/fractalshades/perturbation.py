@@ -335,9 +335,9 @@ directory : str
             try:
                 SA_params = self.reload_SA(self.iref, calc_name)
             except FileNotFoundError:
-                        # Initialise the path and ref point
+                # Initialise the path and ref point
                 ref_div_iter = FP_params0.get("div_iter",
-                                              FP_params0["max_iter"]) 
+                                              FP_params0["max_iter"] + 1) # TODO  +1 ??
                 SA_params = self.series_approx(self.SA_init(), self.SA_loop(),
                     SA_params, self.iref, ref_div_iter, calc_name)
                 self.save_SA(SA_params, self.iref, calc_name)
@@ -489,7 +489,7 @@ directory : str
                             SA_params["cutdeg"] = cutdeg_glitch
                         
                         ref_div_iter = FP_params.get("div_iter",
-                                                      FP_params["max_iter"]) 
+                                                     FP_params["max_iter"] + 1) 
                         SA_params = self.series_approx(self.SA_init(),
                             self.SA_loop(), SA_params, self.iref, ref_div_iter,
                             calc_name)
@@ -720,7 +720,7 @@ directory : str
 
         # Initialise the path and ref point
         FP_params, ref_path = self.reload_ref_point(iref, calc_name)
-        ref_div_iter = FP_params.get("div_iter", FP_params["max_iter"]) #2**63 - 1) # max int64
+        ref_div_iter = FP_params.get("div_iter", FP_params["max_iter"] + 1) #2**63 - 1) # max int64
         if (self.Xrange_Z_path) and not(self.Xrange_complex_type):
             ref_path = ref_path.to_standard()
         
@@ -728,6 +728,7 @@ directory : str
 
         return (c, Z, U, stop_reason, stop_iter, n_stop, bool_active,
              index_active, n_iter, SA_iter, ref_div_iter, ref_path)
+
 
 
     def ensure_ref_point(self, FP_loop, max_iter, calc_name,

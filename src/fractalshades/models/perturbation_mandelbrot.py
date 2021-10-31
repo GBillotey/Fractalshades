@@ -361,8 +361,10 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                           else 1.e-3)
         self.glitch_eps = glitch_eps
 
+        complex_codes = ["zn", "dzndz"]
+        if calc_dzndc:
+            complex_codes += ["dzndc"]
 
-        complex_codes = ["zn", "dzndz", "dzndc"]
         int_codes = ["iref"]  # reference FP
         stop_codes = ["max_iter", "divergence", "stationnary",
                       "dyn_glitch", "divref_glitch"]
@@ -431,7 +433,8 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         # Defines initialize via a function factory
         def initialize():
             def func(Z, U, c, chunk_slice, iref):
-                Z[2, :] = 0.
+                if calc_dzndc:
+                    Z[2, :] = 0.
                 Z[1, :] = 1.
                 Z[0, :] = 0.
                 U[0, :] = iref
@@ -455,12 +458,6 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             reason_div_glitch = 4
             glitch_off_last_iref = fssettings.glitch_off_last_iref
             no_SA = (SA_params is None)
-#            dzndc_iter_1 = np.array([float(self.dx)]) # need adaptation if Xrange
-#            if self.Xrange_complex_type:
-#                dzndc_iter_1 = fsx.mpc_to_Xrange(
-#                        self.dx,
-#                        dtype=self.base_complex_type
-#                )
 
             interior_detect_activated = (
                 interior_detect 
@@ -490,7 +487,8 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                             ref_path[zn] * Z[dzndc] + Z[zn] * Z[dzndc]
                     )
                     if no_SA and (n_iter == 1):
-                        Z[dzndc] = 2. * Z[zn] # Exact term needed to 'kick-off'
+                        # Non-null term needed to 'kick-off'
+                        Z[dzndc] = 1.
 
                 # Interior detection - Currently only at low zoom level
                 if interior_detect_activated and (n_iter > 1):

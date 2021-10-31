@@ -37,27 +37,31 @@ from fractalshades.colors.layers import (
 
 
 def plot(plot_dir):
-    fs.settings.enable_multiprocessing = False
+    fs.settings.enable_multiprocessing = True
     fs.settings.inspect_calc = True
     # A simple showcase using perturbation technique
     x = "-1.768667862837488812627419470"
     y = "0.001645580546820209430325900"
     dx = "16.e-22"
     precision = 30
-    nx = 800
-    xy_ratio = 2.0
+    nx = 3200
+    xy_ratio = 16. / 9.
 
     calc_name="mandelbrot"
     
-    c3 = np.array([125, 225, 255]) / 255.
-    c0 = np.array([1, 254, 255]) / 255.
-    c1 = c0 * 0.01
+    cmap_choice = 2
+    if cmap_choice == 1:
+        c3 = np.array([125, 225, 255]) / 255.
+        c0 = np.array([1, 254, 255]) / 255.
+        c1 = c0 * 0.01
 
-    colors = np.vstack((c0[np.newaxis, :],
-                        c1[np.newaxis, :],
-                        c3[np.newaxis, :]))
-    colormap = fscolors.Fractal_colormap(kinds="Lch", colors=colors,
-         grad_npts=200, grad_funcs="x**0.5", extent="mirror")
+        colors = np.vstack((c0[np.newaxis, :],
+                            c1[np.newaxis, :],
+                            c3[np.newaxis, :]))
+        colormap = fscolors.Fractal_colormap(kinds="Lch", colors=colors,
+             grad_npts=200, grad_funcs="x**0.5", extent="mirror")
+    elif cmap_choice == 2:
+        colormap = fscolors.cmap_register["autumn"]
 
     # Run the calculation
     f = fsm.Perturbation_mandelbrot(plot_dir)
@@ -72,7 +76,7 @@ def plot(plot_dir):
             antialiasing=False)
 
     f.calc_std_div(
-            datatype=("Xrange", np.complex128), # ("Xrange", np.complex128),
+            datatype=np.complex128, # ("Xrange", np.complex128),
             calc_name=calc_name,
             subset=None,
             max_iter=200000,
@@ -103,7 +107,7 @@ def plot(plot_dir):
             func="np.log(x)",
             colormap=colormap,
             #probes_z=[0.095, 0.11],
-            probes_z=[0.07, 0.075],
+            probes_z=[9.015, 9.035],
             probes_kind="absolute",
             output=True
     ))
@@ -113,33 +117,32 @@ def plot(plot_dir):
 
     # This is the line where we indicate that coloring is a combination of
     # "Continuous iteration" and "fieldines values"
-    plotter["cont_iter"].set_twin_field(plotter["fieldlines"], 0.0001)
+    plotter["cont_iter"].set_twin_field(plotter["fieldlines"], 0.00004)
 
-    plotter.plot()
     # This is where we define the lighting (here 3 ccolored light sources)
     # and apply the shading
-    light = Blinn_lighting(0.2, np.array([1., 1., 1.]))
+    light = Blinn_lighting(0.3, np.array([1., 1., 1.]))
     light.add_light_source(
         k_diffuse=0.2,
-        k_specular=200.,
+        k_specular=400.,
         shininess=1400.,
         angles=(45., 20.),
         coords=None,
-        color=np.array([1.0, 1.0, 0.5]))
+        color=np.array([0.9, 0.9, 0.9]))
+#    light.add_light_source(
+#        k_diffuse=1.,
+#        k_specular=0.,
+#        shininess=0.,
+#        angles=(-905., 20.),
+#        coords=None,
+#        color=np.array([1., 1., 0.8]))
     light.add_light_source(
-        k_diffuse=1.,
-        k_specular=0.,
-        shininess=0.,
-        angles=(-905., 20.),
+        k_diffuse=0.8,
+        k_specular=2.,
+        shininess=400.,
+        angles=(55., 20.),
         coords=None,
-        color=np.array([1., 1., 0.8]))
-    light.add_light_source(
-        k_diffuse=1.,
-        k_specular=0.,
-        shininess=0.,
-        angles=(-15., 20.),
-        coords=None,
-        color=np.array([1., 1., 0.5]))
+        color=np.array([1., 1., 1.0]))
     plotter["cont_iter"].shade(plotter["DEM_map"], light)
     plotter.plot()
 
