@@ -25,4 +25,5 @@ examples/**/*.*
 docs/examples/
 docs/_build/
 !docs/_templates
+!src/fractalshades/colors/colormap_templates.py
 
