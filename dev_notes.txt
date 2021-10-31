@@ -208,6 +208,9 @@ https://setuptools.pypa.io/en/latest/userguide/datafiles.html
 https://amir.rachum.com/blog/2017/07/28/python-entry-points/
 
 
+https://qastack.fr/ubuntu/308128/failed-to-load-platform-plugin-xcb-while-launching-qt5-app-on-linux-without
+
+
 
 
  
