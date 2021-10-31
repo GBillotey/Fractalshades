@@ -38,9 +38,9 @@ def plot(plot_dir):
     x = -0.746223962861
     y = -0.0959468433527
     dx = 0.00745
-    nx = 800
+    nx = 2400
     calc_name="mandelbrot"
-    colormap = fscolors.classic_colormap
+    colormap = fscolors.cmap_register["stellar"]
 
     # Run the calculation
     f = fsm.Mandelbrot(plot_dir)
@@ -61,7 +61,7 @@ def plot(plot_dir):
     pp.add_postproc("cont_iter", Continuous_iter_pp())
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
     pp.add_postproc("fieldlines",
-                Fieldlines_pp(n_iter=4, swirl=1., damping_ratio=0.1))
+                Fieldlines_pp(n_iter=4, swirl=1., damping_ratio=0.9))
 
     plotter = fs.Fractal_plotter(pp)   
     plotter.add_layer(Bool_layer("interior", output=False))
@@ -69,7 +69,7 @@ def plot(plot_dir):
             "cont_iter",
             func="np.log(x)",
             colormap=colormap,
-            probes_z=[1., 2.],
+            probes_z=[2., 6.],
             probes_kind="absolute",
             output=True
     ))
@@ -78,7 +78,7 @@ def plot(plot_dir):
 
     # This is the line where we indicate that coloring is a combination of
     # "Continuous iteration" and "fieldines values"
-    plotter["cont_iter"].set_twin_field(plotter["fieldlines"], 0.15)
+    plotter["cont_iter"].set_twin_field(plotter["fieldlines"], 0.1)
     plotter.plot()
 
 

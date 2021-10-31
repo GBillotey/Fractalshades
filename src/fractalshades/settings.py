@@ -25,7 +25,9 @@ HIST_BINS = 100
 # at each GUI plot
 output_context = {
     "doc": False,
-    "gui_iter": 0
+    "gui_iter": 0,
+    "doc_max_width": 800,
+    "doc_data_dir": None
 }
 
 # Signal to interrupt a calculation

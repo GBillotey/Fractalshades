@@ -40,9 +40,9 @@ def plot(plot_dir):
     x = -0.746223962861
     y = -0.0959468433527
     dx = 0.00745
-    nx = 800
+    nx = 2400
     calc_name="mandelbrot"
-    colormap = fscolors.classic_colormap
+    colormap = fscolors.cmap_register["sunset"]
 
     # Run the calculation
     f = fsm.Mandelbrot(plot_dir)

@@ -53,14 +53,13 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
     def test_M2_E20(self):
         """
         Testing all datatype options, 5e-20 test case."""
-        # TODO: KNOWN fail: ("Xrange", np.complex128) 
         x, y = "-1.74928893611435556407228", "0."
         dx = "5.e-20"
         precision = 30
         nx = 600
         test_name = self.test_M2_E20.__name__
 
-        for complex_type in [np.complex128]: #, ("Xrange", np.complex128)]:
+        for complex_type in [np.complex128, ("Xrange", np.complex128)]:
             if type(complex_type) is tuple:
                 _, base_complex_type = complex_type
                 calc_name = "Xr_" + np.dtype(base_complex_type).name
@@ -76,7 +75,6 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 pp.add_postproc(layer_name, Continuous_iter_pp())
                 pp.add_postproc("interior", Raw_pp("stop_reason",
                                        func=lambda x: np.isin(x, [0, 2])))
-#                pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
                 pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
                 
                 plotter = fs.Fractal_plotter(pp)   
@@ -131,6 +129,10 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         test_name = self.test_M2_int_E11.__name__
         complex_type = np.complex128
 
+        # DEBUG point :
+        fs.settings.enable_multiprocessing = True
+        fs.settings.inspect_calc = True
+
         for SA_params in [{"cutdeg": 64, "cutdeg_glitch": 8},
                           {"cutdeg": 8, "cutdeg_glitch": 8},
                           None]:
@@ -149,7 +151,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 pp.add_postproc("interior", Raw_pp("stop_reason",
                                        func=lambda x: np.isin(x, [0, 2])))
                 pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
-                
+
                 plotter = fs.Fractal_plotter(pp)   
                 plotter.add_layer(Bool_layer("interior", output=False))
                 plotter.add_layer(Normal_map_layer("DEM_map", max_slope=45, output=True))
@@ -182,7 +184,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                     )
                 plotter[layer_name].shade(plotter["DEM_map"], light)
                 plotter.plot()
-                
+
                 self.layer = plotter[layer_name]
                 self.test_name = test_name
                 self.check_current_layer()
@@ -371,6 +373,10 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         """
         test_name = self.test_glitch_dyn.__name__
         calc_name = "flake"
+        
+        # DEBUG point :
+        fs.settings.enable_multiprocessing = True
+        fs.settings.inspect_calc = True
 
         x = "-1.99996619445037030418434688506350579675531241540724851511761922944801584242342684381376129778868913812287046406560949864353810575744772166485672496092803920095332"
         y = "0.00000000000000000000000000000000030013824367909383240724973039775924987346831190773335270174257280120474975614823581185647299288414075519224186504978181625478529"
@@ -457,17 +463,19 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
              projection="cartesian",
              antialiasing=antialiasing)
 
-        if calc_fast:
-            mandelbrot.calc_fast(
+        if calc_fast: 
+            mandelbrot.calc_std_div(
                 datatype=complex_type,
                 calc_name=calc_name,
                 subset=None,
                 max_iter=max_iter,
                 M_divergence=1.e3,
                 epsilon_stationnary=1.e-3,
+                interior_detect=False,
                 SA_params=SA_params,
                 glitch_eps=1.e-6,
-                glitch_max_attempt=glitch_max_attempt)
+                glitch_max_attempt=glitch_max_attempt,
+                calc_dzndc=False)
         else:
             mandelbrot.calc_std_div(
                 datatype=complex_type,
@@ -506,5 +514,5 @@ if __name__ == "__main__":
         runner.run(test_config.suite([Test_Perturbation_mandelbrot]))
     else:
         suite = unittest.TestSuite()
-        suite.addTest(Test_Perturbation_mandelbrot("test_glitch_divref"))
+        suite.addTest(Test_Perturbation_mandelbrot("test_glitch_dyn"))
         runner.run(suite)

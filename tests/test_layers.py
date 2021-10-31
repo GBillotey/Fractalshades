@@ -40,7 +40,9 @@ class Test_layers(unittest.TestCase):
     
     @classmethod
     def setUpClass(cls):
+        # DEBUG point :
         fs.settings.enable_multiprocessing = True
+        fs.settings.inspect_calc = True
 
         layer_dir = os.path.join(test_config.temporary_data_dir, "_layers_dir")
         fsutils.mkdir_p(layer_dir)
@@ -279,7 +281,7 @@ class Test_layers(unittest.TestCase):
         self.check_current_layer()
 
 
-    @test_config.no_stdout
+    test_config.no_stdout
     def test_overlay1(self):
         # lets do a second calculation for instance the interior points
         layer_name = "overlay1"
@@ -473,5 +475,5 @@ if __name__ == "__main__":
         runner.run(test_config.suite([Test_layers]))
     else:
         suite = unittest.TestSuite()
-        suite.addTest(Test_layers("test_curve"))
+        suite.addTest(Test_layers("test_overlay1"))
         runner.run(suite)

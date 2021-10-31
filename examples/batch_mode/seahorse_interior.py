@@ -47,11 +47,11 @@ def plot(plot_dir=None):
     x = -0.746223962861
     y = -0.0959468433527
     dx = 0.00745
-    nx = 800
+    nx = 2400
 
     calc_name="escaping"
-    colormap = fscolors.classic_colormap
-    colormap_int = fscolors.classic_colormap
+    colormap = fscolors.cmap_register["legacy"]
+    colormap_int = fscolors.cmap_register["legacy"]
 
     # Run the calculation
     f = fsm.Mandelbrot(plot_dir)

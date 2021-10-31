@@ -87,8 +87,8 @@ class Model(QtCore.QObject):
         # Sets an item value. keys iterable of nested keys
 #        setitem(functools.reduce(getitem, keys[:-1], self._model),
 #                keys[-1], val)
-        print("setitem", keys, val)
-        print("self[keys[:-1]]", self[keys[:-1]])
+#        print("setitem", keys, val)
+#        print("self[keys[:-1]]", self[keys[:-1]])
         setitem(self[keys[:-1]], keys[-1], val)
         # self.model_item_updated.emit(keys)
         # self.model_item_updated.emit(keys)
@@ -113,7 +113,7 @@ class Model(QtCore.QObject):
     @pyqtSlot(object)
     def setting_touched(self, setting_name):
         """ Reload setting with same value (side effect)"""
-#        print("SETTING TOUCHED SIDE EFFECT", setting_name)
+        print("SETTING SIDE EFFECT", setting_name)
 #        print("settings", self._settings)
         setting_val = self.setting(setting_name)
 #        print("val, key", self._settings[setting_name], setting_val)
@@ -122,7 +122,7 @@ class Model(QtCore.QObject):
 
     @pyqtSlot(object, object)
     def setting_modified(self, setting_name, setting_val):
-#        print("SETTING MODIFIEF", setting_name)
+        print("SETTING MODIFIED", setting_name)
         self.model_changerequest_event.emit(
                 self._settings[setting_name], setting_val)
 
@@ -130,7 +130,7 @@ class Model(QtCore.QObject):
     def model_notified_slot(self, keys, oldval, val):
         """ A change has been done in a model / submodel,
         need to notify the widgets (viewers) """
-        print("Model widget_modified", keys, oldval, val)
+        print("MODEL model_notified_slot") # , keys, oldval, val)
         # Here we could implement UNDO / REDO stack
         self.model_event.emit(keys, val)
 
@@ -583,7 +583,7 @@ class Colormap_presenter(Presenter):
 
         return fscolors.Fractal_colormap(**cmap_dic)
         self.build_dict()
-        print("cmap model_notification", self._keys)
+#        print("cmap model_notification", self._keys)
     
     def update_table(self, item):
         """ item : modified QTableWidgetItem """
@@ -593,18 +593,18 @@ class Colormap_presenter(Presenter):
 
         cmap_dic = self.cmap_dic
 
-        print("Table modified at", row, col) # 1 0 
-        print("new val", role, item.data(role)) # <PyQt5.QtGui.QColor object at 0x7fbd5d61bac0>
-        print(kwarg_key, cmap_dic)
+#        print("Table modified at", row, col) # 1 0 
+#        print("new val", role, item.data(role)) # <PyQt5.QtGui.QColor object at 0x7fbd5d61bac0>
+#        print(kwarg_key, cmap_dic)
         modified_kwarg = cmap_dic[kwarg_key]
-        print("tab init val", modified_kwarg) # array([[1.        , 0.82352941, 0.25882353],
+#        print("tab init val", modified_kwarg) # array([[1.        , 0.82352941, 0.25882353],
         #      [0.70980392, 0.15686275, 0.38823529]]
         data = item.data(role)
         if col == 0:
             modified_kwarg[row] = [data.redF(), data.greenF(), data.blueF()]
         else:
             modified_kwarg[row] = data
-        print("tab new val", modified_kwarg, data)
+#        print("tab new val", modified_kwarg, data)
         cmap_dic[kwarg_key] = modified_kwarg
         # Color, kind, grad_pts, grad_func
         return fscolors.Fractal_colormap(**cmap_dic)

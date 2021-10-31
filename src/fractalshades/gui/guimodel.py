@@ -4,6 +4,7 @@ import typing
 import dataclasses
 import math
 import os
+import copy
 # import datetime
 import time
 # import textwrap
@@ -31,6 +32,7 @@ from PyQt5.QtWidgets import (
     QMainWindow,
     QWidget,
     QDialog,
+    QInputDialog,
     QAction,
     QDockWidget,
     QPushButton,
@@ -118,6 +120,20 @@ QDockWidget::title {
     background: #25272C;
 }
 """
+
+GROUP_BOX_CSS = """
+QGroupBox{{
+    border:1px solid {0};
+    border-radius:5px;margin-top: 1ex;
+}}
+QGroupBox::title{{
+    subcontrol-origin: margin;
+    subcontrol-position:top left;
+    left: 15px;
+}}
+"""
+
+
 
 # QLineEdit
 PARAM_LINE_EDIT_CSS = """
@@ -1092,6 +1108,8 @@ class Qcmap_editor(QWidget):
     std_flags = (Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsEditable)
     unvalidated_flags = (Qt.ItemIsEnabled  | Qt.ItemIsEditable)
     locked_flags = (Qt.ItemIsEnabled)
+    
+    cmap_table_attr = [ "colors","kinds", "grad_npts", "grad_funcs"]
 
     def __init__(self, parent, cmap_presenter):
         super().__init__(parent)        
@@ -1115,6 +1133,13 @@ class Qcmap_editor(QWidget):
 
         self.cmap_user_modified.connect(cmap_presenter.cmap_user_modified_slot)
         self._model.model_event.connect(self.model_event_slot)
+        
+        # Machinery for efficient table update
+        self.cmap_update_lock = False
+        self.cmap_need_update = 0
+        self.old_cmap = copy.copy(self._presenter.cmap)
+
+
 
     @property
     def _cmap(self):
@@ -1232,10 +1257,39 @@ class Qcmap_editor(QWidget):
             )
 
             self.freeze_row(n_rows - 1, range(1, 4))
+        self.old_cmap = copy.copy(self._presenter.cmap)
+
+    def match_old_val(self, val, irow, old_col_vals):
+        """ Return True if the value has not been modifed """
+        if old_col_vals is None:
+            return False
+        if irow == (len(old_col_vals) - 1):
+            # always update the last row
+            return False
+        try:
+            old_val = old_col_vals[irow]
+        except IndexError:
+            # Update if we have a new row
+            return False
+        if isinstance(val, (np.ndarray)):
+            # special case of RGB cells
+            return np.all(val == old_val)
+        return val == old_val
+
 
     def populate_column(self, col, row_range, role, tab, val_func, flags=None):
+        
+        try:
+            old_col_vals = getattr(self.old_cmap, self.cmap_table_attr[col])
+        except AttributeError:
+            old_col_vals = None
+        
         for irow in row_range:
             val = tab[irow]
+            # to speed up we have to explicitely track the modifications
+            if self.match_old_val(val, irow, old_col_vals):
+                continue
+
             val = val_func(val)
             item = self._table.item(irow, col)
             if item is None:
@@ -1243,8 +1297,6 @@ class Qcmap_editor(QWidget):
                 self._table.setItem(irow, col, item)
             if flags is not None:
                 item.setFlags(flags)
-            if col == 3:
-                print("populate role", role, val, type(val))
             item.setData(role, val)
 
     def freeze_row(self, row, col_range):
@@ -1256,7 +1308,8 @@ class Qcmap_editor(QWidget):
 
 
     def event_filter(self, source, val):
-        print("event", source, val)
+        # event handling on _table.itemChanged.connect
+
         if source in ["size", "extent"]:
             self.cmap_user_modified.emit(source, val)
         elif source == "table":
@@ -1264,23 +1317,23 @@ class Qcmap_editor(QWidget):
             row, col = val.row(), val.column()
 
             if col == 0:
-                self.cmap_user_modified.emit(source, val)
-                return
-            delegate = self._table.itemDelegateForColumn(col)
-
-            if delegate is None:
-                raise RuntimeError()
-
-            model = self._table.model()
-            index = model.index(row, col) 
-            validated = delegate.validate(index)
+                # No validation needed, as values are selected programmatically
+                validated = True
+            else:
+                # Need delegate validation
+                delegate = self._table.itemDelegateForColumn(col)
+                model = self._table.model()
+                index = model.index(row, col) 
+                validated = delegate.validate(index)
 
             if validated:
-                # make sure that the normal flags are activateed (selection
+                # make sure that the normal flags are activated (selection
                 # allowed)
                 with QtCore.QSignalBlocker(self._table):
                     val.setFlags(self.std_flags)
+                
                 self.cmap_user_modified.emit(source, val)
+                
             else:
                 # Invalid value, the event is not emited
                 # Prevent the cell from being selected, to display the "red" bg
@@ -1291,8 +1344,9 @@ class Qcmap_editor(QWidget):
             raise ValueError(source)
 
     def model_event_slot(self, keys, val):
-        print("In Qcmap_editor model event filter", keys, val,
-              self._presenter._mapping["Colormap_presenter"])
+        print("Qcmap_editor model_event_slot")
+#        print("In Qcmap_editor model event filter", keys, val,
+#              self._presenter._mapping["Colormap_presenter"])
         if keys == self._presenter._mapping["Colormap_presenter"]:
             # Sets the value of the sub-widgets according to the smodel
             print("populate & update !")
@@ -1833,11 +1887,13 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
 #==============================================================================
 
 class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
+    model_changerequest = pyqtSignal(object, object)
     param_user_drawn= pyqtSignal(object) # (px1, py1, px2, px2)
     # zoom_params = ["x", "y", "dx", "xy_ratio"]
 
     def __init__(self, parent, file_path): # im=None):#, xy_ratio=None):
         super().__init__(parent)
+        self.setWindowTitle("Cmap creator: from image")
         self.file_path = file_path
 
         # Sets Image
@@ -1855,21 +1911,27 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
         self._line = None
         self._line_under = None
         self.object_max_pts = 2
-        
+
         # Sets layout, with only one Widget, the image itself
         self._layout = QVBoxLayout(self)
         self.setLayout(self._layout)
         self._layout.addWidget(self._view, stretch=1)
         self._layout.addWidget(self.add_param_box(), stretch=0)
         self._layout.addWidget(self.add_cmap_box(), stretch=0)
-        
+        self._layout.addWidget(self.add_action_box(), stretch=0)
+
         # Event binding
         self._n_grad.valueChanged.connect(self.update_cmap)
         self._n_pts.valueChanged.connect(self.update_cmap)
         self._kind.currentTextChanged.connect(self.update_cmap)
         self._go.clicked.connect(self.display_cmap_code)
+        self._push.clicked.connect(self.push_to_param)
+        
+        # Signal / slot
+        self.model_changerequest.connect(
+                parent._model.model_changerequest_slot)
 
-    
+
     def set_im(self):
         self._qim = QGraphicsPixmapItem(QtGui.QPixmap.fromImage(
                 QtGui.QImage(self.file_path)))
@@ -1909,15 +1971,32 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
         kind_layout.addWidget(self._kind)
         param_layout.addLayout(kind_layout)
 
+
+        action_box = QGroupBox("Parameters")
+        action_box.setLayout(param_layout)
+        self.set_border_style(action_box)
+
+        return action_box
+
+    def add_action_box(self):
+        action_layout = QHBoxLayout()
+
         go_layout = QVBoxLayout()
         go = QLabel("Gradient code:")
         self._go = QPushButton("Export")
         go_layout.addWidget(go)
         go_layout.addWidget(self._go)
-        param_layout.addLayout(go_layout)
+        action_layout.addLayout(go_layout)
 
-        action_box = QGroupBox("Parameters")
-        action_box.setLayout(param_layout)
+        push_layout = QVBoxLayout()
+        push = QLabel("Gradient to param:")
+        self._push = QPushButton("Push")
+        push_layout.addWidget(push)
+        push_layout.addWidget(self._push)
+        action_layout.addLayout(push_layout)
+
+        action_box = QGroupBox("Actions")
+        action_box.setLayout(action_layout)
         self.set_border_style(action_box)
 
         return action_box
@@ -1929,7 +2008,37 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
         ce.set_text(str_args)
         ce.setWindowTitle("Fractal code")
         ce.exec()
+
+    def push_to_param(self):
+        """ Try to push to a colormap param if there is one """
+        sign = inspect.signature(self.parent()._gui._func)
         
+        # fd["n_params"] = len(sign.parameters.items())
+        cmap_params_index = dict()
+        for i_param, (name, param) in enumerate(sign.parameters.items()):
+            print(i_param, name, param.annotation)
+            if param.annotation is fs.colors.Fractal_colormap:
+                cmap_params_index[name] = i_param
+        
+        print(len(cmap_params_index), cmap_params_index)
+
+        if len(cmap_params_index) == 0:
+            raise RuntimeError("No fs.colors.Fractal_colormap parameter")
+
+        elif len(cmap_params_index) == 1:
+            i_param = next(iter(cmap_params_index.values()))
+        else:
+            params = list(cmap_params_index.keys())
+            param, ok = QInputDialog.getItem(self, "Select parameter", 
+                "available parameters", params, 0, False)
+            if ok and param:
+                 i_param = cmap_params_index[param]
+            else:
+                return
+
+        self.model_changerequest.emit(("func", (i_param, 0, "val")),
+                                      self._cmap)
+
 
     def add_cmap_box(self):
         cmap_layout = QHBoxLayout()
@@ -1945,12 +2054,7 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
 
     def set_border_style(self, gb):
         """ adds borders to an action box"""
-        gb.setStyleSheet(
-            "QGroupBox{border:1px solid #646464;"
-                + "border-radius:5px;margin-top: 1ex;}"
-            + "QGroupBox::title{subcontrol-origin: margin;"
-                + "subcontrol-position:top left;" #padding:-6 3px;"
-                + "left: 15px;}")# ;
+        gb.setStyleSheet(GROUP_BOX_CSS.format("#32363F"))
 
     def cancel_drawing_line(self):
         # Removes the objects
@@ -1988,11 +2092,12 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
         
 
     def update_cmap(self):
-        # Update the CMAP here
-        if not(hasattr(self, "validated_object_pos")):
-            return # Nothing to update
-        (pos0, pos1) = self.validated_object_pos
 
+        if not(hasattr(self, "validated_object_pos")):
+            # Nothing to update
+            return
+
+        (pos0, pos1) = self.validated_object_pos
         x0, y0 = pos0.x(), pos0.y()
         x1, y1 = pos1.x(), pos1.y()
         n_grad, npts = self._n_grad.value(), self._n_pts.value()
@@ -2001,8 +2106,6 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
         x = np.linspace(x0, x1, n_grad + 1)
         y = np.linspace(y0, y1, n_grad + 1)
         colors = self.interpolate(x, y) / 255.
-
-#        print("cmap rbg", colors)
 
         # Creates the new cmap widget, replace the old one (in-place)
         self._cmap = fscolors.Fractal_colormap(
@@ -2019,7 +2122,6 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
 
     def interpolate(self, x, y):
         return self.im_interpolator.interpolate(x, y)
-
 
     def draw_object(self):
         """ Draws the selection rectangle """
@@ -2250,6 +2352,7 @@ class Fractal_GUI:
 #        self._fractal = inspect.signature(func).parameters.values().next()
         print("_fractal", self._fractal)
 #        self._view = view
+        
 
     def connect_image(self, image_param="calc_name"):
         self._image = image_param

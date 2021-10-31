@@ -219,6 +219,11 @@ numpydoc_show_class_members = False
 import sphinx_gallery
 # We will not write to disk but feed fractalshades_scraper
 fractalshades.settings.output_context["doc"] = True 
+fractalshades.settings.output_context["doc_max_width"] = 800 
+source_dir = os.path.dirname(os.path.realpath(__file__))
+fractalshades.settings.output_context["doc_data_dir"] = (
+    os.path.join(source_dir, html_static_path[0])
+)
 
 # https://sphinx-gallery.github.io/stable/advanced.html?highlight=scrapers#example-2-detecting-image-files-on-disk
 def fractalshades_scraper(block, block_vars, gallery_conf):

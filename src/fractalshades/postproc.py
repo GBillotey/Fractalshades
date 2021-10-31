@@ -412,37 +412,37 @@ class Fieldlines_pp(Postproc):
 
         return val, {}
 
-class TIA_pp(Postproc):
-    def __init__(self, n_iter=5):
-        """ Triangular average inequality - TODO """
-        super().__init__()
-        self.n_iter = n_iter
-
-    def __getitem__(self, chunk_slice):
-        """  Returns 
-        """
-        nu_frac = self.ensure_context("nu_frac") #- 2
-        potential_dic = self.ensure_context("potential_dic")
-        d = potential_dic["d"]
-        a_d = potential_dic["a_d"]
-
-        (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-            termination_dic) = self.raw_data# (chunk_slice)
-        zn = Z[complex_dic["zn"], :]
-        c = np.ravel(self.fractal.c_chunk(chunk_slice))
-
-        if potential_dic["kind"] == "infinity":
-            val = None
-            raise NotImplementedError("TODO LIST")
-
-        elif potential_dic["kind"] == "convergent":
-            raise NotImplementedError()
-        else:
-            raise ValueError(
-                "Unsupported potential '{}' for field lines".format(
-                        potential_dic["kind"]))
-
-        return val, {}
+#class TIA_pp(Postproc):
+#    def __init__(self, n_iter=5):
+#        """ Triangular average inequality - TODO """
+#        super().__init__()
+#        self.n_iter = n_iter
+#
+#    def __getitem__(self, chunk_slice):
+#        """  Returns 
+#        """
+#        nu_frac = self.ensure_context("nu_frac") #- 2
+#        potential_dic = self.ensure_context("potential_dic")
+#        d = potential_dic["d"]
+#        a_d = potential_dic["a_d"]
+#
+#        (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
+#            termination_dic) = self.raw_data# (chunk_slice)
+#        zn = Z[complex_dic["zn"], :]
+#        c = np.ravel(self.fractal.c_chunk(chunk_slice))
+#
+#        if potential_dic["kind"] == "infinity":
+#            val = None
+#            raise NotImplementedError("TODO LIST")
+#
+#        elif potential_dic["kind"] == "convergent":
+#            raise NotImplementedError()
+#        else:
+#            raise ValueError(
+#                "Unsupported potential '{}' for field lines".format(
+#                        potential_dic["kind"]))
+#
+#        return val, {}
 
 class DEM_normal_pp(Postproc):
     field_count = 2
@@ -581,7 +581,8 @@ class DEM_pp(Postproc):
             The Continuous iteration number  shall have been calculated before
             in the same `Postproc_batch`
         """
-        super().__init__(px_snap)
+        self.px_snap = px_snap
+        super().__init__()
 
     def __getitem__(self, chunk_slice):
         """  Returns the DEM - """
@@ -601,10 +602,19 @@ class DEM_pp(Postproc):
             dzrdc = Z[complex_dic["dzrdc"], :]
             val = np.abs((zr - zn) / (dzrdc - dzndc))
 
+        else:
+            raise ValueError(potential_dic["kind"])
+            
+#        print("val before\n", val)
+#        px = self.fractal.dx / float(self.fractal.nx)
+#        val = val / px
+#        print("dx nx ps", self.fractal.dx, float(self.fractal.nx), px)
+#        print("val after\n", val)
+#        raise ValueError()
+
         px_snap = self.px_snap
         if px_snap is not None:
-            px = self.dx / float(self.nx)
-            val = np.where(val < px * px_snap, 0., val)
+            val = np.where(val < px_snap, 0., val)
 
         return val, {}
 

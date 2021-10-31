@@ -26,6 +26,7 @@ This package relies on the following dependencies:
 - gmpy2_
 - Pillow_
 - PyQt5_
+- pygments_
 
 .. _numpy: https://numpy.org/
 .. _numba: http://numba.pydata.org/
@@ -34,6 +35,7 @@ This package relies on the following dependencies:
 .. _Pillow: https://pillow.readthedocs.io/en/stable/
 .. _PyQt5: https://pypi.org/project/PyQt5/
 .. _PyPI: https://pypi.org/
+.. _pygments: https://pygments.org/
 
 They should install automatically through `pip`. A special case is gmpy2 as it
 needs the most recent versions of GMP, MPFR and MPC multi-precision
