@@ -8,7 +8,6 @@ from numpy.lib.format import open_memmap
 
 import PIL
 import PIL.ImageQt
-import os
 
 import fractalshades.numpy_utils.expr_parser as fs_parser
 import fractalshades.colors as fscolors
@@ -147,11 +146,17 @@ class Virtual_layer:
         """
         (ix, ixx, iy, iyy) = chunk_slice
         plotter = self.plotter
-        mmap = open_memmap(filename=plotter.temporary_mmap_path(), mode='r')
+        if plotter.has_memmap:
+            mmap = open_memmap(filename=plotter.temporary_mmap_path(),
+                               mode='r')
+        else:
+            mmap = self.plotter._RAM_data
+        arr = np.empty((ixx - ix, iyy - iy), mmap.dtype)
+
         postname = self.postname
         try:
             rank = list(plotter.postnames).index(postname)
-            arr = mmap[rank, ix:ixx, iy:iyy]
+            arr[:] = mmap[rank, ix:ixx, iy:iyy]
         except ValueError:
             # Could happen that we need 2 fields (e.g., normal map...)
             if postname not in self.plotter.postnames_2d:
@@ -161,7 +166,9 @@ class Virtual_layer:
             if rank2 != rank + 1:
                 raise ValueError("x y coords not contiguous for postname: "
                                  "{}".format(postname))
-            arr = mmap[rank:rank+2, ix:ixx, iy:iyy]
+            
+            arr = np.empty((2, ixx - ix, iyy - iy), mmap.dtype)
+            arr[:] = mmap[rank:rank+2, ix:ixx, iy:iyy]
         return arr
 
     def update_scaling(self, chunk_slice):

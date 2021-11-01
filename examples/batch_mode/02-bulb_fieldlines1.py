@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-======================
-Seahorse basic example
-======================
+=======================================
+Bulb fieldlines example "tint_or_shade"
+=======================================
 
-This basic example shows how to create a color layer, displaying the 
-"continuous iteration number" for Mandelbrot (power 2) fractal.
+This example shows one of the ways to plot fieldlines: here the fieldlines 
+values are used to modify the original layer colors : they are tinted or
+shaded.
 
-The location is a shallow one in the main Seahorse valley.
+The location is around the 1/3 main bulb.
 """
 
 import os
@@ -19,26 +20,29 @@ import fractalshades.colors as fscolors
 from fractalshades.postproc import (
     Postproc_batch,
     Continuous_iter_pp,
+    Fieldlines_pp,
     Raw_pp,
 )
 from fractalshades.colors.layers import (
     Color_layer,
     Bool_layer,
+    Grey_layer,
+    Overlay_mode
 )
 
 def plot(plot_dir):
     """
-    A very simple example: full view of the Mandelbrot set with escape-time
-    coloring
+    Using field lines : a shallow zoom in the Seahorses valley
+    Coloring based on continuous iteration
+    Colors 'tinted or shaded' by the fieldliles
     """
     # Define the parameters for this calculation
-    x = -0.746223962861
-    y = -0.0959468433527
-    dx = 0.00745
-    nx = 1600
-
+    x = -0.10658790036
+    y = 0.96946619217
+    dx = 0.6947111395902539
+    nx = 2400
     calc_name="mandelbrot"
-    colormap = fscolors.cmap_register["classic"]
+    colormap = fscolors.cmap_register["sunset"]
 
     # Run the calculation
     f = fsm.Mandelbrot(plot_dir)
@@ -47,34 +51,36 @@ def plot(plot_dir):
     f.base_calc(
         calc_name=calc_name,
         subset=None,
-        max_iter=1000,
+        max_iter=5000,
         M_divergence=100.,
         epsilon_stationnary= 0.001,
         datatype=np.complex128)
-    # f.clean_up(calc_name) 
+    # f.clean_up(calc_name) # keep this line if you want to force recalculate
     f.run()
 
     # Plot the image
     pp = Postproc_batch(f, calc_name)
     pp.add_postproc("cont_iter", Continuous_iter_pp())
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
+    pp.add_postproc("fieldlines",
+                Fieldlines_pp(n_iter=4, swirl=1., damping_ratio=0.1))
 
-    plotter = fs.Fractal_plotter(pp)
+    plotter = fs.Fractal_plotter(pp)   
     plotter.add_layer(Bool_layer("interior", output=False))
     plotter.add_layer(Color_layer(
             "cont_iter",
             func="np.log(x)",
             colormap=colormap,
-            probes_z=[1., 2.],
+            probes_z=[7.1181349, 12.71208],
             probes_kind="absolute",
             output=True
     ))
-
-    plotter["cont_iter"].set_mask(
-            plotter["interior"],
-            mask_color=(0., 0., 0.)
-    )
-    
+    plotter.add_layer(Grey_layer("fieldlines", func=None, output=False))
+    plotter["cont_iter"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
+    # This is the lines where we indicate that coloring is shaded or tinted
+    # depending on "fieldines" values
+    overlay_mode = Overlay_mode("tint_or_shade", pegtop=1.)
+    plotter["cont_iter"].overlay(plotter["fieldlines"], overlay_mode)
     plotter.plot()
 
 

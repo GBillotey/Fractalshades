@@ -1,24 +1,43 @@
 # -*- coding: utf-8 -*-
 """
-General settings for the package
+General settings at application-level
 """
 import sys
 
 # this is a pointer to the module object instance itself.
 this = sys.modules[__name__]
 
+enable_multiprocessing = True
+"""Turn on or off multiprocessing (useful for debugging purpose)"""
 
-enable_multiprocessing = True # True
+optimize_RAM = True
+"""If true, memory mappings will be used not only during calculation but also
+at post-processing stage. This obviously is at the detriment of speed
+but will avoid memory errors for very large images or on system with low RAM.
+"""
+
 skip_calc = False
+"""If True, no calculation "loop" will be performed. Only the data already
+calculated will be post-processed"""
 
-# Glitch correction off for last reference point run.
+newton_zoom_level = 1.e-8
+""" Minimal zoom level for activating Newton search. For lower zooms, a fixed
+critical point will be used (0. for mandelbrot)"""
+
+no_newton = False
+""" Veto all Newton iterations- keep the ref point as is for the full precision
+iterations (usually the center of the image). Useful when the center
+coordinates of a deep zoom are already known."""
+
+inspect_calc = False
+""" Outputs a synthesis files of the calculation done. Useful for debugging"""
+
 glitch_off_last_iref = True
+"""Turns glitch correction off for last reference point run."""
 
-# size of the basic calculation 'tile' is chunk_size x chunk_size
 chunk_size = 200
+"""The size for the basic calculation tile is chunk_size x chunk_size"""
 
-# Number of bins for plots
-HIST_BINS = 100
 
 # output_context: "doc" True if we are building the doc (Pillow output)
 # "gui_iter" 0 if not in GUI loop otherwise, start at 1 and increment
@@ -30,20 +49,12 @@ output_context = {
     "doc_data_dir": None
 }
 
-# Signal to interrupt a calculation
+# Signal to interrupt a calculation (during GUI)
 interrupted = False
-
-# Minimal zoom level for activating Newton search
-newton_zoom_level = 1.e-8
-
-# Veto all Newton iterations- keep the ref point as is
-no_newton = False
-
-# Outputs a synthesis files of the calculation done
-inspect_calc = False
 
 # figures : module-level container used if output_mode == "Pillow"
 # -> the output images are stagged and not directly written to disk.
+# This is used when building the documentation
 figures = list()
 
 def add_figure(fig):

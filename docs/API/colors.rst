@@ -6,10 +6,11 @@ Color mapping
 This section describe the objects provided to map reals to colors.
 
 `Fractal_colormap` objects are usually defined through the GUI interface
-(which can export them to python human-readable input format).
+(which import them from a picture, and also  export them to a python
+human-readable input source code).
 
-For convenience, a `classic_colormap` is provided (blue and orange-brown
-tones), a few examples of the :doc:`../examples/index` use it.
+For convenience, a few template colomaps are provided (blue and orange-brown
+tones), see the full list under :doc:`../examples/index`.
 
 .. toctree::
    :maxdepth: 1

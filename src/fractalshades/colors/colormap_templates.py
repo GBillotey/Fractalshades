@@ -1911,6 +1911,26 @@ cmap_citrus = fscolors.Fractal_colormap(
     extent='repeat'
 )
 
+
+cmap_argon = fscolors.Fractal_colormap(
+    colors=[
+     [0.01568627, 0.        , 0.12156863],
+     [0.14509804, 0.00392157, 0.31372549],
+     [0.27843137, 0.00784314, 0.50196078],
+     [0.40784314, 0.01176471, 0.69411765],
+     [0.54901961, 0.05490196, 0.74901961],
+     [0.69019608, 0.11764706, 0.74509804],
+     [0.83137255, 0.17647059, 0.74117647],
+     [0.93333333, 0.29019608, 0.76078431],
+     [0.95294118, 0.50588235, 0.83137255],
+     [0.97254902, 0.72156863, 0.90588235],
+     [0.98039216, 0.82745098, 0.94117647]],
+    kinds='Lch',
+    grad_npts=32,
+    grad_funcs='x',
+    extent='mirror'
+)
+
 # To import a cmap one shall do:
 # import fractalshades.colors as fscolors
 # fscolors.cmap_register.keys()
@@ -1923,19 +1943,6 @@ cmap_register = {
     "autumn": cmap_autumn,
     "valensole": cmap_valensole,
     "stellar": cmap_stellar,
-    "citrus": cmap_citrus
+    "citrus": cmap_citrus,
+    "argon": cmap_argon
 }
-    
-
-
-#if __name__ == "__main__":
-#    # Some magic to get the directory for plotting: with a name that matches
-#    # the file or a temporary dir if we are building the documentation
-#    try:
-#        realpath = os.path.realpath(__file__)
-#        plot_dir = os.path.splitext(realpath)[0]
-#        plot_cmaps(plot_dir)
-#    except NameError:
-#        import tempfile
-#        with tempfile.TemporaryDirectory() as plot_dir:
-#            plot_cmaps(plot_dir)

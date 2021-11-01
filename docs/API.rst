@@ -9,9 +9,11 @@ Ins this section you will find the detailed documentation of the API:
     :caption: Contents:
 
     API/core.rst
+    API/settings.rst
     API/models.rst
     API/postproc.rst
     API/layers.rst
     API/colors.rst
+    API/GUI.rst
 
 

@@ -80,9 +80,70 @@ functionality:
     Common post-processing routines are available, they are listed under
     the :doc:`API/postproc` section.
 
-  - In order to explore a fractal and select a location, a GUI is necessary.
-    Fractalshades comes with a very flexible and user-configurable graphical
-    interface based on PyQt5 framework.
+  - In order to explore a fractal and select a location, a graphical
+    user interface is necessary.
+    Fractalshades comes with a small yey  flexible and user-configurable
+    GUI based on PyQt5 framework.
+
+You can also directly start exploring with the interactive script provided
+in the example section
+:doc:`/examples/interactive_mode/run_interactive`.
+
+Graphical user interface
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+As explained above, the GUI is launched by running a python scipt from an
+interpretor. You should get something similar to :
+
+.. image:: _static/GUI_overview.png
+
+The following main components can be seen:
+
+  - in yellow, the main **toolbar**. The `tools` section provides:
+       
+       - A png tag reader, which can open an image created by fractalshades
+         and output the list of parameters used for the computation (each
+         image file produced by the programm is tagged with useful information
+         like the location of the image, the program version,  the calculation
+         parameters used) 
+       - A png to colormap converter : load an image, draw a line on it : the
+         colors will be used to create a colormap
+
+
+  - in blue, the **parameters** window. The used parameters and their types
+    are
+    parsed from the python script, and a tailored editor is proposed based on
+    the type (see `fractalshades.gui.Fractal_GUI` for details). The editor
+    might be a simple text box, or for more complex objects
+    a full pop-up or a dockable window.
+    
+      - Among these, 4 parameters which define the zoom will respond to
+        the mouse events on the fractal image panel (`x`, `y`, `xy_ratio`,
+        and the arbitrary precision in digits `dps`).
+      - To view the scipt source code, click on "Show source".
+      - To view the current value of the parameters, click on "Show params"
+      - To actually run the script, click on "run".
+      - On-going calculation can be also interrupted, this will become
+        effective just after the current tile calculation is completed
+        (allowing to display an intermediate result).
+
+
+  - in red, the **fractal image** panel. It displays the last computed image
+    (it is empty if no calculation has been run).
+    It provides 3 kinds of user-interaction:
+
+      - wheeling zooms / unzooms the static image
+      - with a right-click you define a new zoom area that can be used for
+        next calculation
+      - with a left-click, you can run some of the methods of the
+        `fractalshades.Fractal` object (these are its methods tagged with a
+        special decorator: `@fractalshades.utils.interactive_options`),
+        the coordinates of the click will be passed.
+        Current implementation of the deep zoom mandelbrot gives access to
+        the coordinates, the cycle order, and a Newton search for nucleus.
+
+  - in green, the **info** panel. It gives the current mouse position and
+    zoom level (from the image panel).
 
 
 

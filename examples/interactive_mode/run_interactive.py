@@ -4,7 +4,9 @@
 Mandelbrot arbitrary-precision explorer
 =======================================
 
-This is a simple template to start exploring the Mandelbrot set.
+This is a simple template to start exploring the Mandelbrot set with
+the GUI.
+Good exploration !
 """
 
 import numpy as np
@@ -22,13 +24,11 @@ from fractalshades.postproc import (
     Continuous_iter_pp,
     DEM_normal_pp,
     Raw_pp,
-    Fieldlines_pp
 )
 from fractalshades.colors.layers import (
     Color_layer,
     Bool_layer,
     Normal_map_layer,
-    Virtual_layer,
     Blinn_lighting
 )
 
@@ -38,20 +38,11 @@ def plot(plot_dir):
     Example interactive
     """
     import mpmath
-#    import numpy as np
-#    import fractalshades as fs
-#    import fractalshades.models as fsm
-#    import fractalshades.colors as fscolors
+
     x = '-1.0'
     y = '-0.0'
     dx = '5.0'
     calc_name = 'test'
-#    x = '-1.3946566098506499504829799455764876353014024400777060452537569774'
-#    y = '0.015824206635236152220786654128816548666412248773926125324037648824'
-#    dx = '1.062240111665733e-55'
-#    x = "-1.3946566098506499504829799455764876353014024400777060452613826135087015500753"
-#    y = "0.015824206635236152220786654128816548666412248773926125317532981685511096081278"
-#    dx = "5.866507293156746e-67"
     
     xy_ratio = 1.0
     dps = 77
@@ -60,17 +51,13 @@ def plot(plot_dir):
     interior_detect = True
     epsilon_stationnary = 0.0001
     
-#    colormap = fscolors.Fractal_colormap(colors=colors, kinds="Lab", 
-#         grad_npts=200, grad_funcs="x", extent="mirror")
     colormap = fscolors.cmap_register["classic"]
 
-    
     probes_zmax = 0.15
 
     # Set to True to enable multi-processing
     settings.enable_multiprocessing = True
-    
-    # test_dir = os.path.dirname(plot_dir)
+
     directory = plot_dir
     fractal = fsm.Perturbation_mandelbrot(directory)
     
@@ -88,7 +75,6 @@ def plot(plot_dir):
              probes_zmax: float=probes_zmax,
              epsilon_stationnary: float=epsilon_stationnary,
              colormap: fscolors.Fractal_colormap=colormap):
-        
 
 
         fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
@@ -107,7 +93,6 @@ def plot(plot_dir):
 
         if fractal.res_available():
             print("RES AVAILABLE, no compute")
-            # fractal.clean_up(file_prefix)
         else:
             print("RES NOT AVAILABLE, clean-up")
             fractal.clean_up(calc_name)
@@ -133,7 +118,7 @@ def plot(plot_dir):
                 probes_kind="relative",
                 output=True))
         plotter[layer_name].set_mask(plotter["interior"],
-                                      mask_color=interior_color)
+                                     mask_color=interior_color)
 
         light = Blinn_lighting(0.2, np.array([1., 1., 1.]))
         light.add_light_source(
@@ -143,15 +128,7 @@ def plot(plot_dir):
             angles=(50., 50.),
             coords=None,
             color=np.array([1.0, 1.0, 0.9]))
-#        light.add_light_source(
-#            k_diffuse=0.,
-#            k_specular=1.5,
-#            shininess=350.,
-#            angles=(50., 40.),
-#            coords=None,
-#            color=np.array([1.0, 1.0, 0.9]),
-#            material_specular_color=np.array([1.0, 1.0, 1.0])
-#            )
+
         plotter[layer_name].shade(plotter["DEM_map"], light)
         plotter.plot()
         
@@ -169,13 +146,12 @@ def plot(plot_dir):
     gui.connect_image(image_param="calc_name")
     gui.connect_mouse(x="x", y="y", dx="dx", xy_ratio="xy_ratio", dps="dps")
     gui.show()
-   # gui.mainwin._func_wget.run_func()
-
 
 
 def _plot_from_data(plot_dir, static_im_link):
-    # Output from GUI might fail for the runner building the doc.
-    # Defaulting to static image if one is provided
+    # Private function only used when building fractalshades documentation
+    # Output from GUI might fail for the runner building the doc on github.
+    # -> Defaulting to a static image if one is provided
     import PIL
     data_path = fs.settings.output_context["doc_data_dir"]
     im = PIL.Image.open(os.path.join(data_path, static_im_link))
