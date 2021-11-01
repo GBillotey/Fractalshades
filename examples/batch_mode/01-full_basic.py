@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-======================
-Seahorse basic example
-======================
+=============================
+Full Mandelbrot basic example
+=============================
 
 This basic example shows how to create a color layer, displaying the 
 "continuous iteration number" for Mandelbrot (power 2) fractal.
