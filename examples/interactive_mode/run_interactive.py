@@ -157,6 +157,7 @@ def _plot_from_data(plot_dir, static_im_link):
     # Output from GUI might fail for the runner building the doc on github.
     # -> Defaulting to a static image if one is provided
     import PIL
+    import PIL.PngImagePlugin
     data_path = fs.settings.output_context["doc_data_dir"]
     im = PIL.Image.open(os.path.join(data_path, static_im_link))
     rgb_im = im.convert('RGB')

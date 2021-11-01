@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
-import sys
 import fnmatch
 import copy
-import tempfile
 import datetime
 import pickle
 import pathlib
@@ -12,6 +10,7 @@ import numpy as np
 from numpy.lib.format import open_memmap
 import mpmath
 import PIL
+import PIL.PngImagePlugin
 import numba
 
 import fractalshades as fs
