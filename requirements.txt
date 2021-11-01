@@ -1,7 +1,6 @@
-numpy>=1.19.3
+numba>=0.52.0
 mpmath>=1.1.0
 gmpy2
-numba>=0.52.0
 Pillow
 PyQt5>=5.15.4
 pygments>=2.9.0
