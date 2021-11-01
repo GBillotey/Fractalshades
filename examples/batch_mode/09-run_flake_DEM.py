@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-=============================
-DEM example with perturbation
-=============================
+====================
+A deeper DEM example
+====================
 
-This example shows how to create a color layer, displaying the 
-distance estimation for Mandelbrot (power 2) fractal.
+This example shows how to create a color layer which displays a 
+distance estimation from the Mandelbrot (power 2) fractal.
 
-The location, at 16.e-22, is below the reach of double, pertubation theory must
-be used.
+The location, at 1.8e-157, is well below the separation power of double,
+pertubation theory must be used.
 """
 
 import os
@@ -26,13 +26,10 @@ from fractalshades.postproc import (
     Continuous_iter_pp,
     Raw_pp,
     DEM_normal_pp,
-    # Fieldlines_pp,
 )
 from fractalshades.colors.layers import (
     Color_layer,
     Bool_layer,
-    # Blinn_lighting,
-    # Normal_map_layer,
     Virtual_layer,
 )
 
@@ -40,28 +37,19 @@ def plot(directory):
     """
     Example plot of distance estimation method
     """
-    # A simple showcas using perturbation technique
-    x = "-1.768667862837488812627419470"
-    y = "0.001645580546820209430325900"
-    dx = "16.e-22"
-    precision = 30
-    nx = 1600
+    # A simple showcase using perturbation technique
+    precision = 164
+    nx = 1800
+    x = '-1.99996619445037030418434688506350579675531241540724851511761922944801584242342684381376129778868913812287046406560949864353810575744772166485672496092803920095332'
+    y = '-0.00000000000000000000000000000000030013824367909383240724973039775924987346831190773335270174257280120474975614823581185647299288414075519224186504978181625478529'
+    dx = '1.8e-157'
 
-#    x = "-0.746223962861"
-#    y = "-0.0959468433527"
-#    dx = "0.00745"
-#    nx = 800
-
-    colormap = fscolors.cmap_register["autumn"]
+    colormap = fscolors.cmap_register["valensole"]
 
     # Set to True if you only want to rerun the post-processing part
     settings.skip_calc = False
     # Set to True to enable multi-processing
     settings.enable_multiprocessing = True
-
-#    xy_ratio = 1.0
-#    theta_deg = 0.
-    # complex_type = np.complex128
 
     f = fsm.Perturbation_mandelbrot(directory)
     f.zoom(precision=precision,
@@ -78,7 +66,7 @@ def plot(directory):
             datatype=np.complex128,
             calc_name="div",
             subset=None,
-            max_iter=50000, #00,
+            max_iter=1000000,
             M_divergence=1.e3,
             epsilon_stationnary=1.e-3,
             SA_params={"cutdeg": 8,
@@ -86,7 +74,7 @@ def plot(directory):
                        "SA_err": 1.e-4},
             glitch_eps=1.e-6,
             interior_detect=True,
-            glitch_max_attempt=2)
+            glitch_max_attempt=20)
 
     f.run()
     
@@ -99,22 +87,13 @@ def plot(directory):
     
     plotter = fs.Fractal_plotter(pp)   
     plotter.add_layer(Bool_layer("interior", output=False))
-#    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=True))
-#    plotter.add_layer(Color_layer(
-#            "DEM2",
-#            func="np.log(x)", #"np.log(np.log(x))",
-#            colormap=colormap,
-#            probes_z=[0.0, 1.0],
-#            probes_kind="relative",
-#            output=True
-#    ))
     plotter.add_layer(Virtual_layer("potential", func=None, output=False))
     plotter.add_layer(Color_layer(
             "DEM",
-            func="x",
+            func="np.log(x)",
             colormap=colormap,
-            probes_z=[0.5, 1.5],
-            probes_kind="relative",
+            probes_z=[0., 5.],
+            probes_kind="absolute",
             output=True
     ))
     plotter["DEM"].set_mask(

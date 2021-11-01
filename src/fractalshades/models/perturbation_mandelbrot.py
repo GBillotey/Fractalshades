@@ -64,7 +64,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         if order is None:
             return False, c
         if max_newton is None:
-            max_newton = max(mpmath.mp.dps, 50)
+            max_newton = 80 # max(mpmath.mp.dps, 50)
 #        if eps_cv is None:
 #            eps_cv = mpmath.mpf(2.)**(-mpmath.mp.prec)
         c_loop = c
@@ -108,7 +108,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         if order is None:
             return False, c
         if max_newton is None:
-            max_newton = max(mpmath.mp.dps, 50)
+            max_newton = 80 #max(mpmath.mp.dps, 50)
 #        if eps_cv is None:
 #            eps_cv = mpmath.mpf(2.)**(-mpmath.mp.prec)
         c_loop = c
@@ -257,28 +257,84 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         return SA_params
 
 
-#    def prepare_calc(self, *, kind: str, **kwargs): # TODO seems not really useful now, or move to ABC
-#        """
-#        Prepare the fractal parameters for a calculation run
-#        Should at least
-#
-#        call init_data_types with relevant parameters
-#
-#        Define the following attibutes :
-#        self.codes
-#        self.FP_codes
-#        self.FP_init
-#        self.FP_loop
-#        self.SA_init
-#        self.SA_loop
-#        self.initialize
-#        self.iterate
-#        self.glitch_stop_index
-#        self.glitch_sort_key
-#        
-#        """
-#        self.kind = kind
-#        return getattr(self, kind)(**kwargs)
+
+    @fsutils.interactive_options
+    def coords(self, x, y, pix, dps):
+        """ x, y : coordinates of the event """
+        x_str = str(x)
+        y_str = str(y)
+        res_str = f"""
+coords = {{
+    "x": "{x_str}"
+    "y": "{y_str}"
+}}
+"""
+        return res_str
+        
+
+    @fsutils.interactive_options
+    def ball_method_order(self, x, y, pix, dps,
+                          maxiter: int=100000,
+                          radius_pixels: int=25):
+        """ x, y : coordinates of the event """
+        c = x + 1j * y
+        radius = pix * radius_pixels
+        M_divergence = 1.e3
+        order = self._ball_method1(c, radius, maxiter, M_divergence)
+
+        x_str = str(x)
+        y_str = str(y)
+        radius_str = str(radius)
+        res_str = f"""
+ball_order = {{
+    "x": "{x_str}",
+    "y": "{y_str}",
+    "maxiter": {maxiter},
+    "radius_pixels": {radius_pixels},
+    "radius": "{radius_str}",
+    "M_divergence": {M_divergence},
+    "order": {order}
+}}
+"""
+        return res_str
+
+
+    @fsutils.interactive_options
+    def newton_search(self, x, y, pix, dps,
+                          order: int=1):
+        """ x, y : coordinates of the event """
+        c = x + 1j * y
+        
+        newton_cv = False
+        xn_str = ""
+        yn_str = ""
+        max_attempt = 2
+        attempt = 0
+        while not(newton_cv) and attempt < max_attempt:
+            attempt += 1
+            dps = int(1.5 * dps)
+            print("Newton, dps boost to: ", dps)
+            with mpmath.workdps(dps):
+                newton_cv, c_loop = self.find_nucleus(
+                        c, order, max_newton=None, eps_cv=None)
+                if newton_cv:
+                    xn_str = str(c_loop.real)
+                    yn_str = str(c_loop.imag)
+
+        x_str = str(x)
+        y_str = str(y)
+
+        res_str = f"""
+newton_search = {{
+    "x_start": "{x_str}",
+    "y_start": "{y_str}",
+    "order": {order}
+    "x_nucleus": "{xn_str}",
+    "y_nucleus": "{yn_str}",
+}}
+"""
+        return res_str
+
 
 
     @fsutils.calc_options

@@ -1468,7 +1468,8 @@ class Zoomable_Drawer_mixin:
         elif source is self._view.viewport():
             # Catch context menu
             if type(event) == QtGui.QContextMenuEvent:
-                return self.on_context_menu(event)
+                # return self.on_context_menu(event)
+                return True
             elif event.type() == QtCore.QEvent.Wheel:
                 return self.on_wheel(event)
             elif event.type() == QtCore.QEvent.ToolTip:
@@ -1512,7 +1513,7 @@ class Zoomable_Drawer_mixin:
             return
         rect = QtCore.QRectF(self._qim.pixmap().rect())
         if not rect.isNull():
-            #        # always scrollbars off
+            # always scrollbars off
             self._view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             self._view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             
@@ -1536,13 +1537,17 @@ class Zoomable_Drawer_mixin:
     def on_viewport_mouse(self, event):
 
         if event.type() == QtCore.QEvent.GraphicsSceneMouseMove:
-            # print("viewport_mouse")
             self.on_mouse_move(event)
             return True
 
         elif (event.type() == QtCore.QEvent.GraphicsSceneMousePress
               and event.button() == Qt.LeftButton):
             self.on_mouse_left_press(event)
+            return True
+        
+        elif (event.type() == QtCore.QEvent.GraphicsSceneMousePress
+              and event.button() == Qt.RightButton):
+            self.on_mouse_right_press(event)
             return True
 
         elif (event.type() == QtCore.QEvent.GraphicsSceneMouseDoubleClick
@@ -1560,7 +1565,6 @@ class Zoomable_Drawer_mixin:
         if self.is_locked:
             return
         self._drawing = True
-#        self._dragging_object = False
         self._object_pos += (event.scenePos(),)
         if len(self._object_pos) == self.object_max_pts:
             self._drawing = False
@@ -1571,10 +1575,13 @@ class Zoomable_Drawer_mixin:
         """ Double-left-clicking finishes editing """
         if self.is_locked:
             return
-        # self._object_pos += (event.scenePos(),)
         self._drawing = False
         self.publish_object()
         self._object_pos = tuple()
+
+    def on_mouse_right_press(self, event):
+        pass
+
 
     def on_mouse_move(self, event):
         """ 
@@ -1586,12 +1593,6 @@ class Zoomable_Drawer_mixin:
         if self._drawing:
             self._object_drag = event.scenePos()
             self.draw_object()
-#            self.draw_rect(self._rect_pos0, self._rect_pos1)
-
-#    @property
-#    def object_max_pts(self):
-#        """ Maximal number of points to define an object """
-#        raise NotImplementedError("Derived classes should implement")
 
     def publish_object(self):
         """ Object has been drawn """
@@ -1645,20 +1646,109 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         self.reset_im()
         
         # Publish / subscribe signals with the submodel
-        # self.zoom_user_modified.connect(self._model.)
         self._model.model_event.connect(self.model_event_slot)
 
         
-    def on_context_menu(self, event):
+    def on_mouse_right_press(self, event):
+        """ Interactive menu with all the defined "interactive_options"
+        """
+        f = self._presenter["fractal"]
+        methods = fs.utils.interactive_options.methods(f.__class__)
+        pos = event.scenePos()
+
         menu = QMenu(self)
-        NoAction = QAction("Does nothing", self)
-        menu.addAction(NoAction)
-        NoAction.triggered.connect(self.doesnothing)
-        menu.popup(self._view.viewport().mapToGlobal(event.pos()))
+        for m in methods:
+            action = QAction(m, self)
+            menu.addAction(action)
+            action.triggered.connect(functools.partial(
+                    self.on_fractal_method, f, m, pos))
+        menu.popup(event.screenPos())
+
         return True
 
-    def doesnothing(self, event):
-        print("voili voilou")
+    def on_fractal_method(self, f, m_name, pos, evt):
+        """ Runs the selected method of the fractal, passing the event coords
+        """
+        px = pos.x()
+        py = pos.y()
+        ref_zoom = self._fractal_zoom_init.copy()
+
+        nx = ref_zoom["nx"]
+        ny = ref_zoom["ny"]
+        dx = mpmath.mpf(ref_zoom["dx"])
+        pix = dx / float(ref_zoom["nx"])
+        with mpmath.workdps(6):
+            # Sets the working dps to 10e-8 x pixel size
+            dps = int(-mpmath.log10(pix / nx) + 8)
+
+        with mpmath.workdps(dps):
+            dx = mpmath.mpf(ref_zoom["dx"])
+            x_center = mpmath.mpf(ref_zoom["x"])
+            y_center = mpmath.mpf(ref_zoom["y"])
+            
+            pix = dx / float(ref_zoom["nx"])
+            center_off_px = px - 0.5 * nx
+            center_off_py = 0.5 * ny - py
+            x = x_center + center_off_px * pix
+            y = y_center + center_off_py * pix
+
+            def thread_job(**kwargs):
+                res = getattr(f, m_name)(x, y, pix, dps, **kwargs)
+                self.on_fractal_result(m_name, res)
+
+            self._view.setCursor(QtGui.QCursor(Qt.WaitCursor))
+
+            suppl_kwargs = self.method_kwargs(f, m_name)
+            if suppl_kwargs is None:
+                self._view.setCursor(QtGui.QCursor(Qt.CrossCursor))
+            else:
+                threading.Thread(target=thread_job,
+                                 kwargs=suppl_kwargs).start()
+            
+
+    def method_kwargs(self, f, m_name):
+        """ Collect the additionnal parameters that might be needed"""
+        f = getattr(f, m_name)
+        sign = inspect.signature(f)
+        
+        add_params = dict()
+        for i_param, (name, param) in enumerate(sign.parameters.items()):
+            print(i_param, name, param.annotation)
+            if name in ("x", "y", "pix", "dps"):
+                # These we already know them
+                continue
+            ptype = param.annotation
+            default = param.default
+
+            if ptype is int:
+                if default is inspect.Parameter.empty:
+                    default = 0
+                int_param, ok = QInputDialog.getInt(
+                None,
+                "Integer input for ball method",
+                f"Enter {name}",
+                value=default,
+                )
+                if ok:
+                    add_params[name] = int_param
+                else:
+                    return None # Cancel semaphore 
+            else:
+                raise ValueError(f"Unsupported type {ptype}")
+
+        return add_params
+
+
+
+    def on_fractal_result(self, m_name, res):
+
+        self._view.setCursor(QtGui.QCursor(Qt.CrossCursor))
+        
+        res_display = Fractal_code_editor()
+        res_display.set_text(res)
+        res_display.setWindowTitle(f"{m_name} results")
+        res_display.exec()
+        
 
     def pos_tracker(self, kind, val):
         """ Updated the displayed info """
@@ -1693,15 +1783,13 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         self._fractal_zoom_init["ny"] = ny
         self.validate()
 
-#        if self._qim is not None:
-#            self._group.removeFromGroup(self._qim)
         for item in [self._qim, self._rect, self._rect_under]:
             if item is not None:
                 self._group.removeFromGroup(item)
 
         if valid_image:
             self._qim = QGraphicsPixmapItem(QtGui.QPixmap.fromImage(
-                    QtGui.QImage(image_file)))#QtGui.QImage()))#imqt)) # QtGui.QImage(self._im)))
+                    QtGui.QImage(image_file)))
             self._qim.setAcceptHoverEvents(True)
             self._group.addToGroup(self._qim)
             self.fit_image()
@@ -2332,47 +2420,142 @@ class Fractal_MainWindow(QMainWindow):
         return self._model._register[register_key]
 
 
-    
-    
-#
-#if __name__ == "__main__":
-#    test_Inspector_widget()
 class Fractal_GUI:
     def __init__(self, func):
         """
-        *func* callable with signature (fractal, **kwargs). It shall
-               provide 'type hints' that are allowed by Func-widget. It will be
-               displayed interactively 
-        """
-#        self._fractal = fractal
+Parameters
+----------
+func : callable with signature (`fractalshades.Fractal`, ``**kwargs`` ). 
+    The function definition shall provide 'type hints' that will be used by the
+    the GUI to select / customize the appropriate editor.
+    Each parameter will be displayed interactively and will be editable.
+    The editor might be a simple text box, or for more complex objects
+    a full pop-up or a dockable window.
+    
+    One exception is the first parameter, which must be a
+    `fractalshades.Fractal` object and
+    will not be editable (it is not possible to change the fractal type during
+    a GUI-session)
+
+Notes
+-----     
+
+Theses notes give further details regarding the definition of the `func`
+parameter
+
+.. note::
+    
+    Regarding ``Type hints`` in python, for a full specification, please see
+    PEP_484_. For a simplified introduction to type hints, see PEP_483_.
+    Fractalshades only support a subset of these, details below.
+
+    .. _PEP_484: https://www.python.org/dev/peps/pep-0484/
+    .. _PEP_483: https://www.python.org/dev/peps/pep-0483/
+
+.. note::
+    
+    Currently the following parameters types are supported :
+        - `float`
+        - `int`
+        - `bool`
+        - `QtGui.QColor=(0., 0., 1.)` (RGB color)
+        - `QtGui.QColor=(0., 0., 1., 0)` (RGBA color)
+        - `fs.colors.Fractal_colormap`
+    
+    A parameter that the user will choose among a list of discrete values can
+    be represented by a `typing.Literal` :
+    
+    ::
+
+        listed: typing.Literal["a", "b", "c", 1, None]="c"
+    
+    Also, `typing.Union` or `typing.Optional` derived of supported  base types
+    are supported (in this case a combo box to chose one type among
+    those authorized be available):
+    
+    ::
+        
+        typing.Union[int, float, str]
+        typing.Optional[float]
+        
+        
+.. note::
+    
+    An example of a valid ``func`` parameter signature is show below:
+    
+    ::
+        
+        import typing
+        import fractalshades.models as fsm
+
+        def func(
+            fractal: fsm.Perturbation_mandelbrot=fractal,
+            calc_name: str=calc_name,
+            x: mpmath.mpf=x,
+            y: mpmath.mpf=y,
+            dx: mpmath.mpf=dx,
+            xy_ratio: float=xy_ratio,
+            dps: int= dps,
+            max_iter: int=max_iter,
+            optional_float: typing.Optional[float]=3.14159,
+            choices_str: typing.Literal["a", "b", "c"]="c",
+            nx: int=nx,
+            interior_detect: bool=interior_detect,
+            interior_color: QtGui.QColor=(0., 0., 1.),
+            transparent_color: QtGui.QColor=(0., 0., 1., 0.),
+            probes_zmax: float=probes_zmax,
+            epsilon_stationnary: float=epsilon_stationnary,
+            colormap: fscolors.Fractal_colormap=colormap
+        ):
+
+"""
+
         self._func = func
         param_names = inspect.signature(func).parameters.keys()
         param0 = next(iter(param_names))
         self._fractal = param0
-#        self._fractal = inspect.signature(func).parameters.values().next()
-        print("_fractal", self._fractal)
-#        self._view = view
-        
 
     def connect_image(self, image_param="calc_name"):
+        """
+Associate a image file with the GUI main diplay
+
+Parameters
+---------- 
+image_param: str
+    Name of the image file to display. This image file shall be created by the
+    function ``func`` in the same directory as the main script.
+        """
         self._image = image_param
 
     def connect_mouse(self, x="x", y="y", dx="dx", xy_ratio="xy_ratio",
                       dps="dps"):
         """
-        Connect specific parameters from self._view to the self._func kwargs
-        outputs is a list of 3 parameters names from func
-        inputs is a list of 1 parameters names from func
-        """
+Binds some parameters of the ``func`` passed to the
+`fractalshades.gui.Fractal_GUI` constructor with GUI mouse events.
+
+Parameters
+---------- 
+x: str
+    Name of the parameter holding the x-axis center of the image
+y: str
+    Name of the parameter holding the y-axis center of the image
+dx: str
+    Name of the parameter holding the x-axis width of the image
+xy_ratio: str
+    Name of the parameter holding the ratio width / height of the image
+dps: str
+    Name of the parameter holding the precision (for the mpmath arbitrary
+    precision)."""
         self._x, self._y, self._dx = x, y, dx
         self._xy_ratio, self._dps = xy_ratio, dps
 
     def show(self):
+        """
+        Launches the GUI mainloop.
+        """
         app = getapp()
         self.mainwin = Fractal_MainWindow(self)
-#        win = Mywindow()
         self.mainwin.show()
         fs.settings.output_context["gui_iter"] = 1
         app.exec()
-        print("exit mainloop")
         fs.settings.output_context["gui_iter"] = 0

@@ -5,7 +5,13 @@ Double embedded Julia set
 =========================
 Example plot a double-embedded Julia set in mandelbrot power-2
 
-This example even if not too deep is beyong the reach of double precision
+Embedded Julia sets are structures that occur around certain minibrots.
+When zooming deeper in the fractal, these structures stacks and become
+more and more complex.
+
+
+This example even if not too deep is beyong the separation power of double
+precision data type,
 [#f1]_, at *7e-22*. We will use a `Perturbation_mandelbrot` instance.
 
 
@@ -96,7 +102,7 @@ def plot(plot_dir):
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
     pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
     pp.add_postproc("fieldlines",
-                Fieldlines_pp(n_iter=8, swirl=0.4, damping_ratio=0.1))
+                Fieldlines_pp(n_iter=8, swirl=1., damping_ratio=0.3))
 
     plotter = fs.Fractal_plotter(pp)   
     plotter.add_layer(Bool_layer("interior", output=False))
@@ -106,8 +112,7 @@ def plot(plot_dir):
             "cont_iter",
             func="np.log(x)",
             colormap=colormap,
-            #probes_z=[0.095, 0.11],
-            probes_z=[9.015, 9.035],
+            probes_z=[9.015, 9.025],
             probes_kind="absolute",
             output=True
     ))
@@ -117,32 +122,25 @@ def plot(plot_dir):
 
     # This is the line where we indicate that coloring is a combination of
     # "Continuous iteration" and "fieldines values"
-    plotter["cont_iter"].set_twin_field(plotter["fieldlines"], 0.00004)
+    plotter["cont_iter"].set_twin_field(plotter["fieldlines"], 0.00001)
 
     # This is where we define the lighting (here 3 ccolored light sources)
     # and apply the shading
-    light = Blinn_lighting(0.3, np.array([1., 1., 1.]))
+    light = Blinn_lighting(0.4, np.array([1., 1., 1.]))
     light.add_light_source(
         k_diffuse=0.2,
-        k_specular=400.,
+        k_specular=300.,
         shininess=1400.,
         angles=(45., 20.),
         coords=None,
-        color=np.array([0.9, 0.9, 0.9]))
-#    light.add_light_source(
-#        k_diffuse=1.,
-#        k_specular=0.,
-#        shininess=0.,
-#        angles=(-905., 20.),
-#        coords=None,
-#        color=np.array([1., 1., 0.8]))
+        color=np.array([0.9, 0.9, 1.5]))
     light.add_light_source(
-        k_diffuse=0.8,
+        k_diffuse=2.8,
         k_specular=2.,
         shininess=400.,
         angles=(55., 20.),
         coords=None,
-        color=np.array([1., 1., 1.0]))
+        color=np.array([1., 1., 1.3]))
     plotter["cont_iter"].shade(plotter["DEM_map"], light)
     plotter.plot()
 

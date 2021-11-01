@@ -1,0 +1,3 @@
+Colormaps template gallery
+==========================
+

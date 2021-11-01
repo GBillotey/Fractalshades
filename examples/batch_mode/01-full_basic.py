@@ -1,14 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-=======================================
-Seahorse fieldlines example "twinfield"
-=======================================
+======================
+Seahorse basic example
+======================
 
-This example shows one of the ways to plot fieldlines: here the fieldlines 
-values are used to modify the original layer values before applying the
-colormap.
+This basic example shows how to create a color layer, displaying the 
+"continuous iteration number" for Mandelbrot (power 2) fractal.
 
-The location is a shallow one in the main Seahorse valley.
+The full mandelbrot set is diplayed here
 """
 
 import os
@@ -20,27 +19,26 @@ import fractalshades.colors as fscolors
 from fractalshades.postproc import (
     Postproc_batch,
     Continuous_iter_pp,
-    Fieldlines_pp,
     Raw_pp,
 )
 from fractalshades.colors.layers import (
     Color_layer,
     Bool_layer,
-    Virtual_layer
 )
 
 def plot(plot_dir):
     """
-    Using field lines : a shallow zoom in the Seahorses valley
-    Coloring based on continuous iteration + fieldlines
+    A very simple example: full view of the Mandelbrot set with escape-time
+    coloring
     """
     # Define the parameters for this calculation
-    x = -0.746223962861
-    y = -0.0959468433527
-    dx = 0.00745
-    nx = 2400
+    x = -1.0
+    y = -0.0
+    dx = 5.
+    nx = 1600
+    
     calc_name="mandelbrot"
-    colormap = fscolors.cmap_register["stellar"]
+    colormap = fscolors.cmap_register["classic"]
 
     # Run the calculation
     f = fsm.Mandelbrot(plot_dir)
@@ -49,36 +47,34 @@ def plot(plot_dir):
     f.base_calc(
         calc_name=calc_name,
         subset=None,
-        max_iter=5000,
+        max_iter=1000,
         M_divergence=100.,
         epsilon_stationnary= 0.001,
         datatype=np.complex128)
-    # f.clean_up(calc_name)
+    # f.clean_up(calc_name) 
     f.run()
 
     # Plot the image
     pp = Postproc_batch(f, calc_name)
     pp.add_postproc("cont_iter", Continuous_iter_pp())
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
-    pp.add_postproc("fieldlines",
-                Fieldlines_pp(n_iter=4, swirl=1., damping_ratio=0.9))
 
-    plotter = fs.Fractal_plotter(pp)   
+    plotter = fs.Fractal_plotter(pp)
     plotter.add_layer(Bool_layer("interior", output=False))
     plotter.add_layer(Color_layer(
             "cont_iter",
             func="np.log(x)",
             colormap=colormap,
-            probes_z=[2., 6.],
+            probes_z=[1., 3.],
             probes_kind="absolute",
             output=True
     ))
-    plotter.add_layer(Virtual_layer("fieldlines", func=None, output=False))
-    plotter["cont_iter"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
 
-    # This is the line where we indicate that coloring is a combination of
-    # "Continuous iteration" and "fieldines values"
-    plotter["cont_iter"].set_twin_field(plotter["fieldlines"], 0.1)
+    plotter["cont_iter"].set_mask(
+            plotter["interior"],
+            mask_color=(0.1, 0.1, 0.1)
+    )
+    
     plotter.plot()
 
 

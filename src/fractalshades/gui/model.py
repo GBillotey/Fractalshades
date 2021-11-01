@@ -593,103 +593,16 @@ class Colormap_presenter(Presenter):
 
         cmap_dic = self.cmap_dic
 
-#        print("Table modified at", row, col) # 1 0 
-#        print("new val", role, item.data(role)) # <PyQt5.QtGui.QColor object at 0x7fbd5d61bac0>
-#        print(kwarg_key, cmap_dic)
+
         modified_kwarg = cmap_dic[kwarg_key]
-#        print("tab init val", modified_kwarg) # array([[1.        , 0.82352941, 0.25882353],
-        #      [0.70980392, 0.15686275, 0.38823529]]
         data = item.data(role)
         if col == 0:
             modified_kwarg[row] = [data.redF(), data.greenF(), data.blueF()]
         else:
             modified_kwarg[row] = data
-#        print("tab new val", modified_kwarg, data)
+
         cmap_dic[kwarg_key] = modified_kwarg
-        # Color, kind, grad_pts, grad_func
         return fscolors.Fractal_colormap(**cmap_dic)
-
-
-
-
-
-
-
-
-
-
-
-
-#class Image_presenter(Presenter):
-#    # key, oldval, newval signal
-#    model_changerequest = pyqtSignal(object, object, object)
-#
-#    def __init__(self, model, mapping, register_key):
-#        """
-#        Submodel
-#        Wraps and inspect a parameter and a key of the main model / submodel
-#
-#        mapping should map 
-#            {"folder": folder_key
-#             "image": image_key
-#             "xy_ratio": xy_ratio_key
-#             "x": x_key
-#             "y": y_key
-#             "dx": dx_key}
-#        """
-#        super().__init__(model, mapping, register_key)
-#        self.model_changerequest.connect(self._model.model_changerequest_slot)
-
-#    @property
-#    def image(self):
-#        return self["image"]
-#    @property
-#    def xy_ratio(self):
-#        return self["xy_ratio"]
-#    @property
-#    def x(self):
-#        return self["x"]
-#    @property
-#    def y(self):
-#        return self["y"]
-#    @property
-#    def dx(self):
-#        return self["dx"]
-#    @pyqtSlot(object, object)
-#    def model_event_slot(self, keys, val):
-#        """ modif request from model level """
-#        if keys[:-1] != self._keys:
-#            return
-#        self.func_user_modified_slot(keys[-1], val)
-
-#    @pyqtSlot(object, object)
-#    def param_user_modified_slot(self, key_list, val_list):
-#        """
-#        
-#        """
-#        if key_list == ("px", "py"):
-#            px = val_list[0]
-#            py = val_list[1]
-#            print("mouse tracked in view presenter")
-#            print(px, py)
-#        elif key_list == ("px", "py", "pxx", "pyy"):
-#            px = val_list[0]
-#            py = val_list[1]
-#            pxx = val_list[2]
-#            pyy = val_list[3]
-#            print("zoom proposed in view presenter")
-#            print(px, py, pxx, pyy)
-#        else:
-#            raise ValueError(key_list)
-
-#    @pyqtSlot()
-#    def zoom_reset_slot(self):
-#        pass
-#
-#    @pyqtSlot(object)
-#    def image_modifed_slot(self, im):
-#        pass
-
 
 
 
@@ -725,11 +638,6 @@ def can_cast(val, cast_type):
     except (ValueError, TypeError):
         return False
 
-#def cast(val, cast_type):
-#    if typing.get_origin(cast_type) is typing.Literal:
-#        raise ValueError("Cannot cast a Litteral")
-#    else:
-#        return cast_type(val)
 
 def matching_instance(val, cast_type):
     if typing.get_origin(cast_type) is typing.Literal:

@@ -1,4 +1,5 @@
 GUI-mode examples
 =================
 
-Below is a gallery of run with pyQt5
+Below is a selection of scripts to start exploring fractals
+with a pyQt5 GUI.

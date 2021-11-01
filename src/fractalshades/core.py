@@ -154,7 +154,6 @@ class Fractal_plotter:
         """
         for layer in self.layers:
             if layer.postname == layer_name:
-#                print("checking", layer.postname, layer_name)
                 return layer
         raise KeyError("Layer {} not in available layers: {}".format(
                 layer_name, list(l.postname for l in self.layers)))
@@ -172,20 +171,35 @@ class Fractal_plotter:
         self.open_images()
         self.push_layers_to_images()
         self.save_images()
+        self.clean_up()
 
     def store_postprocs(self):
         """ Computes and stores posprocessed data in a temporary mmap
         :meta private:
         """
-        self.open_temporary_mmap()
+        if fs.settings.optimize_RAM:
+            self.has_memmap = True
+            self.open_temporary_mmap()
+        else:
+            self.has_memmap = False
+            self.open_RAM_data()
+
         inc_posproc_rank = 0
         self.postname_rank = dict()
         
         for batch in self.postproc_batches:
-            self.store_temporary_mmap(
-                    chunk_slice=None,
-                    batch=batch,
-                    inc_posproc_rank=inc_posproc_rank)
+            if self.has_memmap:
+                self.store_temporary_mmap(
+                        chunk_slice=None,
+                        batch=batch,
+                        inc_posproc_rank=inc_posproc_rank
+                )
+            else:
+                self.store_data(
+                        chunk_slice=None,
+                        batch=batch,
+                        inc_posproc_rank=inc_posproc_rank
+                )
             for i, postname in enumerate(batch.postnames):
                 self.postname_rank[postname] = inc_posproc_rank + i
             inc_posproc_rank += len(batch.posts)
@@ -213,12 +227,26 @@ class Fractal_plotter:
             version=None)
         del mmap
 
+    def open_RAM_data(self):
+        """
+        Same as open_temporary_mmap but in RAM
+        """
+        f = self.fractal
+        nx, ny = (f.nx, f.ny)
+        n_pp = len(self.posts)
+        self._RAM_data = np.zeros(
+            shape=(n_pp, nx, ny),
+            dtype=f.float_postproc_type
+        )
+
+
     @Multiprocess_filler(iterable_attr="chunk_slices",
         iter_kwargs="chunk_slice", veto_multiprocess=False)
     def store_temporary_mmap(self, chunk_slice, batch, inc_posproc_rank):
         """ Compute & store temporary arrays for this postproc batch
             Note : inc_posproc_rank rank shift to take into account potential
             other batches for this plotter.
+            (memory mapping version)
         """
         f = self.fractal
         inc = inc_posproc_rank
@@ -228,6 +256,21 @@ class Fractal_plotter:
         (ix, ixx, iy, iyy) = chunk_slice
         mmap = open_memmap(filename=self.temporary_mmap_path(), mode='r+')
         mmap[inc:inc+n_posts, ix:ixx, iy:iyy] = arr_2d
+
+
+    @Multiprocess_filler(iterable_attr="chunk_slices",
+        iter_kwargs="chunk_slice", veto_multiprocess=True)
+    def store_data(self, chunk_slice, batch, inc_posproc_rank):
+        """ Compute & store temporary arrays for this postproc batch
+            (in-RAM version -> shall not use multiprocessing)
+        """
+        f = self.fractal
+        inc = inc_posproc_rank
+        post_array, chunk_mask = self.fractal.postproc(batch, chunk_slice)
+        arr_2d = f.reshape2d(post_array, chunk_mask, chunk_slice)
+        n_posts, cx, cy = arr_2d.shape
+        (ix, ixx, iy, iyy) = chunk_slice
+        self._RAM_data[inc:inc+n_posts, ix:ixx, iy:iyy] = arr_2d
 
     # All methods needed for plotting
     def compute_scalings(self):
@@ -317,8 +360,12 @@ class Fractal_plotter:
         crop_slice = (ix, ny-iyy, ixx, ny-iy)
         paste_crop = layer.crop(chunk_slice)
         im.paste(paste_crop, box=crop_slice)
-
         
+    def clean_up(self):
+        if self.has_memmap:
+            os.unlink(self.temporary_mmap_path())
+        else:
+            del self._RAM_data
 
 
 
@@ -394,11 +441,11 @@ advanced users when subclassing.
     this class and its subclasses may define several methods decorated with
     specific tags:
     
-    @`fsutils.zoom_options`
+    `fractalshades.zoom_options`
         decorates the methods used to define the zoom
-    @fsutils.calc_options
+    `fractalshades.calc_options`
         decorates the methods defining the calculation inner-loop
-    @fsutils.interactive 
+    `fractalshades.interactive_options` 
         decorates the methods that can be called
         interactively from the GUI (right-click then context menu selection).
         The coordinates of the click are passed to the called method.
