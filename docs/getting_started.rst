@@ -108,6 +108,9 @@ The following main components can be seen:
          parameters used) 
        - A png to colormap converter : load an image, draw a line on it : the
          colors will be used to create a colormap
+       - A tool to select a colormap from the templates available (see 
+         :doc:`/examples/colormaps/plot_cmaps` )
+         with combo-box and a preview of the colormap selected.
 
 
   - in blue, the **parameters** window. The used parameters and their types
@@ -134,7 +137,7 @@ The following main components can be seen:
 
       - wheeling zooms / unzooms the static image
       - with a right-click you define a new zoom area that can be used for
-        next calculation
+        next calculation. (Double right clicking reset the zoom)
       - with a left-click, you can run some of the methods of the
         `fractalshades.Fractal` object (these are its methods tagged with a
         special decorator: `@fractalshades.utils.interactive_options`),

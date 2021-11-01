@@ -41,7 +41,7 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QCheckBox,
     QLabel,
-    QStatusBar,
+#    QStatusBar,
 #    QMenuBar,
 #    QToolBar,
     QComboBox,
@@ -52,7 +52,7 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QFileDialog,
     QGridLayout,
-    QSpacerItem,
+#    QSpacerItem,
     QSizePolicy,
     QGraphicsScene,
     QGraphicsView,
@@ -71,7 +71,6 @@ from PyQt5.QtWidgets import (
     QTableWidgetItem
 )
 
-import PIL
 #
 
 import fractalshades as fs
@@ -84,7 +83,6 @@ from fractalshades.gui.model import (
     type_name,
 )
 
-#from fractalshades.gui.third_party.QCodeEditor import QCodeEditor
 from fractalshades.gui.QCodeEditor import Fractal_code_editor
 
 import fractalshades.numpy_utils.expr_parser as fs_parser
@@ -260,7 +258,6 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
         layout = QVBoxLayout()
         layout.addWidget(param_box, stretch=1)
         layout.addWidget(action_box)
-#        layout.addStretch(1)
         self.setLayout(layout)
             
         # Connect events
@@ -273,7 +270,7 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
         # adds a binding to the image modified of other setting
         if action_setting is not None:
             (setting, keys) = action_setting
-            print("*********************action_setting", action_setting)
+#            print("*********************action_setting", action_setting)
             model = func_smodel._model
             model.declare_setting(setting, keys)
             self.func_performed.connect(functools.partial(
@@ -401,7 +398,7 @@ class Func_widget(QFrame):
 
     def layout(self):
         fd = self._submodel._dict
-        print("fd", fd)
+#        print("fd", fd)
         n_params = fd["n_params"]
         for i_param in range(n_params):
             self.layout_param(i_param)
@@ -430,7 +427,7 @@ class Func_widget(QFrame):
         n_uargs = fd[(i_param, "n_types")]
         if n_uargs == 0:
             utype = fd[(i_param, 0, "type")]
-            print("utype", utype)
+#            print("utype", utype)
             utype_label = QLabel(type_name(utype))
             self._layout.addWidget(utype_label, i_param, 3, 1, 1)
             self.layout_uarg(qs, i_param, 0)
@@ -621,25 +618,6 @@ class Atom_QBoolComboBox(QComboBox, Atom_Edit_mixin):
 
     def on_model_event(self, val):
         self.setCurrentIndex(self._values.index(val))
-    
-    
-#    user_modified = pyqtSignal()
-#
-#    def __init__(self, atom_type, val, model, parent=None):
-#        super().__init__("", parent)
-#        self.setChecked(val)
-#        self._type = atom_type
-#        self.stateChanged.connect(self.on_user_event)
-#        self.setStyleSheet(CHECK_BOX_CSS)
-#
-#    def value(self):
-#        return self.isChecked()
-#
-#    def on_user_event(self):
-#        self.user_modified.emit()
-#
-#    def on_model_event(self, val):
-#        self.setChecked(val)
 
 
 class Atom_QColor(QPushButton, Atom_Edit_mixin):
@@ -758,7 +736,6 @@ class Atom_QPlainTextEdit(QPlainTextEdit, Atom_Edit_mixin):
         super().__init__(str(val), parent)
         self._type = atom_type
         self.setStyleSheet("border: 1px solid  lightgrey")
-        # self.setMaximumBlockCount(1)
         # Wrapping parameters
         self.setLineWrapMode(QPlainTextEdit.WidgetWidth) 
         self.setWordWrapMode(QtGui.QTextOption.WrapAnywhere)
@@ -896,17 +873,17 @@ class Atom_cmap_button(Qcmap_image, Atom_Edit_mixin, Atom_Presenter_mixin):
             self.repaint()
             # Note : we do not emit self.user_modified, this shall be done at
             # Qcmap_editor widget level
-            print("CMAP MODIFIED")
+#            print("CMAP MODIFIED")
 
     def value(self):
         return self._cmap
 
     def on_model_event(self, val):
-        print("CMAP img model event")
+#        print("CMAP img model event")
         self.update_cmap(val)
 
     def mouseReleaseEvent(self, event):
-        print("clicked")
+#        print("clicked")
         self.request_presenter.emit(Colormap_presenter, Qcmap_editor)
 
 
@@ -922,7 +899,7 @@ class Atom_Text_Validator(QtGui.QValidator):
                     model.setting_modified, "dps"))
 
     def validate(self, val, pos):
-        print("validate", val, pos, type(val), self._type)
+#        print("validate", val, pos, type(val), self._type)
         valid = {True: QtGui.QValidator.Acceptable,
                  False: QtGui.QValidator.Intermediate}
         if self._type is type(None):
@@ -983,8 +960,6 @@ class ColorDelegate(QStyledItemDelegate):
             painter.drawRect(rect)
         painter.restore()
 
-#    def validate(self, index):
-#        return True
 
 class IntDelegate(QStyledItemDelegate):
     def __init__(self, parent, options):
@@ -1034,7 +1009,7 @@ class ComboDelegate(QStyledItemDelegate):
         """ Custom cell delegate to display / edit a combo box
         parent : the QTableWidget
         """
-        print("init combo delegate", options)
+#        print("init combo delegate", options)
         super().__init__(parent)
         self.choices = options["choices"]
 
@@ -1065,7 +1040,7 @@ class ExprDelegate(QStyledItemDelegate):
         """ Custom cell delegate to display / edit an expr
         parent : the QTableWidget
         """
-        print("init combo delegate", options)
+#        print("init combo delegate", options)
         super().__init__(parent)
         self.modifier = options["modifier"]
 
@@ -1121,7 +1096,6 @@ class Qcmap_editor(QWidget):
         layout = QVBoxLayout()
         layout.addWidget(self.add_param_box())
         layout.addWidget(self.add_table_box(), stretch=1)
-#        layout.addStretch(1)
         self.setLayout(layout)
 
         self._wget_n.valueChanged.connect(functools.partial(
@@ -1344,12 +1318,8 @@ class Qcmap_editor(QWidget):
             raise ValueError(source)
 
     def model_event_slot(self, keys, val):
-        print("Qcmap_editor model_event_slot")
-#        print("In Qcmap_editor model event filter", keys, val,
-#              self._presenter._mapping["Colormap_presenter"])
         if keys == self._presenter._mapping["Colormap_presenter"]:
             # Sets the value of the sub-widgets according to the smodel
-            print("populate & update !")
             self.populate_param_box()
             self.populate_table()
 
@@ -1381,9 +1351,6 @@ class QDict_viewer(QWidget):
             self._layout.addWidget(QLabel(str(v)), row, 1, 1, 1)
             self._key_row[k] = row
             row += 1
-#        spacer = QSpacerItem(1, 1,
-#                             QSizePolicy.Minimum, QSizePolicy.Expanding)
-#        self._layout.addItem(spacer, row, 1, 1, 1)
 
     def values_update(self, update_dic):
         """
@@ -1414,7 +1381,7 @@ class Zoomable_Drawer_mixin:
     """
     def __init__(self):
         """ Initiate a GaphicsScene """
-        print("in Zoomable_Drawer_mixin")
+#        print("in Zoomable_Drawer_mixin")
         # sets graphics scene and view
         self._scene = QGraphicsScene()
         self._group = QGraphicsItemGroup()
@@ -1427,7 +1394,6 @@ class Zoomable_Drawer_mixin:
         self._object_pos = tuple() # No coords
         self._object_drag = None
         self._drawing = False
-#        self._dragging = False
         
         # zooms anchors for wheel events - note this is only active 
         # when the image fully occupies the widget
@@ -1713,7 +1679,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         
         add_params = dict()
         for i_param, (name, param) in enumerate(sign.parameters.items()):
-            print(i_param, name, param.annotation)
+#            print(i_param, name, param.annotation)
             if name in ("x", "y", "pix", "dps"):
                 # These we already know them
                 continue
@@ -1845,7 +1811,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             if value is not None:
                 # Send a model modification request
                 # TODO: avoid update cancel xy_ratio 1.0 <class 'str'>
-                print("update cancel", key, value, type(value))
+#                print("update cancel", key, value, type(value))
                 self._presenter[key] = value
         # Removes the objects
         if self._rect is not None:
@@ -1874,7 +1840,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
                 cancel = True # zoom is invalid
 
         if cancel:
-            print("INVALID _object_pos")
+#            print("INVALID _object_pos")
             self.cancel_drawing_rect(dclick=dclick)
             if dclick:
                 self.fit_image()
@@ -2101,14 +2067,13 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
         """ Try to push to a colormap param if there is one """
         sign = inspect.signature(self.parent()._gui._func)
         
-        # fd["n_params"] = len(sign.parameters.items())
         cmap_params_index = dict()
         for i_param, (name, param) in enumerate(sign.parameters.items()):
-            print(i_param, name, param.annotation)
+#            print(i_param, name, param.annotation)
             if param.annotation is fs.colors.Fractal_colormap:
                 cmap_params_index[name] = i_param
         
-        print(len(cmap_params_index), cmap_params_index)
+#        print(len(cmap_params_index), cmap_params_index)
 
         if len(cmap_params_index) == 0:
             raise RuntimeError("No fs.colors.Fractal_colormap parameter")
@@ -2169,7 +2134,7 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
                 cancel = True # zoom is invalid
 
         if cancel:
-            print("INVALID _object_pos")
+#            print("INVALID _object_pos")
             self.cancel_drawing_line()
             if dclick:
                 self.fit_image()
@@ -2247,6 +2212,78 @@ class Fractal_MessageBox(QMessageBox):
             details_box.setFixedHeight(details_box.sizeHint().height())
         return result
 
+class Fractal_cmap_choser(QDialog):
+    
+    model_changerequest = pyqtSignal(object, object)
+
+    def __init__(self, parent):            
+        super().__init__(parent)
+        self.setWindowTitle("Chose a colormap ...")
+
+        self.setStyleSheet("QLabel{min-width: 700px;}")
+        self.cmap_list = list(fscolors.cmap_register.keys())
+        
+        cmap_combo = QComboBox(self)
+        cmap_combo.addItems(self.cmap_list)
+        cmap_combo.setCurrentIndex(0)
+        cmap_combo.setStyleSheet(COMBO_BOX_CSS)
+        cmap_combo.currentTextChanged.connect(self.on_combo_event)
+        
+        self.cmap_name = cmap_name = self.cmap_list[0]
+        cmap0 = fs.colors.cmap_register[cmap_name]
+        self.cmap = cmap = Qcmap_image(self, cmap0, minwidth=400, height=20)
+        
+        push = QPushButton("Push to parameter")
+        push.clicked.connect(self.push_to_param)
+
+        self.layout = layout = QVBoxLayout()
+        layout.addWidget(cmap_combo)
+        layout.addWidget(cmap)
+        layout.addWidget(push)
+        self.setLayout(layout)
+        
+        # Signal / slot
+        self.model_changerequest.connect(
+                parent._model.model_changerequest_slot)
+
+    @property
+    def cmap_parameter(self):
+        return fs.colors.cmap_register[self.cmap_name]
+
+    def push_to_param(self):
+        """ Try to push to a colormap param if there is one """
+        sign = inspect.signature(self.parent()._gui._func)
+        
+        cmap_params_index = dict()
+        for i_param, (name, param) in enumerate(sign.parameters.items()):
+            if param.annotation is fs.colors.Fractal_colormap:
+                cmap_params_index[name] = i_param
+        
+        if len(cmap_params_index) == 0:
+            raise RuntimeError("No fs.colors.Fractal_colormap parameter")
+
+        elif len(cmap_params_index) == 1:
+            i_param = next(iter(cmap_params_index.values()))
+        else:
+            params = list(cmap_params_index.keys())
+            param, ok = QInputDialog.getItem(self, "Select parameter", 
+                "available parameters", params, 0, False)
+            if ok and param:
+                 i_param = cmap_params_index[param]
+            else:
+                return
+
+        self.model_changerequest.emit(("func", (i_param, 0, "val")),
+                                      self.cmap_parameter)
+
+    def on_combo_event(self, event):
+        self.cmap_name = event
+        new_cmap = Qcmap_image(self, fs.colors.cmap_register[event],
+                                minwidth=400, height=20)
+        self.layout.replaceWidget(self.cmap, new_cmap)
+        self.cmap = new_cmap
+        
+
 
 class Fractal_MainWindow(QMainWindow):
     
@@ -2263,8 +2300,9 @@ class Fractal_MainWindow(QMainWindow):
       bar = self.menuBar()
       tools = bar.addMenu("Tools")
       png_info = QAction('Png info', tools)
-      png_cbar = QAction('Png to colormap', tools)
-      tools.addActions((png_info, png_cbar))
+      png_cbar = QAction('Colormap from png image', tools)
+      template_cbar = QAction('Colormap from templates', tools)
+      tools.addActions((png_info, png_cbar, template_cbar))
       tools.triggered[QAction].connect(self.actiontrig)
 
       about = bar.addMenu("About")
@@ -2274,13 +2312,15 @@ class Fractal_MainWindow(QMainWindow):
 
 
     def actiontrig(self, action):
-        print("IN TRIG", action.text(), action)
+#        print("IN TRIG", action.text(), action)
         if action.text() == "License":
             self.show_license()
         elif action.text() == "Png info":
             self.show_png_info()
-        elif action.text() == "Png to colormap":
-            self.png_to_cmap()
+        elif action.text() == "Colormap from png image":
+            self.cmap_from_png()
+        elif action.text() == "Colormap from templates":
+            self.cmap_from_template()
         
     
     def show_license(self):
@@ -2300,7 +2340,7 @@ class Fractal_MainWindow(QMainWindow):
     
     def gui_file_path(self, _filter=None):
         """
-        Laod a file, browsing from the __main__ directory 
+        Load a file, browsing from the __main__ directory 
         """
         try:
             import __main__
@@ -2323,25 +2363,31 @@ class Fractal_MainWindow(QMainWindow):
         Loads an image file and displays the associated tag info
         """
         file_path = self.gui_file_path(_filter="Images (*.png)")
-        if file_path != "":
-            with PIL.Image.open(file_path) as im:
-                png_info = im.info
-            data_len = len(png_info)
-            info = ""
-            for key, val in png_info.items():
-                info += f"{key} = {val}\n"
-            msg = Fractal_MessageBox()
-            msg.setWindowTitle("Image metadata")
-            msg.setText(file_path)
-            msg.setInformativeText(f"Number of fields found: {data_len}")
-            msg.setDetailedText(info)
-            msg.exec()
+        if file_path == "":
+            return
+        with PIL.Image.open(file_path) as im:
+            png_info = im.info
+        data_len = len(png_info)
+        info = ""
+        for key, val in png_info.items():
+            info += f"{key} = {val}\n"
+        msg = Fractal_MessageBox()
+        msg.setWindowTitle("Image metadata")
+        msg.setText(file_path)
+        msg.setInformativeText(f"Number of fields found: {data_len}")
+        msg.setDetailedText(info)
+        msg.exec()
         
-    def png_to_cmap(self):
+    def cmap_from_png(self):
         file_path = self.gui_file_path(_filter="Images (*.png)")
+        if file_path == "":
+            return
         image_display = Cmap_Image_widget(self, file_path)
         image_display.exec()
 
+    def cmap_from_template(self):
+        choser = Fractal_cmap_choser(self)
+        choser.exec()
 
     def build_model(self, gui):
         
