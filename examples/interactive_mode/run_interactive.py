@@ -8,9 +8,10 @@ This is a simple template to start exploring the Mandelbrot set with
 the GUI.
 Good exploration !
 """
+import typing
+import os
 
 import numpy as np
-import os
 from PyQt5 import QtGui
 
 import fractalshades as fs
@@ -53,7 +54,8 @@ def plot(plot_dir):
     
     colormap = fscolors.cmap_register["classic"]
 
-    probes_zmax = 0.15
+    zmin = 0.00
+    zmax = 0.15
 
     # Set to True to enable multi-processing
     settings.enable_multiprocessing = True
@@ -71,10 +73,12 @@ def plot(plot_dir):
              max_iter: int=max_iter,
              nx: int=nx,
              interior_detect: bool=interior_detect,
-             interior_color: QtGui.QColor=(0., 0., 1.),
-             probes_zmax: float=probes_zmax,
              epsilon_stationnary: float=epsilon_stationnary,
-             colormap: fscolors.Fractal_colormap=colormap):
+             interior_color: QtGui.QColor=(0.1, 0.1, 0.1),
+             colormap: fscolors.Fractal_colormap=colormap,
+             cmap_z_kind: typing.Literal["relative", "absolute"]="relative",
+             zmin: float=zmin,
+             zmax: float=zmax):
 
 
         fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
@@ -114,7 +118,7 @@ def plot(plot_dir):
                 layer_name,
                 func=lambda x: np.log(x),
                 colormap=colormap,
-                probes_z=[0., probes_zmax],
+                probes_z=[zmin, zmax],
                 probes_kind="relative",
                 output=True))
         plotter[layer_name].set_mask(plotter["interior"],

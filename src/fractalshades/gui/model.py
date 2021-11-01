@@ -113,7 +113,7 @@ class Model(QtCore.QObject):
     @pyqtSlot(object)
     def setting_touched(self, setting_name):
         """ Reload setting with same value (side effect)"""
-        print("SETTING SIDE EFFECT", setting_name)
+        # print("SETTING SIDE EFFECT", setting_name)
 #        print("settings", self._settings)
         setting_val = self.setting(setting_name)
 #        print("val, key", self._settings[setting_name], setting_val)
@@ -122,7 +122,7 @@ class Model(QtCore.QObject):
 
     @pyqtSlot(object, object)
     def setting_modified(self, setting_name, setting_val):
-        print("SETTING MODIFIED", setting_name)
+        # print("SETTING MODIFIED", setting_name)
         self.model_changerequest_event.emit(
                 self._settings[setting_name], setting_val)
 
@@ -130,7 +130,7 @@ class Model(QtCore.QObject):
     def model_notified_slot(self, keys, oldval, val):
         """ A change has been done in a model / submodel,
         need to notify the widgets (viewers) """
-        print("MODEL model_notified_slot") # , keys, oldval, val)
+        # print("MODEL model_notified_slot") # , keys, oldval, val)
         # Here we could implement UNDO / REDO stack
         self.model_event.emit(keys, val)
 
@@ -173,34 +173,6 @@ class Submodel(QtCore.QObject):
         self.model_notification.emit(self._keys + tuple([key]), oldval, val)  
 
 
-
-#class Fractal_submodel(Submodel):
-#    # key, oldval, newval signal
-#    model_notification = pyqtSignal(object, object, object)
-#
-#    def __init__(self, model, submodel_keys, fractal):
-#        super().__init__(model, submodel_keys)
-#        self._dict["fractal_object"] = fractal
-#        
-#    def model_event_slot(self, keys, val):
-#        if keys[:-1] != self._keys:
-#            return
-#        raise NotImplementedError()
-#
-#class View_submodel(Submodel):
-#    # key, oldval, newval signal
-#    model_notification = pyqtSignal(object, object, object)
-#
-#    def __init__(self, model, submodel_keys, view):
-#        super().__init__(model, submodel_keys)
-#        self._dict["file_prefix"] = view
-#
-#    def model_event_slot(self, keys, val):
-#        if keys[:-1] != self._keys:
-#            return
-#        raise NotImplementedError()
-
-
 class Func_submodel(Submodel):
     # key, oldval, newval signal
     model_notification = pyqtSignal(object, object, object)
@@ -225,13 +197,13 @@ class Func_submodel(Submodel):
         """
         sign = inspect.signature(self._func)
         for i_param, (name, param) in enumerate(sign.parameters.items()):
-            print(name, param)
+#            print(name, param)
             if name == dps_var:
                 if typing.get_origin(param.annotation) is not None:
                     raise ValueError("Unexpected type for math.dps: {}".format(
                             typing.get_origin(param.annotation)))
                 key = (i_param, 0, "val")
-                print("setting dps listener",key )
+#                print("setting dps listener",key )
                 self._model.declare_setting("dps", self._keys + tuple([key]))
                 return
         raise ValueError("Parameter not found", dps_var)
@@ -366,7 +338,7 @@ class Func_submodel(Submodel):
                 self.func_user_modified_slot(param_key, val)
             else:
                 raise NotImplementedError()
-            print("Setting param", param_key, kwarg, val)
+#            print("Setting param", param_key, kwarg, val)
             
 
     
@@ -401,7 +373,7 @@ class Func_submodel(Submodel):
 
     @pyqtSlot(object, object)
     def func_user_modified_slot(self, key, val):
-        print("in submodel, widget_modified", key, val)
+#        print("in submodel, widget_modified", key, val)
         if isinstance(key, str):
             # Accessing directly a kwarg by its name
             self[key] = val
@@ -545,7 +517,7 @@ class Colormap_presenter(Presenter):
 
     @pyqtSlot(object, object)
     def cmap_user_modified_slot(self, key, val):
-        print("cmap model event", key, val)
+#        print("cmap model event", key, val)
 
         if key == "size":
             cmap = self.adjust_size(val)
