@@ -46,8 +46,8 @@ def plot(plot_dir):
     calc_name = 'test'
     
     xy_ratio = 1.0
-    dps = 77
-    max_iter = 150000
+    dps = 16
+    max_iter = 15000
     nx = 800
     interior_detect = True
     epsilon_stationnary = 0.0001

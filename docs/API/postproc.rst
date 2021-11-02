@@ -15,6 +15,7 @@ generic postprocessing are availables. This section describes them.
    postproc/Postproc
    postproc/Raw_pp
    postproc/Continuous_iter_pp
+   postproc/Fieldlines_pp
    postproc/DEM_normal_pp
    postproc/DEM_pp
    postproc/Attr_normal_pp
