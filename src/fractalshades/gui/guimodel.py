@@ -1573,7 +1573,9 @@ class Zoomable_Drawer_mixin:
 # Base widget for displaying the fractal
 #==============================================================================
 class Image_widget(QWidget, Zoomable_Drawer_mixin):
+    
     param_user_modified = pyqtSignal(object)
+    on_fractal_result = pyqtSignal(object, object)
 
     def __init__(self, parent, view_presenter):
         super().__init__(parent)
@@ -1613,6 +1615,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         
         # Publish / subscribe signals with the submodel
         self._model.model_event.connect(self.model_event_slot)
+        self.on_fractal_result.connect(self.fractal_result_slot)
 
         
     def on_mouse_right_press(self, event):
@@ -1660,7 +1663,10 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
 
             def thread_job(**kwargs):
                 res = getattr(f, m_name)(x, y, pix, dps, **kwargs)
-                self.on_fractal_result(m_name, res)
+                # Emit a signal rather than direct call, to avoid a crash
+                # QBasicTimer::start: Timers cannot be started from another
+                # thread Segmentation fault (core dumped)
+                self.on_fractal_result.emit(m_name, res)
 
             self._view.setCursor(QtGui.QCursor(Qt.WaitCursor))
 
@@ -1670,16 +1676,15 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             else:
                 threading.Thread(target=thread_job,
                                  kwargs=suppl_kwargs).start()
-            
+
 
     def method_kwargs(self, f, m_name):
         """ Collect the additionnal parameters that might be needed"""
         f = getattr(f, m_name)
         sign = inspect.signature(f)
-        
+
         add_params = dict()
         for i_param, (name, param) in enumerate(sign.parameters.items()):
-#            print(i_param, name, param.annotation)
             if name in ("x", "y", "pix", "dps"):
                 # These we already know them
                 continue
@@ -1705,16 +1710,13 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         return add_params
 
 
-
-    def on_fractal_result(self, m_name, res):
-
+    def fractal_result_slot(self, m_name, res):
         self._view.setCursor(QtGui.QCursor(Qt.CrossCursor))
-        
         res_display = Fractal_code_editor()
         res_display.set_text(res)
         res_display.setWindowTitle(f"{m_name} results")
         res_display.exec()
-        
+
 
     def pos_tracker(self, kind, val):
         """ Updated the displayed info """
@@ -2275,6 +2277,7 @@ class Fractal_cmap_choser(QDialog):
 
         self.model_changerequest.emit(("func", (i_param, 0, "val")),
                                       self.cmap_parameter)
+        self.close()
 
     def on_combo_event(self, event):
         self.cmap_name = event
@@ -2312,7 +2315,6 @@ class Fractal_MainWindow(QMainWindow):
 
 
     def actiontrig(self, action):
-#        print("IN TRIG", action.text(), action)
         if action.text() == "License":
             self.show_license()
         elif action.text() == "Png info":

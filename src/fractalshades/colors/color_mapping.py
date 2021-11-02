@@ -557,28 +557,6 @@ Formula: https://en.wikipedia.org/wiki/Triangle_wave
         """
         return ext_min + ((x - ext_min) % (ext_max - ext_min))
 
-##: A colormap circling through black, blue, white, orange, black
-#classic_colormap = Fractal_colormap(
-#    colors=[[0.00784314, 0.01960784, 0.14509804],
-#            [0.17647059, 0.10980392, 0.10588235],
-#            [0.48627451, 0.24313725, 0.07058824],
-#            [0.63921569, 0.39607843, 0.17647059],
-#            [0.81176471, 0.58039216, 0.33333333],
-#            [0.97647059, 0.85490196, 0.64313725],
-#            [0.96470588, 0.98823529, 0.90196078],
-#            [0.48627451, 0.7254902 , 0.90980392],
-#            [0.27843137, 0.51764706, 0.74901961],
-#            [0.12156863, 0.32941176, 0.57254902],
-#            [0.07058824, 0.25490196, 0.49411765],
-#            [0.00784314, 0.01960784, 0.14509804]],
-#    kinds=['Lab', 'Lch', 'Lch', 'Lch', 'Lab', 'Lab', 'Lab', 'Lch', 'Lch', 'Lch', 'Lab'],
-#    grad_npts=[32, 32, 32, 32,  32,  32,  32,  32,  32,  32,  32,  32],
-#    grad_funcs=['x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x'],
-#    extent='mirror'
-#) 
-
-
-
 
 class Image_interpolator:
     def __init__(self, image, wrap=False, screen_coord=True):
