@@ -330,10 +330,17 @@ class Continuous_iter_pp(Postproc):
     
 
 class Fieldlines_pp(Postproc):
-    def __init__(self, n_iter=5, swirl=1., damping_ratio=0.1):
+    def __init__(self, n_iter=5, swirl=0., damping_ratio=0.25):
         """
         Return a continuous orbit-averaged angular value, allowing to reveal
         fieldlines
+        
+        Fieldlines approximate the external rays which are very important
+        in the study of the Mandelbrot set and more generally in
+        holomorphic dynamics. Implementation based on [#f2]_.
+
+        .. [#f2] *On Smooth Fractal Coloring Techniques*,
+                  **Jussi Härkönenen**, Abo University, 2007
 
         Parameters
         ==========
@@ -363,13 +370,13 @@ class Fieldlines_pp(Postproc):
     def __getitem__(self, chunk_slice):
         """  Returns 
         """
-        nu_frac = self.ensure_context("nu_frac") #- 2
+        nu_frac = self.ensure_context("nu_frac")
         potential_dic = self.ensure_context("potential_dic")
         d = potential_dic["d"]
         a_d = potential_dic["a_d"]
 
         (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-            termination_dic) = self.raw_data# (chunk_slice)
+            termination_dic) = self.raw_data
         zn = Z[complex_dic["zn"], :]
 
         if potential_dic["kind"] == "infinity":
@@ -383,15 +390,15 @@ class Fieldlines_pp(Postproc):
             swirl_fl = self.swirl
             t = [np.angle(z_norm)]
             val = np.zeros_like(t)
-            # Convergence of a geometric serie at 10 percent
+            # Geometric serie, last term being damping_ratio * first term
             damping = self.damping_ratio ** (1. / (n_iter_fl + 1))
             di = 1.
             rg = np.random.default_rng(0)
-            dphi_arr = rg.random(n_iter_fl) * swirl_fl * np.pi * 0.25
+            dphi_arr = rg.random(n_iter_fl) * swirl_fl * np.pi
             for i in range(1, n_iter_fl + 1):
                 t += [d * t[i - 1]] # chained list
                 dphi = dphi_arr[i-1]
-                angle = np.sin(t[i-1] + dphi) + (
+                angle = 1. + np.sin(t[i-1] + dphi) + (
                       k_alpha + k_beta * d**nu_frac) * (
                       np.sin(t[i] + dphi) - np.sin(t[i-1] + dphi))
                 val += di * angle

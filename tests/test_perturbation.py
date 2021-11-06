@@ -249,7 +249,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
         plotter = fs.Fractal_plotter(pp)   
         plotter.add_layer(Bool_layer("interior", output=False))
-        plotter.add_layer(Virtual_layer("fieldlines", func=None, output=False))
+        plotter.add_layer(Virtual_layer("fieldlines", func="x-2.", output=False))
         plotter.add_layer(Normal_map_layer("DEM_map", max_slope=45, output=True))
         # min: 11.806656837463379
         # max: 11.809494972229004
@@ -514,5 +514,5 @@ if __name__ == "__main__":
         runner.run(test_config.suite([Test_Perturbation_mandelbrot]))
     else:
         suite = unittest.TestSuite()
-        suite.addTest(Test_Perturbation_mandelbrot("test_glitch_dyn"))
+        suite.addTest(Test_Perturbation_mandelbrot("test_M2_E213"))
         runner.run(suite)

@@ -267,10 +267,10 @@ class Test_layers(unittest.TestCase):
                 layer_name,
                 func="np.log(x)",
                 colormap=self.colormap,
-                probes_z=[0., 0.4],
+                probes_z=[0.0, 0.4], #[0.065, 0.465],
                 probes_kind="relative",
                 output=True))
-        plotter.add_layer(Virtual_layer("fieldlines", func=None, output=False))
+        plotter.add_layer(Virtual_layer("fieldlines", func="x-2.2", output=False))
 
         plotter[layer_name].set_mask(plotter["interior"],
                                      mask_color=(0., 0., 0.))
@@ -281,7 +281,7 @@ class Test_layers(unittest.TestCase):
         self.check_current_layer()
 
 
-    test_config.no_stdout
+    @test_config.no_stdout
     def test_overlay1(self):
         # lets do a second calculation for instance the interior points
         layer_name = "overlay1"
@@ -329,7 +329,7 @@ class Test_layers(unittest.TestCase):
                 probes_kind="relative",
                 output=True))
         
-        plotter.add_layer(Virtual_layer("fieldlines", func=None, output=False))
+        plotter.add_layer(Virtual_layer("fieldlines", func="x-2.2", output=False))
         plotter[layer_name].set_twin_field(plotter["fieldlines"], 0.1)
 
         plotter.add_layer(Normal_map_layer("attr_map", max_slope=90, output=True))
@@ -417,7 +417,7 @@ class Test_layers(unittest.TestCase):
     @test_config.no_stdout
     def test_curve(self):
         for (i, curve) in enumerate([
-                lambda x: x,
+                lambda x: x, # , + 1.,
                 lambda x: 0.5 + (x - 0.5) * 0.2,
                 lambda x: 0.5 + 0.5 * np.sign(x - 0.5) * np.abs((x - 0.5) * 2.)**2,
                 lambda x: 0.5 + 0.5 * np.sign(x - 0.5) * np.abs((x - 0.5) * 2.)**0.5,
@@ -428,7 +428,7 @@ class Test_layers(unittest.TestCase):
                 pp.add_postproc(layer_name, Continuous_iter_pp())
                 pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
                 pp.add_postproc("fieldlines",
-                        Fieldlines_pp(n_iter=5, swirl=0.7, damping_ratio=0.1))
+                        Fieldlines_pp(n_iter=5, swirl=0.25*0.7, damping_ratio=0.1))
 
                 plotter = fs.Fractal_plotter(pp)   
                 plotter.add_layer(Bool_layer("interior", output=False))
@@ -436,7 +436,7 @@ class Test_layers(unittest.TestCase):
                         layer_name,
                         func="np.log(x)",
                         colormap=self.colormap,
-                        probes_z=[0., 0.4],
+                        probes_z=[0.0, 0.4], #[0., 0.4],
                         probes_kind="relative",
                         output=True))
                 plotter.add_layer(Grey_layer("fieldlines",
@@ -453,7 +453,7 @@ class Test_layers(unittest.TestCase):
 
                 plotter.plot()
                 self.layer = plotter[layer_name]
-                self.check_current_layer()
+                self.check_current_layer(0.04)
 
 
     def check_current_layer(self, err_max=0.01):
@@ -475,5 +475,5 @@ if __name__ == "__main__":
         runner.run(test_config.suite([Test_layers]))
     else:
         suite = unittest.TestSuite()
-        suite.addTest(Test_layers("test_overlay1"))
+        suite.addTest(Test_layers("test_twin"))
         runner.run(suite)
