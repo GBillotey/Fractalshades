@@ -63,7 +63,7 @@ def plot(plot_dir):
     pp.add_postproc("cont_iter", Continuous_iter_pp())
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
     pp.add_postproc("fieldlines",
-                Fieldlines_pp(n_iter=1, swirl=0., damping_ratio=1.0))
+                Fieldlines_pp(n_iter=4, swirl=0., damping_ratio=1.0))
 
     plotter = fs.Fractal_plotter(pp)   
     plotter.add_layer(Bool_layer("interior", output=False))
