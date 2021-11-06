@@ -199,7 +199,7 @@ epub_exclude_files = ['search.html']
 # Relation. Default: ''.
 # Used by also by sphinx.ext.githubpages CNAME
 html_baseurl = ""
-html_logo = "_static/logo2.jpg"
+html_logo = "_static/logo3.jpg"
 html_theme_options = {
     "collapse_navigation": False,
     #"navbar_center": ["mpl_nav_bar.html"],

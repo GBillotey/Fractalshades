@@ -18,7 +18,7 @@ Fractalshades aims at:
     time-optimisation and graphical user interface.
 
 Some fractals are only available at double precision, while some also allow
-ultra-deep zooming (1e-300 scale and beyong) thanks to state-of-the-art
+ultra-deep zooming (*1.e-2000* scale and beyong) thanks to state-of-the-art
 algorithm (based on perturbation technique).
 
 The time-critical core-loops benefit from multiprocesssing and leverage
