@@ -6,7 +6,7 @@
 # python3 -m pip install --prefix=/home/geoffroy/.local/lib/python3.8/site-packages --force-reinstall --no-deps --editable .
 
 # "Normal" installation
-python3 -m pip install --user --force-reinstall --no-deps ./dist/fractalshades-0.3.3.tar.gz
+python3 -m pip install --user --force-reinstall --no-deps ./dist/fractalshades-0.4.x.tar.gz
 #fractalshades-0.3.0-py3-none-any.whl
 
 # upload to test repository
