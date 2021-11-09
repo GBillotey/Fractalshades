@@ -598,8 +598,13 @@ directory : str
         print("**CALLING param_matching +++", self.params)
         # TODO : note: when comparing iref should be disregarded ? 
         # or subclass specific implementation
-        UNTRACKED = ["SA_params", "datetime", "debug"]
-        SPECIAL_CASE = ["prec", "glitch_max_attempt"] # TODO increased precision should be accepted
+        UNTRACKED = [
+            "SA_params",
+            "datetime",
+            "debug",
+            "calc-param_glitch_max_attempt"
+        ]
+        SPECIAL_CASE = ["prec"] # TODO should it be calc-param_prec
         for key, val in self.params.items():
             if (key in UNTRACKED):
                 continue
@@ -609,12 +614,12 @@ directory : str
                         print("Higher precision requested",
                               dparams[key], "-->",  val)
                         return False
-                elif key == "glitch_max_attempt":
-                    if dparams[key] < val:
-                        print("Higher glitch max attempt requested",
-                              dparams[key], "-->",  val)
-                        return False
-            else: 
+#                elif key == "glitch_max_attempt":
+#                    if dparams[key] < val:
+#                        print("Higher glitch max attempt requested",
+#                              dparams[key], "-->",  val)
+#                        return False
+            else:
                 if dparams[key] != val:
                     print("Unmatching", key, val, "-->", dparams[key])
                     return False

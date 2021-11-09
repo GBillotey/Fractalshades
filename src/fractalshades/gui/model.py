@@ -41,6 +41,11 @@ Submodel
 
 Model-level 'settings' provide a convenient direct access to a subset of keys
 at model level. They are instanciated by a Model *declare_setting* method.
+
+Note on the datatype:
+    float -> user input casted as float
+    int -> user input casted as int
+    mpmath.mpf -> user input kept as str to avoid losing precision
 """
 
 
@@ -373,7 +378,7 @@ class Func_submodel(Submodel):
 
     @pyqtSlot(object, object)
     def func_user_modified_slot(self, key, val):
-#        print("in submodel, widget_modified", key, val)
+        #  print("in submodel, widget_modified", key, val)
         if isinstance(key, str):
             # Accessing directly a kwarg by its name
             self[key] = val

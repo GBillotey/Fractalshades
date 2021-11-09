@@ -607,7 +607,7 @@ class Grey_layer(Virtual_layer):
         else:
             raise ValueError(self.mask_kind)
 
-class Disp_Layer(Grey_layer):
+class Disp_layer(Grey_layer):
     """
     Grey layer with 32-bits precision.
     

@@ -1,0 +1,3 @@
+- Improved Fieldlines default postproc when using mirrored cmap
+- Corrected name Disp_Layer -> Disp_layer
+- added Collaz fractal

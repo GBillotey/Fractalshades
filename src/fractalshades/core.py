@@ -540,7 +540,10 @@ advanced users when subclassing.
         antialiasing : bool
             If True, some degree of randomization is applied
         """
-        # We're all set, the job is done by `zoom_options` wrapper...
+        # In case the GUI inputs were strings, we override with floats
+        if isinstance(x, str) or isinstance(y, str) or isinstance(dx, str):
+            raise RuntimeError("Float expected")
+
 
     def run(self):
         """
@@ -1604,9 +1607,6 @@ advanced users when subclassing.
         for i, postproc in enumerate(postproc_batch.posts.values()):
 
             val, context_update = postproc[chunk_slice]
-            # Debug
-#            if np.iscomplexobj(val):
-#                raise ValueError(val, "i", i, postproc.key)
             post_array[i, :]  = val
             postproc_batch.update_context(chunk_slice, context_update)
 

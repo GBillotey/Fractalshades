@@ -215,7 +215,7 @@ class Continuous_iter_pp(Postproc):
         Parameters
         ==========
         kind :  str "infinity" | "convergent" | "transcendent"
-            the number of orbit points used for the average
+            the classification of potential function.
         d : None | int
             degree of polynome d >= 2 if kind = "infinity"
         a_d : None | float
@@ -464,10 +464,11 @@ class DEM_normal_pp(Postproc):
 
         Parameters
         ==========
-        `kind`:  str
+        `kind`:  str "potential" | "Milnor" | "convergent"
             if "potential" (default) DEM is base on the potential.
             For Mandelbrot power 2, "Milnor" option is also available which 
             gives similar but esthetically slightly different results.
+            (Use "convergent" for convergent fractals.)
 
         Notes
         =====
@@ -529,8 +530,8 @@ class DEM_normal_pp(Postproc):
             # pulls back the normal direction from an approximation of
             # potential (/!\ need to derivate zr w.r.t. c...)
             # phi = 1. / (abs(zn - zr) * abs(alpha)) 
-                zr = Z[complex_dic["zr"]]
-                dzrdc = Z[complex_dic["dzrdc"]]
+                zr = Z[complex_dic["zr"], :]
+                dzrdc = Z[complex_dic["dzrdc"], :]
                 normal = - (zr - zn) / (dzrdc - dzndc)
                 normal = normal / np.abs(normal)
 
