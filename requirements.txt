@@ -4,5 +4,7 @@ gmpy2
 Pillow
 PyQt5>=5.15.4
 pygments>=2.9.0
+wheel>=0.37.0
+Cython
 
 

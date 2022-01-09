@@ -1,6 +1,9 @@
 [build-system]
 requires = [
     "setuptools>=42",
-    "wheel"
+    "wheel",
+    "Cython",
+    # "numpy",
+    # "gmpy2 @ git+https://github.com/aleaxit/gmpy.git"
 ]
 build-backend = "setuptools.build_meta"

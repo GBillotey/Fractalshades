@@ -1,3 +1,4 @@
 - Improved Fieldlines default postproc when using mirrored cmap
-- Corrected name Disp_Layer -> Disp_layer
+- Typo name Disp_Layer -> Disp_layer
 - added Collaz fractal
+- use gmpy2 cython bindings for faster full-precision calculations

@@ -114,7 +114,7 @@ class Test_store_kwargs(unittest.TestCase):
         for k, v in expected.items():
             self.assertEqual(getattr(a, k), v)
         self.assertEqual(a.calc_options, expected)
-        self.assertEqual(a.calc_options_lastcall, "calc1")
+        self.assertEqual(a.calc_options_callable, "calc1")
 #        # Test with a default value
         kwargs = {"x": [-1], "y": -2}
         expected = {"x": [-1], "y": -2, "z": [30]}
@@ -122,7 +122,7 @@ class Test_store_kwargs(unittest.TestCase):
         for k, v in expected.items():
             self.assertEqual(getattr(a, k), v)
         self.assertEqual(a.calc_options, expected)
-        self.assertEqual(a.calc_options_lastcall, "calc2")
+        self.assertEqual(a.calc_options_callable, "calc2")
 
 if __name__ == "__main__":
     full_test = True

@@ -46,6 +46,7 @@ to install them manually :
 
     sudo apt-get install libgmp-dev
     sudo apt-get install libmpfr-dev
+    sudo apt-get install libmpfi-dev
     sudo apt-get install libmpc-dev
 
 .. [#f1] These instructions describe installation to your Python home

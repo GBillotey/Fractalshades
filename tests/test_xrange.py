@@ -2,19 +2,20 @@
 import numpy as np
 import time
 import unittest
+import mpmath
 
-# Allows relative imports when run locally as script
-# https://docs.python-guide.org/writing/structure/
-#if __name__ == "__main__":
-#    sys.path.insert(0, os.path.abspath(
-#            os.path.join(os.path.dirname(__file__), '..')))
+import test_config
 
 
 #import fractalshades.numpy_utils.xrange as fsx
 from fractalshades.numpy_utils.xrange import (
         Xrange_array,
+        mpf_to_Xrange,
+        mpc_to_Xrange,
         Xrange_polynomial,
-        Xrange_SA)
+        Xrange_SA,
+        Xrange_bivar_polynomial,
+        Xrange_bivar_SA)
 
 
 def _matching(res, expected, almost=False, dtype=None, cmp_op=False, ktol=1.5):
@@ -222,6 +223,17 @@ def _test_op2(ufunc, almost=False, cmp_op=False):
         expected = ufunc(op2, op1[0])
         _matching(ufunc(Xrange_array(op2), op1[0]),
                   expected, almost, dtype, cmp_op)
+
+
+def _matching(res, expected, almost=False, dtype=None, cmp_op=False, ktol=1.5):
+    if not cmp_op:
+        res = res.to_standard()
+    if almost:
+        np.testing.assert_allclose(res, expected,
+                                   rtol= ktol * np.finfo(dtype).eps)
+    else:
+        np.testing.assert_array_equal(res, expected)
+
 
 class Test_Xrange_array(unittest.TestCase):
 
@@ -638,6 +650,40 @@ class Test_Xrange_array(unittest.TestCase):
         assert np.all(Xb.real == -Xa)
         assert np.all(Xb.imag == -2. * Xa)
 
+    def test_mpf_to_xrange(self):
+        a_str = "1.e-2003"
+
+        a_mpf = mpmath.mpf(a_str)
+        a_xr = mpf_to_Xrange(a_mpf)
+        self.assertTrue(a_xr == Xrange_array(a_str))
+
+        a_mpc = mpmath.mpc("1.e-2003")
+        a_xr = mpc_to_Xrange(a_mpc)
+        self.assertTrue(a_xr == Xrange_array(a_str))
+
+        b_mpc = 1j * mpmath.mpc(a_str)
+        b_xr = mpc_to_Xrange(b_mpc)
+        self.assertTrue(b_xr == 1j * Xrange_array(a_str))
+
+        z_tab = [
+            (1j + 0.00000001),
+            (1j + 0.00000001),
+            (1j + 1.),
+            (1j + 1e-16),
+            (1e-16 * 1j + 1.),
+        ]
+        for z in z_tab:
+            print("z", z)
+            b_mpc = z * mpmath.mpc(a_str)
+            b_xr = mpc_to_Xrange(b_mpc)
+            expected = z * Xrange_array(a_str)
+            diff = b_xr - expected
+            print(b_xr - (z * Xrange_array(a_str)))
+            print("diff ratio", abs(diff) / abs(expected))
+            self.assertTrue(abs(diff) < 1.e-18 * abs(expected))
+            #_matching(b_xr, expected)
+
+
 class Test_Xrange_timing(unittest.TestCase):
     
     def test_timing(self):
@@ -867,6 +913,18 @@ class Test_Xrange_polynomial(unittest.TestCase):
                 _matching(Q.coeffs, np.array(q_arr[i]), almost=True, ktol=3.,
                           dtype=dtype)
 
+    def test_deriv(self):
+        # Basic test of derivative - note the reduction of array size
+        for dtype in [np.float32, np.float64, np.complex64, np.complex128]:
+            n_items = 10
+            p_arr = np.ones((10,), dtype)
+            P = Xrange_polynomial(p_arr, cutdeg=100)
+
+            expected = np.empty_like(p_arr)[:(n_items - 1)]
+            for i in range(n_items - 1):
+                expected[i] = i+1
+            _matching(P.deriv().coeffs, expected, almost=True, ktol=3.,
+                          dtype=dtype)
             
             
 class Test_Xrange_SA(unittest.TestCase):
@@ -960,19 +1018,316 @@ class Test_Xrange_SA(unittest.TestCase):
                     res =  prod - prod.cutdeg(cutdeg)
                     _matching(_prod.err, np.sqrt(np.sum(np.abs(res.coef)**2)), 
                               almost=True, ktol=10., dtype=dtype)
-                
-#if __name__ == "__main__":
-#    import test_config 
-#    runner = unittest.TextTestRunner(verbosity=2)
-#    runner.run(test_config.suite([Test_Xrange_array,
-#                            Test_Xrange_timing,
-#                            Test_Xrange_polynomial,
-#                            Test_Xrange_SA]))
-                
+
+class Test_Xrange_bivar_polynomial(unittest.TestCase):
+    def test_Xrange_bivar_polynomial(self):
+        """
+        11 + 21·X¹ + 31·X² + 41·X³ + 51·X⁴
+        + 12·Y¹ + 22·X¹·Y¹ + 32·X²·Y¹ + 42·X³·Y¹
+        + 13·Y² + 23·X¹·Y² + 33·X²·Y²
+        + 14·Y³ + 24·X¹·Y³
+        + 15·Y⁴
+        
+        (15 Y^4 + 24 X Y^3 + 14 Y^3 + 33 X^2 Y^2 + 23 X Y^2 + 13 Y^2 + 42 X^3 Y + 32 X^2 Y + 22 X Y + 12 Y + 51 X^4 + 41 X^3 + 31 X^2 + 21 X + 11)
+        """
+        arr = [
+            [11., 12., 13. , 14., 15],
+            [21., 22., 23. , 24., 25],
+            [31., 32., 33. , 34., 35],
+            [41., 42., 43. , 44., 45],
+            [51., 52., 53. , 54., 55]
+        ]
+        _P = Xrange_bivar_polynomial(arr, 4)
+
+        _Q = _P * _P
+        _expected = [
+            [121., 264., 430. , 620., 835.],
+            [462., 988., 1580. , 2240., 0.],
+            [1123., 2372., 3750. , 0., 0.],
+            [2204., 4616., 0. , 0., 0.],
+            [3805., 0., 0. , 0., 0.]
+        ]
+        _matching(_Q.coeffs, _expected, almost=True, ktol=5., dtype=np.float64)
+
+        _expected = [
+            [ 22.,  24.,  26.,  28.,  30.],
+            [ 42.,  44.,  46.,  48.,  0.],
+            [ 62.,  64.,  66.,  0.,  0.],
+            [ 82.,  84.,  0.,  0.,  0.],
+            [102., 0., 0., 0., 0.]
+        ]
+        _matching((_P + _P).coeffs, _expected,
+                  almost=True, ktol=5., dtype=np.float64)
+
+        _DX = _P.deriv("X")
+        _expected = [
+            [21., 22., 23. , 24., 0.],
+            [62., 64., 66. , 0., 0.],
+            [123., 126., 0. , 0., 0.],
+            [204., 0., 0. , 0., 0.],
+            [0., 0., 0. , 0., 0.]
+        ]
+        _matching(_DX.coeffs, _expected, almost=True, ktol=5., dtype=np.float64)
+
+        _DY = _P.deriv("Y")
+        _expected = [
+            [12., 26., 42. , 60., 0.],
+            [22., 46., 72. , 0., 0.],
+            [32., 66., 0. , 0., 0.],
+            [42., 0., 0. , 0., 0.],
+            [0., 0., 0. , 0., 0.]
+        ]
+        _matching(_DY.coeffs, _expected, almost=True, ktol=5., dtype=np.float64)
+
+        # P + _DY 
+        # (12 + 22 X + 32 X^2 + 42 X^3 + 26 Y + 46 X Y + 66 X^2 Y + 42 Y^2 + 72 X Y^2 + 60 Y^3)
+        # (11 + 21 X + 31 X^2 + 41 X^3 + 12 Y + 22 X Y + 32 X^2 Y + 13 Y^2 + 23 X Y^2 + 14 Y^3) + 33 X^2 Y^2 + 42 X^3 Y + 24 X Y^3 + 51 X^4                                                  15 Y^4 
+        # (15 Y^4 + 24 X Y^3 + 14 Y^3 + 33 X^2 Y^2 + 23 X Y^2 + 13 Y^2 + 42 X^3 Y + 32 X^2 Y + 22 X Y + 12 Y + 51 X^4 + 41 X^3 + 31 X^2 + 21 X + 11
+        _expected = [
+           [ 32.,  34.,  36.,  38.,  15.],
+           [ 83.,  86.,  89.,  24.,   0.],
+           [154., 158.,  33.,   0.,   0.],
+           [245.,  42.,   0.,   0.,   0.],
+           [ 51.,   0.,   0.,   0.,   0.]
+       ]
+        _matching((_P + _DX).coeffs, _expected, almost=True, ktol=5., dtype=np.float64)
+        # (32 + 83 X¹ + 154 ·X² + 245 X³ + 51 X⁴ + 34 Y¹ + 86 X¹·Y¹ + 158 X²·Y¹ + 42 X³·Y¹ + 36 Y² + 89 X¹·Y² + 33 X²·Y² + 38 Y³ + 24 X¹·Y³ + 15 Y⁴)
+
+        _QQ = (((_P + _P) * (_P + _P)) - 4. * (_P * _P))#- (_DX * _P) - (_P * _DY) - (_DX * _DY))
+        _expected = np.zeros((5, 5))
+        _matching(_QQ.coeffs, _expected, almost=True, ktol=5., dtype=np.float64)
+
+        _QQ = (
+            ((_P + _DX) * (_P + _DY)) 
+            -  ((_P * _P) + ((_DX + _DY) * _P) + (_DX * _DY))
+        )
+        _matching(_QQ.coeffs, _expected, almost=True, ktol=5., dtype=np.float64)
+
+        m_arr = [
+            [-11., -12., -13., -14., -15.],
+            [-21., -22., -23., -24.,   0.],
+            [-31., -32., -33.,   0.,   0.],
+            [-41., -42.,   0.,   0.,   0.],
+            [-51.,   0.,   0.,   0.,   0.]
+        ]
+        _M = -_P
+        _expected = np.asarray(m_arr)
+        _matching(_M.coeffs, _expected, almost=True, ktol=5., dtype=np.float64)
+        
+    
+    def test_Xrange_bivar_polynomial_call(self):
+        rg = np.random.default_rng(100)
+        npoly = 10
+        n_pts = 10
+        c = rg.random([npoly, npoly])
+        x = rg.random([n_pts])
+        y = rg.random([n_pts])
+        for i in range(npoly):
+            for j in range(npoly - i,npoly):
+                c[i, j] = 0.
+        _P = Xrange_bivar_polynomial(c, npoly - 1)
+
+        expected = np.polynomial.polynomial.polyval2d(x, y, c)
+        res = _P(x, y)
+        _matching(res, expected, almost=True, ktol=5., dtype=np.float64)
+        
+        x = 1.
+        y = -1.5
+        expected = np.polynomial.polynomial.polyval2d(x, y, c)
+        res = _P(x, y)
+        _matching(res, expected, almost=True, ktol=5., dtype=np.float64)
+        
+    def test_Xrange_bivar_polynomial_deriv(self):
+        # Basic test of derivative - array size is fixed
+        for dtype in [np.float32, np.float64, np.complex64, np.complex128]:
+            n_items = 10
+            p_arr = np.ones((n_items, n_items), dtype)
+            P = Xrange_bivar_polynomial(p_arr, cutdeg=n_items - 1)
+
+            expected = np.zeros(p_arr.shape, dtype)
+            for i in range(n_items - 1):
+                for j in range(n_items - i - 1):
+                    expected[i, j] = i + 1
+            _matching(P.deriv("X").coeffs, expected, almost=True, ktol=3.,
+                          dtype=dtype)
+
+            expected = np.zeros(p_arr.shape, dtype)
+            for j in range(n_items - 1):
+                for i in range(n_items - j - 1):
+                    expected[i, j] = j + 1
+            _matching(P.deriv("Y").coeffs, expected, almost=True, ktol=3.,
+                          dtype=dtype)
+            # print(P, "\n\n", P.deriv("X"), "\n\n",P.deriv("Y"), "\n\n")
+
+
+
+class Test_Xrange_bivar_SA(unittest.TestCase):
+    def test_Xrange_bivar_SA(self):
+        """
+        11 + 21·X¹ + 31·X² + 41·X³ + 51·X⁴
+        + 12·Y¹ + 22·X¹·Y¹ + 32·X²·Y¹ + 42·X³·Y¹
+        + 13·Y² + 23·X¹·Y² + 33·X²·Y²
+        + 14·Y³ + 24·X¹·Y³
+        + 15·Y⁴
+        
+        (15 Y^4 + 24 X Y^3 + 14 Y^3 + 33 X^2 Y^2 + 23 X Y^2 + 13 Y^2 + 42 X^3 Y + 32 X^2 Y + 22 X Y + 12 Y + 51 X^4 + 41 X^3 + 31 X^2 + 21 X + 11)
+        
+        
+        2601 X^8 
+        + 4284 X^7 Y  + 4182 X^7
+        + 5130 X^6 Y^2 + 6708 X^6 Y + 4843 X^6 
+        + 5220 X^5 Y^3 + 7740 X^5 Y^2 + 7472 X^5 Y + 4684 X^5 
+        + 4635 X^4 Y^4 + 7440 X^4 Y^3 + 8130 X^4 Y^2 + 6776 X^4 Y 
+        + 2844 X^3 Y^5 + 5460 X^3 Y^4 + 6652 X^3 Y^3 + 6294 X^3 Y^2 
+        + 1566 X^2 Y^6 + 2988 X^2 Y^5  + 4269 X^2 Y^4 + 4512 X^2 Y^3
+        + 720 X Y^7 + 1362 X Y^6 + 1928 X Y^5 + 2420 X Y^4
+        + 225 Y^8 + 420 Y^7 + 586 Y^6 + 724 Y^5 
+        
+        -----------------------------------------
+        + 4616 X^3 Y
+        + 121 + 264 Y + 430 Y^2 + 620 Y^3 + 835 Y^4
+        + 462 X+  988 X Y + 1580 X Y^2 + 2240 X Y^3 
+        + 1123 X^2 + 2372 X^2 Y + 3750 X^2 Y^2
+        + 2204 X^3 + 4616 X^3 Y
+        + 3805 X^4 
+        
+        
+        
+        err = [
+            2601,
+            4284, 4182,
+            5130, 6708, 4843,
+            5220, 7740, 7472, 4684,
+            4635, 7440, 8130, 6776,
+            2844, 5460, 6652, 6294,
+            1566, 2988, 4269, 4512,
+            720,  1362, 1928, 2420,
+            225,   420,  586,  724,
+        ] # 122815
+        np.sqrt(np.sum(np.array(err)**2)) # 25998.431510381546
+        np.sum(np.array(err)) # 122815
+        
+        """
+        arr = [
+            [11., 12., 13. , 14., 15.],
+            [21., 22., 23. , 24., 25.],
+            [31., 32., 33. , 34., 35.],
+            [41., 42., 43. , 44., 45.],
+            [51., 52., 53. , 54., 55.]
+        ]
+        arr0 = [
+            [11., 12., 13., 14., 15.],
+            [21., 22., 23., 24.,  0.],
+            [31., 32., 33.,  0.,  0.],
+            [41., 42.,  0.,  0.,  0.],
+            [51.,  0.,  0.,  0.,  0.]
+        ]
+        _P = Xrange_bivar_SA(arr, 4)
+
+        _Q = _P * _P
+        _expected = [
+            [121., 264., 430. , 620., 835.],
+            [462., 988., 1580. , 2240., 0.],
+            [1123., 2372., 3750. , 0., 0.],
+            [2204., 4616., 0. , 0., 0.],
+            [3805., 0., 0. , 0., 0.]
+        ]
+        _matching(_Q.coeffs, _expected, almost=True, ktol=5., dtype=np.float64)
+        
+        # Checking error term :
+        # Checked with https://www.wolframalpha.com
+        assert abs(_Q.err - 25998.431510381546) < 0.01
+        _Perr = Xrange_bivar_SA(arr, 4)
+        _Perr.err = 1.0
+        _Qerr1 = _Perr * _P
+        assert abs(_Qerr1.err - _Q.err - np.sqrt(np.sum(np.square(arr0)))
+                   ) < 0.01
+        _Qerr2 = _P * _Perr
+        assert abs(_Qerr2.err - _Q.err - np.sqrt(np.sum(np.square(arr0)))
+                   ) < 0.01
+        _Qerr3 = _Perr * _Perr
+        assert abs(_Qerr3.err - _Q.err - 2 * np.sqrt(np.sum(np.square(arr0)))
+                   - 1.
+                   ) < 0.01
+
+        _expected = [
+            [ 22.,  24.,  26.,  28.,  30.],
+            [ 42.,  44.,  46.,  48.,  0.],
+            [ 62.,  64.,  66.,  0.,  0.],
+            [ 82.,  84.,  0.,  0.,  0.],
+            [102., 0., 0., 0., 0.]
+        ]
+        _matching((_P + _P).coeffs, _expected,
+                  almost=True, ktol=5., dtype=np.float64)
+
+        _DX = _P.deriv("X")
+        _expected = [
+            [21., 22., 23. , 24., 0.],
+            [62., 64., 66. , 0., 0.],
+            [123., 126., 0. , 0., 0.],
+            [204., 0., 0. , 0., 0.],
+            [0., 0., 0. , 0., 0.]
+        ]
+        _matching(_DX.coeffs, _expected, almost=True, ktol=5., dtype=np.float64)
+
+        _DY = _P.deriv("Y")
+        _expected = [
+            [12., 26., 42. , 60., 0.],
+            [22., 46., 72. , 0., 0.],
+            [32., 66., 0. , 0., 0.],
+            [42., 0., 0. , 0., 0.],
+            [0., 0., 0. , 0., 0.]
+        ]
+        _matching(_DY.coeffs, _expected, almost=True, ktol=5., dtype=np.float64)
+
+        # P + _DY 
+        # (12 + 22 X + 32 X^2 + 42 X^3 + 26 Y + 46 X Y + 66 X^2 Y + 42 Y^2 + 72 X Y^2 + 60 Y^3)
+        # (11 + 21 X + 31 X^2 + 41 X^3 + 12 Y + 22 X Y + 32 X^2 Y + 13 Y^2 + 23 X Y^2 + 14 Y^3) + 33 X^2 Y^2 + 42 X^3 Y + 24 X Y^3 + 51 X^4                                                  15 Y^4 
+        # (15 Y^4 + 24 X Y^3 + 14 Y^3 + 33 X^2 Y^2 + 23 X Y^2 + 13 Y^2 + 42 X^3 Y + 32 X^2 Y + 22 X Y + 12 Y + 51 X^4 + 41 X^3 + 31 X^2 + 21 X + 11
+        _expected = [
+           [ 32.,  34.,  36.,  38.,  15.],
+           [ 83.,  86.,  89.,  24.,   0.],
+           [154., 158.,  33.,   0.,   0.],
+           [245.,  42.,   0.,   0.,   0.],
+           [ 51.,   0.,   0.,   0.,   0.]
+       ]
+        _matching((_P + _DX).coeffs, _expected, almost=True, ktol=5., dtype=np.float64)
+        # (32 + 83 X¹ + 154 ·X² + 245 X³ + 51 X⁴ + 34 Y¹ + 86 X¹·Y¹ + 158 X²·Y¹ + 42 X³·Y¹ + 36 Y² + 89 X¹·Y² + 33 X²·Y² + 38 Y³ + 24 X¹·Y³ + 15 Y⁴)
+
+        _QQ = (((_P + _P) * (_P + _P)) - 2. * (_P * _P) * 2.)#- (_DX * _P) - (_P * _DY) - (_DX * _DY))
+        _expected = np.zeros((5, 5))
+        _matching(_QQ.coeffs, _expected, almost=True, ktol=5., dtype=np.float64)
+
+        _QQ = (
+            ((_P + _DX) * (_P + _DY)) 
+            -  ((_P * _P) + ((_DX + _DY) * _P) + (_DX * _DY))
+        )
+        _matching(_QQ.coeffs, _expected, almost=True, ktol=5., dtype=np.float64)
+
+        m_arr = [
+            [-11., -12., -13., -14., -15.],
+            [-21., -22., -23., -24.,   0.],
+            [-31., -32., -33.,   0.,   0.],
+            [-41., -42.,   0.,   0.,   0.],
+            [-51.,   0.,   0.,   0.,   0.]
+        ]
+        _M = -_P
+        _expected = np.asarray(m_arr)
+        _matching(_M.coeffs, _expected, almost=True, ktol=5., dtype=np.float64)
+
+
 if __name__ == "__main__":
-    import test_config 
+    full_test = False
     runner = unittest.TextTestRunner(verbosity=2)
-    runner.run(test_config.suite([Test_Xrange_array,
-                            Test_Xrange_timing,
-                            Test_Xrange_polynomial,
-                            Test_Xrange_SA]))
+    if full_test:
+        runner.run(test_config.suite([Test_Xrange_array]))
+        runner.run(test_config.suite([Test_Xrange_timing]))
+        runner.run(test_config.suite([Test_Xrange_polynomial]))
+        runner.run(test_config.suite([Test_Xrange_SA]))
+    else:
+        suite = unittest.TestSuite()
+        # suite.addTest(Test_Xrange_polynomial("test_deriv"))
+        suite.addTest(Test_Xrange_bivar_polynomial("test_Xrange_bivar_polynomial_deriv"))
+        suite.addTest(Test_Xrange_bivar_SA("test_Xrange_bivar_SA"))
+        runner.run(suite)
+

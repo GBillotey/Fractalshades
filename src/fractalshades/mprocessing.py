@@ -121,11 +121,13 @@ class Multiprocess_filler():
 
     def call_std(self, instance, method, *args, **kwargs):
         
-        for key in getattr(instance, self.iterable)():
-            kwargs[self.iter_kwargs] = key
-            # No multipricessing but still multithreading
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1
-                    ) as threadpool:
+#        for key in getattr(instance, self.iterable)():
+#            kwargs[self.iter_kwargs] = key
+        # No multipricessing but still multithreading
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1
+                ) as threadpool:
+            for key in getattr(instance, self.iterable)():
+                kwargs[self.iter_kwargs] = key
                 full_args = (instance,) + args
                 threadpool.submit(method, *full_args, **kwargs).result()
 

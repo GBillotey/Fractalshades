@@ -18,7 +18,10 @@ import operator
 from fractalshades.numpy_utils.xrange import (
         Xrange_array,
         Xrange_polynomial,
+        Xrange_bivar_polynomial,
         Xrange_SA,
+        Xrange_bivar_SA,
+        Xrange_monome,
         mpf_to_Xrange
 )
 import fractalshades.numpy_utils.numba_xr as numba_xr
@@ -78,9 +81,9 @@ def generate_random_xr(dtype, nvec=500, max_bin_exp=200, seed=100):
                     + 1j * (2. * rg.random([nvec], dtype=r_dtype) - 1.))
     else:
         mantissa = rg.random([nvec], dtype=dtype) * 2. - 1.
-    
+
     exp = rg.integers(low=-max_bin_exp, high=max_bin_exp, size=[nvec])
-    
+
     xr = Xrange_array(mantissa, exp=exp)
     std = mantissa.copy() * (2. ** exp)
     return xr, std
@@ -147,6 +150,13 @@ def numba_test_normalize(m, exp, out_m, out_exp):
     for i in range(n):
         out_m[i], out_exp[i] = numba_xr._normalize(m[i], exp[i])
         
+
+@numba.njit
+def numba_to_standard(xa, out_std):
+    n, = xa.shape
+    for i in range(n):
+        out_std[i] = numba_xr.to_standard(xa[i])
+
 @numba.njit
 def numba_test_sqrt(xa, out):
     n, = xa.shape
@@ -164,6 +174,77 @@ def numba_test_abs2(xa, out):
     n, = xa.shape
     for i in range(n):
         out[i] = numba_xr.extended_abs2(xa[i])
+
+@numba.njit
+def numba_geom_mean(vec):
+    return numba_xr.geom_mean(vec[0], vec[1])
+
+@numba.njit
+def numba_test_constant():
+    zero = numba_xr.zero()
+    one = numba_xr.one()
+    ok = (zero == 0.) and (one == 1.)
+    return ok
+
+@numba.njit
+def numba_toXr_conversion():
+    # Conversion of a float64
+    real = 1.5e218
+    real_xr = numba_xr.to_Xrange_scalar(real)
+    real_xr = np.sqrt(real_xr * real_xr)
+    ok = (real_xr == real)
+    # Conversion of a complex128
+    z = (1.5 + 0.5j) * 1.e218 # Note : random might fail equality test
+    z_xr = numba_xr.to_Xrange_scalar(z)
+    z_xr = np.sqrt(z_xr * z_xr)
+    ok = ok and (z_xr == z)
+    return ok
+
+@numba.njit
+def numba_tostandard_conversion():
+    # Conversion of a float64
+    real = 1.5e-155 #218
+    real_xr = numba_xr.to_Xrange_scalar(real)
+    real_expected = numba_xr.to_standard(real_xr)
+    ok = (real == real_expected)
+    
+    real_xr_sq = real_xr * real_xr
+    real_sq = numba_xr.to_standard(real_xr_sq)
+    ok = ok and (real_sq == real ** 2)
+    print("real_sq", real_sq)
+    
+    real_xr_sqsq = real_xr_sq * real_xr_sq
+    real_sqsq = numba_xr.to_standard(real_xr_sqsq)
+    ok = ok and (real_sqsq == real ** 4)
+
+    real2 = 1.5e150
+    real2_xr = numba_xr.to_Xrange_scalar(real2)
+    real2_expected = numba_xr.to_standard(real2_xr)
+    ok = ok and (real2 == real2_expected)
+    
+    real2_xr_sq = real2_xr * real2_xr
+    real2_sq = numba_xr.to_standard(real2_xr_sq)
+    print("real2_sq", real2_sq)
+    ok = ok and (real2_sq == real2 ** 2)    
+    
+    real2_xr_sqsq = real2_xr_sq * real2_xr_sq
+    real2_sqsq = numba_xr.to_standard(real2_xr_sqsq)
+    print("real2_sq", real2_sqsq)
+    ok = ok and (real2_sqsq == real2 ** 4)
+
+    return ok
+
+@numba.njit
+def numba_unbox_xr_scalar(mantissa, exp):
+    xr = numba_xr.Xrange_scalar(mantissa, exp)
+    return xr
+    
+#    # Conversion of a complex128
+#    z = (1.5 + 0.5j) * 1.e218 # Note : random might fail equality test
+#    z_xr = numba_xr.to_Xrange_scalar(z)
+#    z_xr = np.sqrt(z_xr * z_xr)
+#    ok = ok and (z_xr == z)
+#    return ok
 
 
 class Test_numba_xr(unittest.TestCase):
@@ -211,6 +292,16 @@ class Test_numba_xr(unittest.TestCase):
                 np.testing.assert_array_equal(std, outm * (2. ** outexp))
                 # print("outm", outm)
 
+    def test_to_standard(self):
+        for dtype in (np.float64, np.complex128): #, np.complex128]: # np.complex64 np.float32
+            with self.subTest(dtype=dtype):
+                nvec = 5000
+                xr, std = generate_random_xr(dtype, nvec=nvec, max_bin_exp=800)
+                expected = np.empty_like(std)
+                numba_to_standard(xr, expected)
+                np.testing.assert_array_equal(std, expected)
+                # print("expected", expected)
+
     def test_add(self):
         for (dtypea, dtypeb) in crossed_dtypes:# [(np.float64, np.float64), np.complex128]: #, np.complex128]: # np.complex64 np.float32
             with self.subTest(dtypea=dtypea, dtypeb=dtypeb):
@@ -245,44 +336,6 @@ class Test_numba_xr(unittest.TestCase):
                 _matching(res, expected)
                 numba_test_add(stda, xb, res)
                 _matching(res, expected)
-
-
-#    def test_iadd(self):
-#        for (dtypea, dtypeb) in [(np.float64, np.float64)]:# crossed_dtypes:# [(np.float64, np.float64), np.complex128]: #, np.complex128]: # np.complex64 np.float32
-#            with self.subTest(dtypea=dtypea, dtypeb=dtypeb):
-#                nvec = 10000
-#                xa, stda = generate_random_xr(dtypea, nvec=nvec)
-#                xb, stdb = generate_random_xr(dtypeb, nvec=nvec, seed=800)
-#                res = Xrange_array.empty(xa.shape,
-#                    dtype=np.result_type(dtypea, dtypeb))
-#                expected = stda + stdb
-#                
-#                print("res", res.dtype, type(res))
-#                # Numba timing without compilation
-#                numba_test_add(xa, xb, res)
-#                t_numba = - time.time()
-#                numba_test_add(xa, xb, res)
-#                t_numba += time.time()
-#                # Numba iadd timing without compilation
-#                numba_test_iadd(xa, xb)
-#                t_numba_iadd = - time.time()
-#                numba_test_iadd(xa, xb)
-#                t_numba_iadd += time.time()
-#                res_iadd = xa.view(Xrange_array)
-#                
-#                _matching(res, expected)
-#                _matching(res_iadd, expected)
-#                
-#                print("t_numba", t_numba)
-#                print("t_numba iadd", t_numba_iadd)
-#                expr = (t_numba_iadd <  t_numba)
-#                self.assertTrue(expr, msg="iadd longer than regular add")
-
-#                # Test add a scalar
-#                numba_test_add(xa, stdb, res)
-#                _matching(res, expected)
-#                numba_test_add(stda, xb, res)
-#                _matching(res, expected)
 
 
     def test_sub(self):
@@ -574,6 +627,21 @@ class Test_numba_xr(unittest.TestCase):
                 _matching(res, expected, almost=True, dtype=np.float64,
                           ktol=4.)
 
+    def test_geom_mean(self):
+        dtype = np.float64
+        nvec = 10
+        xa, stda = generate_random_xr(dtype, nvec=nvec * 2,
+                                      max_bin_exp=75)
+        xa = np.abs(xa).reshape([nvec, 2])
+        stda = np.abs(stda).reshape([nvec, 2])
+
+        for ivec in range(nvec):
+            x_loc = xa[ivec,:]
+            std_loc = stda[ivec,:]
+            expected = np.sqrt(std_loc[0] *std_loc[1])
+            res = numba_geom_mean(x_loc)
+            _matching(res, expected, almost=True, dtype=np.float64,
+                          ktol=4.)
 
 
     def test_expr(self):
@@ -657,6 +725,23 @@ class Test_numba_xr(unittest.TestCase):
                     print("t_numpy", t_np, t_numba/t_np)
                     expr = (t_numba <  t_np)
                     self.assertTrue(expr, msg="Numba speed below numpy")
+
+    def test_constant(self):
+        ok = numba_test_constant()
+        self.assertTrue(ok, msg="Numba constant test failed")
+
+    def test_conversion(self):
+        ok = numba_toXr_conversion()
+        self.assertTrue(ok, msg="Numba conversion to Xr test failed")
+        
+        ok = numba_tostandard_conversion()
+        self.assertTrue(ok, msg="Numba conversion to standard test failed")
+    
+    def test_unbox_xr_scalar(self):
+        res = numba_unbox_xr_scalar(1.0, np.int32(10))
+        assert res == 1024.
+        res = numba_unbox_xr_scalar(1.0j, np.int32(10))
+        assert res == 1024.j
 
 @numba.njit
 def numba_test_polyneg(poly):
@@ -863,16 +948,11 @@ def numba_test_sa_mul_0(sa0, sa1):
 def numba_test_sa_mul0(sa0, sa1):
     return sa0[0] * sa1
 
-two = Xrange_array([2.])
+
 @numba.njit
 def numba_SA_loop(P0, n_iter, ref_path, kcX):
     xr_2 = numba_xr.Xrange_scalar(complex(2.), numba.int32(0))
-    print("xr_2", xr_2.mantissa, xr_2.exp)
-    print("two[0]", two[0].mantissa, two[0].exp)
     P0 = P0 * (P0 +  xr_2 * ref_path[0]) + kcX
-    #P0 = (P0 + xr_2 * ref_path[0]) + kcX
-#    print()
-#    P0 = P0 + kcX
     return P0
 
 def std_SA_loop(P0, n_iter, ref_path, kcX):
@@ -1008,13 +1088,10 @@ class Test_SA_xr(unittest.TestCase):
             xy_ratio=1.,
             theta_deg=0.
         )
-        FP_params, ref_path = mandelbrot.reload_ref_point(0, file_prefix)
+        FP_params, ref_path = mandelbrot.reload_ref_point() #0, file_prefix)
         cutdeg = 16
-        kc = mandelbrot.ref_point_scaling(0, file_prefix)
+        kc = mandelbrot.ref_point_kc() #(0, file_prefix)
 
-        # Convert kc into a Xrange array (in all cases the SA iterations use
-        # extended range)
-        kc = mpf_to_Xrange(kc, dtype=np.complex128)
         kcX = np.insert(kc, 0, 0.)
         kcX = Xrange_SA(kcX, cutdeg=cutdeg)
 #        print("kcX:\n", kcX, kcX.coeffs, kcX.coeffs.dtype, type(kcX.coeffs))
@@ -1037,21 +1114,413 @@ class Test_SA_xr(unittest.TestCase):
             _matching(P0.err, P0_std.err.to_standard(), almost=True,
                           dtype=np.float64, ktol=10.)
 
+@numba.njit
+def numba_test_bivar_polycall(poly, x, y):
+    return poly.__call__(x, y)
+@numba.njit
+def numba_test_bivar_polycall0(poly, x, y):
+    return poly.__call__(x[0], y[0])
+
+@numba.njit
+def numba_test_bivar_deriv(poly, direction):
+    return poly.deriv(direction)
+
+class Test_bivar_poly_xr(unittest.TestCase):
+
+    def test_neg(self):
+        for dtype in (np.float64, np.complex128):
+            with self.subTest(dtype=dtype):
+                nvec = 10
+                xa, stda = generate_random_xr(dtype, nvec=nvec**2)# , max_bin_exp=250)
+                xa = xa.reshape(nvec, nvec)
+                _P = Xrange_bivar_polynomial(xa, cutdeg=nvec-1)
+                old_coeffs = _P.coeffs.copy()
+                res = numba_test_polyneg(_P)
+                expected = - _P
+                _matching(res.coeffs, expected.coeffs.to_standard())
+                # Check that the original array has not been modified
+                _matching(_P.coeffs, old_coeffs)
+                
+    def test_add(self):
+        for (dtypea, dtypeb) in crossed_dtypes: #((np.float64, np.float64),):#crossed_dtypes: 
+            with self.subTest(dtypea=dtypea, dtypeb=dtypeb):
+                nvec = 10
+                xa, stda = generate_random_xr(dtypea, nvec=nvec**2, max_bin_exp=20)
+                xa = xa.reshape(nvec, nvec)
+                xb, stdb = generate_random_xr(dtypeb, nvec=nvec**2, seed=510, max_bin_exp=20)
+                xb = xb.reshape(nvec, nvec)
+
+                _Pa = Xrange_bivar_polynomial(xa, cutdeg=nvec-1)
+                _Pb = Xrange_bivar_polynomial(xb, cutdeg=nvec-1)
+
+                res = numba_test_polyadd(_Pa, _Pb)
+                expected = _Pa + _Pb
+                _matching(res.coeffs, expected.coeffs.to_standard())
+        
+        for (dtypea, dtypeb) in crossed_dtypes: #((np.float64, np.float64),):#crossed_dtypes: 
+            with self.subTest(dtypea=dtypea, dtypeb=dtypeb, kind="scalar"):
+                dtypec = np.result_type(dtypea, dtypeb)
+                nvec = 10
+                xa, stda = generate_random_xr(dtypea, nvec=nvec**2, max_bin_exp=20)
+                xa = xa.reshape(nvec, nvec)
+                xb, stdb = generate_random_xr(dtypeb, nvec=1, seed=5, max_bin_exp=2)
+                _Pa = Xrange_bivar_polynomial(xa, cutdeg=nvec-1)
+
+                res = numba_test_polyadd_0(_Pa, xb)
+                expected = _Pa + xb
+                _matching(res.coeffs, expected.coeffs.to_standard(),
+                          almost=True, ktol=20., dtype=dtypec)
+                res = numba_test_polyadd0(xb, _Pa)
+                _matching(res.coeffs, expected.coeffs.to_standard(),
+                          almost=True, ktol=20., dtype=dtypec)
+
+
+    def test_call(self):
+        for (dtypea, dtypeb) in crossed_dtypes: 
+            with self.subTest(dtypea=dtypea, dtypeb=dtypeb):
+                dtypec = np.result_type(dtypea, dtypeb)
+                # Test with arrays
+                npoly = 10
+                nvec = 100
+                c, stdc = generate_random_xr(dtypea, nvec=npoly**2, max_bin_exp=2)
+                c = c.reshape((npoly, npoly))
+                stdc = stdc.reshape((npoly, npoly))
+                for i in range(npoly):
+                    for j in range(npoly - i,npoly):
+                        c[i, j] = 0.
+                        stdc[i, j] = 0.
+                x, stdx = generate_random_xr(dtypeb, nvec=nvec , max_bin_exp=2, seed=10)
+                y, stdy = generate_random_xr(dtypeb, nvec=nvec , max_bin_exp=2, seed=810)
+                _P = Xrange_bivar_polynomial(c, npoly - 1)
+                expected = np.polynomial.polynomial.polyval2d(stdx, stdy, stdc)
+                
+                res = numba_test_bivar_polycall(_P, x, y).view(Xrange_array)
+                
+                # res = _P(x, y)
+                _matching(res, expected, almost=True, ktol=20., dtype=dtypec)
+                # print("matching arr", res, expected)
+
+                # Test with scalars
+                x = 1.
+                y = -1.5
+                Xx = Xrange_array(np.array([x,], dtype=dtypeb))
+                Xy = Xrange_array(np.array([y,], dtype=dtypeb))
+                expected = np.polynomial.polynomial.polyval2d(x, y, stdc)
+                res = numba_test_bivar_polycall0(_P, Xx, Xy).view(Xrange_array)
+                print("matching scalar", res, expected)
+                _matching(res, expected, almost=True, ktol=50., dtype=dtypec)
+        
+    # TODO test deriv("X") and  deriv("Y")
+    def test_deriv(self):
+        # Basic test of derivative - array size is fixed
+        for dtype in [np.float64, np.complex128]:
+            n_items = 10
+            p_arr = np.ones((n_items, n_items), dtype)
+            P = Xrange_bivar_polynomial(p_arr, cutdeg=n_items - 1)
+
+            expected = np.zeros(p_arr.shape, dtype)
+            for i in range(n_items - 1):
+                for j in range(n_items - i - 1):
+                    expected[i, j] = i + 1
+            _matching(numba_test_bivar_deriv(P, "X").coeffs, expected, almost=True, ktol=3.,
+                          dtype=dtype)
+
+            expected = np.zeros(p_arr.shape, dtype)
+            for j in range(n_items - 1):
+                for i in range(n_items - j - 1):
+                    expected[i, j] = j + 1
+            _matching(numba_test_bivar_deriv(P, "Y").coeffs, expected, almost=True, ktol=3.,
+                          dtype=dtype)
+
+
+    def test_mul(self):
+        for (dtypea, dtypeb) in crossed_dtypes: 
+            with self.subTest(dtypea=dtypea, dtypeb=dtypeb):
+                nvec = 10
+                xa, stda = generate_random_xr(dtypea, nvec=nvec**2)# , max_bin_exp=250)
+                xa = xa.reshape(nvec, nvec)
+                xb, stdb = generate_random_xr(dtypeb, nvec=nvec**2, seed=510)# , max_bin_exp=250)
+                xb = xb.reshape(nvec, nvec)
+
+                _Pa = Xrange_bivar_polynomial(xa, cutdeg=nvec-1)
+                _Pb = Xrange_bivar_polynomial(xb, cutdeg=nvec-1)
+
+                res = numba_test_polymul(_Pa, _Pb)
+                expected = _Pa * _Pb
+                _matching(res.coeffs, expected.coeffs.to_standard())
+
+        for (dtypea, dtypeb) in crossed_dtypes: #((np.float64, np.float64),):#crossed_dtypes: 
+            with self.subTest(dtypea=dtypea, dtypeb=dtypeb, kind="scalar"):
+                nvec = 10
+                xa, stda = generate_random_xr(dtypea, nvec=nvec**2)# , max_bin_exp=250)
+                xa = xa.reshape(nvec, nvec)
+                xb, stdb = generate_random_xr(dtypeb, nvec=1, seed=5)# , max_bin_exp=250)
+                _Pa = Xrange_bivar_polynomial(xa, cutdeg=nvec-1)
+           
+                res = numba_test_polymul_0(_Pa, xb)
+                expected = _Pa * stdb[0]
+                _matching(res.coeffs, expected.coeffs.to_standard())
+
+                res = numba_test_polymul0(xb, _Pa)
+                _matching(res.coeffs, expected.coeffs.to_standard())
+
+@numba.njit
+def SA_deriv(SA, direction):
+    return SA.to_polynomial().deriv(direction).to_SA()
+
+@numba.njit
+def SA_oper1(_P):
+    _QQ = (
+            ((_P + _P) * (_P + _P))
+            - 2. * (_P * _P) * 2. #2.
+    )
+    return _QQ
+
+@numba.njit
+def SA_oper2(_P, _DX, _DY):
+    _QQ = (
+        ((_P + _DX) * (_P + _DY)) 
+        -  ((_P * _P) + ((_DX + _DY) * _P) + (_DX * _DY))
+    )
+    return _QQ
+
+@numba.njit
+def SA_op_std(_P):
+    _QQ = (
+        ((5. + (1. * _P - _P * 2. + 3. * _P)) * 2. * (1. + 1j))
+        + (_P + (1. - 1j))
+    )
+    return _QQ
+
+class Test_bivar_SA_xr(unittest.TestCase):
+    def test_mul(self):
+        for (dtypea, dtypeb) in crossed_dtypes: 
+            with self.subTest(dtypea=dtypea, dtypeb=dtypeb):
+
+                arr = [
+                    [11., 12., 13. , 14., 15.],
+                    [21., 22., 23. , 24., 25.],
+                    [31., 32., 33. , 34., 35.],
+                    [41., 42., 43. , 44., 45.],
+                    [51., 52., 53. , 54., 55.]
+                ]
+                arr = np.array(arr, dtype=dtypea)
+                arr0 = [
+                    [11., 12., 13., 14., 15.],
+                    [21., 22., 23., 24.,  0.],
+                    [31., 32., 33.,  0.,  0.],
+                    [41., 42.,  0.,  0.,  0.],
+                    [51.,  0.,  0.,  0.,  0.]
+                ]
+                _P = Xrange_bivar_SA(arr, 4)
+        
+                _Q = numba_test_sa_mul(_P, _P)
+                _expected = [
+                    [121.,   264.,  430.,  620., 835.],
+                    [462.,   988., 1580., 2240.,   0.],
+                    [1123., 2372., 3750.,    0.,   0.],
+                    [2204., 4616.,    0.,    0.,   0.],
+                    [3805.,    0.,    0.,    0.,   0.]
+                ]
+                _matching(_Q.coeffs, _expected, almost=True, ktol=5., dtype=np.float64)
+            
+                # Checking error term :
+                # Checked with https://www.wolframalpha.com
+                assert abs(_Q.err - 25998.431510381546) < 0.01
+                _Perr = Xrange_bivar_SA(arr, 4)
+                _Perr.err = Xrange_array(1.0)
+                _Qerr1 = _Perr * _P
+                assert abs(_Qerr1.err - _Q.err - np.sqrt(np.sum(np.square(arr0)))
+                           ) < 0.01
+                _Qerr2 = _P * _Perr
+                assert abs(_Qerr2.err - _Q.err - np.sqrt(np.sum(np.square(arr0)))
+                           ) < 0.01
+                _Qerr3 = _Perr * _Perr
+                assert abs(_Qerr3.err - _Q.err - 2 * np.sqrt(np.sum(np.square(arr0)))
+                           - 1.
+                           ) < 0.01
+    
+                _expected = [
+                    [ 22.,  24.,  26.,  28.,  30.],
+                    [ 42.,  44.,  46.,  48.,  0.],
+                    [ 62.,  64.,  66.,  0.,  0.],
+                    [ 82.,  84.,  0.,  0.,  0.],
+                    [102., 0., 0., 0., 0.]
+                ]
+
+                _Qadd = numba_test_sa_add(_P, _P)
+                _matching((_Qadd).coeffs, _expected,
+                          almost=True, ktol=5., dtype=np.float64)
+                assert abs(_Qadd.err) == 0.0
+                _Qadd = numba_test_sa_add(_Perr, _Perr)
+                assert abs(_Qadd.err - 2.0) == 0.0
+
+                _DX = SA_deriv(_P, "X")
+                _expected = [
+                    [21., 22., 23. , 24., 0.],
+                    [62., 64., 66. , 0., 0.],
+                    [123., 126., 0. , 0., 0.],
+                    [204., 0., 0. , 0., 0.],
+                    [0., 0., 0. , 0., 0.]
+                ]
+                _matching(_DX.coeffs, _expected, almost=True, ktol=5., dtype=np.float64)
+
+                _DY = SA_deriv(_P, "Y")
+                _expected = [
+                    [12., 26., 42. , 60., 0.],
+                    [22., 46., 72. , 0., 0.],
+                    [32., 66., 0. , 0., 0.],
+                    [42., 0., 0. , 0., 0.],
+                    [0., 0., 0. , 0., 0.]
+                ]
+                _matching(_DY.coeffs, _expected, almost=True, ktol=5., dtype=np.float64)
+
+                _expected = [
+                   [ 32.,  34.,  36.,  38.,  15.],
+                   [ 83.,  86.,  89.,  24.,   0.],
+                   [154., 158.,  33.,   0.,   0.],
+                   [245.,  42.,   0.,   0.,   0.],
+                   [ 51.,   0.,   0.,   0.,   0.]
+               ]
+                _matching((numba_test_sa_add(_P, _DX)).coeffs, _expected, almost=True, ktol=5., dtype=np.float64)
+                _QQ = SA_oper1(_P)
+                _expected = np.zeros((5, 5))
+                _matching(_QQ.coeffs, _expected, almost=True, ktol=5., dtype=np.float64)
+                _QQ = SA_oper2(_P, _DX, _DY)
+                _matching(_QQ.coeffs, _expected, almost=True, ktol=5., dtype=np.float64)
+
+    def test_op_with_std(self):
+        "Check operation with standard (float 64 / complex 128) numbers" 
+        arr0 = [
+            [11., 12., 13., 14., 15.],
+            [21., 22., 23., 24.,  0.],
+            [31., 32., 33.,  0.,  0.],
+            [41., 42.,  0.,  0.,  0.],
+            [51.,  0.,  0.,  0.,  0.]
+        ]
+        _P = Xrange_bivar_SA(arr0, 4)
+        res = SA_op_std(_P)
+
+        _P = Xrange_bivar_polynomial(arr0, 4)
+        res = SA_op_std(_P)
+
+        arr0 = [11., 12., 13., 14., 15.]
+        _P = Xrange_SA(arr0, 4)
+        res = SA_op_std(_P)
+
+        _P = Xrange_polynomial(arr0, 4)
+        res = SA_op_std(_P)
+        del res
+        
+        
+@numba.njit
+def monome_boxing(kX):
+    print(kX.k)
+    return kX
+
+@numba.njit
+def monome_neg(kX):
+    return (-kX)
+
+@numba.njit
+def monome_add(op0, op1):
+    return op0 + op1
+
+class Test_Xrange_monome(unittest.TestCase):
+
+    def test_box_unbox(self):
+        k = Xrange_array("1.e-8000")
+        kX = Xrange_monome(k)
+        print(kX)
+        ret = monome_boxing(kX)
+        print(ret)
+        print(ret.k)
+        
+    def test_neg(self):
+        k = Xrange_array("1.e-8000")
+        kX = Xrange_monome(k)
+        retk = monome_neg(kX).k.view(Xrange_array)
+        assert retk == - k
+        
+        k *= (1-1.j)
+        kX = Xrange_monome(k)
+        retk = monome_neg(kX).k.view(Xrange_array)
+        assert retk == - k
+        
+    def test_add(self):
+        k0 = Xrange_array("1.")
+        for k in (k0, (1.+1.j) * k0):
+            cast_complex = (k == (1.+1.j))
+            k = Xrange_array(k)
+            kX = Xrange_monome(k)
+            print("k for add", k)
+            
+            for dtype in (np.float64, np.complex128):
+                for n in range(12):
+                    arr = Xrange_array.ones(n, dtype=dtype)
+                    sa = Xrange_SA(arr, cutdeg=10)
+                    res = monome_add(kX, sa)
+                    res2 = monome_add(sa, kX)
+                    if n > 1:
+                        expected = arr.copy()[:max(n, 11)]
+                        if cast_complex:
+                            expected = complex(1.) * expected
+                        expected[1] += k
+                        assert np.all(expected == res.coeffs)
+                        assert np.all(expected == res2.coeffs)
+                
+                arr = Xrange_array.ones((11, 11), dtype=dtype)
+                expected = arr.copy()
+                for i in range(11):
+                    for j in range(11):
+                        if (i + j) > 10:
+                            expected[i, j] = 0
+                if cast_complex:
+                    expected = complex(1.) * expected
+                expected[1, 0] = expected[1, 0] + k
+                bivar_sa = Xrange_bivar_SA(arr, cutdeg=10)
+                res = monome_add(kX, bivar_sa)
+                res2 = monome_add(bivar_sa, kX)
+                assert np.all(expected == res.coeffs)
+                assert np.all(expected == res2.coeffs)
+
+#    def test_add(self):
+        
+
 
 if __name__ == "__main__":
     import test_config
     full_test = True
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
-        runner.run(test_config.suite([Test_numba_xr,]))
-        runner.run(test_config.suite([Test_poly_xr,]))
-        runner.run(test_config.suite([Test_SA_xr,]))
+        runner.run(test_config.suite([
+            Test_numba_xr,
+            Test_poly_xr,
+            Test_SA_xr,
+            Test_bivar_poly_xr,
+            Test_bivar_SA_xr,
+            Test_Xrange_monome
+        ]))
     else:
         suite = unittest.TestSuite()
+        suite.addTest(Test_poly_xr("test_call"))
 #        suite.addTest(Test_numba_xr("test_add"))
+        # suite.addTest(Test_numba_xr("test_to_standard"))
         # suite.addTest(Test_poly_xr("test_expr"))
         # suite.addTest(Test_SA_xr("test_expr"))
-        suite.addTest(Test_SA_xr("test_SA_loop"))
+        # suite.addTest(Test_numba_xr("test_conversion"))
+#        suite.addTest(Test_bivar_poly_xr("test_neg"))
+#        suite.addTest(Test_bivar_poly_xr("test_add"))
+        suite.addTest(Test_bivar_poly_xr("test_call"))
+        #suite.addTest(Test_bivar_poly_xr("test_deriv"))
+#        suite.addTest(Test_bivar_poly_xr("test_mul"))
+#        # suite.addTest(Test_bivar_SA_xr("test_op_with_std"))
+#        suite.addTest(Test_numba_xr("test_geom_mean"))
+#        suite.addTest(Test_numba_xr("test_unbox_xr_scalar"))
+#        suite.addTest(Test_Xrange_monome("test_box_unbox"))
+#        suite.addTest(Test_Xrange_monome("test_neg"))
+#        suite.addTest(Test_Xrange_monome("test_add"))
+
         runner.run(suite)
 
 

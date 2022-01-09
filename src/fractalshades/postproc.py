@@ -7,8 +7,6 @@ import fractalshades.numpy_utils.expr_parser as fs_parser
 
 
 
-
-
 class Postproc_batch:
     def __init__(self, fractal, calc_name):
         """
@@ -208,9 +206,15 @@ class Raw_pp(Postproc):
 
 
 class Continuous_iter_pp(Postproc):
-    def __init__(self, kind=None, d=None, a_d=None, M=None, epsilon_cv=None):
+    def __init__(self, kind=None, d=None, a_d=None, M=None, epsilon_cv=None,
+                 floor_iter=0):
         """
-        Return a continuous iteration number
+        Return a continuous iteration number: this is the iteration count at
+        bailout, plus a fractionnal part to allow smooth coloring.
+        Implementation based on potential, for details see [#f3]_.
+
+        .. [#f3] *On Smooth Fractal Coloring Techniques*,
+                  **Jussi Härkönenen**, Abo University, 2007
 
         Parameters
         ==========
@@ -226,6 +230,14 @@ class Continuous_iter_pp(Postproc):
         epsilon_cv : None | float
             Small number corresponding to the criteria for stopping iteration
             if kind = "convergent"
+        floor_iter : int
+            If not 0, a shift will be applied and floor_iter become the 0th 
+            iteration.
+            Used to avoids loss of precision (banding) for very large iteration
+            numbers, usually above several milions. For 
+            reference, the largest integer that cannot be accurately
+            represented with a float32 is > 16 M), banding will startto be
+            noticeable before.
 
         Notes
         =====
@@ -248,6 +260,7 @@ class Continuous_iter_pp(Postproc):
         }
         self.post_dic = {k: v for k, v in post_dic.items() if v is not None}
         self._potential_dic = None
+        self._floor_iter = floor_iter
 
     @property
     def potential_dic(self):
@@ -319,7 +332,7 @@ class Continuous_iter_pp(Postproc):
         nu_frac = - nu_mod
         n = n - nu_div.astype(n.dtype) # need explicit casting to int
 
-        nu = n + nu_frac
+        nu = (n - self._floor_iter) + nu_frac
         val = nu
 
         context_update = {"potential_dic": self.potential_dic,

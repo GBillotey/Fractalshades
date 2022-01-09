@@ -59,7 +59,8 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         nx = 600
         test_name = self.test_M2_E20.__name__
 
-        for complex_type in [np.complex128, ("Xrange", np.complex128)]:
+        #  ("Xrange", np.complex128) deprecated
+        for complex_type in [np.complex128]:
             if type(complex_type) is tuple:
                 _, base_complex_type = complex_type
                 calc_name = "Xr_" + np.dtype(base_complex_type).name
@@ -126,7 +127,6 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         dx = "5e-12"
         precision = 16
         nx = 600
-        test_name = self.test_M2_int_E11.__name__
         complex_type = np.complex128
 
         # DEBUG point :
@@ -187,7 +187,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
                 self.layer = plotter[layer_name]
                 self.test_name = test_name
-                self.check_current_layer()
+                self.check_current_layer(0.15)
 
 
 
@@ -398,7 +398,6 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         c8 = np.array([63, 39, 53]) / 255.
         c9 = np.array([242, 248, 163]) / 255.
 
-        
         colors = np.vstack((c0[np.newaxis, :],
                             c1[np.newaxis, :],
                             c2[np.newaxis, :],
@@ -473,8 +472,6 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 epsilon_stationnary=1.e-3,
                 interior_detect=False,
                 SA_params=SA_params,
-                glitch_eps=1.e-6,
-                glitch_max_attempt=glitch_max_attempt,
                 calc_dzndc=False)
         else:
             mandelbrot.calc_std_div(
@@ -485,14 +482,11 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 M_divergence=1.e3,
                 epsilon_stationnary=1.e-3,
                 interior_detect=interior_detect,
-                SA_params=SA_params,
-                glitch_eps=1.e-6,
-                glitch_max_attempt=glitch_max_attempt)
+                SA_params=SA_params)
 
         mandelbrot.clean_up(calc_name)
         mandelbrot.run()
         return mandelbrot
-
 
     def check_current_layer(self, err_max=0.01):
         """ Compare with stored reference image
@@ -514,5 +508,5 @@ if __name__ == "__main__":
         runner.run(test_config.suite([Test_Perturbation_mandelbrot]))
     else:
         suite = unittest.TestSuite()
-        suite.addTest(Test_Perturbation_mandelbrot("test_M2_E213"))
+        suite.addTest(Test_Perturbation_mandelbrot("test_glitch_dyn"))
         runner.run(suite)

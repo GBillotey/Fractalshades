@@ -499,9 +499,7 @@ advanced users when subclassing.
 
     def init_data_types(self, complex_type):
         if type(complex_type) is tuple:
-            type_modifier, _ = complex_type
-            if type_modifier != "Xrange":
-                raise ValueError(type_modifier)
+            raise RuntimeError("Xrange is deprecated")
         self.complex_type = complex_type
         self.float_postproc_type = np.float32
         self.termination_type = np.int8
@@ -619,15 +617,15 @@ advanced users when subclassing.
         """
         return os.path.join(self.directory, "multiproc_calc")
 
-    @property
-    def Xrange_complex_type(self):
-        """ Return True if the data type is a xrange array
-        :meta private:
-        """
-        if type(self.complex_type) is tuple:
-            type_modifier, _ = self.complex_type
-            return type_modifier == "Xrange"
-        return False
+#    @property
+#    def Xrange_complex_type(self):
+#        """ Return True if the data type is a xrange array
+#        :meta private:
+#        """
+#        if type(self.complex_type) is tuple:
+#            type_modifier, _ = self.complex_type
+#            return type_modifier == "Xrange"
+#        return False
 
     @property
     def base_complex_type(self):
@@ -638,6 +636,10 @@ advanced users when subclassing.
 
     @property
     def base_float_type(self):
+        return self.float_type
+
+    @property
+    def float_type(self):
         select = {np.dtype(np.complex64): np.float32,
                   np.dtype(np.complex128): np.float64}
         return select[np.dtype(self.base_complex_type)]
@@ -655,7 +657,7 @@ advanced users when subclassing.
                 "datetime": datetime.datetime.today().strftime(
                         '%Y-%m-%d_%H:%M:%S')}
         zoom_params = self.zoom_options
-        calc_function = self.calc_options_lastcall # TODO rename to calc_callable
+        calc_function = self.calc_options_callable # TODO rename to calc_callable
         calc_params = self.calc_options
 
         res = dict(software_params)
@@ -698,9 +700,6 @@ advanced users when subclassing.
         :meta private:
         """
         if self.subset is not None:
-#            print("in pts_count", self.subset)
-#            print("in pts_count", np.sum(self.subset[None]),
-#                  np.count_nonzero(self.subset[None]))
             return np.count_nonzero(self.subset[None])
         else:
             return self.nx * self.ny
@@ -781,7 +780,7 @@ advanced users when subclassing.
         subset = self.subset
         (ix, ixx, iy, iyy) = chunk_slice
         if subset is not None:
-            subset_pts = np.count_nonzero(subset[chunk_slice]) # TODO : test this
+            subset_pts = np.count_nonzero(subset[chunk_slice])
             return subset_pts
         else:
             return (ixx - ix) * (iyy - iy)
@@ -790,11 +789,7 @@ advanced users when subclassing.
     def chunk_mask(self):#, chunk_slice):
         """ Legacy - simple alias """
         return self.subset
-#        subset = self.subset
-#        if subset is not None:
-#            return ~subset # np.ravel(subset[chunk_slice])
-#        else:
-#            return None
+
 
     def c_chunk(self, chunk_slice):
         """
@@ -821,6 +816,38 @@ advanced users when subclassing.
         return (x + offset[0]) + (y + offset[1]) * 1j # TODO test this
 
 
+    def chunk_pixel_pos(self, chunk_slice):
+        """
+        Return the image pixels vector distance to center in fraction of image
+        width, as a complex
+           pix = center + (pix_frac_x * dx,  pix_frac_x * dy)
+        """
+        data_type = self.base_float_type
+
+        theta = self.theta_deg / 180. * np.pi
+        (nx, ny) = (self.nx, self.ny)
+        (ix, ixx, iy, iyy) = chunk_slice
+
+        dx_grid = np.linspace(-0.5, 0.5, num=nx, dtype=data_type)
+        dy_grid = np.linspace(-0.5, 0.5, num=ny, dtype=data_type)
+        dy_vec, dx_vec  = np.meshgrid(dy_grid[iy:iyy], dx_grid[ix:ixx])
+        
+        if self.antialiasing:
+            rg = np.random.default_rng(0)
+            rand_x = rg.random(dx_vec.shape, dtype=data_type)
+            rand_y = rg.random(dx_vec.shape, dtype=data_type)
+            dx_vec += (0.5 - rand_x) * 0.5 / nx
+            dy_vec += (0.5 - rand_y) * 0.5 / ny
+
+        dy_vec /= self.xy_ratio
+
+        res = (
+            ((dx_vec * np.cos(theta)) - (dy_vec * np.sin(theta)))
+            + 1j * ((dx_vec * np.sin(theta)) + (dy_vec * np.cos(theta)))
+        )
+        return res
+
+
     def chunk_offset(self, chunk_slice, ensure_Xr=False):
         """
         Only computes the delta around ref central point for different projections
@@ -835,7 +862,7 @@ advanced users when subclassing.
         (xy_ratio, theta_deg)  = (self.xy_ratio, self.theta_deg)
         (nx, ny, dx, dy) = (self.nx, self.ny, self.dx, self.dy)
 
-        if self.Xrange_complex_type or ensure_Xr:
+        if ensure_Xr:
             dx_m, dx_exp = mpmath.frexp(dx)
             dx_m = np.array(dx_m, data_type)
             dx = fsx.Xrange_array(dx_m, dx_exp)
@@ -904,7 +931,7 @@ advanced users when subclassing.
                               self.projection))
         return offset
 
-    def px_chunk(self, chunk_slice):
+    def px_chunk(self, chunk_slice, ensure_Xr=False):
         """
         Local size of pixel for different projections
         """
@@ -914,7 +941,7 @@ advanced users when subclassing.
         (nx, ny, dx, dy) = (self.nx, self.ny, self.dx, self.dy)
         (ix, ixx, iy, iyy) = chunk_slice
         
-        if not(self.Xrange_complex_type):
+        if not(ensure_Xr):
             dx = float(dx)
             dy = float(dy)
         else:
@@ -1039,39 +1066,24 @@ advanced users when subclassing.
         if self.res_available(chunk_slice):
             return
 
-        if self.iref is None:
-            (c, Z, U, stop_reason, stop_iter, n_stop, bool_active,
-             index_active, n_iter) = self.init_cycling_arrays(chunk_slice)
-            SA_iter = 0
-        else:
-            (c, Z, U, stop_reason, stop_iter, n_stop, bool_active,
-             index_active, n_iter, SA_iter, ref_div_iter, ref_path
-             ) = self.init_cycling_arrays(chunk_slice, SA_params)
-            # print("n_iter, SA_iter, ref_div_iter", n_iter, SA_iter, ref_div_iter)
-        modified_in_cycle = np.copy(bool_active)
+        (c, Z, U, stop_reason, stop_iter, n_stop,
+         n_iter) = self.init_cycling_arrays(chunk_slice)
+
+            
+#        modified_in_cycle = np.copy(bool_active)
 
         iterate = self._iterate
-        iref = self.iref
 
         print("**/CALLING cycles looping,  n_stop", n_stop)
 
-        if iref is None:
-            # Standard iterations
-            numba_cycles(Z, U, c, stop_reason, stop_iter, bool_active,
-                         n_iter, iterate)
-        else:
-            # Perturbation iterations
-            last_iref = (iref == self.glitch_max_attempt) 
-            numba_cycles_perturb(Z, U, c, stop_reason, stop_iter, bool_active,
-                iref, n_iter, SA_iter, ref_div_iter, ref_path, iterate,
-                last_iref)
+
+        numba_cycles(Z, U, c, stop_reason, stop_iter,
+                     n_iter, iterate)
+
 
         # Saving the results after cycling
         self.update_report_mmap(chunk_slice, stop_reason)
-        print("#### saving", Z.dtype)
-        print("#### stop_reason", stop_reason)
-        self.update_data_mmaps(chunk_slice, Z, U, stop_reason, stop_iter,
-                               modified_in_cycle)
+        self.update_data_mmaps(chunk_slice, Z, U, stop_reason, stop_iter)
 
 
 
@@ -1082,16 +1094,11 @@ advanced users when subclassing.
         c = np.ravel(self.c_chunk(chunk_slice))
         if self.subset is not None:
             c = c[self.chunk_mask[chunk_slice]]
-#        c = self._2d_to_1d(self.c_chunk(chunk_slice), chunk_slice)
 
         (n_pts,) = c.shape
         n_Z, n_U, n_stop = (len(code) for code in self.codes)
 
-        if self.Xrange_complex_type:
-            Z = fsx.Xrange_array.zeros([n_Z, n_pts], # [n_Z, n_pts],
-                                       dtype=self.base_complex_type)
-        else:
-            Z = np.zeros([n_Z, n_pts], dtype=self.complex_type)
+        Z = np.zeros([n_Z, n_pts], dtype=self.complex_type)
         U = np.zeros([n_U, n_pts], dtype=self.int_type)
         stop_reason = -np.ones([1, n_pts], dtype=self.termination_type)
         stop_iter = np.zeros([1, n_pts], dtype=self.int_type)
@@ -1100,11 +1107,9 @@ advanced users when subclassing.
 
         # We start at 0 with all index active
         n_iter = 0
-        index_active = np.arange(c.size, dtype=self.int_type)
-        bool_active = np.ones(c.size, dtype=np.bool)
 
-        return (c, Z, U, stop_reason, stop_iter, n_stop, bool_active,
-                index_active, n_iter)
+
+        return (c, Z, U, stop_reason, stop_iter, n_stop, n_iter)
 
 
     # ======== The various storing files for a calculation ====================
@@ -1163,6 +1168,9 @@ advanced users when subclassing.
             codes = pickle.load(tmpfile)
             return (params, codes)
 
+
+#==============================================================================
+# Report path tracks the progrss of the calculations
     def report_path(self, calc_name=None): # public
         if calc_name is None:
             calc_name = self.calc_name
@@ -1353,11 +1361,11 @@ advanced users when subclassing.
             "stop_reason": self.termination_type,
             "stop_iter": self.int_type,
         }
-        if self.Xrange_complex_type:
-            data_type["Z"] = np.dtype([
-                    ('mantissa', self.base_complex_type),
-                    ('exp', np.int32)
-            ], align=False)
+#        if self.Xrange_complex_type:
+#            data_type["Z"] = np.dtype([
+#                    ('mantissa', self.base_complex_type),
+#                    ('exp', np.int32)
+#            ], align=False)
         data_path = self.data_path()
 
         pts_count = self.pts_count # the memmap 1st dim
@@ -1404,8 +1412,8 @@ advanced users when subclassing.
                 mmap[beg_end[0]: beg_end[1]] = self.chunk_mask[chunk_slice]
 
 
-    def update_data_mmaps(self, chunk_slice, Z, U, stop_reason, stop_iter,
-                          modified_in_cycle):
+    def update_data_mmaps(self, chunk_slice, Z, U, stop_reason, stop_iter):
+        # TODO suppress modified_in_cycle
         keys = self.SAVE_ARRS
         items = self.REPORT_ITEMS
         data_path = self.data_path()
@@ -1441,11 +1449,11 @@ advanced users when subclassing.
             mmap = open_memmap(filename=data_path[key], mode='r+')
             arr = arr_map[key]
 
-            fancy_indexing = np.arange(beg, end, dtype=np.int32)
-            fancy_indexing = fancy_indexing[modified_in_cycle]
+#            fancy_indexing = np.arange(beg, end, dtype=np.int32)
+#            fancy_indexing = fancy_indexing[modified_in_cycle]
 
             for (field, f_field) in zip(*codes_index_map[key]):
-                mmap[field, fancy_indexing] = arr[f_field, modified_in_cycle]
+                mmap[field, beg:end] = arr[f_field, :]
 
     def reload_data(self, chunk_slice, calc_name=None): # public
         """ Reload all strored raw arrays for this chunk : 
@@ -1472,7 +1480,7 @@ advanced users when subclassing.
         if calc_name is not None:
             params, _ = self.reload_params(calc_name)
             subset = params["calc-param_subset"]
-            
+
         if subset is not None:
             # /!\ fixed-size irrespective of the mask
             mmap = open_memmap(filename=data_path["chunk_mask"], mode='r')
@@ -1480,7 +1488,7 @@ advanced users when subclassing.
             arr["chunk_mask"] = mmap[beg_end[0]: beg_end[1]]
         else:
             arr["chunk_mask"] = None
-        
+
         return (arr["chunk_mask"], arr["Z"], arr["U"], arr["stop_reason"],
                 arr["stop_iter"])
 
@@ -1591,8 +1599,8 @@ advanced users when subclassing.
         chunk_mask, Z, U, stop_reason, stop_iter = self.reload_data(
                 chunk_slice, calc_name)
         # View casting Z as extended-range if needed
-        if self.Xrange_complex_type:
-            Z = Z.view(fsx.Xrange_array)
+#        if self.Xrange_complex_type:
+#            Z = Z.view(fsx.Xrange_array)
 
         params, codes = self.reload_params(calc_name)
         complex_dic, int_dic, termination_dic = self.codes_mapping(*codes)
@@ -1616,45 +1624,15 @@ advanced users when subclassing.
 
 
 # Numba JIT functions =========================================================
-@numba.njit
-def numba_cycles_perturb(Z, U, c, stop_reason, stop_iter, bool_active, iref,
-                n_iter, SA_iter, ref_div_iter, ref_path, iterate,
-                last_iref):
-    """ Run the perturbation cycles
-    """
-    npts = c.size
-    n_iter_init = n_iter
-    for ipt in range(npts):
-        # skip this ipt if pixel not active
-        if not(bool_active[ipt]):
-            continue
-        Zpt = Z[:, ipt]
-        Upt = U[:, ipt]
-        cpt = c[ipt]
-        stop_pt = stop_reason[:, ipt]
-        n_iter = n_iter_init
-        cycling = True
-        while cycling:
-            n_iter += 1 
-            iterate(Zpt, Upt, cpt, stop_pt, n_iter, SA_iter,
-                    ref_div_iter, ref_path[n_iter - 1 , :],
-                    ref_path[n_iter, :], last_iref)
-            cycling = (stop_pt[0] == -1)
-            if not(cycling):
-                stop_iter[0, ipt] = n_iter
-                stop_reason[0, ipt] = stop_pt[0]
 
 @numba.njit
-def numba_cycles(Z, U, c, stop_reason, stop_iter, bool_active,
+def numba_cycles(Z, U, c, stop_reason, stop_iter,
                  n_iter, iterate):
     """ Run the standard cycles
     """
     npts = c.size
     n_iter_init = n_iter
     for ipt in range(npts):
-        # skip this ipt if pixel not active
-        if not(bool_active[ipt]):
-            continue
         Zpt = Z[:, ipt]
         Upt = U[:, ipt]
         cpt = c[ipt]

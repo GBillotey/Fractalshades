@@ -11,36 +11,37 @@ def mpc_to_Xrange(mpc, dtype=np.complex128):
     select = {np.dtype(np.complex64): np.float32,
               np.dtype(np.complex128): np.float64}
     float_type = select[np.dtype(dtype)]
+
     mpcx_m, mpcx_exp = mpmath.frexp(mpc.real)
     mpcy_m, mpcy_exp = mpmath.frexp(mpc.imag)
     mpcx_m = float_type(mpcx_m)
     mpcy_m = float_type(mpcy_m)
 
     if (mpcx_exp >  mpcy_exp):
+        case = 1
+    elif (mpcx_exp <  mpcy_exp):
+        case = 2
+    else:
+        case = 3
+
+    # Need to handle 0. re / im as special cases to avoid cancellation
+    if mpcx_exp == 0.:
+        case = 2
+    if mpcy_exp == 0.:
+        case = 1
+
+    if case == 1:
         m = mpcx_m + 1j * np.ldexp(mpcy_m, mpcy_exp - mpcx_exp)
         exp = mpcx_exp
-    elif (mpcx_exp <  mpcy_exp):
+    elif case == 2:
         m = 1j * mpcy_m + np.ldexp(mpcx_m, mpcx_exp - mpcy_exp)
         exp = mpcy_exp
     else:
         m = mpcx_m + 1j * mpcy_m
         exp = mpcx_exp
-    
-    return Xrange_array(m, np.int32(exp))
-                        #np.array(exp, np.int32))
 
-#    b = Xrange_array._build_complex(
-#               Xrange_array(
-#                   np.array(mpcx_m, float_type),
-#                   np.array(mpcx_exp, np.int32)),
-#               Xrange_array(
-#                   np.array(mpcy_m, float_type),
-#                   np.array(mpcy_exp, np.int32)))
-#    print(a)
-#    print(b)
-#    if str(time.time())[13] == 0:
-#        raise ValueError()
-#    return b
+    return Xrange_array(m, np.int32(exp))
+
 
 def mpf_to_Xrange(mpf, dtype=np.float64):
     """ Convert a mpc float to a Xrange array"""
@@ -160,6 +161,17 @@ Reference:
 
         data = cls._extended_data_array(mantissa, exp)
         return super().__new__(cls, data.shape, dtype=data.dtype, buffer=data)
+
+    @staticmethod
+    def xr_scalar(mantissa, exp):
+        """ Builds a Xrange_array of shape (,) from mantissa and exp """
+        if type(mantissa) is float:
+            ret = np.empty([], get_xr_dtype(np.float64))
+        elif type(mantissa) is complex:
+            ret = np.empty([], get_xr_dtype(np.complex128))
+        ret["mantissa"] = mantissa
+        ret["exp"] = exp
+        return ret.view(Xrange_array)
 
     @staticmethod
     def _convert_from_string(input_str):
@@ -374,7 +386,7 @@ Reference:
     def to_standard(self):
         """ Returns the Xrange_array downcasted to standard np.ndarray ;
         obviously, may overflow. """
-        return self._mantissa * (2.**self._exp)
+        return self._mantissa * (2. ** self._exp)
 
     @staticmethod
     def _build_complex(re, im):
@@ -839,8 +851,8 @@ Reference:
                 co_m0 = (Xrange_array._exp2_shift(co_m0.real, d_exp)
                          + 1.j * Xrange_array._exp2_shift(co_m0.imag, d_exp))
             if ((exp0 > exp1) & ~m0_null):
-                co_m1 = (Xrange_array._exp2_shift(co_m1.real, d_exp)
-                         + 1.j * Xrange_array._exp2_shift(co_m1.imag, d_exp))
+                co_m1 = (Xrange_array._exp2_shift(co_m1.real, -d_exp)
+                         + 1.j * Xrange_array._exp2_shift(co_m1.imag, -d_exp))
             exp = np.maximum(exp0, exp1)
             if m0_null:
                 exp = exp1
@@ -1379,7 +1391,7 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
                 mul *= k
         return Xrange_polynomial(coeffs, cutdeg=self.cutdeg)
 
-    def taylor_shift(self, x0):#, quad_prec=False):
+    def taylor_shift(self, x0):
         """
         Parameters
         ----------
@@ -1611,6 +1623,9 @@ class Xrange_SA(Xrange_polynomial):
         # We will use L2 norm to control truncature error term.
         # Heuristic based on random walk / magnitude of the sum of iud random
         # variables
+        # https://en.wikipedia.org/wiki/Law_of_the_iterated_logarithm
+        # https://mathoverflow.net/questions/89478/magnitude-of-the-sum-of-complex-i-u-d-random-variables-in-the-unit-circle
+        # O(sqrt(N ))
         # Exact term is :
         #    op_err0 = err0 * np.sum(np.abs(op1))
         #    op_err1 = err1 * np.sum(np.abs(op0))
@@ -1649,3 +1664,499 @@ class Xrange_SA(Xrange_polynomial):
         out += " // Res <= {}".format(self.err.__str__()
                 ) + self._monome_base_str(str(self.cutdeg + 1), "X")
         return out
+
+
+class Xrange_bivar_polynomial(Xrange_polynomial):
+    """
+    Two-dimensionnal polynomial class featuring extended-range coefficients
+    which provides:
+        - the standard Python numerical methods ‘+’, ‘-‘, ‘*' 
+        - derivative
+        - evaluation
+        - pretty-print
+
+    Parameters
+    ----------
+    coeffs: array_like - can be viewed as a Xrange_array
+    Polynomial coefficients in order of increasing degree, i.e.,
+    Xrange_array(np.array([
+        [ 1.,  2.,  3.],
+        [11., 12., 13.],
+        [21., 22., 23.],
+    ]))
+    give 1.00000000e+00 + 1.10000000e+01·X¹ + 2.10000000e+01·X² +
+         2.00000000e+00·Y¹ + 1.20000000e+01·X¹·Y¹ + 3.00000000e+00·Y²
+    Note that below-diagonal terms are not taken into account as they exceed 
+    the maximal degree (see below *cutdeg*)
+
+    cutdeg : int, maximum degree coefficient. At instanciation but also for
+    the subsequent operations, monomes of total degree above cutdeg will be 
+    disregarded.
+    """  
+
+    def __init__(self, coeffs, cutdeg):
+        # internal storage of size 'cutdeg * cutdeg'
+        self.coeffs = self.get_coeffs(coeffs, cutdeg)
+        self.cutdeg = cutdeg
+
+    def get_coeffs(self, coeffs, cutdeg):
+        """ internal storage of size 'cutdeg * cutdeg' """
+        if isinstance(coeffs, Xrange_array):
+            _coeffs = coeffs[0:(cutdeg + 1), 0:(cutdeg + 1)]
+        else:
+            _coeffs = Xrange_array(np.asarray(coeffs)[
+                0:(cutdeg + 1), 0:(cutdeg + 1)
+            ])#.view(Xrange_array)
+        if _coeffs.ndim != 2:
+            raise ValueError("Only 2-d inputs for Xrange_polynomial")
+
+        nx, ny = _coeffs.shape
+        dtype = _coeffs._mantissa.dtype
+
+        # Internal storage should be of shape (cutdeg + 1), (cutdeg + 1)
+        if nx < (cutdeg + 1):
+            add_X = Xrange_array.zeros(((cutdeg + 1 - nx), ny), dtype)
+            _coeffs = np.concatenate((_coeffs, add_X), axis=0).view(
+                    Xrange_array)
+
+        if ny < (cutdeg + 1):
+            add_Y = Xrange_array.zeros(
+                    ((cutdeg + 1), (cutdeg + 1 - nx)),
+                    dtype
+            )
+            _coeffs = np.concatenate((_coeffs, add_Y), axis=1).view(
+                    Xrange_array)
+
+        # extra-diagonal terms 'over cutdeg' should be null
+        for i in range(1, cutdeg + 1):
+            for j in range(1 + cutdeg - i, cutdeg + 1):
+                # i + j == deg >= cutdeg + 1
+                _coeffs[i, j] = 0.
+        return _coeffs
+        
+
+    def  __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+        casted_inputs = ()
+        casted_cutdegs = ()
+
+        for x in inputs:
+            # Only support operations with instances of 
+            # Xrange_array._HANDLED_TYPES.
+            if isinstance(x, Xrange_bivar_polynomial):
+                casted_inputs += (x.coeffs,)
+                casted_cutdegs += (x.cutdeg,)
+            elif isinstance(x, Xrange_array):
+                casted_inputs += (x.flatten(),)
+            elif isinstance(x, np.ndarray):
+                casted_inputs += (x.flatten().view(Xrange_array),)
+            elif isinstance(x, numbers.Number):
+                casted_inputs += (Xrange_array([x]),)
+            elif isinstance(x, list):
+                casted_inputs += (Xrange_array(x),)
+            else:
+                # Operation not supported (type not handled), return the
+                # sentinel value NotImplemented
+                return NotImplemented
+
+        cutdeg = min(casted_cutdegs)
+        if not all(item == cutdeg for item in casted_cutdegs):
+            raise ValueError("Operation not supported, incompatible cutdegs {}"
+                             .format(casted_cutdegs))
+
+        out = kwargs.pop("out", None)
+
+        if method == "__call__":
+            if ufunc in [np.add, np.subtract]:
+                return self._add(ufunc, casted_inputs, cutdeg=cutdeg, out=out)
+            elif ufunc is np.negative:
+                return self._negative(casted_inputs, cutdeg=cutdeg, out=out)
+            elif ufunc is np.multiply:
+                return self._mul(casted_inputs, cutdeg=cutdeg, out=out)
+        # Other ufunc  not supported
+        return NotImplemented
+
+    @staticmethod
+    def _add(ufunc, inputs, cutdeg, out=None):
+        """ Add or Subtract 2 Xrange_bivar_polynomial """
+        op0, op1 = inputs
+        res_len = cutdeg + 1
+        dtype=np.result_type(op0._mantissa, op1._mantissa)
+        res = Xrange_array.zeros((res_len, res_len), dtype)
+
+        if op0.size == 1:
+            res[:] = op1
+            res[0, 0] += op0[0]
+            return Xrange_bivar_polynomial(res, cutdeg=cutdeg)
+        if op1.size == 1:
+            res[:] = op0 
+            res[0, 0] += op1[0]
+            return Xrange_bivar_polynomial(res, cutdeg=cutdeg)
+ 
+        res[:] += op0
+        if ufunc is np.add:
+            res[:] += op1
+        elif ufunc is np.subtract: 
+            res[:] -= op1
+
+        return Xrange_bivar_polynomial(res, cutdeg=cutdeg)
+
+    @staticmethod
+    def _negative(inputs, cutdeg, out=None):
+        """ Change sign of a Xrange_bivar_polynomial """
+        op0, = inputs
+        return Xrange_bivar_polynomial(-op0, cutdeg=cutdeg)
+
+    @staticmethod
+    def _mul(inputs, cutdeg, out=None):
+        """ Product of 2 Xrange_bivar_polynomial """
+        op0, op1 = inputs
+
+        if op0.size == 1:
+            res = op0[0] * op1
+            return Xrange_bivar_polynomial(res, cutdeg=cutdeg)
+        if op1.size == 1:
+            res = op0 * op1[0]
+            return Xrange_bivar_polynomial(res, cutdeg=cutdeg)
+
+        res_len = cutdeg + 1
+        dtype=np.result_type(op0._mantissa, op1._mantissa)
+        res = Xrange_array.zeros((res_len, res_len), dtype)
+
+        # The hard way
+        for i in range(0, cutdeg + 1):
+            for j in range(0, cutdeg + 1 - i):
+                for k in range(0, i + 1):
+                    for l in range(0, j + 1):
+                        res[i, j] += op0[k, l] * op1[i - k, j - l]
+
+        return Xrange_bivar_polynomial(res, cutdeg=cutdeg)
+
+    def __call__(self, argX, argY):
+        """ Calls a Xrange_bivar_polynomial as a function.
+        """
+        if not isinstance(argX, Xrange_array):
+            argX = Xrange_array(np.asarray(argX))
+        if not isinstance(argY, Xrange_array):
+            argY = Xrange_array(np.asarray(argY))
+        if argX.shape != argY.shape:
+            raise ValueError("argX and argY should have same shape, given"
+                             + "{}, {}".format(argX.shape, argY.shape))
+
+        res_dtype = np.result_type(argX._mantissa, self.coeffs._mantissa)
+        res = Xrange_array.zeros(argX.shape, dtype=res_dtype)
+        resX = Xrange_array.zeros(argX.shape, dtype=res_dtype)
+        # Double Horner rule
+        # [a11 a12 a13]  -> 1
+        # [a21 a22 a23]  -> X 
+        # [a31 a32 a33]  -> X2
+        for i in range(0, self.cutdeg + 1):
+            resXi = resX.copy()
+            for j in range(0, self.cutdeg + 1):
+                resXi = (
+                    resXi * argY
+                    + (self.coeffs[self.cutdeg - i, self.cutdeg - j])
+                )
+            res = res * argX + resXi
+        return res
+
+
+    def deriv(self, var):
+        """
+        var: "X" | "Y"
+            str, the direction for the derivative
+        """
+        l = self.cutdeg + 1
+        coeffs = Xrange_array.zeros((l, l), dtype=self.coeffs._mantissa.dtype)
+        if var == "X":
+            coeffs[:-1, :] = self.coeffs[1:, :] * np.arange(1, l)[:, np.newaxis]
+        elif var == "Y":
+            coeffs[:, :-1] = self.coeffs[:, 1:] * np.arange(1, l)[np.newaxis, :]
+        else:
+            raise ValueError("Invalid var")
+
+        return Xrange_bivar_polynomial(coeffs, cutdeg=self.cutdeg)
+
+    def taylor_shift(self, x0):#, quad_prec=False):
+        raise NotImplementedError("Not implemented for bivar")
+
+    def __repr__(self):
+        return ("Xrange_polynomial(cutdeg="+ str(self.cutdeg) +",\n" +
+                self.__str__() + ")")
+
+    def __str__(self):
+        return self._to_str()
+
+    def _to_str(self):
+        """
+        Generate the full string representation of the polynomial, using
+        `_monome_base_str` to generate each polynomial term.
+        """
+        if self.coeffs.is_complex:
+            str_coeffs = self.coeffs._to_str_array()
+        else:
+            str_coeffs = np.abs(self.coeffs)._to_str_array()
+        linewidth = np.get_printoptions().get('linewidth', 75)
+        if linewidth < 1:
+            linewidth = 1
+        if self.coeffs.real[0, 0] >= 0.:
+            out = f"{str_coeffs[0, 0][1:]}"
+        else:
+            out = f"-{str_coeffs[0, 0][1:]}"
+        for j in range(self.cutdeg + 1):
+            for i in range(self.cutdeg + 1):
+                if (i + j) > self.cutdeg or (i == 0 and j == 0):
+                    continue# , coef in enumerate(str_coeffs[1:]):
+                coef = str_coeffs[i, j]
+                out += " "
+                poweri = str(i)
+                powerj = str(j)
+                # 1st Polynomial coefficient
+                if (self.coeffs.is_complex) or self.coeffs.real[i, j] >= 0.:
+                    next_term = f"+ {coef}"
+                else:
+                    next_term = f"- {coef}"
+                # Polynomial term
+                if i > 0:
+                    next_term += self._monome_base_str(poweri, "X")
+                if j > 0:
+                    next_term += self._monome_base_str(powerj, "Y")
+                # Length of the current line with next term added
+                line_len = len(out.split('\n')[-1]) + len(next_term)
+                # If not the last term in the polynomial, it will be two           
+                # characters longer due to the +/- with the next term
+                if i < len(self.coeffs[1:]) - 1:
+                    line_len += 2
+                # Handle linebreaking
+                if line_len >= linewidth:
+                    next_term = next_term.replace(" ", "\n", 1)
+                next_term = next_term.replace("  ", " ")
+                out += next_term
+        return out
+
+#    @classmethod
+#    def _monome_base_str(cls, i, var_str):
+#        return f"·{var_str}{i.translate(cls._superscript_mapping)}"
+
+
+class Xrange_bivar_SA(Xrange_bivar_polynomial):
+    """
+    One-dimensionnal, extended-range serie approximation class based on
+    Xrange_polynomial:
+        - provides the same feature as Xrange_polynomial + control of a
+            truncature error term
+        - For the prupose of truncature error calculation, it is assumed that 
+            the domain of convergence is enclosed in the unit circle.
+
+    Parameters
+    ----------
+    coeffs: see Xrange_polynomial
+    cutdeg: see Xrange_polynomial (Monomes of degree above cutoff will be 
+            disregarded.)
+    err : truncature error term, in X**(cutoff + 1). Default to 0.
+    """  
+
+    def __init__(self, coeffs, cutdeg, err=Xrange_array(0.)):
+        self.err = err
+        if not(isinstance(err, Xrange_array)):
+            self.err = Xrange_array(err)
+        super().__init__(coeffs, cutdeg)
+
+    def  __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+        casted_inputs = ()
+        casted_cutdegs = ()
+        casted_errs = ()
+
+        for x in inputs:
+            # Only support operations with instances of 
+            # Xrange_array._HANDLED_TYPES.
+            if isinstance(x, Xrange_bivar_SA):
+                casted_cutdegs += (x.cutdeg,)
+                casted_inputs += (x.coeffs,)
+                casted_errs += (x.err,)
+            else:
+                casted_errs += (0.,)
+                if isinstance(x, Xrange_bivar_polynomial):
+                    casted_inputs += (x.coeffs,)
+                    casted_cutdegs += (x.cutdeg,)
+                elif isinstance(x, Xrange_array):
+                    casted_inputs += (x.flatten(),)
+                elif isinstance(x, np.ndarray):
+                    casted_inputs += (x.flatten().view(Xrange_array),)
+                elif isinstance(x, numbers.Number):
+                    casted_inputs += (Xrange_array([x]),)
+                elif isinstance(x, list):
+                    casted_inputs += (Xrange_array(x),)
+                else:
+                    # Operation not supported (type not handled), return the
+                    # sentinel value NotImplemented
+                    return NotImplemented
+
+        cutdeg = min(casted_cutdegs)
+        if not all(item == cutdeg for item in casted_cutdegs):
+            raise ValueError("Operation not supported, incompatible cutdegs {}"
+                             .format(casted_cutdegs))
+
+        out = kwargs.pop("out", None)
+
+        if method == "__call__":
+            if ufunc in [np.add, np.subtract]:
+                return self._add(ufunc, casted_inputs, casted_errs,
+                                 cutdeg=cutdeg, out=out)
+            elif ufunc is np.negative:
+                return self._negative(casted_inputs, casted_errs,
+                                      cutdeg=cutdeg, out=out)
+            elif ufunc is np.multiply:
+                return self._mul(casted_inputs, casted_errs,
+                                 cutdeg=cutdeg, out=out)
+        # Other ufunc not supported
+        return NotImplemented
+
+    @staticmethod
+    def _add(ufunc, inputs, errs, cutdeg, out=None):
+        """ Add or Subtract 2 Xrange_bivar_SA """
+        op0, op1 = inputs
+        res_len = cutdeg + 1
+        dtype=np.result_type(op0._mantissa, op1._mantissa)
+        res = Xrange_array.zeros((res_len, res_len), dtype)
+
+        if op0.size == 1:
+            res[:] = op1
+            res[0, 0] += op0[0]
+            return Xrange_bivar_SA(res, cutdeg=cutdeg, err=sum(errs))
+        if op1.size == 1:
+            res[:] = op0 
+            res[0, 0] += op1[0]
+            return Xrange_bivar_SA(res, cutdeg=cutdeg, err=sum(errs))
+ 
+        res[:] += op0
+        if ufunc is np.add:
+            res[:] += op1
+        elif ufunc is np.subtract: 
+            res[:] -= op1
+
+        return Xrange_bivar_SA(res, cutdeg=cutdeg, err=sum(errs))
+
+    @staticmethod
+    def _negative(inputs, errs, cutdeg, out=None):
+        """ Change sign of a Xrange_bivar_SA """
+        op0, = inputs
+        err0, = errs
+        return Xrange_bivar_SA(-op0, cutdeg=cutdeg, err=err0)
+
+    @staticmethod
+    def _mul(inputs, errs, cutdeg, out=None):
+        """ Multiply 2 Xrange_bivar_SA """
+        op0, op1 = inputs
+        err0, err1 = errs
+
+        if op0.size == 1: # No trunc err term
+            res = op0[0] * op1
+            err = (
+                op0[0] * err1
+                + np.sqrt(np.sum(op1.abs2())) * err0
+                + err1 * err0
+            )
+            return Xrange_bivar_SA(res, cutdeg=cutdeg, err=err)
+        if op1.size == 1: # No trunc err term
+            res = op0 * op1[0]
+            err = (
+                np.sqrt(np.sum(op0.abs2())) * err1
+                + op1[0] * err0
+                + err1 * err0
+            )
+            return Xrange_bivar_SA(res, cutdeg=cutdeg, err=err)
+
+        res_len = cutdeg + 1
+        dtype=np.result_type(op0._mantissa, op1._mantissa)
+        res = Xrange_array.zeros((res_len, res_len), dtype)
+
+        # The hard way
+        for i in range(0, res_len):
+            for j in range(0, res_len - i):
+                for k in range(0, i + 1):
+                    for l in range(0, j + 1):
+                        res[i, j] += op0[k, l] * op1[i - k, j - l]
+
+        # Truncature error term
+        errT = Xrange_array.zeros([], dtype)
+        for i in range(0, 2 * cutdeg + 1):
+            for j in range(0, 2 * cutdeg + 1 - i):
+                if (i + j) <= cutdeg: # Normal term, not an error
+                    continue
+                op_errT = Xrange_array.zeros([], dtype)
+                for k in range(max(0, i - cutdeg), 
+                               min(i + 1, res_len)):
+                    for l in range(max(0, j - cutdeg),
+                                   min(j + 1, res_len)):
+                        op_errT += op0[k, l] * op1[i - k, j - l]
+#                print("op_errT", op_errT)
+                errT += op_errT.abs2()
+        errT = np.sqrt(errT)
+
+        # Sums0 and sums1 error term
+        sums0 = np.sqrt(np.sum(op0.abs2()))
+        sums1 = np.sqrt(np.sum(op1.abs2()))
+
+        # Total err
+        err = err0 * sums1 + err1 * sums0 + err0 * err1 + errT
+
+        return Xrange_bivar_SA(res, cutdeg=cutdeg, err=err)
+
+
+    def __repr__(self):
+        return ("Xrange_bivar_SA(cutdeg="+ str(self.cutdeg) +",\n" +
+                self.__str__() + ")")
+
+    def __str__(self):
+        return self._to_str()
+
+    def _to_str(self):
+        """
+        Generate the full string representation of the SA, using
+        `_monome_base_str` to generate each polynomial term.
+        """
+        out = super()._to_str()
+        out += " // Res <= {}".format(self.err.__str__()
+                ) + self._monome_base_str(str(self.cutdeg + 1), "[X|Y]")
+        return out
+
+
+class Xrange_monome:
+    """
+    Class for a monome in X.
+
+    Multiplication with SA and bivar_SA is only implemented in numba
+
+    Parameters
+    ----------
+    k : Xrange_array of size 1
+        coefficient of the monome
+    """
+    def __init__(self, k):
+        self.k = k.ravel()
+
+
+
+if __name__ == "__main__":
+    print("test")
+    a = Xrange_array(np.array([
+        [ 1.,  2.,  3.],
+        [11., 12., 13.],
+        [21., 22., 23.],
+    ]))
+    a = Xrange_array(np.array([
+        [ 1.,  1.,  1.],
+        [1., 1., 1.],
+        [1., 1., 1.],
+    ]))
+    a = (1. ) * a
+    print("a\n", a, a[1, 2], a[2, 0])
+    bivar = Xrange_bivar_polynomial(a, cutdeg=2)
+    print(bivar)
+    print(bivar + bivar)
+    print(bivar * bivar)
+    print("eval")
+    print(bivar(-1., 1.))
+    print("deriv")
+    print(bivar)
+    print(bivar.deriv("Y"))
