@@ -1620,7 +1620,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         self._model.model_event.connect(self.model_event_slot)
         self.on_fractal_result.connect(self.fractal_result_slot)
 
-        
+
     def on_mouse_right_press(self, event):
         """ Interactive menu with all the defined "interactive_options"
         """
@@ -1752,6 +1752,16 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
                                    ["x", "y", "dx", "xy_ratio"]}
         self._fractal_zoom_init["nx"] = nx
         self._fractal_zoom_init["ny"] = ny
+
+        print("****************** dps", info.keys())
+#        precision = info["precision"]
+#        C = np.log(10.) / np.log(2.)
+#        dps = max(15, int(round(int(precision) / C - 1)))
+        if self.has_dps:
+            print("has dps")
+            self._fractal_zoom_init["dps"] = info["precision"]
+        # self._presenter["dps"] = ref_zoom[key]
+        
         self.validate()
 
         for item in [self._qim, self._rect, self._rect_under]:
@@ -1778,9 +1788,14 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
 
     def check_zoom_init(self):
         """ Checks if the image 'zoom init' matches the parameters ;
-        otherwise, updates """
+        otherwise, updates the model through a notification request
+        """
         ret = 0
-        for key in ["x", "y", "dx", "xy_ratio"]:
+        keys = ["x", "y", "dx", "xy_ratio"]
+        if self.has_dps:
+            keys += ["dps"]
+
+        for key in keys:
             expected = self._presenter[key]
             value = self._fractal_zoom_init[key]
             if value is None:
@@ -1858,6 +1873,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         dx_pix = abs(topleft.x() - bottomRight.x())
 
         ref_zoom = self._fractal_zoom_init.copy()
+
         # str -> mpf as needed
         if self.has_dps:
             to_mpf = {k: isinstance(self._fractal_zoom_init[k], str) for k in
@@ -1889,9 +1905,9 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             ref_zoom["x"] = float(ref_zoom["x"])
             ref_zoom["y"] = float(ref_zoom["y"])
             ref_zoom["dx"] = float(ref_zoom["dx"])
-            print(type(ref_zoom["dx"]), "ref_zoom[dx]")
-            print(type(ref_zoom["x"]), "ref_zoom[x]")
-            print(type(ref_zoom["y"]), "ref_zoom[y]")
+#            print(type(ref_zoom["dx"]), "ref_zoom[dx]")
+#            print(type(ref_zoom["x"]), "ref_zoom[x]")
+#            print(type(ref_zoom["y"]), "ref_zoom[y]")
             pix = ref_zoom["dx"] / float(ref_zoom["nx"])
             ref_zoom["x"] += center_off_px * pix
             ref_zoom["y"] += center_off_py * pix

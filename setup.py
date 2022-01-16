@@ -1,28 +1,32 @@
+import sys
+import os
 import setuptools
 
-# from setuptools import setup, find_packages, Extension
-# from setuptools.command.build_ext import build_ext
-# from distutils.core import Extension
 from Cython.Build import cythonize
-import sys
-# import numpy as np
+import numpy as np
+import gmpy2
 
-# import gmpy2
-# https://stackoverflow.com/questions/54117786/add-numpy-get-include-argument-to-setuptools-without-preinstalled-numpy
+# Built-time dependencies are listed in pyproject.toml
+# [build-system]
 
-# Note: Regarding "Using deprecated NumPy API" deprecation warning
+# Note : Build-time dependency on NUMPY :
+# https://numpy.org/doc/stable/user/depending_on_numpy.html
+# If a package either uses the NumPy C API directly or it uses some other tool 
+# that depends on it like Cython or Pythran, NumPy is a build-time dependency
+# of the package. Because the NumPy ABI is only forward compatible, you must
+# build your own binaries (wheels or other package formats) against the lowest
+# NumPy version that you support (or an even older version).
+
+# Note: Regarding "Using deprecated NumPy API" deprecation warning when 
+# compiling C extensions with Cython
 # https://github.com/numpy/numpy/issues/11653
 # https://stackoverflow.com/questions/52749662/using-deprecated-numpy-api
 
-# DEV setup - not installing
 include_dirs = (
     sys.path
-#    + [os.path.dirname(gmpy2.__file__)]
-#    + [np.get_include()]
-    + [r"/home/geoffroy/.local/lib/python3.8/site-packages/gmpy2"]
-    + ['/home/geoffroy/.local/lib/python3.8/site-packages/numpy/core/include']    
+    + [os.path.dirname(gmpy2.__file__)]
+    + [np.get_include()]  
 )
-print("#### include_dirs", include_dirs)
 
 ext_FP = setuptools.Extension(
     "fractalshades.mpmath_utils.FP_loop",
@@ -31,19 +35,10 @@ ext_FP = setuptools.Extension(
     libraries=['gmp', 'mpfr', 'mpc'],
 )
 
-
-
-#ext_test = setuptools.Extension(
-#    "fractalshades.numpy_tests.trp",
-#    [r"src/fractalshades/numpy_tests/trp.c"],
-#    include_dirs=include_dirs,
-#)
-
 setuptools.setup(
     ext_modules=cythonize(
         [ext_FP],
         include_path=include_dirs,
         compiler_directives={'language_level' : "3"}
     )
-#    + [ext_test]
 )

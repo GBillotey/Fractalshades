@@ -274,7 +274,7 @@ directory : str
             (self.x + 1j * self.y) - FP_params["ref_point"],
             dtype=self.complex_type
         ).ravel()
-        
+
         has_xr = (len(ref_xr_python) > 0)
 #        Ref_path = fsxn.Ref_path(
 #            Z_path, ref_index_xr, ref_xr, ref_div_iter,
@@ -584,10 +584,10 @@ directory : str
                     if randomize < 5:
                         randomize += 1
                         print("BALL METHOD RANDOM ", randomize)
-                        self.get_ref_point(c0=None, newton=newton, order=None,
+                        self.get_FP_orbit(c0=None, newton=newton, order=None,
                                  randomize=randomize)
                     else:
-                        raise ValueError("Ball method failed")
+                        raise RuntimeError("Ball method failed")
 
             max_newton = 1 if (newton == "step") else None
             print("newton ", newton, " with order: ", order)
@@ -680,8 +680,10 @@ directory : str
         Use a ball centered on c = x + i y to find the first period (up to 
         maxiter) of nucleus
         """
+        
         max_iter = self.max_iter
-        print("ball method", c, px)
+        print("ball method", c, type(c), px, type(px))
+        
         if order == 1:
             return self._ball_method1(c, px, max_iter, M_divergence)
         elif order == 2:
