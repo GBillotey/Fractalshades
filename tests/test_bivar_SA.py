@@ -56,7 +56,8 @@ def numba_path_loop(
                 count += 1
 
     print("count xr", count)
-    assert count == 14 * 3
+    if count != 14 * 3:
+        raise ValueError("Unexpected count")
 
     count = 0
     for i in (7433792, 7433795, 8785472, 8785473, 9461312, 675720, 675728):
@@ -71,7 +72,10 @@ def numba_path_loop(
             count += 1
         else:
             print("** NOT xr", i, val)
-    assert count == 4
+
+    if count != 4:
+        raise ValueError("Unexpected count")
+
 
 
 @numba.njit
