@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-=======================================
-Mandelbrot arbitrary-precision explorer
-=======================================
+=============================================================
+COllatz explorer - Naïve algorithm with standard precision
+=============================================================
 
-This is a simple template to start exploring the Mandelbrot set with
-the GUI.
+This is a simple template to start exploring the Collatz set with
+the GUI. Resolution limited to approx 1.e-13 due to double (float64) precision
 Good exploration !
 """
 import typing
@@ -29,8 +29,9 @@ from fractalshades.postproc import (
 from fractalshades.colors.layers import (
     Color_layer,
     Bool_layer,
+    Virtual_layer,
     Normal_map_layer,
-    Blinn_lighting
+    Disp_layer
 )
 
 
@@ -38,59 +39,57 @@ def plot(plot_dir):
     """
     Example interactive
     """
-    import mpmath
-
-    x = '-1.0'
-    y = '-0.0'
-    dx = '5.0'
     calc_name = 'test'
-    
-    xy_ratio = 1.0
-    dps = 16
-    max_iter = 15000
-    nx = 800
-    interior_detect = True
-    epsilon_stationnary = 0.0001
-    
-    colormap = fscolors.cmap_register["classic"]
-
-    zmin = 0.00
-    zmax = 0.15
+    x = 0.0
+    y = 0.0
+    dx = 5.
+    xy_ratio = 2.0
+    max_iter = 1000
+    nx = 2000
+    M_divergence = 1000.0
+    interior_color = (0.5, 0.5, 0.5)
+    colormap = fs.colors.cmap_register["classic"]
+    cmap_z_kind = 'relative'
+    zmin = 0.0
+    zmax = 0.25
+  
 
     # Set to True to enable multi-processing
     settings.enable_multiprocessing = True
+    # Set to True in case RAM issue (Memory error)
+    settings.optimize_RAM = False
+    settings.inspect_calc = True
 
     directory = plot_dir
-    fractal = fsm.Perturbation_mandelbrot(directory)
+    fractal = fsm.Collatz(directory)
     
-    def func(fractal: fsm.Perturbation_mandelbrot=fractal,
+    def func(fractal: fsm.Mandelbrot=fractal,
              calc_name: str= calc_name,
-             x: mpmath.mpf= x,
-             y: mpmath.mpf= y,
-             dx: mpmath.mpf= dx,
+             x: float= x,
+             y: float= y,
+             dx: float= dx,
              xy_ratio: float=xy_ratio,
-             dps: int= dps,
              max_iter: int=max_iter,
              nx: int=nx,
-             interior_detect: bool=interior_detect,
-             epsilon_stationnary: float=epsilon_stationnary,
-             interior_color: QtGui.QColor=(0.1, 0.1, 0.1),
+             M_divergence: float=M_divergence,
+             interior_color: QtGui.QColor=interior_color,
              colormap: fscolors.Fractal_colormap=colormap,
-             cmap_z_kind: typing.Literal["relative", "absolute"]="relative",
+             cmap_z_kind: typing.Literal["relative", "absolute"]=cmap_z_kind,
              zmin: float=zmin,
              zmax: float=zmax):
 
 
-        fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
+        fractal.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
              theta_deg=0., projection="cartesian", antialiasing=False)
 
-        fractal.calc_std_div(datatype=np.complex128, calc_name=calc_name,
-            subset=None, max_iter=max_iter, M_divergence=1.e3,
+        fractal.base_calc(
+            calc_name=calc_name,
+            subset=None,
+            max_iter=max_iter,
+            M_divergence=M_divergence,
             epsilon_stationnary=1.e-4,
-            SA_params={"cutdeg": 8,
-                       "err": 1.e-6},
-            interior_detect=interior_detect,
-            )
+            datatype=np.complex128
+        )
 
         if fractal.res_available():
             print("RES AVAILABLE, no compute")
@@ -100,41 +99,30 @@ def plot(plot_dir):
 
         fractal.run()
 
-        layer_name = "continuous_iter"
 
         pp = Postproc_batch(fractal, calc_name)
-        pp.add_postproc(layer_name, Continuous_iter_pp())
+        pp.add_postproc("n_iter", Raw_pp("stop_iter", func=None))
         pp.add_postproc("interior", Raw_pp("stop_reason",
                         func=lambda x: x != 1))
-        pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
 
         plotter = fs.Fractal_plotter(pp)   
         plotter.add_layer(Bool_layer("interior", output=False))
-        plotter.add_layer(Normal_map_layer("DEM_map", max_slope=45, output=True))
+
         plotter.add_layer(Color_layer(
-                layer_name,
-                func=lambda x: np.log(x),
+                "n_iter",
+                func=lambda x: np.log(x + 10.),
                 colormap=colormap,
                 probes_z=[zmin, zmax],
-                probes_kind="relative",
+                probes_kind=cmap_z_kind,
                 output=True))
-        plotter[layer_name].set_mask(plotter["interior"],
+        plotter["n_iter"].set_mask(plotter["interior"],
                                      mask_color=interior_color)
 
-        light = Blinn_lighting(0.2, np.array([1., 1., 1.]))
-        light.add_light_source(
-            k_diffuse=1.05,
-            k_specular=.0,
-            shininess=350.,
-            angles=(50., 50.),
-            coords=None,
-            color=np.array([1.0, 1.0, 0.9]))
 
-        plotter[layer_name].shade(plotter["DEM_map"], light)
         plotter.plot()
         
         # Renaming output to match expected from the Fractal GUI
-        layer = plotter[layer_name]
+        layer = plotter["n_iter"]
         file_name = "{}_{}".format(type(layer).__name__, layer.postname)
         src_path = os.path.join(fractal.directory, file_name + ".png")
         dest_path = os.path.join(fractal.directory, calc_name + ".png")
@@ -145,7 +133,7 @@ def plot(plot_dir):
 
     gui = fsgui.Fractal_GUI(func)
     gui.connect_image(image_param="calc_name")
-    gui.connect_mouse(x="x", y="y", dx="dx", xy_ratio="xy_ratio", dps="dps")
+    gui.connect_mouse(x="x", y="y", dx="dx", xy_ratio="xy_ratio", dps=None)
     gui.show()
 
 
@@ -178,10 +166,11 @@ if __name__ == "__main__":
         plot_dir = os.path.splitext(realpath)[0]
         plot(plot_dir)
     except NameError:
-        import tempfile
-        with tempfile.TemporaryDirectory() as plot_dir:
-            static_im_link="sphx_glr_run_interactive_001.png"
-            if static_im_link is None:
-                plot(plot_dir)
-            else:
-                _plot_from_data(plot_dir, static_im_link)
+        pass # No output
+#        import tempfile
+#        with tempfile.TemporaryDirectory() as plot_dir:
+#            static_im_link="sphx_glr_run_interactive_001.png"
+#            if static_im_link is None:
+#                plot(plot_dir)
+#            else:
+#                _plot_from_data(plot_dir, static_im_link)

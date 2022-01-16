@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-=======================================
-Mandelbrot arbitrary-precision explorer
-=======================================
+=============================================================
+Mandelbrot explorer - Naïve algorithm with standard precision
+=============================================================
 
 This is a simple template to start exploring the Mandelbrot set with
-the GUI.
+the GUI. Resolution limited to approx 1.e-13 due to double (float64) precision
 Good exploration !
 """
 import typing
@@ -38,18 +38,14 @@ def plot(plot_dir):
     """
     Example interactive
     """
-    import mpmath
-
-    x = '-1.0'
-    y = '-0.0'
-    dx = '5.0'
+    x = -1.0
+    y = -0.0
+    dx = 5.0
     calc_name = 'test'
-    
+
     xy_ratio = 1.0
-    dps = 16
     max_iter = 15000
     nx = 800
-    interior_detect = True
     epsilon_stationnary = 0.0001
     
     colormap = fscolors.cmap_register["classic"]
@@ -59,20 +55,20 @@ def plot(plot_dir):
 
     # Set to True to enable multi-processing
     settings.enable_multiprocessing = True
+    # Set to True in case RAM issue (Memory error)
+    settings.optimize_RAM = False
 
     directory = plot_dir
-    fractal = fsm.Perturbation_mandelbrot(directory)
+    fractal = fsm.Mandelbrot(directory)
     
-    def func(fractal: fsm.Perturbation_mandelbrot=fractal,
+    def func(fractal: fsm.Mandelbrot=fractal,
              calc_name: str= calc_name,
-             x: mpmath.mpf= x,
-             y: mpmath.mpf= y,
-             dx: mpmath.mpf= dx,
+             x: float= x,
+             y: float= y,
+             dx: float= dx,
              xy_ratio: float=xy_ratio,
-             dps: int= dps,
              max_iter: int=max_iter,
              nx: int=nx,
-             interior_detect: bool=interior_detect,
              epsilon_stationnary: float=epsilon_stationnary,
              interior_color: QtGui.QColor=(0.1, 0.1, 0.1),
              colormap: fscolors.Fractal_colormap=colormap,
@@ -81,16 +77,17 @@ def plot(plot_dir):
              zmax: float=zmax):
 
 
-        fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
+        fractal.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
              theta_deg=0., projection="cartesian", antialiasing=False)
 
-        fractal.calc_std_div(datatype=np.complex128, calc_name=calc_name,
-            subset=None, max_iter=max_iter, M_divergence=1.e3,
-            epsilon_stationnary=1.e-4,
-            SA_params={"cutdeg": 8,
-                       "err": 1.e-6},
-            interior_detect=interior_detect,
-            )
+        fractal.base_calc(
+            calc_name=calc_name,
+            subset=None,
+            max_iter=max_iter,
+            M_divergence=1.e3,
+            epsilon_stationnary=epsilon_stationnary,
+            datatype=np.complex128
+        )
 
         if fractal.res_available():
             print("RES AVAILABLE, no compute")
@@ -145,7 +142,7 @@ def plot(plot_dir):
 
     gui = fsgui.Fractal_GUI(func)
     gui.connect_image(image_param="calc_name")
-    gui.connect_mouse(x="x", y="y", dx="dx", xy_ratio="xy_ratio", dps="dps")
+    gui.connect_mouse(x="x", y="y", dx="dx", xy_ratio="xy_ratio", dps=None)
     gui.show()
 
 
@@ -178,10 +175,11 @@ if __name__ == "__main__":
         plot_dir = os.path.splitext(realpath)[0]
         plot(plot_dir)
     except NameError:
-        import tempfile
-        with tempfile.TemporaryDirectory() as plot_dir:
-            static_im_link="sphx_glr_run_interactive_001.png"
-            if static_im_link is None:
-                plot(plot_dir)
-            else:
-                _plot_from_data(plot_dir, static_im_link)
+        pass # No output
+#        import tempfile
+#        with tempfile.TemporaryDirectory() as plot_dir:
+#            static_im_link="sphx_glr_run_interactive_001.png"
+#            if static_im_link is None:
+#                plot(plot_dir)
+#            else:
+#                _plot_from_data(plot_dir, static_im_link)

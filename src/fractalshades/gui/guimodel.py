@@ -1586,6 +1586,9 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         self._model = view_presenter._model
         self._mapping = view_presenter._mapping
         self._presenter = view_presenter
+        
+        # Need dps ?
+        self.has_dps = (parent._gui._dps is not None)
 
         # Sets layout, with only one Widget, the image itself
         self._layout = QVBoxLayout(self)
@@ -1617,7 +1620,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         self._model.model_event.connect(self.model_event_slot)
         self.on_fractal_result.connect(self.fractal_result_slot)
 
-        
+
     def on_mouse_right_press(self, event):
         """ Interactive menu with all the defined "interactive_options"
         """
@@ -1749,6 +1752,16 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
                                    ["x", "y", "dx", "xy_ratio"]}
         self._fractal_zoom_init["nx"] = nx
         self._fractal_zoom_init["ny"] = ny
+
+        print("****************** dps", info.keys())
+#        precision = info["precision"]
+#        C = np.log(10.) / np.log(2.)
+#        dps = max(15, int(round(int(precision) / C - 1)))
+        if self.has_dps:
+            print("has dps")
+            self._fractal_zoom_init["dps"] = info["precision"]
+        # self._presenter["dps"] = ref_zoom[key]
+        
         self.validate()
 
         for item in [self._qim, self._rect, self._rect_under]:
@@ -1775,9 +1788,14 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
 
     def check_zoom_init(self):
         """ Checks if the image 'zoom init' matches the parameters ;
-        otherwise, updates """
+        otherwise, updates the model through a notification request
+        """
         ret = 0
-        for key in ["x", "y", "dx", "xy_ratio"]:#, "dps"]: # TODO : or precision ??
+        keys = ["x", "y", "dx", "xy_ratio"]
+        if self.has_dps:
+            keys += ["dps"]
+
+        for key in keys:
             expected = self._presenter[key]
             value = self._fractal_zoom_init[key]
             if value is None:
@@ -1807,13 +1825,11 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         keys = ["x", "y", "dx"]
         if dclick:
             keys = ["x", "y", "dx", "xy_ratio"]
-        # resets everything except the zoom ratio 
-        for key in keys: #, "xy_ratio"]:
+        # resets everything - the zoom ratio only if dclick
+        for key in keys:
             value = self._fractal_zoom_init[key]
             if value is not None:
                 # Send a model modification request
-                # TODO: avoid update cancel xy_ratio 1.0 <class 'str'>
-#                print("update cancel", key, value, type(value))
                 self._presenter[key] = value
         # Removes the objects
         if self._rect is not None:
@@ -1857,35 +1873,52 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         dx_pix = abs(topleft.x() - bottomRight.x())
 
         ref_zoom = self._fractal_zoom_init.copy()
-        # str -> mpf as needed
-        to_mpf = {k: isinstance(self._fractal_zoom_init[k], str) for k in
-                  ["x", "y", "dx"]}
-        # We may need to increase the dps to hold sufficent digits
-        if to_mpf["dx"]:
-            ref_zoom["dx"] = mpmath.mpf(ref_zoom["dx"])
-        pix = ref_zoom["dx"] / float(ref_zoom["nx"])
-        with mpmath.workdps(6):
-            # Sets the working dps to 10e-8 x pixel size
-            ref_zoom["dps"] = int(-mpmath.log10(pix * dx_pix / nx) + 8)
 
-        with mpmath.workdps(ref_zoom["dps"]):
-            for k in ["x", "y"]:
-                if to_mpf[k]:
-                    ref_zoom[k] = mpmath.mpf(ref_zoom[k])
+        # str -> mpf as needed
+        if self.has_dps:
+            to_mpf = {k: isinstance(self._fractal_zoom_init[k], str) for k in
+                      ["x", "y", "dx"]}
+            # We may need to increase the dps to hold sufficent digits
+            if to_mpf["dx"]:
+                ref_zoom["dx"] = mpmath.mpf(ref_zoom["dx"])
+            pix = ref_zoom["dx"] / float(ref_zoom["nx"])
+            with mpmath.workdps(6):
+                # Sets the working dps to 10e-8 x pixel size
+                ref_zoom["dps"] = int(-mpmath.log10(pix * dx_pix / nx) + 8)
+    
+            with mpmath.workdps(ref_zoom["dps"]):
+                for k in ["x", "y"]:
+                    if to_mpf[k]:
+                        ref_zoom[k] = mpmath.mpf(ref_zoom[k])
+                ref_zoom["x"] += center_off_px * pix
+                ref_zoom["y"] += center_off_py * pix
+                ref_zoom["dx"] = dx_pix * pix
+    
+                #  mpf -> str (back)
+                for (k, v) in to_mpf.items():
+                    if v:
+                        if k == "dx":
+                            ref_zoom[k] = mpmath.nstr(ref_zoom[k], 16)
+                        else:
+                            ref_zoom[k] = str(ref_zoom[k])
+        else:
+            ref_zoom["x"] = float(ref_zoom["x"])
+            ref_zoom["y"] = float(ref_zoom["y"])
+            ref_zoom["dx"] = float(ref_zoom["dx"])
+#            print(type(ref_zoom["dx"]), "ref_zoom[dx]")
+#            print(type(ref_zoom["x"]), "ref_zoom[x]")
+#            print(type(ref_zoom["y"]), "ref_zoom[y]")
+            pix = ref_zoom["dx"] / float(ref_zoom["nx"])
             ref_zoom["x"] += center_off_px * pix
             ref_zoom["y"] += center_off_py * pix
             ref_zoom["dx"] = dx_pix * pix
 
-            #  mpf -> str (back)
-            for (k, v) in to_mpf.items():
-                if v:
-                    if k == "dx":
-                        ref_zoom[k] = mpmath.nstr(ref_zoom[k], 16)
-                    else:
-                        ref_zoom[k] = str(ref_zoom[k])
-
-        for key in ["x", "y", "dx", "dps"]:
+        keys = ["x", "y", "dx"]
+        if self.has_dps:
+            keys += ["dps"]
+        for key in keys:
             self._presenter[key] = ref_zoom[key]
+            
 
     def draw_object(self):
         """ Draws the selection rectangle """

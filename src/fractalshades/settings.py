@@ -7,10 +7,10 @@ import sys
 # this is a pointer to the module object instance itself.
 this = sys.modules[__name__]
 
-enable_multiprocessing = True
-"""Turn on or off multiprocessing (useful for debugging purpose)"""
+enable_multithreading = True
+"""Turn on or off multithreading (for debugging purpose)"""
 
-optimize_RAM = True
+optimize_RAM = False
 """If true, memory mappings will be used not only during calculation but also
 at post-processing stage. This obviously is at the detriment of speed
 but will avoid memory errors for very large images or on system with low RAM.
@@ -24,6 +24,15 @@ newton_zoom_level = 1.e-8
 """ Minimal zoom level for activating Newton search. For lower zooms, a fixed
 critical point will be used (0. for mandelbrot)"""
 
+std_zoom_level = 1.e-8
+""" Zoom level at which we drop some perturbation techniques optimisation 
+Chosen as this level squared is ~ precision of double
+"""
+
+xrange_zoom_level = 1.e-300
+""" Minimal zoom level (dx) for activating Xrange special branches
+"""
+
 no_newton = False
 """ Veto all Newton iterations- keep the ref point as is for the full precision
 iterations (usually the center of the image). Useful when the center
@@ -32,11 +41,15 @@ coordinates of a deep zoom are already known."""
 inspect_calc = False
 """ Outputs a synthesis files of the calculation done. Useful for debugging"""
 
-glitch_off_last_iref = True
-"""Turns glitch correction off for last reference point run."""
+#glitch_off_last_iref = True / not needed in new implementation
+#"""Turns glitch correction off for last reference point run."""
 
 chunk_size = 200
 """The size for the basic calculation tile is chunk_size x chunk_size"""
+
+bivar_SA_min_seed_exp = 10
+bivar_SA_min_seed = 2 ** bivar_SA_min_seed_exp
+# The minimum seed is 2 ** bivar_SA_min_seed_exp
 
 
 # output_context: "doc" True if we are building the doc (Pillow output)

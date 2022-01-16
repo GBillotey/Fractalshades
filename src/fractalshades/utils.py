@@ -81,7 +81,7 @@ class _store_kwargs_and_func_name:
         @functools.wraps(method)
         def wrapper(instance, *args, **kwargs):
             ret = _store_kwargs(dic_name)(method)(instance, *args, **kwargs)
-            setattr(instance, dic_name + "_lastcall", method.__name__)
+            setattr(instance, dic_name + "_callable", method.__name__)
             return ret
         setattr(wrapper, "_@" + dic_name, True)
         return wrapper

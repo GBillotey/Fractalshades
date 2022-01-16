@@ -48,18 +48,18 @@ def plot(plot_dir):
     # A simple showcase using perturbation technique
     x = "-1.768667862837488812627419470"
     y = "0.001645580546820209430325900"
-    dx = "16.e-22"
+    dx = "18.e-22"
     precision = 30
-    nx = 3200
+    nx = 3600
     xy_ratio = 16. / 9.
 
     calc_name="mandelbrot"
     
     cmap_choice = 2
     if cmap_choice == 1:
-        c3 = np.array([125, 225, 255]) / 255.
-        c0 = np.array([1, 254, 255]) / 255.
-        c1 = c0 * 0.01
+        c3 = np.array([255, 215, 0]) / 255.
+        c0 = np.array([212, 175, 55]) / 255.
+        c1 = c0 * 0.25
 
         colors = np.vstack((c0[np.newaxis, :],
                             c1[np.newaxis, :],
@@ -67,7 +67,7 @@ def plot(plot_dir):
         colormap = fscolors.Fractal_colormap(kinds="Lch", colors=colors,
              grad_npts=200, grad_funcs="x**0.5", extent="mirror")
     elif cmap_choice == 2:
-        colormap = fscolors.cmap_register["autumn"]
+        colormap = fscolors.cmap_register["classic"]
 
     # Run the calculation
     f = fsm.Perturbation_mandelbrot(plot_dir)
@@ -85,15 +85,13 @@ def plot(plot_dir):
             datatype=np.complex128, # ("Xrange", np.complex128),
             calc_name=calc_name,
             subset=None,
-            max_iter=200000,
+            max_iter=100000,
             M_divergence=1.e3,
             epsilon_stationnary=1.e-3,
-            SA_params={"cutdeg": 64,
-                       "cutdeg_glitch": 8,
-                       "SA_err": 1.e-4},
-            glitch_eps=1.e-6,
-            interior_detect=False,
-            glitch_max_attempt=2)
+#            SA_params=None,
+            SA_params={"cutdeg": 32,
+                       "err": 1.e-6},
+            interior_detect=False)
     f.run()
 
     # Plot the image
@@ -102,11 +100,11 @@ def plot(plot_dir):
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
     pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
     pp.add_postproc("fieldlines",
-                Fieldlines_pp(n_iter=8, swirl=1., damping_ratio=0.3))
+                Fieldlines_pp(n_iter=3, swirl=0., damping_ratio=1.0))
 
     plotter = fs.Fractal_plotter(pp)   
-    plotter.add_layer(Bool_layer("interior", output=False))
-    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=False))
+    plotter.add_layer(Bool_layer("interior", output=True))
+    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=True))
     plotter.add_layer(Virtual_layer("fieldlines", func=None, output=False))
     plotter.add_layer(Color_layer(
             "cont_iter",
@@ -122,7 +120,7 @@ def plot(plot_dir):
 
     # This is the line where we indicate that coloring is a combination of
     # "Continuous iteration" and "fieldines values"
-    plotter["cont_iter"].set_twin_field(plotter["fieldlines"], 0.00001)
+    plotter["cont_iter"].set_twin_field(plotter["fieldlines"], 0.0001)
 
     # This is where we define the lighting (here 3 ccolored light sources)
     # and apply the shading
@@ -135,12 +133,12 @@ def plot(plot_dir):
         coords=None,
         color=np.array([0.9, 0.9, 1.5]))
     light.add_light_source(
-        k_diffuse=2.8,
+        k_diffuse=0.8,
         k_specular=2.,
         shininess=400.,
         angles=(55., 20.),
         coords=None,
-        color=np.array([1., 1., 1.3]))
+        color=np.array([1., 1., 1.]))
     plotter["cont_iter"].shade(plotter["DEM_map"], light)
     plotter.plot()
 

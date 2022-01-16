@@ -16,6 +16,6 @@ or can be used to modify another layer.
    layers/Color_layer
    layers/Normal_map_layer
    layers/Grey_layer
-   layers/Disp_Layer
+   layers/Disp_layer
    layers/Blinn_lighting
    layers/Overlay_mode

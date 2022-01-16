@@ -9,7 +9,7 @@ import fractalshades.numpy_utils.xrange as fsx
 import fractalshades.numpy_utils.numba_xr as fsxn
 import fractalshades.utils as fsutils
 import fractalshades.settings as fssettings
-
+import fractalshades.mpmath_utils.FP_loop as fsFP
 
 
 class Perturbation_mandelbrot(fs.PerturbationFractal):
@@ -28,7 +28,378 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         self.potential_kind = "infinity"
         self.potential_d = 2
         self.potential_a_d = 1.
+        # Set parameters for the full precision orbit
         self.critical_pt = 0.
+        self.FP_code = "zn"
+
+
+    def FP_loop(self, NP_orbit, c0):
+        """
+        The full precision loop ; fills in place NP_orbit
+        """
+        xr_detect_activated = self.xr_detect_activated
+        # Parameters borrowed from last "@fsutils.calc_options" call
+        calc_options = self.calc_options
+        max_iter = calc_options["max_iter"]
+        M_divergence = calc_options["M_divergence"]
+
+        x = c0.real
+        y = c0.imag
+        seed_prec = mpmath.mp.prec
+        (i, partial_dict, xr_dict
+         ) = fsFP.perturbation_mandelbrot_FP_loop(
+            NP_orbit,
+            xr_detect_activated,
+            max_iter,
+            M_divergence * 2., # to be sure ref exit after close points
+            str(x).encode('utf8'),
+            str(y).encode('utf8'),
+            seed_prec
+        )
+        return i, partial_dict, xr_dict
+
+
+    @fsutils.calc_options
+    def calc_std_div(self, *,
+        calc_name: str,
+        datatype,
+        subset,
+        max_iter: int,
+        M_divergence: float,
+        epsilon_stationnary: float,
+        SA_params={"cutdeg": 2, "eps": 1e-6},
+        interior_detect: bool=False,
+        calc_dzndc: bool=True):
+        """
+    Perturbation iterations (arbitrary precision) for Mandelbrot standard set
+    (power 2).
+
+    Parameters
+    ==========
+    calc_name : str
+         The string identifier for this calculation
+    datatype :
+        The dataype for operation on complex. Usually `np.complex128`
+    subset : 
+        A boolean array-like, where False no calculation is performed
+        If `None`, all points are calculated. Defaults to `None`.
+    max_iter : int
+        the maximum iteration number. If reached, the loop is exited with
+        exit code "max_iter".
+    M_divergence : float
+        The diverging radius. If reached, the loop is exited with exit code
+        "divergence"
+    epsilon_stationnary : float
+        EXPERIMENTAL for perturbation.
+        A small float to early exit non-divergent cycles (based on
+        cumulated dzndz product). If reached, the loop is exited with exit
+        code "stationnary" (Those points should belong to Mandelbrot set)
+        Used only if interior_detect is True
+    SA_params :
+        The dictionnary of parameters for Series-Approximation :
+
+        .. list-table:: 
+           :widths: 20 80
+           :header-rows: 1
+
+           * - keys
+             - values 
+           * - cutdeg
+             - int: polynomial degree used for first iteration  
+           * - cutdeg_glitch
+             - int: polynomial degree used for glitch correction 
+           * - SA_err
+             - float: maximal relative error before stopping SA 
+
+        if `None` SA is not activated.
+    interior_detect : bool
+        EXPERIMENTAL for perturbation.
+        If True activates interior point detection
+        
+    References
+    ==========
+    .. [1] <https://mathr.co.uk/blog/2021-05-14_deep_zoom_theory_and_practice.html>
+
+    .. [2] <http://www.fractalforums.com/announcements-and-news>
+        
+        """
+        self.init_data_types(datatype)
+        # dx for numba: use 1d array not 0d !
+        dx = fsx.mpf_to_Xrange(self.dx, dtype=np.float64).ravel()
+
+        # used for potential post-processing
+        self.potential_M = M_divergence
+
+        # Complex complex128 fields codes "Z" 
+        complex_codes = ["zn"]
+        zn = 0
+        code_int = 0
+
+        interior_detect_activated = (
+            interior_detect 
+            and (self.dx > fssettings.newton_zoom_level)
+        )
+        if interior_detect_activated:
+            code_int += 1
+            complex_codes += ["dzndz"]
+            dzndz = code_int
+        else:
+            dzndz = -1
+
+        if calc_dzndc:
+            code_int += 1
+            complex_codes += ["dzndc"]
+            dzndc = code_int
+        else:
+            dzndc = -1
+        
+        # Integer int32 fields codes "U" 
+        int_codes = ["ref_cycle_iter"] # Position in ref orbit
+
+        # Stop codes
+        stop_codes = ["max_iter", "divergence", "stationnary"]
+        reason_max_iter = 0
+        reason_M_divergence = 1
+        reason_stationnary = 2
+
+        self.codes = (complex_codes, int_codes, stop_codes)
+        print("###self.codes", self.codes)
+
+
+        # Defines SA_loop via a function factory - jitted implementation
+        def SA_loop():
+            @numba.njit
+            def impl(Pn, n_iter, ref_path_xr, kcX): #, ref_path_xr, is_xr):
+                """ Series Approximation loop
+                Note that derivatives w.r.t dc will be deduced directly from the
+                S.A polynomial.
+                """
+                return Pn * (Pn + 2. * ref_path_xr) + kcX
+            return impl
+        self.SA_loop = SA_loop
+
+        # Defines initialize via a function factory
+        def initialize():
+
+            @numba.njit
+            def numba_init_impl(Z, U, c_xr, Z_xr_trigger, Z_xr, P, kc, dx_xr, n_iter):
+                """
+                ... mostly the SA
+                """
+
+                if P is not None:
+                    # Apply the  Series approximation step
+                    U[0] = n_iter
+                    c_scaled = c_xr / kc[0]
+#                    print("P", P)
+#                    print("c_scaled", c_scaled, P.__call__(c_scaled), fsxn.to_standard(P.__call__(c_scaled)))
+#                    print("dzndc", dzndc)
+                    Z[zn] = fsxn.to_standard(P.__call__(c_scaled))
+                    if fs.perturbation.need_xr(Z[zn]):
+                        Z_xr_trigger[zn] = True
+                        Z_xr[zn] = P.__call__(c_scaled)
+                    if dzndc != -1:
+                        P_deriv = P.deriv()
+#                        print("P_deriv", P_deriv)
+                        deriv_scale =  dx_xr[0] / kc[0]
+                        Z[dzndc] = fsxn.to_standard(
+                            P_deriv.__call__(c_scaled) * deriv_scale
+                        )
+#                        print("Z[dzndc]", Z[dzndc], P_deriv.__call__(c_scaled), deriv_scale)
+                if (dzndz != -1):
+                    Z[dzndz] = 1.
+                    
+            return numba_init_impl
+
+        self.initialize = initialize
+
+        # Defines iterate via a function factory - jitted implementation
+        def iterate():
+            M_divergence_sq = self.M_divergence ** 2
+            epsilon_stationnary_sq = self.epsilon_stationnary ** 2
+
+            # Interior detection for very shallow zoom
+            interior_detect_activated = (
+                interior_detect 
+                and (self.dx > fssettings.newton_zoom_level)
+            )
+            # SA triggered for deeper zoom
+            SA_activated = (
+                (SA_params is not None) 
+                and (self.dx < fssettings.newton_zoom_level)
+            )
+            # Xr triggered for ultra-deep zoom
+            xr_detect_activated = self.xr_detect_activated
+            
+            @numba.njit
+            def numba_impl(
+                c, Z, U, stop, n_iter,
+                ref_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr,
+                Z_xr_trigger, Z_xr, c_xr, refpath_ptr, ref_is_xr, ref_zn_xr
+            ):
+                """
+                dz(n+1)dc   <- 2. * dzndc * zn + 1.
+                dz(n+1)dz   <- 2. * dzndz * zn
+                z(n+1)      <- zn**2 + c 
+                
+                Termination codes
+                0 -> max_iter reached ('interior')
+                1 -> M_divergence reached by np.abs(zn)
+                2 -> dzndz stationnary ('interior detection')
+                """
+                
+                while True:
+                    n_iter += 1
+
+                    #==============================================================
+                    # Load reference point value @ U[0]
+                    # refpath_ptr = [prev_idx, curr_xr]
+                    if xr_detect_activated:
+                        ref_zn = fs.perturbation.ref_path_get(
+                            ref_path, U[0],
+                            has_xr, ref_index_xr, ref_xr, refpath_ptr,
+                            ref_is_xr, ref_zn_xr, 0
+                        )
+
+                    else:
+                        # ref_is_xr = False
+                        ref_zn = ref_path[U[0]]
+
+                    #==============================================================
+                    # Pertubation iter block
+                    #--------------------------------------------------------------
+                    # dzndc subblock
+                    if calc_dzndc:
+                    # This is an approximation as we do not store the ref pt
+                    # derivatives 
+                    # Full term would be :
+                    # Z[dzndc] =  2 * (
+                    #    (ref_path_zn + Z[zn]) * Z[dzndc]
+                    #    + Z[zn] * ref_path_dzndc
+                        Z[dzndc] = 2. * (ref_zn + Z[zn]) * Z[dzndc]
+                        if not(SA_activated) and (n_iter == 1):
+                            # Non-null term needed to 'kick-off'
+                            Z[dzndc] = 1.
+    
+                    #--------------------------------------------------------------
+                    # Interior detection - Used only at low zoom level
+                    if interior_detect_activated and (n_iter > 1):
+                        Z[dzndz] = 2. * (Z[zn] * Z[dzndz])
+    
+                    #--------------------------------------------------------------
+                    # zn subblok
+                    if xr_detect_activated:
+                        # We shall pay attention to overflow
+                        if not(Z_xr_trigger[0]):
+                            # try a standard iteration
+                            old_zn = Z[zn]
+                            Z[zn] = Z[zn] * (Z[zn] + 2. * ref_zn)
+                            if fs.perturbation.need_xr(Z[zn]):
+                                # Standard iteration underflows
+                                # standard -> xrange conversion
+                                Z_xr[zn] = fsxn.to_Xrange_scalar(old_zn)
+                                Z_xr_trigger[0] = True
+    
+                        if Z_xr_trigger[0]:
+                            if (ref_is_xr[0]):
+                                Z_xr[zn] = Z_xr[zn] * (Z_xr[zn] + 2. * ref_zn_xr[0])
+                            else:
+                                Z_xr[zn] = Z_xr[zn] * (Z_xr[zn] + 2. * ref_zn)
+                            # xrange -> standard conversion
+                            Z[zn] = fsxn.to_standard(Z_xr[zn])
+    
+                            # Unlock trigger if we can...
+                            Z_xr_trigger[0] = fs.perturbation.need_xr(Z[zn])
+                    else:
+                        # No risk of underflow, normal perturbation interation
+                        Z[zn] = Z[zn] * (Z[zn] + 2. * ref_zn) + c
+    
+                    #==============================================================
+                    if n_iter >= max_iter:
+                        stop[0] = reason_max_iter
+                        break
+    
+                    # Interior points detection
+                    if interior_detect_activated:
+                        bool_stationnary = (
+                            Z[dzndz].real ** 2 + Z[dzndz].imag ** 2
+                                < epsilon_stationnary_sq)
+                        if bool_stationnary:
+                            stop[0] = reason_stationnary
+                            break
+    
+                    #==============================================================
+                    # ZZ = "Total" z + dz
+                    U[0] = U[0] + 1
+
+                    if xr_detect_activated:
+                        ref_zn_next = fs.perturbation.ref_path_get(
+                            ref_path, U[0],
+                            has_xr, ref_index_xr, ref_xr, refpath_ptr,
+                            ref_is_xr, ref_zn_xr, 1
+                        )
+                    else:
+                        ref_zn_next = ref_path[U[0]]
+
+
+                    # computation involve doubles only
+                    ZZ = Z[zn] + ref_zn_next
+                    full_sq_norm = ZZ.real**2 + ZZ.imag**2
+    
+                    # Flagged as 'diverging'
+                    bool_infty = (full_sq_norm > M_divergence_sq)
+                    if bool_infty:
+                        stop[0] = reason_M_divergence
+                        break
+    
+                    # Glitch correction - reference point diverging
+                    if (U[0] >= ref_div_iter - 1):
+                        # Rebasing - we are already big no underflow risk
+                        U[0] = 0
+                        Z[zn] = ZZ
+                        return
+
+                    # Glitch correction -  "dynamic glitch"
+                    bool_dyn_rebase = (
+                        (abs(ZZ.real) <= abs(Z[zn].real))
+                        and (abs(ZZ.imag) <= abs(Z[zn].imag))
+                    )
+                    if bool_dyn_rebase:# and not(xr_detect_activated): # and not(xr_detect_activated): # bool_dyn_rebase # debug and not(xr_detect_activated)
+                        if xr_detect_activated and Z_xr_trigger[0]:
+                            # Can we *really* rebase ??
+                            # Note: if Z[zn] underflows we might miss a rebase...
+                            # So we cast everything to xr
+                            Z_xrn = Z_xr[zn]
+                            if ref_is_xr[1]:
+                                # Reference underflows, use available xr reference
+                                ZZ_xr = Z_xrn + ref_zn_xr[1]
+                            else:
+                                ZZ_xr = Z_xrn + ref_zn_next
+    
+                            bool_dyn_rebase_xr = (
+                                fsxn.extended_abs2(ZZ_xr)
+                                <= fsxn.extended_abs2(Z_xrn)   
+                            )
+                            if bool_dyn_rebase_xr:
+                                U[0] = 0
+                                Z_xr[zn] = ZZ_xr
+                                Z[zn] = fsxn.to_standard(ZZ_xr)
+                        else:
+                            # No risk of underflow - safe to rebase
+                            U[0] = 0
+                            Z[zn] = ZZ
+    
+                # End of while loop
+                return n_iter
+
+            return numba_impl
+
+        self.iterate = iterate
+
+
+
+#==============================================================================
+# Newton search & other related methods
 
     @staticmethod
     def _ball_method1(c, px, maxiter, M_divergence):#, M_divergence):
@@ -178,85 +549,52 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
     # TODO implement atom domain size estimate
     # https://mathr.co.uk/blog/2013-12-10_atom_domain_size_estimation.html
 
-    # TODO implement nucleus size estimate
-    # https://mathr.co.uk/blog/2016-12-24_deriving_the_size_estimate.html
+
     @staticmethod
-    def nucleus_size_estimate(c, order):
-        z = mpmath.mpc(0., 0.)
-        l = mpmath.mpc(1., 0.)
-        b = mpmath.mpc(1., 0.)
-        for i in range(1, order):
-            z = z * z + c
-            l = 2. * z * l
-            b = b + 1. / l
-        return 1. / (b * l * l)
-
-    def series_approx(self, SA_init, SA_loop, SA_params, iref, ref_div_iter,
-                      calc_name):
+    def _nucleus_size_estimate(c0, order):
         """
-        Zk, zk
-        C, c
+        Nucleus size estimate
         
-        SA_params keys:
-            init_P
-            kc
-            iref
-            n_iter
-            P
+        Parameters
+        ----------
+        c0 : position of the nucleus
+        order : cycle order
+
+https://mathr.co.uk/blog/2016-12-24_deriving_the_size_estimate.html
+
+Structure in the parameter dependence of order and chaos for the quadratic map
+Brian R Hunt and Edward Ott
+J. Phys. A: Math. Gen. 30 (1997) 7067–7076
         """
-        SA_stop =  SA_params.get("SA_stop", -1)
-        if SA_stop is None:
-            SA_stop = -1
-
-        SA_err = SA_params.get("SA_err", 1.e-4)
-        print("SA_err", SA_err)
-        SA_err_sq = SA_err**2
-
-        cutdeg = SA_params["cutdeg"]
-        P = SA_init(cutdeg)
-        SA_params["iref"] = iref
+        x = c0.real
+        y = c0.imag
+        seed_prec = mpmath.mp.prec
+        nucleus_size = fsFP.perturbation_mandelbrot_nucleus_size_estimate(
+            str(x).encode('utf8'),
+            str(y).encode('utf8'),
+            seed_prec,
+            order
+        )
+        return nucleus_size
+    
+    @staticmethod
+    def julia_set_size_estimate(nucleus_size):
+        """
+        Julia set size estimate - knowing the nucleus_size
         
-        # Ensure corner points strictly included in convergence disk :
-        kc = self.ref_point_scaling(iref, calc_name)
+https://fractalforums.org/fractal-mathematics-and-new-theories/28/miniset-and-embedded-julia-size-estimates/912/msg4805#msg4805
+    # r_J = r_M ** ((n+1)*(n-1)/n**2)
+        """
+        # r_J = r_M ** ((n+1)*(n-1)/n**2)   n = 2 -> r_M ** 0.75
+        raise NotImplementedError()   # TODO
+#        with mpfr.
+#        r_m_mantissa = nucleus_size
+#        r_m_exp = nucleus_size
+#        
+#        return nucleus_size
 
-        # Convert kc into a Xrange array (in all cases the SA iterations use
-        # extended range)
-        kc = fsx.mpf_to_Xrange(kc, dtype=self.base_float_type)
-        SA_params["kc"] = kc
-        print('SA_params["kc"]', kc)
-        kcX = np.insert(kc, 0, 0.)
-        kcX = fsx.Xrange_SA(kcX, cutdeg)
-
-        _, ref_path = self.reload_ref_point(iref, calc_name)
-        n_iter = 0
-        P0 = P[0]
-        
-        # Call jitted function for the loop
-        P0, n_iter, err = SA_run(SA_loop, P0, n_iter, ref_path, kcX, SA_err_sq,
-                                 SA_stop, ref_div_iter)
-
-        # Storing results
-        print("SA stop", n_iter, err)
-        deriv_scale = fsx.mpc_to_Xrange(self.dx) / SA_params["kc"]
-        if not(self.Xrange_complex_type):
-            deriv_scale = deriv_scale.to_standard()
-        P1 = fsx.Xrange_polynomial([complex(1.)], cutdeg=cutdeg)
-        # We derive the polynomial wrt to c. Note the 1st coefficent
-        # should be set to 0 if we compute these with FP...
-        # Here, to the contrary we use it to skip the FP iter for all 
-        # derivatives.
-        P_deriv = P0.deriv() * deriv_scale
-        # P_deriv.coeffs[0] = 0.
-        # P_deriv2 = P_deriv.deriv() * deriv_scale
-        # P_deriv2.coeffs[0] = 0.
-
-        P = [P0, P1, P_deriv]
-        SA_params["n_iter"] = n_iter
-        SA_params["P"] = P
-
-        return SA_params
-
-
+#==============================================================================
+# GUI : "interactive options"
 
     @fsutils.interactive_options
     def coords(self, x, y, pix, dps):
@@ -335,519 +673,38 @@ newton_search = {{
 """
         return res_str
 
-
-
-    @fsutils.calc_options
-    def calc_std_div(self, *,
-        calc_name: str,
-        datatype,
-        subset,
-        max_iter: int,
-        M_divergence: float,
-        epsilon_stationnary: float,
-        SA_params=None,
-        glitch_eps=None,
-        glitch_max_attempt: int=0,
-        interior_detect: bool=False,
-        calc_dzndc: bool=True):
-        """
-    Perturbation iterations (arbitrary precision) for Mandelbrot standard set
-    (power 2).
-
-    Parameters
-    ==========
-    calc_name : str
-         The string identifier for this calculation
-    datatype :
-        The dataype for operation on complex. Usually `np.complex128`
-    subset : 
-        A boolean array-like, where False no calculation is performed
-        If `None`, all points are calculated. Defaults to `None`.
-    max_iter : int
-        the maximum iteration number. If reached, the loop is exited with
-        exit code "max_iter".
-    M_divergence : float
-        The diverging radius. If reached, the loop is exited with exit code
-        "divergence"
-    epsilon_stationnary : float
-        EXPERIMENTAL for perturbation.
-        A small float to early exit non-divergent cycles (based on
-        cumulated dzndz product). If reached, the loop is exited with exit
-        code "stationnary" (Those points should belong to Mandelbrot set)
-        Used only if interior_detect is True
-    SA_params :
-        The dictionnary of parameters for Series-Approximation :
-
-        .. list-table:: 
-           :widths: 20 80
-           :header-rows: 1
-
-           * - keys
-             - values 
-           * - cutdeg
-             - int: polynomial degree used for first iteration  
-           * - cutdeg_glitch
-             - int: polynomial degree used for glitch correction 
-           * - SA_err
-             - float: maximal relative error before stopping SA 
-
-        if `None` SA is not activated.
-    glitch_eps : float
-        A small float to qualify the glitched pixel. Typical value 1.e-4
-    interior_detect : bool
-        EXPERIMENTAL for perturbation.
-        If True activates interior point detection
-    glitch_max_attempt: int
-        The maximal number of attempt for glitched pixel correction
-        
-    References
-    ==========
-    .. [1] <https://mathr.co.uk/blog/2021-05-14_deep_zoom_theory_and_practice.html>
-
-    .. [2] <http://www.fractalforums.com/announcements-and-news>
-        
-        """
-        self.init_data_types(datatype)
-        
-        # used for potential post-processing
-        self.potential_M = M_divergence
-
-        if glitch_eps is None:
-            glitch_eps = (1.e-6 if self.base_complex_type == np.float64
-                          else 1.e-3)
-        self.glitch_eps = glitch_eps
-
-        complex_codes = ["zn", "dzndz"]
-        if calc_dzndc:
-            complex_codes += ["dzndc"]
-
-        int_codes = ["iref"]  # reference FP
-        stop_codes = ["max_iter", "divergence", "stationnary",
-                      "dyn_glitch", "divref_glitch"]
-        self.codes = (complex_codes, int_codes, stop_codes)
-        
-
-        if SA_params is None:
-            FP_fields = [0] #ß, 1, 2]
-        else:
-            # If SA activated, derivatives will be deduced - no need to compute
-            # with FP.
-            FP_fields = [0]
-        self.FP_codes = [complex_codes[f] for f in FP_fields]
-
-        # Defines FP_init via a function factory
-        def FP_init():
-            SA_params = self.SA_params
-            def func():
-                if SA_params is None:
-                    return [mpmath.mp.zero] #, mpmath.mp.zero, mpmath.mp.zero]
-                else:
-                    return [mpmath.mp.zero]
-            return func
-        self.FP_init = FP_init
-
-        # Defines FP_loop via a function factory
-        def FP_loop():
-            M_divergence = self.M_divergence
-            def func(FP_array, c0, n_iter):
-                """ Full precision loop
-                derivatives corrected by lenght kc
-                """
-                FP_array[0] = FP_array[0]**2 + c0
-                # If FP iteration is divergent, raise the semaphore n_iter
-                # We use the 'infinite' norm not the disc for obvious calc saving
-                if ((abs((FP_array[0]).real) > M_divergence)
-                    or (abs((FP_array[0]).imag) > M_divergence)):
-                    print("Reference point FP iterations escaping at", n_iter)
-                    return n_iter
-            return func
-        self.FP_loop = FP_loop
-
-        # Defines SA_init via a function factory
-        def SA_init():
-            # cutdeg = self.SA_params["cutdeg"]
-            def func(cutdeg):
-                # Typing as complex for numba
-                return [fsx.Xrange_SA([0j], cutdeg=cutdeg)]
-            return func
-        self.SA_init = SA_init
-
-        # Defines SA_loop via a function factory - jitted implementation
-        def SA_loop():
-            @numba.njit
-            def impl(P0, n_iter, ref_path, kcX):
-                """ Series Approximation loop
-                Note that derivatives w.r.t dc will be deduced directly from the
-                S.A polynomial.
-                """
-                xr_2 = fsxn.Xrange_scalar(1., numba.int32(1))
-                P0 = P0 * (P0 + xr_2 * ref_path[0]) + kcX
-                return P0
-            return impl
-        self.SA_loop = SA_loop
-
-        # Defines initialize via a function factory
-        def initialize():
-            def func(Z, U, c, chunk_slice, iref):
-                if calc_dzndc:
-                    Z[2, :] = 0.
-                Z[1, :] = 1.
-                Z[0, :] = 0.
-                U[0, :] = iref
-            return func
-        self.initialize = initialize
-
-        # Defines iterate via a function factory - jitted implementation
-        def iterate():
-            M_divergence_sq = self.M_divergence ** 2
-            epsilon_stationnary_sq = self.epsilon_stationnary ** 2
-            glitch_eps_sq = self.glitch_eps ** 2
-            Xrange_complex_type = self.Xrange_complex_type
-
-            zn = 0
-            dzndz = 1
-            dzndc = 2
-            reason_max_iter = 0
-            reason_M_divergence = 1
-            reason_stationnary = 2
-            reason_dyn_glitch = 3
-            reason_div_glitch = 4
-            glitch_off_last_iref = fssettings.glitch_off_last_iref
-            no_SA = (SA_params is None)
-
-            interior_detect_activated = (
-                interior_detect 
-                and (self.dx > fssettings.newton_zoom_level)
-            )
-
-            @numba.njit
-            def numba_impl(Z, U, c, stop_reason, n_iter, SA_iter,
-                        ref_div_iter, ref_path, ref_path_next,
-                        last_iref):
-                """
-                dz(n+1)dc   <- 2. * dzndc * zn + 1.
-                dz(n+1)dz   <- 2. * dzndz * zn
-                z(n+1)      <- zn**2 + c 
-                
-                Termination codes
-                0 -> max_iter reached ('interior')
-                1 -> M_divergence reached by np.abs(zn)
-                2 -> dzn stationnary ('interior early detection')
-                3 -> glitched (Dynamic glitches...)
-                4 -> glitched (Ref point diverging  ...)
-                """
-                # This is an approximation as we do not store the ref pt
-                # derivatives - though, we have it through SA iterations
-                if calc_dzndc:
-                    Z[dzndc] = 2. * (
-                            ref_path[zn] * Z[dzndc] + Z[zn] * Z[dzndc]
-                    )
-                    if no_SA and (n_iter == 1):
-                        # Non-null term needed to 'kick-off'
-                        Z[dzndc] = 1.
-
-                # Interior detection - Currently only at low zoom level
-                if interior_detect_activated and (n_iter > 1):
-                    Z[dzndz] = 2. * (Z[zn] * Z[dzndz])
-
-                Z[zn] = Z[zn] * (Z[zn] + 2. * ref_path[zn]) + c
-
-                if n_iter >= max_iter:
-                    stop_reason[0] = reason_max_iter
-                    return
-
-                # Flagged as 'diverging ref pt glitch'
-                if n_iter >= ref_div_iter:
-                    stop_reason[0] = reason_div_glitch
-                    return
-
-                # Interior points detection
-                if interior_detect_activated: # and (n_iter > SA_iter):
-                    bool_stationnary = (
-                            (Z[dzndz].real)**2  # + ref_path_next[1].real
-                            + (Z[dzndz].imag)**2 # + ref_path_next[1].imag
-                            < epsilon_stationnary_sq)
-                    if bool_stationnary:
-                        stop_reason[0] = reason_stationnary
-
-                ZZ = Z[zn] + ref_path_next[zn]
-                if Xrange_complex_type:
-                    full_sq_norm = fsxn.extended_abs2(ZZ)
-                else:
-                    full_sq_norm = ZZ.real**2 + ZZ.imag**2
-
-                # Flagged as 'diverging'
-                bool_infty = (full_sq_norm > M_divergence_sq)
-                if bool_infty:
-                    stop_reason[0] = reason_M_divergence
-
-                # Glitch detection
-                if glitch_off_last_iref and last_iref:
-                    return
-
-                if Xrange_complex_type:
-                    ref_sq_norm = fsxn.extended_abs2(ref_path_next[zn])
-                else:
-                    ref_sq_norm = (ref_path_next[zn].real**2
-                                   + ref_path_next[zn].imag**2)
-
-                # Flagged as "dynamic glitch"
-                bool_glitched = (full_sq_norm  < (ref_sq_norm * glitch_eps_sq))
-                if bool_glitched:
-                    stop_reason[0] = reason_dyn_glitch
-                    # We generate a glitch_sort_key based on 'close to secondary
-                    # nucleus' criteria
-                    # We use dzndz field to save it, as specified by 
-                    # glitch_sort_key parameter of self.cycles call.
-                    Z[1] = full_sq_norm
-
-            return numba_impl
-
-
-        self.iterate = iterate
-        # Parameters for glitch detection and solving
-        self.glitch_stop_index = 3 #reason_dyn_glitch
-        self.glitch_sort_key = "dzndz"
-
-
-
-#    @fsutils.calc_options
-#    def calc_fast(self, *,
-#        calc_name: str,
-#        datatype,
-#        subset,
-#        max_iter: int,
-#        M_divergence: float,
-#        epsilon_stationnary: float,
-#        SA_params=None,
-#        glitch_eps=None,
-#        glitch_max_attempt: int=0):
+#    @fsutils.interactive_options
+#    def nucleus_size_estimate(self, x, y, pix, dps,
+#                          order: int=1):
+#        """ x, y : coordinates of the event """
+#        c = x + 1j * y
 #        
-#        """
-#        Faster options for perturbation iterations (arbitrary precision) of
-#        Mandelbrot standard set (power 2).
-#        
-#        Refer to `calc_std_div` for the explanation of input parameters used.
-#        Compared to `calc_std_div` this method should preferably be used for
-#        exploration as it makes a few approximations and does not computes
-#        derivatives
-#        (Plotting options likes scene-lighting will not be available ;
-#        field lines might show noticeable banding)
-#        """
+#        newton_cv = False
+#        xn_str = ""
+#        yn_str = ""
+#        max_attempt = 2
+#        attempt = 0
+#        while not(newton_cv) and attempt < max_attempt:
+#            attempt += 1
+#            dps = int(1.5 * dps)
+#            print("Newton, dps boost to: ", dps)
+#            with mpmath.workdps(dps):
+#                newton_cv, c_loop = self.find_nucleus(
+#                        c, order, max_newton=None, eps_cv=None)
+#                if newton_cv:
+#                    xn_str = str(c_loop.real)
+#                    yn_str = str(c_loop.imag)
 #
-#        self.init_data_types(datatype)
-#        
-#        # used for potential post-processing
-#        self.potential_M = M_divergence
+#        x_str = str(x)
+#        y_str = str(y)
 #
-#        if glitch_eps is None:
-#            glitch_eps = (1.e-6 if self.base_complex_type == np.float64
-#                          else 1.e-3)
-#        self.glitch_eps = glitch_eps
-#
-#
-#        complex_codes = ["zn", "glitch_sort"]
-#        int_codes = ["iref"]  # reference FP
-#        stop_codes = ["max_iter", "divergence",
-#                      "dyn_glitch", "divref_glitch"]
-#        self.codes = (complex_codes, int_codes, stop_codes)
-#
-#
-#        if SA_params is None:
-#            FP_fields = [0] #ß, 1, 2]
-#        else:
-#            # If SA activated, derivatives will be deduced - no need to compute
-#            # with FP.
-#            FP_fields = [0]
-#        self.FP_codes = [complex_codes[f] for f in FP_fields]
-#
-#        # Defines FP_init via a function factory
-#        def FP_init():
-#            SA_params = self.SA_params
-#            def func():
-#                if SA_params is None:
-#                    return [mpmath.mp.zero] #, mpmath.mp.zero, mpmath.mp.zero]
-#                else:
-#                    return [mpmath.mp.zero]
-#            return func
-#        self.FP_init = FP_init
-#
-#        # Defines FP_loop via a function factory
-#        def FP_loop():
-#            M_divergence = self.M_divergence
-#            def func(FP_array, c0, n_iter):
-#                """ Full precision loop
-#                derivatives corrected by lenght kc
-#                """
-#                FP_array[0] = FP_array[0]**2 + c0
-#                # If FP iteration is divergent, raise the semaphore n_iter
-#                # We use the 'infinite' norm not the disc for obvious calc saving
-#                if ((abs((FP_array[0]).real) > M_divergence)
-#                    or (abs((FP_array[0]).imag) > M_divergence)):
-#                    print("Reference point FP iterations escaping at", n_iter)
-#                    return n_iter
-#            return func
-#        self.FP_loop = FP_loop
-#
-#        # Defines SA_init via a function factory
-#        def SA_init():
-#            # cutdeg = self.SA_params["cutdeg"]
-#            def func(cutdeg):
-#                # Typing as complex for numba
-#                return [fsx.Xrange_SA([0j], cutdeg=cutdeg)]
-#            return func
-#        self.SA_init = SA_init
-#
-#        # Defines SA_loop via a function factory - jitted implementation
-#        def SA_loop():
-#            @numba.njit
-#            def impl(P0, n_iter, ref_path, kcX):
-#                """ Series Approximation loop
-#                Note that derivatives w.r.t dc will be deduced directly from the
-#                S.A polynomial.
-#                """
-#                xr_2 = fsxn.Xrange_scalar(1., numba.int32(1))
-#                P0 = P0 * (P0 + xr_2 * ref_path[0]) + kcX
-#                return P0
-#            return impl
-#        self.SA_loop = SA_loop
-#
-#        # Defines initialize via a function factory
-#        def initialize():
-#            def func(Z, U, c, chunk_slice, iref):
-#                Z[0, :] = 0.
-#                Z[1, :] = 0.
-#                U[0, :] = iref
-#            return func
-#        self.initialize = initialize
-#
-#        # Defines iterate via a function factory - jitted implementation
-#        def iterate():
-#            M_divergence = self.M_divergence
-#            glitch_eps = self.glitch_eps
-##            Xrange_complex_type = self.Xrange_complex_type
-#
-#            zn = 0
-#            reason_max_iter = 0
-#            reason_M_divergence = 1
-#            # reason_stationnary = 2
-#            reason_dyn_glitch = 2
-#            reason_div_glitch = 3
-#            glitch_off_last_iref = fssettings.glitch_off_last_iref
-#
-#
-#            @numba.njit
-#            def numba_impl(Z, U, c, stop_reason, n_iter, SA_iter,
-#                        ref_div_iter, ref_path, ref_path_next,
-#                        last_iref):
-#                """
-#                dz(n+1)dc   <- 2. * dzndc * zn + 1.
-#                dz(n+1)dz   <- 2. * dzndz * zn
-#                z(n+1)      <- zn**2 + c 
-#                
-#                Termination codes
-#                0 -> max_iter reached ('interior')
-#                1 -> M_divergence reached by np.abs(zn)
-#                2 -> dzn stationnary ('interior early detection')
-#                3 -> glitched (Dynamic glitches...)
-#                4 -> glitched (Ref point diverging  ...)
-#                """
-#
-#                Z[zn] = Z[zn] * (Z[zn] + 2. * ref_path[zn]) + c
-#
-#                if n_iter >= max_iter:
-#                    stop_reason[0] = reason_max_iter
-#                    return
-#
-#                # Flagged as 'diverging ref pt glitch'
-#                if n_iter >= ref_div_iter:
-#                    stop_reason[0] = reason_div_glitch
-#                    return
-#
-##                ZZ = Z[zn] + ref_path_next[zn]
-##                if Xrange_complex_type:
-##                    full_sq_norm = ZZ.abs2()
-##                else:
-##                    full_sq_norm = ZZ.real**2 + ZZ.imag**2
-##                sq_norm = Z[zn].real**2 + Z[zn].imag**2
-##                z_real = Z[zn].real
-##                z_imag = Z[zn].imag
-#
-#                ref_real = ref_path_next[zn].real
-#                ref_imag = ref_path_next[zn].imag
-#                ref_norm = (np.abs(ref_real) + np.abs(ref_imag)) * glitch_eps
-#
-#                full_real = ref_real + Z[zn].real
-#                full_imag = ref_imag + Z[zn].imag
-#                full_norm = np.abs(full_real) + np.abs(full_imag)
-#
-#                # Flagged as 'diverging'
-#                if (full_norm > M_divergence):
-#                    stop_reason[0] = reason_M_divergence
-#
-#                # Glitch detection
-#                if glitch_off_last_iref and last_iref:
-#                    return
-#
-#                # Flagged as "dynamic glitch"
-#                if (full_norm < ref_norm):
-#                    stop_reason[0] = reason_dyn_glitch
-#                    # We generate a glitch_sort_key based on 'close to secondary
-#                    # nucleus' criteria
-#                    # We use dzndz field to save it, as specified by 
-#                    # glitch_sort_key parameter of self.cycles call.
-#                    Z[1] = np.abs(full_real) + np.abs(full_imag)
-#
-#            return numba_impl
-#
-#
-#        self.iterate = iterate
-#        # Parameters for glitch detection and solving
-#        self.glitch_stop_index = 2 #reason_dyn_glitch
-#        self.glitch_sort_key = "glitch_sort"
-
-
-
-
-@numba.njit
-def SA_run(SA_loop, P0, n_iter, ref_path, kcX, SA_err_sq, SA_stop,
-           ref_div_iter):
-    """
-    SA_stop : user-provided max SA iter. If -1, will default to ref_path length
-    ref_div_iter : point where Reference point DV
-    """
-    if SA_stop == -1:
-        SA_stop = ref_div_iter
-    else:
-        SA_stop = min(ref_div_iter, SA_stop)
-        
-    print_freq = max(5, int(SA_stop / 100000.))
-    print_freq *= 1000
-    print("Output every", print_freq)
-
-    SA_valid = True
-    while SA_valid:
-        n_iter +=1
-        # keep a copy in case this iter is invalidated
-        P_old0 = P0.coeffs.copy()
-        P0 = SA_loop(P0, n_iter, ref_path[n_iter - 1, :], kcX)
-        
-        coeffs_sum = fsxn.Xrange_scalar(0., numba.int32(0))
-        for i in range(len(P0.coeffs)):
-            coeffs_sum = coeffs_sum + fsxn.extended_abs2(P0.coeffs[i])
-        err_abs2 = P0.err[0] * P0.err[0]
-
-        SA_valid = (
-            (err_abs2  <= SA_err_sq * coeffs_sum)
-            and (coeffs_sum <= 1.e6) # 1e6 to allow 'low zoom'
-            and (n_iter < SA_stop)
-        )
-        if not(SA_valid):
-            P0_ret = fsx.Xrange_polynomial(P_old0, P0.cutdeg)
-            n_iter -= 1
-
-        if n_iter % print_freq == 0 and SA_valid:
-            ssum = np.sqrt(coeffs_sum)
-            print("SA running", n_iter, "err: ", P0.err,
-                  "<< [(", ssum.mantissa, ",", ssum.exp, ")]")
-    return P0_ret, n_iter, P0.err
+#        res_str = f"""
+#nucleus_size_estimate = {{
+#    "x_start": "{x_str}",
+#    "y_start": "{y_str}",
+#    "order": {order}
+#    "x_nucleus": "{xn_str}",
+#    "y_nucleus": "{yn_str}",
+#}}
+#"""
+#        return res_str

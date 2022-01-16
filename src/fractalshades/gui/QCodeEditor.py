@@ -1,5 +1,5 @@
-#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
+
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import (
     QDialog,
@@ -12,13 +12,6 @@ from pygments import highlight
 from pygments.lexers import get_lexer_by_name
 from pygments.formatters import HtmlFormatter
 
-#def highlighter():
-#        text = area.toPlainText()
-#        result = highlight(text, lexer, formatter)
-#        area.setText(result)
-
-#1e1e27
-# QPlainTextEdit
 
 DIALOG_CSS = """     
 QDialog {
@@ -67,6 +60,7 @@ class Fractal_code_widget(QTextEdit):
             stripall=False, # Strip all leading and trailing whitespaces
             stripnl=False # Strip leading and trailing newlines from the input
         )
+        # To get all stypes availables :
         # from pygments.styles import get_all_styles
         # list(get_all_styles())
         self.formatter = HtmlFormatter(linenos=False, style='inkpot')

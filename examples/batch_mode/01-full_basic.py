@@ -35,7 +35,7 @@ def plot(plot_dir):
     x = -1.0
     y = -0.0
     dx = 5.
-    nx = 1600
+    nx = 2400
     
     calc_name="mandelbrot"
     colormap = fscolors.cmap_register["classic"]

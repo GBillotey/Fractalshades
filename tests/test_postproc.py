@@ -24,24 +24,32 @@ class Dummy_Fractal(fs.Fractal):
         self.init_data_types(np.complex128)
 
         def initialize():
-            def func(Z, U, c, chunk_slice):
-                Z[2, :] = c**3
-                Z[1, :] = c**2
-                Z[0, :] = c
-                U[0, :] = 1
-            return func
+            @numba.njit
+            def numba_impl(Z, U, c):
+                Z[2] = c ** 3
+                Z[1] = c ** 2
+                Z[0] = c
+                U[0] = 1
+            return numba_impl
         self.initialize = initialize
         
         def iterate():
             @numba.njit
             def numba_impl(Z, U, c, stop_reason, n_iter):
-                if n_iter >= 0:
-                    stop_reason[0] = 0
-                if np.abs(c) > 1:
-                    Z[0] = 0.
-                    Z[1] = 0.
-                    Z[2] = 0.
-                    U[0] = 0
+                while True:
+                    n_iter += 1
+                
+                    if np.abs(c) > 1:
+                        Z[0] = 0.
+                        Z[1] = 0.
+                        Z[2] = 0.
+                        U[0] = 0
+
+                    if n_iter >= 0:
+                        stop_reason[0] = 0
+                        break
+
+                return n_iter
 
             return numba_impl
         self.iterate = iterate
@@ -76,7 +84,9 @@ class Test_postproc(unittest.TestCase):
         
         for chunk in f.chunk_slices():
 #            res = pp_z[chunk]
-            c = np.ravel(f.c_chunk(chunk))
+            c_pix = np.ravel(self.fractal.chunk_pixel_pos(chunk))
+            c = 0. + 3. * c_pix
+
             invalid = (np.abs(c) > 1)
 
             expected_z = c.copy()
@@ -84,7 +94,7 @@ class Test_postproc(unittest.TestCase):
             np.testing.assert_array_equal(expected_z, pp_z[chunk])
 
             expected_z3 = expected_z ** 3
-            np.testing.assert_array_equal(expected_z3, pp_z3[chunk])
+            np.testing.assert_allclose(expected_z3, pp_z3[chunk])
 
             expected_i1 = np.where(invalid, 0, 1)
             np.testing.assert_array_equal(expected_i1, pp_i1[chunk])

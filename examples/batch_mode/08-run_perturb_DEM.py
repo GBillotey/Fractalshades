@@ -74,14 +74,12 @@ def plot(directory):
             M_divergence=1.e3,
             epsilon_stationnary=1.e-3,
             SA_params={"cutdeg": 8,
-                       "cutdeg_glitch": 8,
-                       "SA_err": 1.e-4},
-            glitch_eps=1.e-6,
+                       "err": 1.e-6},
             interior_detect=True,
-            glitch_max_attempt=2)
+            )
 
     f.run()
-    
+
     # Plot the image
     pp = Postproc_batch(f, "div")
     pp.add_postproc("potential", Continuous_iter_pp())

@@ -12,7 +12,6 @@ from numpy.lib.format import open_memmap
 
 import fractalshades.utils as fsutils
 import fractalshades.settings as fssettings
-from fractalshades.mprocessing import Multiprocess_filler #, globalize
 import test_config
 
 

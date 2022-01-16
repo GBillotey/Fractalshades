@@ -30,7 +30,9 @@ from fractalshades.postproc import (
 from fractalshades.colors.layers import (
     Color_layer,
     Bool_layer,
+    Normal_map_layer,
     Virtual_layer,
+    Blinn_lighting
 )
 
 def plot(directory):
@@ -39,7 +41,7 @@ def plot(directory):
     """
     # A simple showcase using perturbation technique
     precision = 164
-    nx = 1800
+    nx = 3600
     x = '-1.99996619445037030418434688506350579675531241540724851511761922944801584242342684381376129778868913812287046406560949864353810575744772166485672496092803920095332'
     y = '-0.00000000000000000000000000000000030013824367909383240724973039775924987346831190773335270174257280120474975614823581185647299288414075519224186504978181625478529'
     dx = '1.8e-157'
@@ -70,14 +72,11 @@ def plot(directory):
             M_divergence=1.e3,
             epsilon_stationnary=1.e-3,
             SA_params={"cutdeg": 8,
-                       "cutdeg_glitch": 8,
-                       "SA_err": 1.e-4},
-            glitch_eps=1.e-6,
-            interior_detect=True,
-            glitch_max_attempt=20)
+                       "err": 1.e-6},
+            interior_detect=True)
 
     f.run()
-    
+
     # Plot the image
     pp = Postproc_batch(f, "div")
     pp.add_postproc("potential", Continuous_iter_pp())
@@ -87,6 +86,7 @@ def plot(directory):
     
     plotter = fs.Fractal_plotter(pp)   
     plotter.add_layer(Bool_layer("interior", output=False))
+    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=True))
     plotter.add_layer(Virtual_layer("potential", func=None, output=False))
     plotter.add_layer(Color_layer(
             "DEM",
@@ -100,7 +100,28 @@ def plot(directory):
             plotter["interior"],
             mask_color=(0., 0., 0.)
     )
-    
+    plotter["DEM_map"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
+
+
+    # This is where we define the lighting (here 3 ccolored light sources)
+    # and apply the shading
+    light = Blinn_lighting(0.4, np.array([1., 1., 1.]))
+    light.add_light_source(
+        k_diffuse=0.2,
+        k_specular=300.,
+        shininess=1400.,
+        angles=(75., 20.),
+        coords=None,
+        color=np.array([0.9, 0.9, 1.5]))
+    light.add_light_source(
+        k_diffuse=2.8,
+        k_specular=2.,
+        shininess=400.,
+        angles=(75., 20.),
+        coords=None,
+        color=np.array([1., 1., 1.]))
+    plotter["DEM"].shade(plotter["DEM_map"], light)
+
     plotter.plot()
 
 if __name__ == "__main__":
