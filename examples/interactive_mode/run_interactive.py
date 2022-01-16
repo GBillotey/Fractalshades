@@ -88,12 +88,9 @@ def plot(plot_dir):
             subset=None, max_iter=max_iter, M_divergence=1.e3,
             epsilon_stationnary=1.e-4,
             SA_params={"cutdeg": 8,
-                       "SA_err": 1.e-6,
-                       "cutdeg_glitch": 8,
-                       "use_Taylor_shift": False},
-            glitch_eps=1.e-6,
+                       "err": 1.e-6},
             interior_detect=interior_detect,
-            glitch_max_attempt=10)
+            )
 
         if fractal.res_available():
             print("RES AVAILABLE, no compute")

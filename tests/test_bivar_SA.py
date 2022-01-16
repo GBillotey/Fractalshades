@@ -29,46 +29,50 @@ from fractalshades.colors.layers import (
     Blinn_lighting
 )
 
-@numba.njit
-def numba_path_do_nothing(path):
-    # print("#######", path.has_xr)
-    return path
+Xr_template = fsx.Xrange_array.zeros([1], dtype=np.complex128)
 
 @numba.njit
-def numba_path_loop(path):
-    npts = path.ref_path.size
-    prev_idx = numba.int64(0)
-    curr_xr = numba.int64(0)
-    print("npts", npts)
+def numba_path_loop(
+        ref_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr
+):
+    npts = ref_path.size
+    
+    out_is_xr = np.zeros((1,), dtype=numba.bool_)
+    out_xr = Xr_template.repeat(1)
+    refpath_ptr = np.zeros((2,), dtype=np.int32)
+    
+    
+    print("npts", npts, has_xr)
     count = 0
     for j in range(npts):
-        i = npts - j - 1
-        (val, xr_val, is_xr, prev_idx, curr_xr
-        ) = path.get(i, prev_idx, curr_xr)
-        if is_xr:
-            print("is_xr", i, val, xr_val)
-            count += 1
-        (val, xr_val, is_xr, prev_idx, curr_xr
-        ) = path.get(i, prev_idx, curr_xr)
-        if is_xr:
-            print("is_xr", i, val, xr_val)
-            count += 1
-        i = j
-        (val, xr_val, is_xr, prev_idx, curr_xr
-        ) = path.get(i, prev_idx, curr_xr)
-        if is_xr:
-            print("is_xr", i, val, xr_val)
-            count += 1
+        for i in (j , j, npts - j - 1):
+            val = fs.perturbation.ref_path_get(
+                ref_path, i, has_xr, ref_index_xr, ref_xr, refpath_ptr,
+                out_is_xr, out_xr, 0
+            )
+            
+            if out_is_xr[0]:
+                print("is_xr", i, val, fsxn.to_Xrange_scalar(out_xr[0]))
+                count += 1
+
     print("count xr", count)
     assert count == 14 * 3
 
+    count = 0
     for i in (7433792, 7433795, 8785472, 8785473, 9461312, 675720, 675728):
-        (val, xr_val, is_xr, prev_idx, curr_xr
-        ) = path.get(i, prev_idx, curr_xr)
-        if is_xr:
-            print("** is_xr", i, val, xr_val)
+        #         Y       N        Y        N        Y       N       Y  
+        val = fs.perturbation.ref_path_get(
+            ref_path, i, has_xr, ref_index_xr, ref_xr, refpath_ptr,
+            out_is_xr, out_xr, 0
+        )
+        
+        if out_is_xr[0]:
+            print("is_xr", i, val, fsxn.to_Xrange_scalar(out_xr[0]))
+            count += 1
         else:
-            print("** NOT xr", i, val, xr_val)
+            print("** NOT xr", i, val)
+    assert count == 4
+
 
 @numba.njit
 def numba_c_from_pix(path, pix):
@@ -119,8 +123,8 @@ class Test_ref_path(unittest.TestCase):
         print("################# before get_FP_orbit")
         f.get_FP_orbit()
         print("################# after get_FP_orbit")
-#        cls.FP_params = f.FP_params
-#        cls.ref_path = f.ref_path
+        cls.FP_params = f.FP_params
+        cls.ref_path = f.Z_path
 
 
     def test_numba_path(self):
@@ -129,174 +133,30 @@ class Test_ref_path(unittest.TestCase):
         [ 675728 1351568 2027296 2703248 3378976 4054816 4730544 5406496 6082224
         6758064 7433792 8109744 8785472 9461312]"""
         
-        ref_path = self.f.get_Ref_path()
+        # ref_path = self.f.get_Ref_path()
+        (ref_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr
+         ) = self.f.get_Ref_path()
 
         print("ref_path", ref_path)
         
-        
-#        ref_path.has_xr = False
-#        print(ref_path.has_xr)
-        new_path = numba_path_do_nothing(ref_path)
-        print("new_path", new_path, new_path.ref_xr, new_path.ref_index_xr)
-#        print(new_path.has_xr)
-        numba_path_loop(ref_path)
-#        print("~~~~~~~~~~~~~~~~")
-#        print(self.FP_params["partials"].keys())
-        
-        print(new_path.dx)
-        c = numba_c_from_pix(new_path, 0.5 + 0.5j)
-        print(c)
+        numba_path_loop(
+            ref_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr
+        )
         
     def test_print(self):
         fs.perturbation.PerturbationFractal.print_FP(
             self.FP_params, self.ref_path
         )
-        
+
     
-        
-        
 
-
-class Test_bivar_SA(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        fs.settings.enable_multiprocessing = True
-        
-        x = "-1.99996619445037030418434688506350579675531241540724851511761922944801584242342684381376129778868913812287046406560949864353810575744772166485672496092803920095332"
-        y = "0.00000000000000000000000000000000030013824367909383240724973039775924987346831190773335270174257280120474975614823581185647299288414075519224186504978181625478529"
-        dx = "1.8e-157"
-        precision = 200
-        nx = 1600
-        complex_type = np.complex128
-
-        subset_dir = os.path.join(
-            test_config.temporary_data_dir,
-            "_bivar_SA_dir"
-        )
-        fsutils.mkdir_p(subset_dir)
-        cls.subset_dir = subset_dir
-        cls.calc_name = "test"
-        # cls.dir_ref = os.path.join(test_config.ref_data_dir, "subset_REF")
-        cls.f = f = fsm.Perturbation_mandelbrot(subset_dir)
-
-        f.zoom(precision=precision, x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
-               theta_deg=0., projection="cartesian", antialiasing=False)
-        f.calc_std_div(
-                datatype=complex_type,
-                calc_name=cls.calc_name,
-                subset=None,
-                max_iter=100000,
-                M_divergence=1.e3,
-                epsilon_stationnary=1.e-3,
-                interior_detect=False,
-                SA_params={"cutdeg": 2, "eps": 1.e-8},  # 7886 :  for 7884 partial
-                calc_dzndc=False)
-
-
-        f.get_FP_orbit()
-        Ref_path = f.get_Ref_path()
-
-        # Initialise the Bivar_interpolator object
-        kc = f.ref_point_kc()
-        SA_params = f.SA_params
-        SA_loop = f.SA_loop()
-        bivar_interpolator = fsxn.make_Bivar_interpolator(
-            Ref_path, SA_loop, kc, SA_params)
-
-        # Jitted function used in numba inner-loop
-        f._initialize = f.initialize()
-        f._iterate = f.iterate()
-
-        cls.bivar = bivar_interpolator
-
-
-
-    # @test_config.no_stdout
-    def test_basic(self):
-        print("==============================")
-        print("REF point orbit")
-        for key, val in self.FP_params.items():
-            print("==============================")
-            print(key, ":")
-            if key == "partials":
-                for kp, vp in val.items():
-                    print(kp, "-->", str(np.abs(vp)))
-            else:
-                print(val, ":")
-
-#    # @test_config.no_stdout
-#    def test_SA(self):
-#        f = self.f
-#        FP_params = self.FP_params
-#        ref_path = self.ref_path
-#        cutdeg = f.SA_params["cutdeg"]
-#
-#
-#        kc = f.ref_point_scaling(f.iref, f.calc_name)
-#        kc = fsx.mpf_to_Xrange(kc, dtype=f.base_float_type)
-#        #kc = fsx.mpf_to_Xrange("1.e-120", dtype=f.base_float_type)
-#        kc = kc.ravel() # Make it 1d for numba
-#        kcX = np.insert(kc, 0, 0.)
-#        kcX = fsx.Xrange_SA(kcX, cutdeg)
-#        print("kc", kc, kcX)
-#        
-#        SA_loop = f.SA_loop()
-#        P0 = fsx.Xrange_SA([0j], cutdeg=cutdeg)
-#        n_iter = 0
-#        SA_err_sq = 1.e-12
-#        SA_stop = f.SA_params["SA_stop"]
-#        ref_index_xr, ref_xr = f.get_ref_path_xr(FP_params)
-#
-#        ref_div_iter = 100000
-#        
-#        Pn, n, err = fsm.perturbation_mandelbrot.SA_run(
-#            SA_loop, P0, n_iter, ref_path, kcX, SA_err_sq, SA_stop,
-#            ref_index_xr, ref_xr, ref_div_iter
-#        )
-#        print("Pn:\n", Pn, n, err.view(fsx.Xrange_array))
-
-
-    def test_bivar_SA(self):
-        print("bvsa")
-        bvi = self.bivar
-        print("bvi", bvi)
-        
-        bi_attr_list = (
-            "Ref_path",
-#            "SA_loop",
-            "min_seed_exp",
-            "max_seed_exp",
-            "bivar_SA_cutdeg",
-            "bivar_SA_kc",
-            "bivar_SA_eps",
-#            "bivar_SA_lock", 
-#            "bivar_SA_sto",
-#            "bivar_SA_coeffs", 
-#            "bivar_SA_computed", 
-#            "bivar_SA_sq_zrad",
-        )
-        for attr in bi_attr_list:
-            print(attr, getattr(bvi, attr))
-        
-        bvi_new = numba_box_bivar_interpolator(bvi)
-        print("bvi_new", bvi_new)
-        
-        
-        
-        
-@numba.njit
-def numba_box_bivar_interpolator(bvi):
-    # print(bvi)
-    return bvi
-        
 
 
 if __name__ == "__main__":
-    full_test = False
+    full_test = True
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
-        runner.run(test_config.suite([Test_bivar_SA]))
+        runner.run(test_config.suite([Test_ref_path]))
     else:
         suite = unittest.TestSuite()
 #        suite.addTest(Test_bivar_SA("test_basic"))
@@ -304,5 +164,5 @@ if __name__ == "__main__":
 #        suite.addTest(Test_bivar_SA("test_bivar_SA"))
         suite.addTest(Test_ref_path("test_numba_path"))
 #        suite.addTest(Test_ref_path("test_print"))
-        suite.addTest(Test_bivar_SA("test_bivar_SA"))
+        # suite.addTest(Test_bivar_SA("test_bivar_SA"))
         runner.run(suite)

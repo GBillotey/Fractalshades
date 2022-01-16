@@ -50,7 +50,7 @@ def plot(plot_dir):
     y = "0.001645580546820209430325900"
     dx = "18.e-22"
     precision = 30
-    nx = 2
+    nx = 3600
     xy_ratio = 16. / 9.
 
     calc_name="mandelbrot"
@@ -85,13 +85,12 @@ def plot(plot_dir):
             datatype=np.complex128, # ("Xrange", np.complex128),
             calc_name=calc_name,
             subset=None,
-            max_iter=10000,
+            max_iter=100000,
             M_divergence=1.e3,
             epsilon_stationnary=1.e-3,
 #            SA_params=None,
-            SA_params={"kind": "bivar",
-                       "cutdeg": 2,
-                       "eps": 1.e-6},
+            SA_params={"cutdeg": 32,
+                       "err": 1.e-6},
             interior_detect=False)
     f.run()
 
@@ -101,7 +100,7 @@ def plot(plot_dir):
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
     pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
     pp.add_postproc("fieldlines",
-                Fieldlines_pp(n_iter=8, swirl=1., damping_ratio=0.3))
+                Fieldlines_pp(n_iter=3, swirl=0., damping_ratio=1.0))
 
     plotter = fs.Fractal_plotter(pp)   
     plotter.add_layer(Bool_layer("interior", output=True))
@@ -111,7 +110,7 @@ def plot(plot_dir):
             "cont_iter",
             func="np.log(x)",
             colormap=colormap,
-            probes_z=[8.64, 8.76],
+            probes_z=[9.015, 9.025],
             probes_kind="absolute",
             output=True
     ))
@@ -121,7 +120,7 @@ def plot(plot_dir):
 
     # This is the line where we indicate that coloring is a combination of
     # "Continuous iteration" and "fieldines values"
-    plotter["cont_iter"].set_twin_field(plotter["fieldlines"], 0.00001)
+    plotter["cont_iter"].set_twin_field(plotter["fieldlines"], 0.0001)
 
     # This is where we define the lighting (here 3 ccolored light sources)
     # and apply the shading

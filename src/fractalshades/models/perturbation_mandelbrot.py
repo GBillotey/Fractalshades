@@ -180,13 +180,35 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
 
         # Defines initialize via a function factory
         def initialize():
+
             @numba.njit
-            def numba_init_impl(Z, U, c):
+            def numba_init_impl(Z, U, c_xr, Z_xr_trigger, Z_xr, P, kc, dx_xr, n_iter):
                 """
-                Not so much to do here...
+                ... mostly the SA
                 """
+
+                if P is not None:
+                    # Apply the  Series approximation step
+                    U[0] = n_iter
+                    c_scaled = c_xr / kc[0]
+#                    print("P", P)
+#                    print("c_scaled", c_scaled, P.__call__(c_scaled), fsxn.to_standard(P.__call__(c_scaled)))
+#                    print("dzndc", dzndc)
+                    Z[zn] = fsxn.to_standard(P.__call__(c_scaled))
+                    if fs.perturbation.need_xr(Z[zn]):
+                        Z_xr_trigger[zn] = True
+                        Z_xr[zn] = P.__call__(c_scaled)
+                    if dzndc != -1:
+                        P_deriv = P.deriv()
+#                        print("P_deriv", P_deriv)
+                        deriv_scale =  dx_xr[0] / kc[0]
+                        Z[dzndc] = fsxn.to_standard(
+                            P_deriv.__call__(c_scaled) * deriv_scale
+                        )
+#                        print("Z[dzndc]", Z[dzndc], P_deriv.__call__(c_scaled), deriv_scale)
                 if (dzndz != -1):
                     Z[dzndz] = 1.
+                    
             return numba_init_impl
 
         self.initialize = initialize
@@ -195,7 +217,6 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         def iterate():
             M_divergence_sq = self.M_divergence ** 2
             epsilon_stationnary_sq = self.epsilon_stationnary ** 2
-            xrange_zoom_level = fs.settings.xrange_zoom_level
 
             # Interior detection for very shallow zoom
             interior_detect_activated = (
@@ -208,34 +229,13 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                 and (self.dx < fssettings.newton_zoom_level)
             )
             # Xr triggered for ultra-deep zoom
-            xr_detect_activated = self.xr_detect_activated 
-
-            @numba.njit
-            def need_xr(x_std):
-                """
-                True if norm L-inf of std is lower than xrange_zoom_level
-                """
-                return (
-                    (abs(x_std).real < xrange_zoom_level)
-                     and (abs(x_std.imag) < xrange_zoom_level)
-                )
-
-            @numba.njit
-            def ensure_xr(X_xr, x_std, Z_xr_trigger):
-                """
-                Return a valid Xrange. if not(Z_xr_trigger) we return x_std
-                converted
-                """
-                if Z_xr_trigger[0]:
-                    return fsxn.to_Xrange_scalar(X_xr)
-                else:
-                    return fsxn.to_Xrange_scalar(x_std)
-
+            xr_detect_activated = self.xr_detect_activated
+            
             @numba.njit
             def numba_impl(
                 c, Z, U, stop, n_iter,
-                Ref_path, Bivar_interpolator,
-                Z_xr_trigger, Z_xr, c_xr, refpath_ptr
+                ref_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr,
+                Z_xr_trigger, Z_xr, c_xr, refpath_ptr, ref_is_xr, ref_zn_xr
             ):
                 """
                 dz(n+1)dc   <- 2. * dzndc * zn + 1.
@@ -247,172 +247,149 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                 1 -> M_divergence reached by np.abs(zn)
                 2 -> dzndz stationnary ('interior detection')
                 """
-                #==============================================================
-                # Shift iter block - using Bivar_interpolator
-                # print("numba_impl", n_iter, Z)
-
-                if (
-                    (SA_activated)
-                    and (U[0] % fs.settings.bivar_SA_min_seed == 0)
-                ):
-                    (poly_incr, poly_arr, kz
-                     ) = Bivar_interpolator.get_poly(
-                        U[0], fsxn.to_Xrange_scalar(Z[n_iter])
-                    )
-                    poly = fsx.Xrange_bivar_polynomial(
-                        poly_arr, Bivar_interpolator.bivar_SA_cutdeg
-                    )
-
-                    if poly_incr != 0:
-                        n_iter += poly_incr
-                        U[0] += poly_incr
-                        kc = fsxn.to_Xrange_scalar(
-                                Bivar_interpolator.bivar_SA_kc[0])
-                        Z_xr[zn] = ensure_xr(Z_xr[zn], Z[zn], Z_xr_trigger)
-                        val_X = c_xr / kc
-                        val_Y = Z_xr[zn] / kz
-                        Z_xr[zn] = poly.__call__(val_X, val_Y)
-                        if calc_dzndc:
-                            # 2 variables derivatives
-                            # Note : We scale by dx here as we want the
-                            # derivative to stay in float range
-                            poly_dc = poly.deriv("X")
-                            poly_dZ = poly.deriv("Y")
-                            Z_xr[dzndc] = dx[0] * (
-                                1. / kc * poly_dc.__call__(val_X, val_Y)
-                                + Z_xr[dzndc] / kz * poly_dZ.__call__(
-                                        val_X, val_Y)
-                            )
-
-                        Z[zn] =  fsxn.to_standard(Z_xr[zn])
-                        Z_xr_trigger[0] = need_xr(Z[zn])
-                    
-                #==============================================================
-                # Load reference point value
-                # refpath_ptr = [prev_idx, curr_xr]
-                (ref_zn, ref_zn_xr, ref_is_xr, refpath_ptr[0], refpath_ptr[1]
-                 ) = Ref_path.get(U[0], refpath_ptr[0], refpath_ptr[1])
-
-                #==============================================================
-                # Pertubation iter block
-                #--------------------------------------------------------------
-                n_iter += 1 
-                # dzndc subblock
-                if calc_dzndc:
-                # This is an approximation as we do not store the ref pt
-                # derivatives 
-                # Full term would be :
-                # Z[dzndc] =  2 * (
-                #    (ref_path_zn + Z[zn]) * Z[dzndc]
-                #    + Z[zn] * ref_path_dzndc
-                    Z[dzndc] = 2. * (ref_zn + Z[zn]) * Z[dzndc]
-                    if not(SA_activated) and (n_iter == 1):
-                        # Non-null term needed to 'kick-off'
-                        Z[dzndc] = 1.
-                    # print("calc_dzndc", Z[dzndc], zn, dzndc)
-
-                #--------------------------------------------------------------
-                # Interior detection - Used only at low zoom level
-                if interior_detect_activated and (n_iter > 1):
-                    Z[dzndz] = 2. * (Z[zn] * Z[dzndz])
-
-                #--------------------------------------------------------------
-                # zn subblok
-                if xr_detect_activated:
-                    # We shall pay attention to overflow
-                    if not(Z_xr_trigger[0]):
-                        # try a standard iteration
-                        old_zn = Z[zn]
-                        Z[zn] = Z[zn] * (Z[zn] + 2. * ref_zn)
-                        if need_xr(Z[zn]):
-                            # Standard iteration underflows
-                            # standard -> xrange conversion
-                            Z_xr[zn] = fsxn.to_Xrange_scalar(old_zn)
-                            Z_xr_trigger[0] = True
-
-                    if Z_xr_trigger[0]:
-                        if (ref_is_xr):
-                            Z_xr[zn] = Z_xr[zn] * (Z_xr[zn] + 2. * ref_zn_xr)
-                        else:
-                            Z_xr[zn] = Z_xr[zn] * (Z_xr[zn] + 2. * ref_zn)
-                        # xrange -> standard conversion
-                        Z[zn] = fsxn.to_standard(Z_xr[zn])
-
-                        # Unlock trigger if we can...
-                        Z_xr_trigger[0] = need_xr(Z[zn])
-                else:
-                    # No risk of underflow, normal perturbation interation
-                    Z[zn] = Z[zn] * (Z[zn] + 2. * ref_zn) + c
-
-                #==============================================================
-                if n_iter >= max_iter:
-                    stop[0] = reason_max_iter
-                    return n_iter
-
-                # Interior points detection
-                if interior_detect_activated:
-                    bool_stationnary = (
-                        Z[dzndz].real ** 2 + Z[dzndz].imag ** 2
-                            < epsilon_stationnary_sq)
-                    if bool_stationnary:
-                        stop[0] = reason_stationnary
-                        return n_iter
-
-                #==============================================================
-                # ZZ = "Total" z + dz
-                U[0] += 1
-
-                (ref_zn_next, ref_zn_xr_next, ref_next_is_xr, 
-                 refpath_ptr[0], refpath_ptr[1]
-                 ) = Ref_path.get(U[0], refpath_ptr[0], refpath_ptr[1])
                 
-                # computation involve doubles only
-                ZZ = Z[zn] + ref_zn_next
-                full_sq_norm = ZZ.real**2 + ZZ.imag**2
+                while True:
+                    n_iter += 1
 
-                # Flagged as 'diverging'
-                bool_infty = (full_sq_norm > M_divergence_sq)
-                if bool_infty:
-                    stop[0] = reason_M_divergence
-                    return n_iter
-
-                # Glitch correction - reference point diverging
-                if (U[0] >= Ref_path.ref_div_iter - 1):
-                    # Rebasing - we are already big no underflow risk
-                    U[0] = 0
-                    Z[zn] = ZZ
-                    return n_iter
-
-                # Glitch correction -  "dynamic glitch"
-                bool_dyn_rebase = (
-                    (abs(ZZ.real) <= abs(Z[zn].real))
-                    and (abs(ZZ.imag) <= abs(Z[zn].imag))
-                )
-                if bool_dyn_rebase:# and not(xr_detect_activated): # and not(xr_detect_activated): # bool_dyn_rebase # debug and not(xr_detect_activated)
-                    if xr_detect_activated and Z_xr_trigger[0]:
-                        # Can we *really* rebase ??
-                        # Note: if Z[zn] underflows we might miss a rebase...
-                        # So we cast everything to xr
-                        Z_xrn = Z_xr[zn]
-                        if ref_next_is_xr:
-                            # Reference underflows, use available xr reference
-                            ZZ_xr = Z_xrn + ref_zn_xr_next
-                        else:
-                            ZZ_xr = Z_xrn + ref_zn_next
-
-                        bool_dyn_rebase_xr = (
-                            fsxn.extended_abs2(ZZ_xr)
-                            <= fsxn.extended_abs2(Z_xrn)   
+                    #==============================================================
+                    # Load reference point value @ U[0]
+                    # refpath_ptr = [prev_idx, curr_xr]
+                    if xr_detect_activated:
+                        ref_zn = fs.perturbation.ref_path_get(
+                            ref_path, U[0],
+                            has_xr, ref_index_xr, ref_xr, refpath_ptr,
+                            ref_is_xr, ref_zn_xr, 0
                         )
-                        if bool_dyn_rebase_xr:
-                            U[0] = 0
-                            Z_xr[zn] = ZZ_xr
-                            Z[zn] = fsxn.to_standard(ZZ_xr)
+
                     else:
-                        # No risk of underflow - safe to rebase
+                        # ref_is_xr = False
+                        ref_zn = ref_path[U[0]]
+
+                    #==============================================================
+                    # Pertubation iter block
+                    #--------------------------------------------------------------
+                    # dzndc subblock
+                    if calc_dzndc:
+                    # This is an approximation as we do not store the ref pt
+                    # derivatives 
+                    # Full term would be :
+                    # Z[dzndc] =  2 * (
+                    #    (ref_path_zn + Z[zn]) * Z[dzndc]
+                    #    + Z[zn] * ref_path_dzndc
+                        Z[dzndc] = 2. * (ref_zn + Z[zn]) * Z[dzndc]
+                        if not(SA_activated) and (n_iter == 1):
+                            # Non-null term needed to 'kick-off'
+                            Z[dzndc] = 1.
+    
+                    #--------------------------------------------------------------
+                    # Interior detection - Used only at low zoom level
+                    if interior_detect_activated and (n_iter > 1):
+                        Z[dzndz] = 2. * (Z[zn] * Z[dzndz])
+    
+                    #--------------------------------------------------------------
+                    # zn subblok
+                    if xr_detect_activated:
+                        # We shall pay attention to overflow
+                        if not(Z_xr_trigger[0]):
+                            # try a standard iteration
+                            old_zn = Z[zn]
+                            Z[zn] = Z[zn] * (Z[zn] + 2. * ref_zn)
+                            if fs.perturbation.need_xr(Z[zn]):
+                                # Standard iteration underflows
+                                # standard -> xrange conversion
+                                Z_xr[zn] = fsxn.to_Xrange_scalar(old_zn)
+                                Z_xr_trigger[0] = True
+    
+                        if Z_xr_trigger[0]:
+                            if (ref_is_xr[0]):
+                                Z_xr[zn] = Z_xr[zn] * (Z_xr[zn] + 2. * ref_zn_xr[0])
+                            else:
+                                Z_xr[zn] = Z_xr[zn] * (Z_xr[zn] + 2. * ref_zn)
+                            # xrange -> standard conversion
+                            Z[zn] = fsxn.to_standard(Z_xr[zn])
+    
+                            # Unlock trigger if we can...
+                            Z_xr_trigger[0] = fs.perturbation.need_xr(Z[zn])
+                    else:
+                        # No risk of underflow, normal perturbation interation
+                        Z[zn] = Z[zn] * (Z[zn] + 2. * ref_zn) + c
+    
+                    #==============================================================
+                    if n_iter >= max_iter:
+                        stop[0] = reason_max_iter
+                        break
+    
+                    # Interior points detection
+                    if interior_detect_activated:
+                        bool_stationnary = (
+                            Z[dzndz].real ** 2 + Z[dzndz].imag ** 2
+                                < epsilon_stationnary_sq)
+                        if bool_stationnary:
+                            stop[0] = reason_stationnary
+                            break
+    
+                    #==============================================================
+                    # ZZ = "Total" z + dz
+                    U[0] = U[0] + 1
+
+                    if xr_detect_activated:
+                        ref_zn_next = fs.perturbation.ref_path_get(
+                            ref_path, U[0],
+                            has_xr, ref_index_xr, ref_xr, refpath_ptr,
+                            ref_is_xr, ref_zn_xr, 1
+                        )
+                    else:
+                        ref_zn_next = ref_path[U[0]]
+
+
+                    # computation involve doubles only
+                    ZZ = Z[zn] + ref_zn_next
+                    full_sq_norm = ZZ.real**2 + ZZ.imag**2
+    
+                    # Flagged as 'diverging'
+                    bool_infty = (full_sq_norm > M_divergence_sq)
+                    if bool_infty:
+                        stop[0] = reason_M_divergence
+                        break
+    
+                    # Glitch correction - reference point diverging
+                    if (U[0] >= ref_div_iter - 1):
+                        # Rebasing - we are already big no underflow risk
                         U[0] = 0
                         Z[zn] = ZZ
+                        return
 
+                    # Glitch correction -  "dynamic glitch"
+                    bool_dyn_rebase = (
+                        (abs(ZZ.real) <= abs(Z[zn].real))
+                        and (abs(ZZ.imag) <= abs(Z[zn].imag))
+                    )
+                    if bool_dyn_rebase:# and not(xr_detect_activated): # and not(xr_detect_activated): # bool_dyn_rebase # debug and not(xr_detect_activated)
+                        if xr_detect_activated and Z_xr_trigger[0]:
+                            # Can we *really* rebase ??
+                            # Note: if Z[zn] underflows we might miss a rebase...
+                            # So we cast everything to xr
+                            Z_xrn = Z_xr[zn]
+                            if ref_is_xr[1]:
+                                # Reference underflows, use available xr reference
+                                ZZ_xr = Z_xrn + ref_zn_xr[1]
+                            else:
+                                ZZ_xr = Z_xrn + ref_zn_next
+    
+                            bool_dyn_rebase_xr = (
+                                fsxn.extended_abs2(ZZ_xr)
+                                <= fsxn.extended_abs2(Z_xrn)   
+                            )
+                            if bool_dyn_rebase_xr:
+                                U[0] = 0
+                                Z_xr[zn] = ZZ_xr
+                                Z[zn] = fsxn.to_standard(ZZ_xr)
+                        else:
+                            # No risk of underflow - safe to rebase
+                            U[0] = 0
+                            Z[zn] = ZZ
+    
+                # End of while loop
                 return n_iter
 
             return numba_impl

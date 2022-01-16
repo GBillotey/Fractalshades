@@ -7,10 +7,10 @@ import sys
 # this is a pointer to the module object instance itself.
 this = sys.modules[__name__]
 
-enable_multiprocessing = True
-"""Turn on or off multiprocessing (useful for debugging purpose)"""
+enable_multithreading = True
+"""Turn on or off multithreading (for debugging purpose)"""
 
-optimize_RAM = True
+optimize_RAM = False
 """If true, memory mappings will be used not only during calculation but also
 at post-processing stage. This obviously is at the detriment of speed
 but will avoid memory errors for very large images or on system with low RAM.

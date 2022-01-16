@@ -119,10 +119,7 @@ def plot(directory):
             M_divergence=1.e3,
             epsilon_stationnary=1.e-3,
             SA_params={"cutdeg": 32,
-                       "cutdeg_glitch": 8,
-                       # "SA_stop": 3675000,
-                       "SA_err": 1.e-4,
-                       "use_Taylor_shift": False},
+                       "err": 1.e-6},
             interior_detect=False)
 
     f.run()

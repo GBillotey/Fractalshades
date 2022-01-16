@@ -7,7 +7,7 @@ import numpy as np
 import numba
 
 import fractalshades as fs
-import fractalshades.parallel
+import fractalshades.parallel_lock
 import test_config
 
 """
@@ -23,10 +23,10 @@ def lock_and_work(locks, arr):
             # get lock pointer
             lock_ptr = locks[i:]
             # try to lock and do some work
-            if fs.parallel.try_lock(lock_ptr):
+            if fs.parallel_lock.try_lock(lock_ptr):
                 arr[i] += 1
                 # unlock
-                fs.parallel.unlock(lock_ptr)
+                fs.parallel_lock.unlock(lock_ptr)
                 break
         else:
             # count number of times it failed to do work
@@ -42,10 +42,10 @@ def busywait_and_work(locks, arr):
             # get lock pointer
             lock_ptr = locks[i:]
             # busywait to lock and do some work
-            while not(fs.parallel.try_lock(lock_ptr)):
+            while not(fs.parallel_lock.try_lock(lock_ptr)):
                 pass
             arr[i] += 1
-            fs.parallel.unlock(lock_ptr)
+            fs.parallel_lock.unlock(lock_ptr)
             break
         else:
             # count number of times it failed to do work
@@ -60,10 +60,10 @@ def lock_and_work_with_GIL(locks, arr):
             # get lock pointer
             lock_ptr = locks[i:]
             # try to lock and do some work
-            if fs.parallel.try_lock(lock_ptr):
+            if fs.parallel_lock.try_lock(lock_ptr):
                 arr[i] += 1
                 # unlock
-                fs.parallel.unlock(lock_ptr)
+                fs.parallel_lock.unlock(lock_ptr)
                 break
         else:
             # count number of times it failed to do work
@@ -238,7 +238,7 @@ class Test_parallel(unittest.TestCase):
     
 if __name__ == '__main__':
     # main()
-    full_test = False
+    full_test = True
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_parallel]))

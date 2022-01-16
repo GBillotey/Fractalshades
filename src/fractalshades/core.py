@@ -5,6 +5,7 @@ import copy
 import datetime
 import pickle
 import pathlib
+import concurrent
 
 import numpy as np
 from numpy.lib.format import open_memmap
@@ -18,7 +19,7 @@ import fractalshades.numpy_utils.xrange as fsx
 import fractalshades.settings as fssettings
 import fractalshades.utils as fsutils
 
-from fractalshades.mprocessing import Multiprocess_filler
+from fractalshades.mthreading import Multithreading_iterator
 
 
 
@@ -194,6 +195,7 @@ class Fractal_plotter:
                         inc_posproc_rank=inc_posproc_rank
                 )
             else:
+                
                 self.store_data(
                         chunk_slice=None,
                         batch=batch,
@@ -239,8 +241,8 @@ class Fractal_plotter:
         )
 
 
-    @Multiprocess_filler(iterable_attr="chunk_slices",
-        iter_kwargs="chunk_slice", veto_multiprocess=False)
+    @Multithreading_iterator(iterable_attr="chunk_slices",
+        iter_kwargs="chunk_slice")
     def store_temporary_mmap(self, chunk_slice, batch, inc_posproc_rank):
         """ Compute & store temporary arrays for this postproc batch
             Note : inc_posproc_rank rank shift to take into account potential
@@ -257,8 +259,8 @@ class Fractal_plotter:
         mmap[inc:inc+n_posts, ix:ixx, iy:iyy] = arr_2d
 
 
-    @Multiprocess_filler(iterable_attr="chunk_slices",
-        iter_kwargs="chunk_slice", veto_multiprocess=True)
+    @Multithreading_iterator(iterable_attr="chunk_slices",
+        iter_kwargs="chunk_slice")
     def store_data(self, chunk_slice, batch, inc_posproc_rank):
         """ Compute & store temporary arrays for this postproc batch
             (in-RAM version -> shall not use multiprocessing)
@@ -308,8 +310,8 @@ class Fractal_plotter:
                 write_layer_report(i, layer, report)
 
 
-    @Multiprocess_filler(iterable_attr="chunk_slices",
-        iter_kwargs="chunk_slice", veto_multiprocess=True)
+    @Multithreading_iterator(iterable_attr="chunk_slices",
+        iter_kwargs="chunk_slice")
     def compute_layer_scaling(self, chunk_slice, layer):
         """ Compute the scaling for this layer """
         layer.update_scaling(chunk_slice)
@@ -350,8 +352,8 @@ class Fractal_plotter:
                 continue
             self.push_cropped(chunk_slice=None, layer=layer, im=self._im[i])
 
-    @Multiprocess_filler(iterable_attr="chunk_slices",
-        iter_kwargs="chunk_slice", veto_multiprocess=True)
+    @Multithreading_iterator(iterable_attr="chunk_slices",
+        iter_kwargs="chunk_slice")
     def push_cropped(self, chunk_slice, layer, im):
         """ push "cropped image" from layer for this chunk to the image"""
         (ix, ixx, iy, iyy) = chunk_slice
@@ -377,7 +379,8 @@ class Fractal:
         "glitch_max_attempt",
         "chunk_pts",
         "total-glitched",
-        "dyn-glitched"]
+        "dyn-glitched"
+    ]
 
     # Note : chunk_mask is pre-computed and saved also but not at the same 
     # stage (at begining of calculation)
@@ -385,7 +388,14 @@ class Fractal:
         "Z",
         "U",
         "stop_reason",
-        "stop_iter"]
+        "stop_iter"
+    ]
+    
+    PROJECTION_ENUM = {
+        "cartesian": 1,
+        "spherical": 2,
+        "expmap": 3
+    }
 
     def __init__(self, directory):
         """
@@ -569,10 +579,30 @@ advanced users when subclassing.
         # Lazzy compilation of subset boolean array chunk-span
         self._mask_beg_end = None
 
-        # JIT-compiled function
-        # self.jitted_numba_cycles = numba.njit(numba_cycles)
-        self._iterate = self.iterate()
-        self.cycles()
+        # Jitted function used in numba inner-loop
+        self._initialize = self.initialize()
+        self._iterate = self.iterate() 
+        
+        # Launch parallel computing of the inner-loop (Multi-threading with GIL
+        # released)
+        if fs.settings.enable_multithreading:
+            print(">>> Launching multithreading parallel calculation loop")
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=os.cpu_count()
+            ) as threadpool:
+                futures = (
+                    threadpool.submit(
+                        self.cycles,
+                        chunk_slice,
+                    )
+                    for chunk_slice in self.chunk_slices()
+                )
+                for fut in concurrent.futures.as_completed(futures):
+                    fut.result()
+        else:
+            print(">>> Launching standard calculation loop")
+            for chunk_slice in self.chunk_slices():
+                self.cycles(chunk_slice)
         
         # Export to human-readable format
         if fs.settings.inspect_calc:
@@ -786,34 +816,9 @@ advanced users when subclassing.
             return (ixx - ix) * (iyy - iy)
 
     @property
-    def chunk_mask(self):#, chunk_slice):
+    def chunk_mask(self):
         """ Legacy - simple alias """
         return self.subset
-
-
-    def c_chunk(self, chunk_slice):
-        """
-        Returns a chunk of c_vec for the calculation
-        Parameters
-         - chunk_span
-         - data_type: expected one of np.float64, np.longdouble
-        
-        Returns: 
-        c_vec : [chunk_size x chunk_size] 2d-vec of type datatype
-
-        Projection availables cases :
-            - cartesian : standard cartesisan
-            - spherical : uses a spherical projection
-            - exp_map : uses an exponential map projection
-            - mixed_exp_map :  a mix of cartesian, exponential
-
-        Note : return type is always standard prec - standard range
-        """
-        
-        (x, y)  = (self.x, self.y)
-
-        offset = self.chunk_offset(chunk_slice)
-        return (x + offset[0]) + (y + offset[1]) * 1j # TODO test this
 
 
     def chunk_pixel_pos(self, chunk_slice):
@@ -841,140 +846,16 @@ advanced users when subclassing.
 
         dy_vec /= self.xy_ratio
 
-        res = (
-            ((dx_vec * np.cos(theta)) - (dy_vec * np.sin(theta)))
-            + 1j * ((dx_vec * np.sin(theta)) + (dy_vec * np.cos(theta)))
-        )
+        if self.projection == "expmap":
+            # Expmap, no rotation
+            res = dx_vec + 1j * dy_vec
+        else:
+            res = (
+                ((dx_vec * np.cos(theta)) - (dy_vec * np.sin(theta)))
+                + 1j * ((dx_vec * np.sin(theta)) + (dy_vec * np.cos(theta)))
+            )
+
         return res
-
-
-    def chunk_offset(self, chunk_slice, ensure_Xr=False):
-        """
-        Only computes the delta around ref central point for different projections
-        Note : return type is always standard prec - standard or extended range
-        
-        ensure_Xr : enforce extended range if True
-        """
-#        select = {np.complex256: np.float128,
-#                  np.complex128: np.float64}
-        data_type = self.base_float_type # select[self.base_complex_type]
-
-        (xy_ratio, theta_deg)  = (self.xy_ratio, self.theta_deg)
-        (nx, ny, dx, dy) = (self.nx, self.ny, self.dx, self.dy)
-
-        if ensure_Xr:
-            dx_m, dx_exp = mpmath.frexp(dx)
-            dx_m = np.array(dx_m, data_type)
-            dx = fsx.Xrange_array(dx_m, dx_exp)
-            dy_m, dy_exp = mpmath.frexp(dy)
-            dy_m = np.array(dy_m, data_type)
-            dy = fsx.Xrange_array(dy_m, dy_exp)
-        else:
-            dx = float(dx)
-            dy = float(dy)
-        
-        (ix, ixx, iy, iyy) = chunk_slice
-        theta = theta_deg / 180. * np.pi
-
-        dx_grid = np.linspace(-0.5, 0.5, num=nx, dtype=data_type)
-        dy_grid = np.linspace(-0.5, 0.5, num=ny, dtype=data_type)
-        dy_vec, dx_vec  = np.meshgrid(dy_grid[iy:iyy], dx_grid[ix:ixx])
-
-        if self.antialiasing:
-            rg = np.random.default_rng(0)
-            dx_vec += (0.5 - rg.random(dx_vec.shape, dtype=data_type)) * 0.5 / nx
-            dy_vec += (0.5 - rg.random(dy_vec.shape, dtype=data_type)) * 0.5 / ny
-
-        dx_vec = dx * dx_vec
-        dy_vec = dy * dy_vec
-
-        if self.projection == "cartesian":
-            offset = [(dx_vec * np.cos(theta)) - (dy_vec * np.sin(theta)),
-                      (dx_vec * np.sin(theta)) + (dy_vec * np.cos(theta))]
-
-        elif self.projection == "spherical":
-            dr_sc = np.sqrt(dx_vec**2 + dy_vec**2) / max(dx, dy) * np.pi
-            k = np.where(dr_sc >= np.pi * 0.5, np.nan,  # outside circle
-                         np.where(dr_sc < 1.e-12, 1., np.tan(dr_sc) / dr_sc))
-            dx_vec *= k
-            dy_vec *= k
-            offset = [(dx_vec * np.cos(theta)) - (dy_vec * np.sin(theta)),
-                      (dx_vec * np.sin(theta)) + (dy_vec * np.cos(theta))]
-
-        elif self.projection == "mixed_exp_map":
-            # square + exp. map
-            h_max = 2. * np.pi * xy_ratio # max h reached on the picture
-            xbar = (dx_vec + 0.5 * dx - dy) / dx * h_max # 0 .. hmax
-            ybar = dy_vec / dy * 2. * np.pi              # -pi .. +pi
-            rho = dx * 0.5 * np.where(xbar > 0., np.exp(xbar), 0.)
-            phi = ybar + theta
-            dx_vec = (dx_vec + 0.5 * dx - 0.5 * dy) * xy_ratio
-            dy_vec = dy_vec * xy_ratio
-            offset = [np.where(xbar <= 0.,
-                          (dx_vec * np.cos(theta)) - (dy_vec * np.sin(theta)),
-                          rho * np.cos(phi)),
-                      np.where(xbar <= 0.,
-                          (dx_vec * np.sin(theta)) + (dy_vec * np.cos(theta)),
-                          rho * np.sin(phi))]
-
-        elif self.projection == "exp_map":
-            # only exp. map
-            h_max = 2. * np.pi * xy_ratio # max h reached on the picture
-            xbar = (dx_vec + 0.5 * dx - dy) / dx * h_max # 0 .. hmax
-            ybar = dy_vec / dy * 2. * np.pi              # -pi .. +pi
-            rho = dx * 0.5 * np.exp(xbar)
-            phi = ybar + theta
-            offset = [rho * np.cos(phi), rho * np.sin(phi)]
-
-        else:
-            raise ValueError("Projection not implemented: {}".format(
-                              self.projection))
-        return offset
-
-    def px_chunk(self, chunk_slice, ensure_Xr=False):
-        """
-        Local size of pixel for different projections
-        """
-        data_type = self.base_float_type
-
-        xy_ratio  = self.xy_ratio
-        (nx, ny, dx, dy) = (self.nx, self.ny, self.dx, self.dy)
-        (ix, ixx, iy, iyy) = chunk_slice
-        
-        if not(ensure_Xr):
-            dx = float(dx)
-            dy = float(dy)
-        else:
-            dx_m, dx_exp = mpmath.frexp(dx)
-            dx_m = np.array(dx_m, data_type)
-            dx = fsx.Xrange_array(dx_m, dx_exp)
-            dy_m, dy_exp = mpmath.frexp(dy)
-            dy_m = np.array(dy_m, data_type)
-            dy = fsx.Xrange_array(dy_m, dy_exp)
-
-        dx_grid = dx * np.linspace(-0.5, 0.5, num=nx, dtype=data_type)
-        dy_grid = dy * np.linspace(-0.5, 0.5, num=ny, dtype=data_type)
-        dy_vec, dx_vec  = np.meshgrid(dy_grid[iy:iyy], dx_grid[ix:ixx])
-
-        if self.projection == "cartesian":
-            px = (dx / (nx - 1.)) #* np.ones_like(dx_vec)
-
-        elif self.projection == "spherical":
-            raise NotImplementedError()
-
-        elif self.projection == "mixed_exp_map":
-            raise NotImplementedError()
-
-        elif self.projection == "exp_map":
-            h_max = 2. * np.pi * xy_ratio
-            xbar = (dx_vec + 0.5 * dx - dy) / dx * h_max
-            px = (dx / (nx - 1.)) * 0.5 * h_max * np.exp(xbar)
-
-        else:
-            raise ValueError("Projection not implemented: {}".format(
-                              self.projection))
-        return px
-
 
 
     def param_matching(self, dparams):
@@ -982,16 +863,15 @@ advanced users when subclassing.
         Test if the stored parameters match those of new calculation
         /!\ modified in subclass
         """
-        print("**CALLING param_matching +++", self.params)
-        # TODO : note: when comparing iref should be disregarded ? 
-        # or subclass specific implementation
+#        print("**CALLING param_matching +++", self.params)
+
         UNTRACKED = ["datetime", "debug"] 
         for key, val in self.params.items():
             if not(key in UNTRACKED) and dparams[key] != val:
                 print("Unmatching", key, val, "-->", dparams[key])
                 return False
 #            print("its a match", key, val, dparams[key] )
-        print("** all good")
+#        print("** all good")
         return True
 
     def res_available(self, chunk_slice=None):
@@ -1019,15 +899,13 @@ advanced users when subclassing.
         if self.iref is None:
             return report["iref"] >= -1 # -2 means not yet calculated
         else:
+            # Glitch logic, not used.
             completed = (report["iref"] >= self.iref)
             not_needed = (report["total-glitched"] == 0)
             return (not_needed or completed)
 
 
-    @Multiprocess_filler(iterable_attr="chunk_slices",
-                         redirect_path_attr="multiprocess_dir",
-                         iter_kwargs="chunk_slice")
-    def cycles(self, chunk_slice=None, SA_params=None):
+    def cycles(self, chunk_slice=None):
         """
         Fast-looping for Julia and Mandelbrot sets computation.
 
@@ -1066,20 +944,25 @@ advanced users when subclassing.
         if self.res_available(chunk_slice):
             return
 
-        (c, Z, U, stop_reason, stop_iter, n_stop,
-         n_iter) = self.init_cycling_arrays(chunk_slice)
+        (c_pix, Z, U, stop_reason, stop_iter
+         ) = self.init_cycling_arrays(chunk_slice)
 
-            
-#        modified_in_cycle = np.copy(bool_active)
-
+        initialize = self._initialize
         iterate = self._iterate
 
-        print("**/CALLING cycles looping,  n_stop", n_stop)
 
 
-        numba_cycles(Z, U, c, stop_reason, stop_iter,
-                     n_iter, iterate)
+        dx = self.dx
+        center = self.x + 1j * self.y
+        xy_ratio = self.xy_ratio
+        theta = self.theta_deg / 180. * np.pi # used for expmap
+        projection = self.PROJECTION_ENUM[self.projection]
 
+        numba_cycles(
+            c_pix, Z, U, stop_reason, stop_iter,
+            initialize, iterate,
+            dx, center, xy_ratio, theta, projection  
+        )
 
         # Saving the results after cycling
         self.update_report_mmap(chunk_slice, stop_reason)
@@ -1088,28 +971,23 @@ advanced users when subclassing.
 
 
     def init_cycling_arrays(self, chunk_slice):
-        """
-        Prepared the chunk arrays for subsequent looping
-        """
-        c = np.ravel(self.c_chunk(chunk_slice))
-        if self.subset is not None:
-            c = c[self.chunk_mask[chunk_slice]]
 
-        (n_pts,) = c.shape
+        c_pix = np.ravel(self.chunk_pixel_pos(chunk_slice))
+        if self.subset is not None:
+            chunk_mask = self.subset[chunk_slice]
+            c_pix = c_pix[chunk_mask]
+        
+        # Initialise the result arrays
+        (n_pts,) = c_pix.shape
+
         n_Z, n_U, n_stop = (len(code) for code in self.codes)
 
         Z = np.zeros([n_Z, n_pts], dtype=self.complex_type)
         U = np.zeros([n_U, n_pts], dtype=self.int_type)
-        stop_reason = -np.ones([1, n_pts], dtype=self.termination_type)
+        stop_reason = - np.ones([1, n_pts], dtype=self.termination_type)
         stop_iter = np.zeros([1, n_pts], dtype=self.int_type)
 
-        self.initialize()(Z, U, c, chunk_slice)
-
-        # We start at 0 with all index active
-        n_iter = 0
-
-
-        return (c, Z, U, stop_reason, stop_iter, n_stop, n_iter)
+        return (c_pix, Z, U, stop_reason, stop_iter)
 
 
     # ======== The various storing files for a calculation ====================
@@ -1598,9 +1476,6 @@ advanced users when subclassing.
         calc_name = postproc_batch.calc_name
         chunk_mask, Z, U, stop_reason, stop_iter = self.reload_data(
                 chunk_slice, calc_name)
-        # View casting Z as extended-range if needed
-#        if self.Xrange_complex_type:
-#            Z = Z.view(fsx.Xrange_array)
 
         params, codes = self.reload_params(calc_name)
         complex_dic, int_dic, termination_dic = self.codes_mapping(*codes)
@@ -1625,24 +1500,106 @@ advanced users when subclassing.
 
 # Numba JIT functions =========================================================
 
-@numba.njit
-def numba_cycles(Z, U, c, stop_reason, stop_iter,
-                 n_iter, iterate):
+
+@numba.njit(nogil=True)
+def numba_cycles(
+    c_pix, Z, U, stop_reason, stop_iter,
+    initialize, iterate,
+    dx, center, xy_ratio, theta, projection  
+):
     """ Run the standard cycles
     """
-    npts = c.size
-    n_iter_init = n_iter
+    npts = c_pix.size
+    
     for ipt in range(npts):
         Zpt = Z[:, ipt]
         Upt = U[:, ipt]
-        cpt = c[ipt]
+        cpt = ref_path_c_from_pix(c_pix[ipt], dx, center, xy_ratio, theta,
+                                  projection)
         stop_pt = stop_reason[:, ipt]
-        n_iter = n_iter_init
-        cycling = True
-        while cycling:
-            n_iter += 1 
-            iterate(Zpt, Upt, cpt, stop_pt, n_iter)
-            cycling = (stop_pt[0] == -1)
-            if not(cycling):
-                stop_iter[0, ipt] = n_iter
-                stop_reason[0, ipt] = stop_pt[0]
+        
+        initialize(Zpt, Upt, cpt)
+        n_iter = iterate(
+            Zpt, Upt, cpt, stop_pt, 0,
+        )
+
+        stop_iter[0, ipt] = n_iter
+        stop_reason[0, ipt] = stop_pt[0]
+
+
+proj_cartesian = Fractal.PROJECTION_ENUM["cartesian"]
+proj_spherical = Fractal.PROJECTION_ENUM["spherical"]
+proj_expmap = Fractal.PROJECTION_ENUM["expmap"]
+
+@numba.njit
+def ref_path_c_from_pix(pix, dx, center, xy_ratio, theta, projection):
+    """
+    Returns the true c (coords from ref point) from the pixel coords
+    
+    Parameters
+    ----------
+    pix :  complex
+        pixel location in farction of dx
+        
+    Returns
+    -------
+    c, c_xr : c value as complex and as Xrange
+    """
+    # Case cartesian
+    if projection == proj_cartesian:
+        offset = (pix * dx)
+
+    elif projection == proj_spherical:
+        dr_sc = np.abs(pix) * np.pi
+        if dr_sc >= np.pi * 0.5:
+            k = np.nan
+        elif dr_sc < 1.e-12:
+            k = 1.
+        else:
+            k = np.tan(dr_sc) / dr_sc
+        offset = (pix * k * dx)
+
+    elif projection == proj_expmap:
+        dy = dx * xy_ratio
+        h_max = 2. * np.pi * xy_ratio # max h reached on the picture
+        xbar = (pix.real + 0.5 - xy_ratio) * h_max  # 0 .. hmax
+        ybar = pix.imag / dy * 2. * np.pi           # -pi .. +pi
+        rho = dx * 0.5 * np.exp(xbar)
+        phi = ybar + theta
+        offset = rho * (np.cos(phi) + 1j * np.sin(phi))
+
+    return offset + center
+
+#        elif self.projection == "spherical":
+#            dr_sc = np.sqrt(dx_vec**2 + dy_vec**2) / max(dx, dy) * np.pi
+#            k = np.where(dr_sc >= np.pi * 0.5, np.nan,  # outside circle
+#                         np.where(dr_sc < 1.e-12, 1., np.tan(dr_sc) / dr_sc))
+#            dx_vec *= k
+#            dy_vec *= k
+#            offset = [(dx_vec * np.cos(theta)) - (dy_vec * np.sin(theta)),
+#                      (dx_vec * np.sin(theta)) + (dy_vec * np.cos(theta))]
+#
+#        elif self.projection == "mixed_exp_map":
+#            # square + exp. map
+#            h_max = 2. * np.pi * xy_ratio # max h reached on the picture
+#            xbar = (dx_vec + 0.5 * dx - dy) / dx * h_max # 0 .. hmax
+#            ybar = dy_vec / dy * 2. * np.pi              # -pi .. +pi
+#            rho = dx * 0.5 * np.where(xbar > 0., np.exp(xbar), 0.)
+#            phi = ybar + theta
+#            dx_vec = (dx_vec + 0.5 * dx - 0.5 * dy) * xy_ratio
+#            dy_vec = dy_vec * xy_ratio
+#            offset = [np.where(xbar <= 0.,
+#                          (dx_vec * np.cos(theta)) - (dy_vec * np.sin(theta)),
+#                          rho * np.cos(phi)),
+#                      np.where(xbar <= 0.,
+#                          (dx_vec * np.sin(theta)) + (dy_vec * np.cos(theta)),
+#                          rho * np.sin(phi))]
+#
+#        elif self.projection == "exp_map":
+#            # only exp. map
+#            h_max = 2. * np.pi * xy_ratio # max h reached on the picture
+#            xbar = (dx_vec + 0.5 * dx - dy) / dx * h_max # 0 .. hmax
+#            ybar = dy_vec / dy * 2. * np.pi              # -pi .. +pi
+#            rho = dx * 0.5 * np.exp(xbar)
+#            phi = ybar + theta
+#            offset = [rho * np.cos(phi), rho * np.sin(phi)]

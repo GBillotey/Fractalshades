@@ -69,38 +69,49 @@ class Collatz(fs.Fractal):
         self.potential_M = M_divergence
 
         def initialize():
-            def func(Z, U, c, chunk_slice):
-                Z[1, :] = 1.
-                Z[0, :] = c
-            return func
+            @numba.njit
+            def numba_init_impl(Z, U, c):
+                Z[1] = 1.
+                Z[0] = c
+            return numba_init_impl
         self.initialize = initialize
 
         def iterate():
             Mdiv_sq = self.M_divergence ** 2
             epscv_sq = self.epsilon_stationnary ** 2
             max_iter = self.max_iter
+
             @numba.njit
             def numba_impl(Z, U, c, stop_reason, n_iter):
-                if n_iter >= max_iter:
-                    stop_reason[0] = 0
-                    return
 
-                cos0 = np.cos(np.pi * Z[0])
-                sin0 = np.sin(np.pi * Z[0])
+                while True:
+                    n_iter += 1
 
-                Z[1] = 0.25 * Z[1] * (
-                      7. - 5. * cos0 + (2. + 5. * Z[0]) * np.pi * sin0
-                )
-                Z[0] = 0.25 * (2. + 7. * Z[0] - (2. + 5. * Z[0]) * cos0)
+                    if n_iter >= max_iter:
+                        stop_reason[0] = 0
+                        break
+    
+                    cos0 = np.cos(np.pi * Z[0])
+                    sin0 = np.sin(np.pi * Z[0])
+    
+                    Z[1] = 0.25 * Z[1] * (
+                          7. - 5. * cos0 + (2. + 5. * Z[0]) * np.pi * sin0
+                    )
+                    Z[0] = 0.25 * (2. + 7. * Z[0] - (2. + 5. * Z[0]) * cos0)
+    
+                    if n_iter == 1:
+                        Z[1] = 1.
+    
+                    if Z[0].real**2 + Z[0].imag ** 2 > Mdiv_sq:
+                        stop_reason[0] = 1
+                        break
+    
+                    if Z[1].real**2 + Z[1].imag ** 2 < epscv_sq:
+                        stop_reason[0] = 2
+                        break
 
-                if n_iter == 1:
-                    Z[1] = 1.
-
-                if Z[0].real**2 + Z[0].imag ** 2 > Mdiv_sq:
-                    stop_reason[0] = 1
-
-                if Z[1].real**2 + Z[1].imag ** 2 < epscv_sq:
-                    stop_reason[0] = 2
+                # End of while loop
+                return n_iter
 
             return numba_impl
         self.iterate = iterate

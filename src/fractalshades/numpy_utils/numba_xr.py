@@ -69,6 +69,7 @@ See https://github.com/pygae/clifford
 Note : An alternative approach without numba:
 https://numpy.org/doc/stable/user/c-info.ufunc-tutorial.html
 https://jiffyclub.github.io/numpy/user/c-info.ufunc-tutorial.html
+
 """
 
 numba_float_types = (numba.float64,)
@@ -132,6 +133,13 @@ def impl_xrange_scalar(context, builder, sig, args):
     xrange_scalar.exp = exp
     return xrange_scalar._getvalue()
 
+
+#  @unbox(Xrange_scalar_Type) :
+# Not implemented, use idiom : 
+# scalar = fsxn.to_Xrange_scalar(arr.repeat(1))
+
+
+
 @box(Xrange_scalar_Type)
 def box_xrange_scalar(typ, val, c):
     """
@@ -159,6 +167,7 @@ def box_xrange_scalar(typ, val, c):
     c.pyapi.decref(mantissa_obj)
     c.pyapi.decref(exp_obj)
     return xrange_obj
+
 
 
 @numba.njit
@@ -482,7 +491,7 @@ def extended_overload(compare_operator):
                 return compare_operator(m0_out, m1_out)
             return impl
         else:
-            print(op0 in numba_base_types, op1 in xr_types)
+#            print(op0 in numba_base_types, op1 in xr_types)
             raise TypingError("datatype not accepted in compare({}, {})".format(
                 op0, op1))
 
@@ -703,7 +712,7 @@ def to_Xrange_scalar(item):
         def impl(item):
             return Xrange_scalar(item.mantissa, item.exp)
     else:
-        raise TypingError("datatype not accepted {}".format(item))
+        raise TypingError("to_Xrange_scalar : unexpected datatype {}".format(item))
     return impl
         
 
@@ -954,18 +963,18 @@ def xrange_polynomial_call(poly, val):
 
 @overload_method(Xrange_polynomial_Type, 'deriv')
 def xrange_polynomial_deriv(poly):
-    # Call self as a function.
-    def call_impl(poly, val, k=1.):
+    # Returns the derived polynomial
+    deriv_dtype = numpy_xr_type(poly.np_base_type)
+    deriv_template = np.zeros((1,), dtype=deriv_dtype)
+
+    def call_impl(poly):
         coeffs = poly.coeffs
         n = coeffs.size
-        deriv_coeffs = coeffs[1:] * np.arange(1, n)
-        if k != 1.:
-            mul = 1.
-            for i in range(n - 1):
-                deriv_coeffs[i] = deriv_coeffs[i] * mul
-                mul *= k
-        return fsx.Xrange_polynomial(deriv_coeffs, cutdeg=poly.cutdeg)
+        deriv_coeffs = deriv_template.repeat(n - 1)
+        for i in range(n - 1):
+            deriv_coeffs[i] = coeffs[i + 1] * (i + 1.)
 
+        return fsx.Xrange_polynomial(deriv_coeffs, cutdeg=poly.cutdeg)
     return call_impl
 
 
@@ -2439,100 +2448,100 @@ def monome_sub(op0, op1):
     else:
         raise TypingError("monome_sub, not a Xrange_monome_Type ({}, {})".format(
             op0, op1))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-"""
-Implements atomic compare-and-swap in user-land using llvm_call() and use it to
-create a lock.
-Ref:
-https://gist.github.com/sklam/40f25167351832fe55b64232785d036d
-
-https://llvm.org/docs/LangRef.html#cmpxchg-instruction
-The ‘cmpxchg’ instruction is used to atomically modify memory. It loads a value
-in memory and compares it to a given value. If they are equal, it tries to
-store a new value into the memory.
-"""
-
-@numba.extending.intrinsic
-def atomic_xchg(context, ptr, cmp, val):
-    if isinstance(ptr, numba.types.CPointer):
-        valtype = ptr.dtype
-        sig = valtype(ptr, valtype, valtype)
-
-        def codegen(context, builder, signature, args):
-            [ptr, cmpval, value] = args
-            res = builder.cmpxchg(ptr, cmpval, value, ordering='monotonic')
-            oldval, succ = numba.core.cgutils.unpack_tuple(builder, res)
-            return oldval
-        return sig, codegen
-
-@numba.extending.intrinsic
-def cast_as_intp_ptr(context, ptrval):
-    ptrty = numba.types.CPointer(numba.intp)
-    sig = ptrty(numba.intp)
-
-    def codegen(context, builder, signature, args):
-        [val] = args
-        llrety = context.get_value_type(signature.return_type)
-        return builder.inttoptr(val, llrety)
-    return sig, codegen
-
-@numba.njit("intp(intp[:])")
-def try_lock(lock):
-    iptr = cast_as_intp_ptr(lock[0:].ctypes.data)
-    old = atomic_xchg(iptr, 0, 1)
-    return old == 0
-
-@numba.njit("void(intp[:])")
-def unlock(lock):
-    iptr = cast_as_intp_ptr(lock[0:].ctypes.data)
-    old = atomic_xchg(iptr, 1, 0)
-    assert old == 1
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-"""
-Implements Bivar Series approximations
-"""
-#MIN_BIVAR_SPAN = 1024
-#MIN_BIVAR_SEED = 1024
-#MAX_FLOAT_XR = np.asarray(fsx.Xrange_array(1., 2**31-2)).ravel()
-
-#zero = np.zeros((1,), dtype=numpy_xr_type(np.complex128))
-
-#------------------------------------------------------------------------------
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#"""
+#Implements atomic compare-and-swap in user-land using llvm_call() and use it to
+#create a lock.
+#Ref:
+#https://gist.github.com/sklam/40f25167351832fe55b64232785d036d
+#
+#https://llvm.org/docs/LangRef.html#cmpxchg-instruction
+#The ‘cmpxchg’ instruction is used to atomically modify memory. It loads a value
+#in memory and compares it to a given value. If they are equal, it tries to
+#store a new value into the memory.
+#"""
+#
+#@numba.extending.intrinsic
+#def atomic_xchg(context, ptr, cmp, val):
+#    if isinstance(ptr, numba.types.CPointer):
+#        valtype = ptr.dtype
+#        sig = valtype(ptr, valtype, valtype)
+#
+#        def codegen(context, builder, signature, args):
+#            [ptr, cmpval, value] = args
+#            res = builder.cmpxchg(ptr, cmpval, value, ordering='monotonic')
+#            oldval, succ = numba.core.cgutils.unpack_tuple(builder, res)
+#            return oldval
+#        return sig, codegen
+#
+#@numba.extending.intrinsic
+#def cast_as_intp_ptr(context, ptrval):
+#    ptrty = numba.types.CPointer(numba.intp)
+#    sig = ptrty(numba.intp)
+#
+#    def codegen(context, builder, signature, args):
+#        [val] = args
+#        llrety = context.get_value_type(signature.return_type)
+#        return builder.inttoptr(val, llrety)
+#    return sig, codegen
+#
+#@numba.njit("intp(intp[:])")
+#def try_lock(lock):
+#    iptr = cast_as_intp_ptr(lock[0:].ctypes.data)
+#    old = atomic_xchg(iptr, 0, 1)
+#    return old == 0
+#
+#@numba.njit("void(intp[:])")
+#def unlock(lock):
+#    iptr = cast_as_intp_ptr(lock[0:].ctypes.data)
+#    old = atomic_xchg(iptr, 1, 0)
+#    assert old == 1
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#"""
+#Implements Bivar Series approximations
+#"""
+##MIN_BIVAR_SPAN = 1024
+##MIN_BIVAR_SEED = 1024
+##MAX_FLOAT_XR = np.asarray(fsx.Xrange_array(1., 2**31-2)).ravel()
+#
+##zero = np.zeros((1,), dtype=numpy_xr_type(np.complex128))
+#
+##------------------------------------------------------------------------------
 class Ref_path:    
     def __init__(self, ref_path, ref_index_xr, ref_xr, ref_div_iter,
                  drift, dx):
@@ -2563,7 +2572,7 @@ class Ref_path:
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Numba implementation - Note: the constructor is not implemented in Numba
 # Only boxing / unboxing is implemented
-# -> Ref_path object to be created in python an passed to numba
+# -> Ref_path object to be created in python and passed to numba
 
 class Ref_path_Type(types.Type):
     def __init__(self):
@@ -2763,671 +2772,681 @@ def ref_path_c_from_pix(path, pix):
         c_xr = (pix * path.dx[0]) + path.drift[0]
         return to_standard(c_xr), c_xr
     return impl
-
-
-#==============================================================================
-#  We compute & store asynchronously the coefficients for SA intetpolation
-#  for every multiple of the following seeds : 
-#     - (2 ** min_exp, 2 ** (min_exp + 1), ...2 ** (max_exp)
-#  For a location, knowing exp and multiple the storage index is:
-#     - sto = stores[exp] + multiple
-# Pushing to the array from a thread is protected by a lock to avoid race
-# condition
-
-
-def make_Bivar_interpolator(Ref_path, SA_loop, kc, SA_params):
-    """
-    Builds the data
-    """
-    cutdeg = SA_params["cutdeg"]
-
-    min_seed_exp = fssettings.bivar_SA_min_seed_exp
-    max_jump = Ref_path.ref_div_iter - 1 # as path includes 0
-    max_seed_exp = max_jump.bit_length() - 1
-    # Note : max_seed = (1 << max_seed_exp)
-    bivar_SA_sto = np.zeros((max_seed_exp + 1,), dtype=np.int32)
-
-    print("max_jump", max_jump, max_seed_exp, 2**max_seed_exp, 1 << max_seed_exp)
-    for i in range(min_seed_exp, max_seed_exp + 1):
-        print("seed exp:", i)
-        bivar_SA_sto[i] = max_jump // (1 << i)
-    SA_sto_sum = np.cumsum(bivar_SA_sto)
-    n_sto = SA_sto_sum[-1]
-    bivar_SA_sto[1:] = SA_sto_sum[0:-1]
-
-    bivar_SA_lock = np.zeros((n_sto,), dtype=np.intp)
-    bivar_SA_coeffs = fsx.Xrange_array.zeros(
-            (n_sto, cutdeg, cutdeg), dtype=np.complex128)
-    bivar_SA_computed = np.zeros((n_sto, 2), dtype=np.bool_)
-    bivar_SA_zrad = fsx.Xrange_array.zeros(
-            (n_sto, 2), dtype=np.float64)
-    
-    print("Making a Bivar_interpolator with nsto:", n_sto)
-    print("bivar_SA_sto:", bivar_SA_sto)
-    print("with SA_params:", SA_params)
-
-    return Bivar_interpolator(
-        Ref_path=Ref_path,
-        SA_loop=SA_loop,
-        min_seed_exp=min_seed_exp,
-        max_seed_exp=max_seed_exp,
-        bivar_SA_cutdeg=SA_params["cutdeg"],
-        bivar_SA_kc=kc,
-        bivar_SA_eps=SA_params["eps"],
-        bivar_SA_lock=bivar_SA_lock, 
-        bivar_SA_sto=bivar_SA_sto,
-        bivar_SA_coeffs=bivar_SA_coeffs, 
-        bivar_SA_computed=bivar_SA_computed, 
-        bivar_SA_zrad=bivar_SA_zrad, 
-    )
-    
-
-class Bivar_interpolator:
-    
-    attr_list = (
-        "Ref_path",
-        "SA_loop",
-        "min_seed_exp",
-        "max_seed_exp",
-        "bivar_SA_cutdeg",
-        "bivar_SA_kc",
-        "bivar_SA_eps",
-        "bivar_SA_lock", 
-        "bivar_SA_sto",
-        "bivar_SA_coeffs",   # read-write
-        "bivar_SA_computed", # read-write
-        "bivar_SA_zrad",  # read-write
-    )
-    
-    def __init__(self, *args, **kwargs):
-        """
-        path: Ref_path object
-        min_exp: integer
-        SA_loop: numba function which take a 
-
-        """
-        for i, val in enumerate(args):
-            print("set", self.attr_list[i])
-            setattr(
-                self,
-                self.attr_list[i],
-                val
-            )
-        for key, val in kwargs.items():
-            setattr(self, key, val)
-
-
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Numba implementation
 #
-class Bivar_interpolator_Type(types.Type):
-    def __init__(self, SA_loop):
-        self.Ref_path = Ref_path_Type()
-        self.SA_loop = numba.typeof(SA_loop)
-        self.min_seed_exp = types.int64
-        self.max_seed_exp = types.int64
-        self.bivar_SA_cutdeg = types.int64
-        self.bivar_SA_kc = types.Array(
-            numba_xr_type(np.float64), 1, 'C'
-        ) # kc -> kcX
-        self.bivar_SA_eps = types.float64
-        self.bivar_SA_lock = types.Array(numba.intp, 1, 'C')
-        self.bivar_SA_sto = types.Array(numba.int32, 1, 'C')
-        self.bivar_SA_coeffs = types.Array(
-            numba_xr_type(np.complex128), 3, 'C'
-        ) # store_address x nX x nY
-        self.bivar_SA_computed = types.Array(
-            numba.bool_, 2, 'C') # store_address x 2 (cv / div)
-        self.bivar_SA_zrad = types.Array(
-            numba_xr_type(np.float64), 2, 'C'
-        ) # store_address x 2 (cv / div)
-        # The name must be unique if the underlying model is different
-        super().__init__("Bivar_interpolator_{}".format(str(self.SA_loop)))
-
-@typeof_impl.register(Bivar_interpolator)
-def typeof_bivar_interpolator(val, c):
-    return Bivar_interpolator_Type(val.SA_loop)
-
-@register_model(Bivar_interpolator_Type)
-class BivarInterpolatorModel(models.StructModel):
-    def __init__(self, dmm, fe_type):
-        members = list(
-            (attr, getattr(fe_type, attr))
-            for attr in Bivar_interpolator.attr_list
-        )
-        models.StructModel.__init__(self, dmm, fe_type, members)
-
-for attr in Bivar_interpolator.attr_list:
-    make_attribute_wrapper(Bivar_interpolator_Type, attr, attr)
-
-@unbox(Bivar_interpolator_Type)
-def unbox_bivar_interpolator(typ, obj, c):
-    """ Convert a Bivar_interpolator object to a native structure """
-    Ref_path_obj = c.pyapi.object_getattr_string(obj, "Ref_path")
-    SA_loop_obj = c.pyapi.object_getattr_string(obj, "SA_loop")
-    min_seed_exp_obj = c.pyapi.object_getattr_string(obj, "min_seed_exp")
-    max_seed_exp_obj = c.pyapi.object_getattr_string(obj, "max_seed_exp")
-    bivar_SA_cutdeg_obj = c.pyapi.object_getattr_string(obj, "bivar_SA_cutdeg")
-    bivar_SA_kc_obj = c.pyapi.object_getattr_string(obj, "bivar_SA_kc")
-    bivar_SA_eps_obj = c.pyapi.object_getattr_string(obj, "bivar_SA_eps")
-    bivar_SA_lock_obj = c.pyapi.object_getattr_string(obj, "bivar_SA_lock")
-    bivar_SA_sto_obj = c.pyapi.object_getattr_string(obj, "bivar_SA_sto")
-    bivar_SA_coeffs_obj = c.pyapi.object_getattr_string(obj, "bivar_SA_coeffs")
-    bivar_SA_computed_obj = c.pyapi.object_getattr_string(obj, "bivar_SA_computed")
-    bivar_SA_zrad_obj = c.pyapi.object_getattr_string(obj, "bivar_SA_zrad")
-
-    proxy = cgutils.create_struct_proxy(typ)(c.context, c.builder)
-
-    proxy.Ref_path = c.unbox(typ.Ref_path, Ref_path_obj).value
-    proxy.SA_loop  = c.unbox(typ.SA_loop, SA_loop_obj).value
-    proxy.min_seed_exp = c.pyapi.long_as_longlong(min_seed_exp_obj)
-    proxy.max_seed_exp = c.pyapi.long_as_longlong(max_seed_exp_obj)
-    proxy.bivar_SA_cutdeg = c.pyapi.long_as_longlong(bivar_SA_cutdeg_obj)
-    proxy.bivar_SA_kc = c.unbox(typ.bivar_SA_kc, bivar_SA_kc_obj).value
-    proxy.bivar_SA_eps = c.pyapi.float_as_double(bivar_SA_eps_obj)
-    proxy.bivar_SA_lock = c.unbox(typ.bivar_SA_lock, bivar_SA_lock_obj).value
-    proxy.bivar_SA_sto = c.unbox(typ.bivar_SA_sto, bivar_SA_sto_obj).value
-    proxy.bivar_SA_coeffs = c.unbox(typ.bivar_SA_coeffs, bivar_SA_coeffs_obj).value
-    proxy.bivar_SA_computed = c.unbox(typ.bivar_SA_computed, bivar_SA_computed_obj).value
-    proxy.bivar_SA_zrad = c.unbox(typ.bivar_SA_zrad, bivar_SA_zrad_obj).value
-
-    # Free mem
-    c.pyapi.decref(Ref_path_obj)
-    c.pyapi.decref(SA_loop_obj)
-    c.pyapi.decref(min_seed_exp_obj)
-    c.pyapi.decref(max_seed_exp_obj)
-    c.pyapi.decref(bivar_SA_cutdeg_obj)
-    c.pyapi.decref(bivar_SA_kc_obj)
-    c.pyapi.decref(bivar_SA_eps_obj)
-    c.pyapi.decref(bivar_SA_lock_obj)
-    c.pyapi.decref(bivar_SA_sto_obj)
-    c.pyapi.decref(bivar_SA_coeffs_obj)
-    c.pyapi.decref(bivar_SA_computed_obj)
-    c.pyapi.decref(bivar_SA_zrad_obj)
-
-    is_error = cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
-    return NativeValue(proxy._getvalue(), is_error=is_error)
-
-
-@box(Bivar_interpolator_Type)
-def box_bivar_interpolator(typ, val, c):
-    """
-    Convert a native Ref_path_Type structure to a 
-    Ref_path_Type object
-    """
-    proxy = cgutils.create_struct_proxy(typ
-        )(c.context, c.builder, value=val)
-    classobj = c.pyapi.unserialize(c.pyapi.serialize_object(Bivar_interpolator))
-
-    # attr
-    Ref_path_obj = c.box(typ.Ref_path, proxy.Ref_path)
-    SA_loop_obj = c.box(typ.SA_loop, proxy.SA_loop)
-    min_seed_exp_obj = c.pyapi.long_from_longlong(proxy.min_seed_exp)
-    max_seed_exp_obj = c.pyapi.long_from_longlong(proxy.max_seed_exp)
-    bivar_SA_cutdeg_obj = c.pyapi.long_from_longlong(proxy.bivar_SA_cutdeg)
-    bivar_SA_kc_obj = c.box(typ.bivar_SA_kc, proxy.bivar_SA_kc)
-    bivar_SA_eps_obj = c.pyapi.float_from_double(proxy.bivar_SA_eps)
-    bivar_SA_lock_obj = c.box(typ.bivar_SA_lock, proxy.bivar_SA_lock)
-    bivar_SA_sto_obj = c.box(typ.bivar_SA_sto, proxy.bivar_SA_sto)
-    bivar_SA_coeffs_obj = c.box(typ.bivar_SA_coeffs, proxy.bivar_SA_coeffs)
-    bivar_SA_computed_obj = c.box(typ.bivar_SA_computed, proxy.bivar_SA_computed)
-    bivar_SA_zrad_obj = c.box(typ.bivar_SA_zrad, proxy.bivar_SA_zrad)
-
-    Bivar_interpolator_obj = c.pyapi.call_function_objargs(
-        classobj,
-        (Ref_path_obj,
-        SA_loop_obj,
-        min_seed_exp_obj,
-        max_seed_exp_obj,
-        bivar_SA_cutdeg_obj,
-        bivar_SA_kc_obj,
-        bivar_SA_eps_obj,
-        bivar_SA_lock_obj,
-        bivar_SA_sto_obj,
-        bivar_SA_coeffs_obj,
-        bivar_SA_computed_obj,
-        bivar_SA_zrad_obj,
-    ))
-    
-    # Free mem
-    c.pyapi.decref(Ref_path_obj)
-    c.pyapi.decref(SA_loop_obj)
-    c.pyapi.decref(min_seed_exp_obj)
-    c.pyapi.decref(max_seed_exp_obj)
-    c.pyapi.decref(bivar_SA_cutdeg_obj)
-    c.pyapi.decref(bivar_SA_kc_obj)
-    c.pyapi.decref(bivar_SA_eps_obj)
-    c.pyapi.decref(bivar_SA_lock_obj)
-    c.pyapi.decref(bivar_SA_sto_obj)
-    c.pyapi.decref(bivar_SA_coeffs_obj)
-    c.pyapi.decref(bivar_SA_computed_obj)
-    c.pyapi.decref(bivar_SA_zrad_obj)
-
-    return Bivar_interpolator_obj
-
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-#@numba.njit
-#def enlarge_z_sq(z_sq):
-#    m, e = _normalize(z_sq.mantissa, z_sq.exp)
-#    assert e <= 0
-#    return Xrange_scalar(
-#            np.sm,
-#            sdiv_int32(e, numba.int32(2))
+#
+##==============================================================================
+##  We compute & store asynchronously the coefficients for SA intetpolation
+##  for every multiple of the following seeds : 
+##     - (2 ** min_exp, 2 ** (min_exp + 1), ...2 ** (max_exp)
+##  For a location, knowing exp and multiple the storage index is:
+##     - sto = stores[exp] + multiple
+## Pushing to the array from a thread is protected by a lock to avoid race
+## condition
+#
+#
+#def make_Bivar_interpolator(Ref_path, SA_loop, kc, SA_params):
+#    """
+#    Builds the data
+#    """
+#    cutdeg = SA_params["cutdeg"]
+#
+#    min_seed_exp = fssettings.bivar_SA_min_seed_exp
+#    max_jump = Ref_path.ref_div_iter - 1 # as path includes 0
+#    max_seed_exp = max_jump.bit_length() - 1
+#    # Note : max_seed = (1 << max_seed_exp)
+#    bivar_SA_sto = np.zeros((max_seed_exp + 1,), dtype=np.int32)
+#
+#    print("max_jump", max_jump, max_seed_exp, 2**max_seed_exp, 1 << max_seed_exp)
+#    for i in range(min_seed_exp, max_seed_exp + 1):
+#        print("seed exp:", i)
+#        bivar_SA_sto[i] = max_jump // (1 << i)
+#    SA_sto_sum = np.cumsum(bivar_SA_sto)
+#    n_sto = SA_sto_sum[-1]
+#    bivar_SA_sto[1:] = SA_sto_sum[0:-1]
+#
+#    bivar_SA_lock = np.zeros((n_sto,), dtype=np.intp)
+#    bivar_SA_coeffs = fsx.Xrange_array.zeros(
+#            (n_sto, cutdeg, cutdeg), dtype=np.complex128)
+#    bivar_SA_computed = np.zeros((n_sto, 2), dtype=np.bool_)
+#    bivar_SA_zrad = fsx.Xrange_array.zeros(
+#            (n_sto, 2), dtype=np.float64)
+#    
+#    print("Making a Bivar_interpolator with nsto:", n_sto)
+#    print("bivar_SA_sto:", bivar_SA_sto)
+#    print("with SA_params:", SA_params)
+#
+#    return Bivar_interpolator(
+#        Ref_path=Ref_path,
+#        SA_loop=SA_loop,
+#        min_seed_exp=min_seed_exp,
+#        max_seed_exp=max_seed_exp,
+#        bivar_SA_cutdeg=SA_params["cutdeg"],
+#        bivar_SA_kc=kc,
+#        bivar_SA_eps=SA_params["eps"],
+#        bivar_SA_lock=bivar_SA_lock, 
+#        bivar_SA_sto=bivar_SA_sto,
+#        bivar_SA_coeffs=bivar_SA_coeffs, 
+#        bivar_SA_computed=bivar_SA_computed, 
+#        bivar_SA_zrad=bivar_SA_zrad, 
 #    )
-
-#@overload_method(Bivar_interpolator_Type, 'is_seed')
-#def bivar_is_seed(bi, iteration):
+#    
+#
+#class Bivar_interpolator:
+#    
+#    attr_list = (
+#        "Ref_path",
+#        "SA_loop",
+#        "min_seed_exp",
+#        "max_seed_exp",
+#        "bivar_SA_cutdeg",
+#        "bivar_SA_kc",
+#        "bivar_SA_eps",
+#        "bivar_SA_lock", 
+#        "bivar_SA_sto",
+#        "bivar_SA_coeffs",   # read-write
+#        "bivar_SA_computed", # read-write
+#        "bivar_SA_zrad",  # read-write
+#    )
+#    
+#    def __init__(self, *args, **kwargs):
+#        """
+#        path: Ref_path object
+#        min_exp: integer
+#        SA_loop: numba function which take a 
+#
+#        """
+#        for i, val in enumerate(args):
+#            print("set", self.attr_list[i])
+#            setattr(
+#                self,
+#                self.attr_list[i],
+#                val
+#            )
+#        for key, val in kwargs.items():
+#            setattr(self, key, val)
+#
+#
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Numba implementation
+##
+#class Bivar_interpolator_Type(types.Type):
+#    def __init__(self, SA_loop):
+#        self.Ref_path = Ref_path_Type()
+#        self.SA_loop = numba.typeof(SA_loop)
+#        self.min_seed_exp = types.int64
+#        self.max_seed_exp = types.int64
+#        self.bivar_SA_cutdeg = types.int64
+#        self.bivar_SA_kc = types.Array(
+#            numba_xr_type(np.float64), 1, 'C'
+#        ) # kc -> kcX
+#        self.bivar_SA_eps = types.float64
+#        self.bivar_SA_lock = types.Array(numba.intp, 1, 'C')
+#        self.bivar_SA_sto = types.Array(numba.int32, 1, 'C')
+#        self.bivar_SA_coeffs = types.Array(
+#            numba_xr_type(np.complex128), 3, 'C'
+#        ) # store_address x nX x nY
+#        self.bivar_SA_computed = types.Array(
+#            numba.bool_, 2, 'C') # store_address x 2 (cv / div)
+#        self.bivar_SA_zrad = types.Array(
+#            numba_xr_type(np.float64), 2, 'C'
+#        ) # store_address x 2 (cv / div)
+#        # The name must be unique if the underlying model is different
+#        super().__init__("Bivar_interpolator")#_{}".format(str(self.SA_loop)))
+#
+#@typeof_impl.register(Bivar_interpolator)
+#def typeof_bivar_interpolator(val, c):
+#    return Bivar_interpolator_Type(val.SA_loop)
+#
+#@register_model(Bivar_interpolator_Type)
+#class BivarInterpolatorModel(models.StructModel):
+#    def __init__(self, dmm, fe_type):
+#        members = list(
+#            (attr, getattr(fe_type, attr))
+#            for attr in Bivar_interpolator.attr_list
+#        )
+#        models.StructModel.__init__(self, dmm, fe_type, members)
+#
+#for attr in Bivar_interpolator.attr_list:
+#    make_attribute_wrapper(Bivar_interpolator_Type, attr, attr)
+#
+#@unbox(Bivar_interpolator_Type)
+#def unbox_bivar_interpolator(typ, obj, c):
+#    """ Convert a Bivar_interpolator object to a native structure """
+#    Ref_path_obj = c.pyapi.object_getattr_string(obj, "Ref_path")
+#    SA_loop_obj = c.pyapi.object_getattr_string(obj, "SA_loop")
+#    min_seed_exp_obj = c.pyapi.object_getattr_string(obj, "min_seed_exp")
+#    max_seed_exp_obj = c.pyapi.object_getattr_string(obj, "max_seed_exp")
+#    bivar_SA_cutdeg_obj = c.pyapi.object_getattr_string(obj, "bivar_SA_cutdeg")
+#    bivar_SA_kc_obj = c.pyapi.object_getattr_string(obj, "bivar_SA_kc")
+#    bivar_SA_eps_obj = c.pyapi.object_getattr_string(obj, "bivar_SA_eps")
+#    bivar_SA_lock_obj = c.pyapi.object_getattr_string(obj, "bivar_SA_lock")
+#    bivar_SA_sto_obj = c.pyapi.object_getattr_string(obj, "bivar_SA_sto")
+#    bivar_SA_coeffs_obj = c.pyapi.object_getattr_string(obj, "bivar_SA_coeffs")
+#    bivar_SA_computed_obj = c.pyapi.object_getattr_string(obj, "bivar_SA_computed")
+#    bivar_SA_zrad_obj = c.pyapi.object_getattr_string(obj, "bivar_SA_zrad")
+#
+#    proxy = cgutils.create_struct_proxy(typ)(c.context, c.builder)
+#
+#    proxy.Ref_path = c.unbox(typ.Ref_path, Ref_path_obj).value
+#    proxy.SA_loop  = c.unbox(typ.SA_loop, SA_loop_obj).value
+#    proxy.min_seed_exp = c.pyapi.long_as_longlong(min_seed_exp_obj)
+#    proxy.max_seed_exp = c.pyapi.long_as_longlong(max_seed_exp_obj)
+#    proxy.bivar_SA_cutdeg = c.pyapi.long_as_longlong(bivar_SA_cutdeg_obj)
+#    proxy.bivar_SA_kc = c.unbox(typ.bivar_SA_kc, bivar_SA_kc_obj).value
+#    proxy.bivar_SA_eps = c.pyapi.float_as_double(bivar_SA_eps_obj)
+#    proxy.bivar_SA_lock = c.unbox(typ.bivar_SA_lock, bivar_SA_lock_obj).value
+#    proxy.bivar_SA_sto = c.unbox(typ.bivar_SA_sto, bivar_SA_sto_obj).value
+#    proxy.bivar_SA_coeffs = c.unbox(typ.bivar_SA_coeffs, bivar_SA_coeffs_obj).value
+#    proxy.bivar_SA_computed = c.unbox(typ.bivar_SA_computed, bivar_SA_computed_obj).value
+#    proxy.bivar_SA_zrad = c.unbox(typ.bivar_SA_zrad, bivar_SA_zrad_obj).value
+#
+#    # Free mem
+#    c.pyapi.decref(Ref_path_obj)
+#    c.pyapi.decref(SA_loop_obj)
+#    c.pyapi.decref(min_seed_exp_obj)
+#    c.pyapi.decref(max_seed_exp_obj)
+#    c.pyapi.decref(bivar_SA_cutdeg_obj)
+#    c.pyapi.decref(bivar_SA_kc_obj)
+#    c.pyapi.decref(bivar_SA_eps_obj)
+#    c.pyapi.decref(bivar_SA_lock_obj)
+#    c.pyapi.decref(bivar_SA_sto_obj)
+#    c.pyapi.decref(bivar_SA_coeffs_obj)
+#    c.pyapi.decref(bivar_SA_computed_obj)
+#    c.pyapi.decref(bivar_SA_zrad_obj)
+#
+#    is_error = cgutils.is_not_null(c.builder, c.pyapi.err_occurred())
+#    return NativeValue(proxy._getvalue(), is_error=is_error)
+#
+#
+#@box(Bivar_interpolator_Type)
+#def box_bivar_interpolator(typ, val, c):
 #    """
-#    Returns True if idx is a multiple of 2 ** self.min_exp
+#    Convert a native Ref_path_Type structure to a 
+#    Ref_path_Type object
 #    """
-#    def impl(bi, iteration):
-#        return (iteration % (1 << bi.min_seed_exp)) == 0
+#    proxy = cgutils.create_struct_proxy(typ
+#        )(c.context, c.builder, value=val)
+#    classobj = c.pyapi.unserialize(c.pyapi.serialize_object(Bivar_interpolator))
+#
+#    # attr
+#    Ref_path_obj = c.box(typ.Ref_path, proxy.Ref_path)
+#    SA_loop_obj = c.box(typ.SA_loop, proxy.SA_loop)
+#    min_seed_exp_obj = c.pyapi.long_from_longlong(proxy.min_seed_exp)
+#    max_seed_exp_obj = c.pyapi.long_from_longlong(proxy.max_seed_exp)
+#    bivar_SA_cutdeg_obj = c.pyapi.long_from_longlong(proxy.bivar_SA_cutdeg)
+#    bivar_SA_kc_obj = c.box(typ.bivar_SA_kc, proxy.bivar_SA_kc)
+#    bivar_SA_eps_obj = c.pyapi.float_from_double(proxy.bivar_SA_eps)
+#    bivar_SA_lock_obj = c.box(typ.bivar_SA_lock, proxy.bivar_SA_lock)
+#    bivar_SA_sto_obj = c.box(typ.bivar_SA_sto, proxy.bivar_SA_sto)
+#    bivar_SA_coeffs_obj = c.box(typ.bivar_SA_coeffs, proxy.bivar_SA_coeffs)
+#    bivar_SA_computed_obj = c.box(typ.bivar_SA_computed, proxy.bivar_SA_computed)
+#    bivar_SA_zrad_obj = c.box(typ.bivar_SA_zrad, proxy.bivar_SA_zrad)
+#
+#    Bivar_interpolator_obj = c.pyapi.call_function_objargs(
+#        classobj,
+#        (Ref_path_obj,
+#        SA_loop_obj,
+#        min_seed_exp_obj,
+#        max_seed_exp_obj,
+#        bivar_SA_cutdeg_obj,
+#        bivar_SA_kc_obj,
+#        bivar_SA_eps_obj,
+#        bivar_SA_lock_obj,
+#        bivar_SA_sto_obj,
+#        bivar_SA_coeffs_obj,
+#        bivar_SA_computed_obj,
+#        bivar_SA_zrad_obj,
+#    ))
+#    
+#    # Free mem
+#    c.pyapi.decref(Ref_path_obj)
+#    c.pyapi.decref(SA_loop_obj)
+#    c.pyapi.decref(min_seed_exp_obj)
+#    c.pyapi.decref(max_seed_exp_obj)
+#    c.pyapi.decref(bivar_SA_cutdeg_obj)
+#    c.pyapi.decref(bivar_SA_kc_obj)
+#    c.pyapi.decref(bivar_SA_eps_obj)
+#    c.pyapi.decref(bivar_SA_lock_obj)
+#    c.pyapi.decref(bivar_SA_sto_obj)
+#    c.pyapi.decref(bivar_SA_coeffs_obj)
+#    c.pyapi.decref(bivar_SA_computed_obj)
+#    c.pyapi.decref(bivar_SA_zrad_obj)
+#
+#    return Bivar_interpolator_obj
+#
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#
+##@numba.njit
+##def enlarge_z_sq(z_sq):
+##    m, e = _normalize(z_sq.mantissa, z_sq.exp)
+##    assert e <= 0
+##    return Xrange_scalar(
+##            np.sm,
+##            sdiv_int32(e, numba.int32(2))
+##    )
+#
+##@overload_method(Bivar_interpolator_Type, 'is_seed')
+##def bivar_is_seed(bi, iteration):
+##    """
+##    Returns True if idx is a multiple of 2 ** self.min_exp
+##    """
+##    def impl(bi, iteration):
+##        return (iteration % (1 << bi.min_seed_exp)) == 0
+##    return impl
+#
+#@overload_method(Bivar_interpolator_Type, 'seed_coords')
+#def bivar_seed_coords(bi, idx):
+#    """
+#    Returns the couple (exp, factor)
+#    exp is the largest integer for which holds: 
+#        n = factor * 2 ** exp2
+#    """
+#    def impl(bi, idx):
+#        print("entering seed_coords")
+#        if idx == 0:
+#            return bi.max_seed_exp, numba.int64(0)
+#        exp = bi.min_seed_exp
+#        assert (idx % numba.int64(1 << exp)) == 0
+#        bits = numba.int64(idx >> exp)
+#        print("bits", bits)
+#        while not(bits & 1):
+#            bits >>= 1
+#            exp += 1
+#        return numba.int64(exp), numba.int64(idx // (1 << exp))
 #    return impl
-
-@overload_method(Bivar_interpolator_Type, 'seed_coords')
-def bivar_seed_coords(bi, idx):
-    """
-    Returns the couple (exp, factor)
-    exp is the largest integer for which holds: 
-        n = factor * 2 ** exp2
-    """
-    def impl(bi, idx):
-        exp = bi.min_seed_exp
-        assert (idx % numba.int64(1 << exp)) == 0
-        bits = numba.int64(idx >> exp)
-        while not(bits & 1):
-            bits >>= 1
-            exp += 1
-        return numba.int64(exp), numba.int64(idx // (1 << exp))
-    return impl
-
-
-@overload_method(Bivar_interpolator_Type, 'null_poly_arr')
-def bivar_null_poly_arr(bi):
-    """ Compute and try to store
-    Returns
-    poly_incr, poly, kz
-    
-    -> to retrieve the values need to do P(z/z_sq, c/kc)
-    -> to retrieve the derivatives dc need to do dPdc()
-    """
-    arr_template = np.zeros((1,), dtype=numpy_xr_type(np.complex128))
-
-    def impl(bi):
-        arr_len = bi.bivar_SA_cutdeg + 1
-        coeffs = arr_template.repeat(arr_len ** 2).reshape(arr_len, arr_len)
-        return coeffs
-    return impl
-
-
-@overload_method(Bivar_interpolator_Type, 'get_poly')
-def bivar_get_poly(bi, iteration, z):
-    """ User-facing - Try to pull otherwise compute
-
-    iteration is fixed, but not the couple (exp, factor)
-    
-    Returns
-    0, None
-    poly_incr, poly, kz
-    """
-    print("cmp bivar_get_poly", iteration, z)
-
-    kz_template = np.zeros((1,), dtype=numpy_xr_type(np.float64))
-
-
-    if z in xr_types:
-        def impl(bi, iteration, z):
-            print("USER get_poly", iteration, z)
-            print("sto", bi.bivar_SA_sto.shape, "\n", bi.bivar_SA_sto)
-            (exp, factor) = bi.seed_coords(iteration)
-            z_abs = np.abs(z)
-            # ptr to results
-            poly_incr = np.zeros((1,), dtype=np.int64)
-            poly_arr = bi.null_poly_arr()
-            kz_abs = kz_template.repeat(2)  # cv, div
-            bi._get_poly(exp, factor, z_abs, poly_incr, poly_arr, kz_abs)
-
-            # kz = np.sqrt(kz_sq[0])  #TODO
-            return poly_incr[0], poly_arr, to_Xrange_scalar(kz_abs[0])
-                     #poly_incr[0] #, poly#, kz_abs[0]
-#    else:
+#
+#
+#@overload_method(Bivar_interpolator_Type, 'null_poly_arr')
+#def bivar_null_poly_arr(bi):
+#    """ Compute and try to store
+#    Returns
+#    poly_incr, poly, kz
+#    
+#    -> to retrieve the values need to do P(z/z_sq, c/kc)
+#    -> to retrieve the derivatives dc need to do dPdc()
+#    """
+#    arr_template = np.zeros((1,), dtype=numpy_xr_type(np.complex128))
+#
+#    def impl(bi):
+#        arr_len = bi.bivar_SA_cutdeg + 1
+#        coeffs = arr_template.repeat(arr_len ** 2).reshape(arr_len, arr_len)
+#        return coeffs
+#    return impl
+#
+#
+#@overload_method(Bivar_interpolator_Type, 'get_poly')
+#def bivar_get_poly(bi, iteration, z):
+#    """ User-facing - Try to pull otherwise compute
+#
+#    iteration is fixed, but not the couple (exp, factor)
+#    
+#    Returns
+#    0, None
+#    poly_incr, poly, kz
+#    """
+#    print("cmp bivar_get_poly", iteration, z)
+#
+#    kz_template = np.zeros((1,), dtype=numpy_xr_type(np.float64))
+#
+#
+#    if z in xr_types:
 #        def impl(bi, iteration, z):
 #            print("USER get_poly", iteration, z)
 #            print("sto", bi.bivar_SA_sto.shape, "\n", bi.bivar_SA_sto)
 #            (exp, factor) = bi.seed_coords(iteration)
-#            z_xr = to_Xrange_scalar(z)
-#            z_sq = extended_abs2(z_xr)
-#            poly_incr, poly, kz = bi._get_poly(exp, factor, z_sq)
-#            return poly_incr, poly, kz
-    return impl
-
-@overload_method(Bivar_interpolator_Type, '_get_poly')
-def bivar__get_poly(bi, exp, factor, z_abs, poly_incr, poly_arr, kz_abs):
-    """ Internal - Try to pull otherwise compute
-
-    iteration is fixed, ALSO the couple (exp, factor)
-
-    Returns None
-    Modify in place
-    poly_incr, poly, kz_sq
-    """    
-    print("cmp bivar__get_poly", bi, exp, factor, z_abs)
-
-    computed_index = 0
-    valid_index = 1
-    div_computed_index = 2
-
-    zrad_cv_index = 0
-    zrad_div_index = 1
-    
-    def impl(bi, exp, factor, z_abs,
-             poly_incr, poly_arr, kz_abs):
-        
-        return
-
-        print("_get_poly", exp, factor, z_abs)
-
-        run_recursive = True
-        while run_recursive:
-            bool_arr = np.zeros((3,), dtype=numba.bool_) # computed, valid, div_computed
-            bi.pull_poly(  
-                exp, factor, z_abs,
-                poly_arr, kz_abs, bool_arr
-            )
-    
-            if (bool_arr[computed_index] * bool_arr[valid_index]):
-                # We validate poly_arr & kz_sq
-                poly_incr[0] = numba.int64(1 << exp)
-                return
-
-            elif (bool_arr[computed_index] * ~bool_arr[valid_index]):
-                print("computed and NOT valid")
-                zrad_div = to_Xrange_scalar(kz_abs[zrad_div_index])
-                # Try SA with a larger cv radius ?
-                z_abs_larger = np.sqrt(z_abs)
-
-                if (z_abs_larger > fssettings.std_zoom_level ** 2):
-                    # Too big, no SA possible
-                    poly_incr[0] = numba.int64(0)
-                    return
-
-                elif (bool_arr[div_computed_index]
-                      and (zrad_div <= z_abs_larger)):
-                    # We already know SA with this larger z fails. Try rather a 
-                    # smaller exp / smaller poly_incr
-                    if exp > bi.min_seed_exp:
-                        # Recursive call
-                        exp -= 1
-                        factor *= 2
-                    else:
-                        # End of recursive loop, min exp already reached
-                        run_recursive = False
-                else:
-                    # this z_sq_larger has not been computed, worth trying
-                    bi.compute_poly(
-                        exp, factor, z_abs_larger, 
-                        poly_incr, poly_arr, kz_abs
-                    )
-                    return
-
-            # else: not computed
-            else:
-                bi.compute_poly(exp, factor, z_abs,
-                                poly_incr, poly_arr, kz_abs)
-                return
-
-        # End of recursive loop : No SA possible
-        poly_incr[0] = numba.int64(0)
-        return
-
-    return impl
-
-
-@overload_method(Bivar_interpolator_Type, 'compute_poly')
-def bivar_compute_poly(bi, exp, factor, z_abs,
-                        poly_incr, poly_arr, kz_abs):
-    """ Compute and try to store
-    Returns
-    0, None
-    poly_incr, poly, kz
-    
-    -> to retrieve the values need to do P(z/z_sq, c/kc)
-    -> to retrieve the derivatives dc need to do dPdc()
-    """
-    print("cmp bivar_compute_poly")
-
-    arr_template = np.zeros((1,), dtype=numpy_xr_type(np.complex128))
-    err_template = np.zeros((1,), dtype=numpy_xr_type(np.float64))
-    
-    zrad_cv_index = 0
-    zrad_div_index = 1
-
-    def impl(bi, exp, factor, z_abs,
-                        poly_incr, poly_arr, kz_abs):
-
-        print("bivar_compute_poly", exp, factor)
-        poly_incr[0] = (1 << exp)
-        iteration = factor * poly_incr[0] 
-
-        Ref_path = bi.Ref_path
-        cutdeg = bi.bivar_SA_cutdeg
-        arr_len = cutdeg + 1
-        # Builds a SA(X, Y) == Y/z_sq
-        SA_coeffs = arr_template.repeat(arr_len ** 2).reshape(arr_len, arr_len)
-        SA_coeffs[0, 1] = z_abs
-        SA = fsx.Xrange_bivar_SA(SA_coeffs, cutdeg, err=err_template.copy())
-        kcX = fsx.Xrange_monome(bi.bivar_SA_kc) 
-        SA_loop = bi.SA_loop
-        eps_sq = bi.bivar_SA_eps ** 2
-
-        prev_idx = 0
-        curr_xr = 0
-        for i in range(iteration, iteration + poly_incr[0]):
-            (val, xr_val, is_xr, prev_idx, curr_xr
-             ) = Ref_path.get(i, prev_idx, curr_xr)
-            if is_xr:
-                ref_path_item = xr_val
-            else:
-                ref_path_item = to_Xrange_scalar(val)
-
-            SA = SA_loop(SA, i, ref_path_item, kcX) # debug
-
-            ssum = SA.ssum() # sum of all coeff abs2
-            err_abs2 = SA.err[0] * SA.err[0]
-            SA_valid = ((err_abs2  <= eps_sq * ssum) and (ssum <= 1.e6))
-
-            if not(SA_valid):
-                break
-
-        if SA_valid:
-            # We store it and return
-            coeffs = SA.coeffs
-            for i in range(cutdeg + 1):
-                for j in range(cutdeg + 1 - i):
-                    poly_arr[i, j] = coeffs[i, j]
-
-            bi.push_poly(exp, factor, poly_arr, z_abs) 
-            kz_abs[zrad_cv_index] = z_abs
-            return
-
-        # SA invalid We store the dic radius and return invalid
-        bi.push_div(exp, factor, z_abs)
-        poly_incr[0] = 0
-        return
-
-    return impl
-
-
-
-@overload_method(Bivar_interpolator_Type, 'pull_poly')
-def bivar_pull_poly(bi, exp, factor, z_abs,
-                    poly_arr, kz_abs, bool_arr):
-    """
-    Return the stored SA data for this seed
-
-    Returns
-    -------
-    (computed, valid, sq_zrad_cv, div_computed, sq_zrad_div, bivar_poly)
-    """
-    print("cmp bivar_pull_poly", bi, exp, factor, z_abs)
-
-    computed_index = 0
-    valid_index = 1
-    div_computed_index = 2
-    
-    zrad_cv_index = 0
-    zrad_div_index = 1
-    
-    def impl(bi, exp, factor, z_abs,
-             poly_arr, kz_abs, bool_arr):
-
-        cutdeg = bi.bivar_SA_cutdeg
-        sto = bi.bivar_SA_sto[exp] + factor
-        
-        # busywait to lock and do some work
-        lock_ptr = bi.bivar_SA_lock[sto:]
-        while not(try_lock(lock_ptr)):
-            pass
-
-        bool_arr[computed_index] = bi.bivar_SA_computed[sto, 0]
-        bool_arr[div_computed_index] = bi.bivar_SA_computed[sto, 1]
-        kz_abs[zrad_cv_index] = to_Xrange_scalar(bi.bivar_SA_zrad[sto, 0])
-        kz_abs[zrad_div_index] = to_Xrange_scalar(bi.bivar_SA_zrad[sto, 1])
-        bool_arr[valid_index] = (z_abs <= kz_abs[zrad_cv_index] )
-
-        if ~(bool_arr[computed_index] and bool_arr[valid_index]): 
-            # early exit, poly_arr is not useable
-            unlock(lock_ptr)
-            return
-
-        cutdeg = bi.bivar_SA_cutdeg
-        for i in range(cutdeg + 1):
-            for j in range(cutdeg + 1 - i):
-                 poly_arr[i, j] = bi.bivar_SA_coeffs[sto, i, j]
-        unlock(lock_ptr)
-        return
-
-    return impl
-
-@overload_method(Bivar_interpolator_Type, 'push_poly')
-def bivar_push_poly(bi, exp, factor, poly_arr, z_abs):
-    """
-    Try to store the newly computed SA.
-    As it is shared memory, a lock is used to avoid race conditions
-    If another thread already holds the lock, we simply do not save.
-    
-    note : z_sq should be one of the preset increment
-    """
-    print("cmp bivar_push_poly")
-
-    def impl(bi, exp, factor, poly_arr, z_abs):
-        sto = bi.bivar_SA_sto[exp] + factor
-
-        # busywait to lock and do some work
-        lock_ptr = bi.bivar_SA_lock[sto:]
-        while not(try_lock(lock_ptr)):
-            pass
-
-        # Here we check that the new SA is actually an improvement vs current
-        # situation
-        computed = bi.bivar_SA_computed[sto, 0]
-        div_computed = bi.bivar_SA_computed[sto, 1]
-        zrad_cv = to_Xrange_scalar(bi.bivar_SA_zrad[sto, 0])
-        zrad_div = to_Xrange_scalar(bi.bivar_SA_zrad[sto, 1])
-        valid = (z_abs <= zrad_cv)
-
-        improvement = not(computed and valid)
-        if improvement:
-            # update bivar_SA_coeffs, bivar_SA_zrad, bivar_SA_computed
-            cutdeg = bi.bivar_SA_cutdeg
-            for i in range(cutdeg + 1):
-                for j in range(cutdeg + 1 - i):
-                    bi.bivar_SA_coeffs[sto, i, j] = poly_arr[i, j]
-
-            bi.bivar_SA_zrad[sto, 0] = z_abs
-            if not computed:
-                bi.bivar_SA_computed[sto, 0] = True
-            # Sanity check : 
-            if div_computed:
-                assert z_abs < zrad_div
-
-        # unlock /!\ no early return here otherwise we will hold the lock
-        unlock(lock_ptr)
-    return impl
-
-@overload_method(Bivar_interpolator_Type, 'push_div')
-def bivar_push_div(bi, exp, factor, z_abs):
-    """
-    Try to store the newly computed radius for failure
-    As it is shared memory, a lock is used to avoid race conditions
-    If another thread already holds the lock, we simply do not save.
-    
-    note : z_sq should be one of the preset increment
-    """
-    print("cmp bivar_push_div")
-
-    def impl(bi, exp, factor, z_abs):
-        sto = bi.bivar_SA_sto[exp] + factor
-
-        # busywait to lock and do some work
-        lock_ptr = bi.bivar_SA_lock[sto:]
-        while not(try_lock(lock_ptr)):
-            pass
-
-        # Here we check that the new invalid is actually an improvement vs
-        # current situation
-        computed = bi.bivar_SA_computed[sto, 0]
-        div_computed = bi.bivar_SA_computed[sto, 1]
-        zrad_cv = to_Xrange_scalar(bi.bivar_SA_zrad[sto, 0])
-        zrad_div = to_Xrange_scalar(bi.bivar_SA_zrad[sto, 1])
-        
-        improvement = False
-        if div_computed:
-            improvement = (z_abs < zrad_div)
-
-        if improvement:
-            # update bivar_SA_coeffs, bivar_SA_zrad, bivar_SA_computed
-            bi.bivar_SA_zrad[sto, 1] = z_abs
-            if not div_computed:
-                bi.bivar_SA_computed[sto, 1] = True
-            # Sanity check : 
-            if computed:
-                assert z_abs > zrad_cv
-
-        # unlock /!\ no early return here otherwise we will hold the lock
-        unlock(lock_ptr)
-    return impl
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#            print(exp, factor)
+#            z_abs = np.abs(z)
+#            # ptr to results
+#            poly_incr = np.zeros((1,), dtype=np.int64)
+#            poly_arr = bi.null_poly_arr()
+#            kz_abs = kz_template.repeat(2)  # cv, div
+#            print("call _get_poly")
+#            bi._get_poly(exp, factor, z_abs, poly_incr, poly_arr, kz_abs)
+#
+#            # kz = np.sqrt(kz_sq[0])  #TODO
+#            return poly_incr[0], poly_arr, to_Xrange_scalar(kz_abs[0])
+#                     #poly_incr[0] #, poly#, kz_abs[0]
+##    else:
+##        def impl(bi, iteration, z):
+##            print("USER get_poly", iteration, z)
+##            print("sto", bi.bivar_SA_sto.shape, "\n", bi.bivar_SA_sto)
+##            (exp, factor) = bi.seed_coords(iteration)
+##            z_xr = to_Xrange_scalar(z)
+##            z_sq = extended_abs2(z_xr)
+##            poly_incr, poly, kz = bi._get_poly(exp, factor, z_sq)
+##            return poly_incr, poly, kz
+#    return impl
+#
+#@overload_method(Bivar_interpolator_Type, '_get_poly')
+#def bivar__get_poly(bi, exp, factor, z_abs, poly_incr, poly_arr, kz_abs):
+#    """ Internal - Try to pull otherwise compute
+#
+#    iteration is fixed, ALSO the couple (exp, factor)
+#
+#    Returns None
+#    Modify in place
+#    poly_incr, poly, kz_sq
+#    """    
+#    print("cmp bivar__get_poly", bi, exp, factor, z_abs)
+#
+#    computed_index = 0
+#    valid_index = 1
+#    div_computed_index = 2
+#
+#    zrad_cv_index = 0
+#    zrad_div_index = 1
+#    
+#    def impl(bi, exp, factor, z_abs,
+#             poly_incr, poly_arr, kz_abs):
+#        
+#
+#        print("_get_poly", exp, factor, z_abs)
+#
+#        run_recursive = True
+#        while run_recursive:
+#            bool_arr = np.zeros((3,), dtype=numba.bool_) # computed, valid, div_computed
+#            bi.pull_poly(  
+#                exp, factor, z_abs,
+#                poly_arr, kz_abs, bool_arr
+#            )
+#    
+#            if (bool_arr[computed_index] * bool_arr[valid_index]):
+#                # We validate poly_arr & kz_sq
+#                poly_incr[0] = numba.int64(1 << exp)
+#                return
+#
+#            elif (bool_arr[computed_index] * ~bool_arr[valid_index]):
+#                print("computed and NOT valid")
+#                zrad_div = to_Xrange_scalar(kz_abs[zrad_div_index])
+#                # Try SA with a larger cv radius ?
+#                z_abs_larger = np.sqrt(z_abs)
+#
+#                if (z_abs_larger > fssettings.std_zoom_level ** 2):
+#                    # Too big, no SA possible
+#                    poly_incr[0] = numba.int64(0)
+#                    return
+#
+#                elif (bool_arr[div_computed_index]
+#                      and (zrad_div <= z_abs_larger)):
+#                    # We already know SA with this larger z fails. Try rather a 
+#                    # smaller exp / smaller poly_incr
+#                    if exp > bi.min_seed_exp:
+#                        # Recursive call
+#                        exp -= 1
+#                        factor *= 2
+#                    else:
+#                        # End of recursive loop, min exp already reached
+#                        run_recursive = False
+#                else:
+#                    # this z_sq_larger has not been computed, worth trying
+#                    bi.compute_poly(
+#                        exp, factor, z_abs_larger, 
+#                        poly_incr, poly_arr, kz_abs
+#                    )
+#                    return
+#
+#            # else: not computed
+#            else:
+#                bi.compute_poly(exp, factor, z_abs,
+#                                poly_incr, poly_arr, kz_abs)
+#                return
+#
+#        # End of recursive loop : No SA possible
+#        poly_incr[0] = numba.int64(0)
+#        return
+#
+#    return impl
+#
+#
+#@overload_method(Bivar_interpolator_Type, 'compute_poly')
+#def bivar_compute_poly(bi, exp, factor, z_abs,
+#                        poly_incr, poly_arr, kz_abs):
+#    """ Compute and try to store
+#    Returns
+#    0, None
+#    poly_incr, poly, kz
+#    
+#    -> to retrieve the values need to do P(z/z_sq, c/kc)
+#    -> to retrieve the derivatives dc need to do dPdc()
+#    """
+#    print("cmp bivar_compute_poly")
+#
+#    arr_template = np.zeros((1,), dtype=numpy_xr_type(np.complex128))
+#    err_template = np.zeros((1,), dtype=numpy_xr_type(np.float64))
+#    
+#    zrad_cv_index = 0
+#    zrad_div_index = 1
+#
+#    def impl(bi, exp, factor, z_abs,
+#                        poly_incr, poly_arr, kz_abs):
+#
+#        print("bivar_compute_poly", exp, factor, z_abs)
+#        poly_incr[0] = (1 << exp)
+#        iteration = factor * poly_incr[0] 
+#
+#        Ref_path = bi.Ref_path
+#        cutdeg = bi.bivar_SA_cutdeg
+#        arr_len = cutdeg + 1
+#        # Builds a SA(X, Y) == Y/z_sq
+#        SA_coeffs = arr_template.repeat(arr_len ** 2).reshape(arr_len, arr_len)
+#        SA_coeffs[0, 1] = z_abs
+#        SA = fsx.Xrange_bivar_SA(SA_coeffs, cutdeg, err=err_template.copy())
+#        kcX = fsx.Xrange_monome(bi.bivar_SA_kc) 
+#        SA_loop = bi.SA_loop
+#        eps_sq = bi.bivar_SA_eps ** 2
+#
+#        prev_idx = 0
+#        curr_xr = 0
+#        for i in range(iteration, iteration + poly_incr[0]):
+#            (val, xr_val, is_xr, prev_idx, curr_xr
+#             ) = Ref_path.get(i, prev_idx, curr_xr)
+#            if is_xr:
+#                ref_path_item = xr_val
+#            else:
+#                ref_path_item = to_Xrange_scalar(val)
+#
+#            SA = SA_loop(SA, i, ref_path_item, kcX) # debug
+#
+#            ssum = SA.ssum() # sum of all coeff abs2
+#            err_abs2 = SA.err[0] * SA.err[0]
+#            SA_valid = ((err_abs2  <= eps_sq * ssum) and (ssum <= 1.e6))
+#
+#            if not(SA_valid):
+#                break
+#
+#        if SA_valid:
+#            # We store it and return
+#            coeffs = SA.coeffs
+#            for i in range(cutdeg + 1):
+#                for j in range(cutdeg + 1 - i):
+#                    poly_arr[i, j] = coeffs[i, j]
+#
+#            bi.push_poly(exp, factor, poly_arr, z_abs) 
+#            kz_abs[zrad_cv_index] = z_abs
+#            return
+#
+#        # SA invalid We store the dic radius and return invalid
+#        bi.push_div(exp, factor, z_abs)
+#        poly_incr[0] = 0
+#        return
+#
+#    return impl
+#
+#
+#
+#@overload_method(Bivar_interpolator_Type, 'pull_poly')
+#def bivar_pull_poly(bi, exp, factor, z_abs,
+#                    poly_arr, kz_abs, bool_arr):
+#    """
+#    Return the stored SA data for this seed
+#
+#    Returns
+#    -------
+#    (computed, valid, sq_zrad_cv, div_computed, sq_zrad_div, bivar_poly)
+#    """
+#    print("cmp bivar_pull_poly", bi, exp, factor, z_abs)
+#
+#    computed_index = 0
+#    valid_index = 1
+#    div_computed_index = 2
+#    
+#    zrad_cv_index = 0
+#    zrad_div_index = 1
+#    
+#    def impl(bi, exp, factor, z_abs,
+#             poly_arr, kz_abs, bool_arr):
+#        
+#        print("bivar_pull_poly", exp, factor, z_abs)
+#
+#        cutdeg = bi.bivar_SA_cutdeg
+#        sto = bi.bivar_SA_sto[exp] + factor
+#        print("bivar_pull_poly STO", sto)
+#        
+#        # busywait to lock and do some work
+#        lock_ptr = bi.bivar_SA_lock[sto:]
+#        while not(try_lock(lock_ptr)):
+#            pass
+#
+#        bool_arr[computed_index] = bi.bivar_SA_computed[sto, 0]
+#        bool_arr[div_computed_index] = bi.bivar_SA_computed[sto, 1]
+#        kz_abs[zrad_cv_index] = to_Xrange_scalar(bi.bivar_SA_zrad[sto, 0])
+#        kz_abs[zrad_div_index] = to_Xrange_scalar(bi.bivar_SA_zrad[sto, 1])
+#        bool_arr[valid_index] = (z_abs <= kz_abs[zrad_cv_index] )
+#
+#        if ~(bool_arr[computed_index] and bool_arr[valid_index]): 
+#            # early exit, poly_arr is not useable
+#            unlock(lock_ptr)
+#            return
+#
+#        cutdeg = bi.bivar_SA_cutdeg
+#        for i in range(cutdeg + 1):
+#            for j in range(cutdeg + 1 - i):
+#                 poly_arr[i, j] = bi.bivar_SA_coeffs[sto, i, j]
+#        unlock(lock_ptr)
+#        return
+#
+#    return impl
+#
+#@overload_method(Bivar_interpolator_Type, 'push_poly')
+#def bivar_push_poly(bi, exp, factor, poly_arr, z_abs):
+#    """
+#    Try to store the newly computed SA.
+#    As it is shared memory, a lock is used to avoid race conditions
+#    If another thread already holds the lock, we simply do not save.
+#    
+#    note : z_sq should be one of the preset increment
+#    """
+#    print("cmp bivar_push_poly")
+#
+#    def impl(bi, exp, factor, poly_arr, z_abs):
+#        sto = bi.bivar_SA_sto[exp] + factor
+#        print("bivar_push_poly", exp, factor, z_abs, sto)
+#
+#        # busywait to lock and do some work
+#        lock_ptr = bi.bivar_SA_lock[sto:]
+#        while not(try_lock(lock_ptr)):
+#            pass
+#
+#        # Here we check that the new SA is actually an improvement vs current
+#        # situation
+#        computed = bi.bivar_SA_computed[sto, 0]
+#        div_computed = bi.bivar_SA_computed[sto, 1]
+#        zrad_cv = to_Xrange_scalar(bi.bivar_SA_zrad[sto, 0])
+#        zrad_div = to_Xrange_scalar(bi.bivar_SA_zrad[sto, 1])
+#        valid = (z_abs <= zrad_cv)
+#
+#        improvement = not(computed and valid)
+#        if improvement:
+#            # update bivar_SA_coeffs, bivar_SA_zrad, bivar_SA_computed
+#            cutdeg = bi.bivar_SA_cutdeg
+#            for i in range(cutdeg + 1):
+#                for j in range(cutdeg + 1 - i):
+#                    bi.bivar_SA_coeffs[sto, i, j] = poly_arr[i, j]
+#
+#            bi.bivar_SA_zrad[sto, 0] = z_abs
+#            if not computed:
+#                bi.bivar_SA_computed[sto, 0] = True
+#            # Sanity check : 
+#            if div_computed:
+#                assert z_abs < zrad_div
+#
+#        # unlock /!\ no early return here otherwise we will hold the lock
+#        unlock(lock_ptr)
+#    return impl
+#
+#@overload_method(Bivar_interpolator_Type, 'push_div')
+#def bivar_push_div(bi, exp, factor, z_abs):
+#    """
+#    Try to store the newly computed radius for failure
+#    As it is shared memory, a lock is used to avoid race conditions
+#    If another thread already holds the lock, we simply do not save.
+#    
+#    note : z_sq should be one of the preset increment
+#    """
+#    print("cmp bivar_push_div")
+#
+#    def impl(bi, exp, factor, z_abs):
+#        sto = bi.bivar_SA_sto[exp] + factor
+#        print("bivar_push_div", exp, factor, z_abs, sto)
+#
+#        # busywait to lock and do some work
+#        lock_ptr = bi.bivar_SA_lock[sto:]
+#        while not(try_lock(lock_ptr)):
+#            pass
+#
+#        # Here we check that the new invalid is actually an improvement vs
+#        # current situation
+#        computed = bi.bivar_SA_computed[sto, 0]
+#        div_computed = bi.bivar_SA_computed[sto, 1]
+#        zrad_cv = to_Xrange_scalar(bi.bivar_SA_zrad[sto, 0])
+#        zrad_div = to_Xrange_scalar(bi.bivar_SA_zrad[sto, 1])
+#        
+#        improvement = False
+#        if div_computed:
+#            improvement = (z_abs < zrad_div)
+#
+#        if improvement:
+#            # update bivar_SA_coeffs, bivar_SA_zrad, bivar_SA_computed
+#            bi.bivar_SA_zrad[sto, 1] = z_abs
+#            if not div_computed:
+#                bi.bivar_SA_computed[sto, 1] = True
+#            # Sanity check : 
+#            if computed:
+#                assert z_abs > zrad_cv
+#
+#        # unlock /!\ no early return here otherwise we will hold the lock
+#        unlock(lock_ptr)
+#    return impl
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
 
 
 

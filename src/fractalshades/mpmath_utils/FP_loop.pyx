@@ -198,10 +198,13 @@ def perturbation_mandelbrot_FP_loop(
             print("FP loop", i, flush=True)
     
     # If we did not escape from the last loop, first invalid iteration is i + 1
+    div = True
     if (i == max_iter) and (abs(tmp_dc) <= M):
+        div = False
         i += 1
 
-    print("FP loop completed")
+    print("FP loop completed at iteration: ", i)
+    print("Divergence ? : ", div)
     print("============================================", flush=True)
 
     mpc_clear(z_t)

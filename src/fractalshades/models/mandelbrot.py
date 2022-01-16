@@ -69,12 +69,11 @@ class Mandelbrot(fs.Fractal):
         self.potential_M = M_divergence
 
         def initialize():
-            def func(Z, U, c, chunk_slice):
-                Z[3, :] = 0.
-                Z[2, :] = 0.
-                Z[1, :] = 0.
-                Z[0, :] = 0.
-            return func
+            @numba.njit
+            def numba_init_impl(Z, U, c):
+                # Not much to do here
+                pass
+            return numba_init_impl
         self.initialize = initialize
 
         def iterate():
@@ -83,20 +82,30 @@ class Mandelbrot(fs.Fractal):
             max_iter = self.max_iter
             @numba.njit
             def numba_impl(Z, U, c, stop_reason, n_iter):
-                if n_iter >= max_iter:
-                    stop_reason[0] = 0
+                while True:
+                    n_iter += 1
 
-                Z[3] = 2 * (Z[3] * Z[0] + Z[2]**2)
-                Z[2] = 2 * Z[2] * Z[0] + 1.
-                Z[1] = 2 * Z[1] * Z[0] 
-                Z[0] = Z[0]**2 + c
-                if n_iter == 1:
-                    Z[1] = 1.
+                    if n_iter >= max_iter:
+                        stop_reason[0] = 0
+                        break
 
-                if Z[0].real**2 + Z[0].imag ** 2 > Mdiv_sq:
-                    stop_reason[0] = 1
-                if Z[1].real**2 + Z[1].imag ** 2 < epscv_sq:
-                    stop_reason[0] = 2
+                    Z[3] = 2 * (Z[3] * Z[0] + Z[2]**2)
+                    Z[2] = 2 * Z[2] * Z[0] + 1.
+                    Z[1] = 2 * Z[1] * Z[0] 
+                    Z[0] = Z[0]**2 + c
+                    if n_iter == 1:
+                        Z[1] = 1.
+
+                    if Z[0].real**2 + Z[0].imag ** 2 > Mdiv_sq:
+                        stop_reason[0] = 1
+                        break
+
+                    if Z[1].real**2 + Z[1].imag ** 2 < epscv_sq:
+                        stop_reason[0] = 2
+                        break
+
+                # End of while loop
+                return n_iter
 
             return numba_impl
         self.iterate = iterate
@@ -171,78 +180,80 @@ class Mandelbrot(fs.Fractal):
         self.init_data_types(datatype)
 
         def initialize():
-            def func(Z, U, c, chunk_slice):
-                Z[5, :] = 0.
-                Z[4, :] = 1.e6 # bigger than any reasonnable np.abs(zn)
-                Z[3, :] = 0.
-                Z[2, :] = 0.
-                Z[1, :] = 0.
-                Z[0, :] = 0.
-            return func
+            @numba.njit
+            def numba_init_impl(Z, U, c):
+                Z[4] = 1.e6 # bigger than any reasonnable np.abs(zn)
+            return numba_init_impl
         self.initialize = initialize
 
         def iterate():
             @numba.njit
             def numba_impl(Z, U, c, stop_reason, n_iter):
+                while True:
+                    n_iter += 1
 
-                if n_iter > max_order:
-                    stop_reason[0] = 0
-                    return
-
-                # If n is not a 'partial' for this point it cannot be the 
-                # cycle order : early exit
-                Z[5] = Z[5]**2 + c
-                m = np.abs(Z[5])
-                if m < Z[4].real:
-                    Z[4] = m # Cannot assign to the real part 
-                else:
-                    return
-
-                # Early exit if n it is not a multiple of one of the
-                # known_orders (provided by the user)
-                if known_orders is not None:
-                    valid = False
-                    for order in known_orders:
-                        if  n_iter % order == 0:
-                            valid = True
-                    if not valid:
-                        return
-
-                z0_loop = Z[0]
-                dz0dc_loop = Z[2]
-
-                for i_newton in range(max_newton):
-                    zr = z0_loop
-                    dzrdz = zr * 0. + 1.
-                    d2zrdzdc = dzrdz * 0. # == 1. hence : constant wrt c...
-                    dzrdc = dz0dc_loop
-                    for i in range(n_iter):
-                        d2zrdzdc = 2 * (d2zrdzdc * zr + dzrdz * dzrdc)
-                        dzrdz = 2. * dzrdz * zr
-                        dzrdc = 2 * dzrdc * zr + 1.
-                        zr = zr**2 + c
-
-                    delta = (zr - z0_loop) / (dzrdz - 1.)
-                    newton_cv = (np.abs(delta) < eps_newton_cv)
-                    zz = z0_loop - delta
-                    dz0dc_loop = dz0dc_loop - (
-                                 (dzrdc - dz0dc_loop) / (dzrdz - 1.) -
-                                 (zr - z0_loop) * d2zrdzdc / (dzrdz - 1.)**2)
-                    z0_loop = zz
-                    if newton_cv:
+                    if n_iter > max_order:
+                        stop_reason[0] = 0
                         break
+    
+                    # If n is not a 'partial' for this point it cannot be the 
+                    # cycle order : early exit
+                    Z[5] = Z[5]**2 + c
+                    m = np.abs(Z[5])
+                    if m < Z[4].real:
+                        Z[4] = m # Cannot assign to the real part 
+                    else:
+                        continue
+    
+                    # Early exit if n it is not a multiple of one of the
+                    # known_orders (provided by the user)
+                    if known_orders is not None:
+                        valid = False
+                        for order in known_orders:
+                            if  n_iter % order == 0:
+                                valid = True
+                        if not valid:
+                            continue
+    
+                    z0_loop = Z[0]
+                    dz0dc_loop = Z[2]
+    
+                    for i_newton in range(max_newton):
+                        zr = z0_loop
+                        dzrdz = zr * 0. + 1.
+                        d2zrdzdc = dzrdz * 0. # == 1. hence : constant wrt c...
+                        dzrdc = dz0dc_loop
+                        for i in range(n_iter):
+                            d2zrdzdc = 2 * (d2zrdzdc * zr + dzrdz * dzrdc)
+                            dzrdz = 2. * dzrdz * zr
+                            dzrdc = 2 * dzrdc * zr + 1.
+                            zr = zr**2 + c
+    
+                        delta = (zr - z0_loop) / (dzrdz - 1.)
+                        newton_cv = (np.abs(delta) < eps_newton_cv)
+                        zz = z0_loop - delta
+                        dz0dc_loop = dz0dc_loop - (
+                                     (dzrdc - dz0dc_loop) / (dzrdz - 1.) -
+                                     (zr - z0_loop) * d2zrdzdc / (dzrdz - 1.)**2)
+                        z0_loop = zz
+                        if newton_cv:
+                            break
+    
+                    # We have a candidate but is it the good one ?
+                    is_confirmed = (np.abs(dzrdz) <= 1.) & newton_cv
+                    if not(is_confirmed): # not found, early exit
+                        continue
+    
+                    Z[0] = zr
+                    Z[1] = dzrdz # attr (cycle attractivity)
+                    Z[2] = dzrdc
+                    Z[3] = d2zrdzdc # dattrdc
+                    U[0] = n_iter
+                    stop_reason[0] = 1
+                    break
 
-                # We have a candidate but is it the good one ?
-                is_confirmed = (np.abs(dzrdz) <= 1.) & newton_cv
-                if not(is_confirmed): # not found, early exit
-                    return
-
-                Z[0] = zr
-                Z[1] = dzrdz # attr (cycle attractivity)
-                Z[2] = dzrdc
-                Z[3] = d2zrdzdc # dattrdc
-                U[0] = n_iter
-                stop_reason[0] = 1
+                # End of while loop
+                return n_iter
 
             return numba_impl
         self.iterate = iterate

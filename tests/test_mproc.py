@@ -6,22 +6,23 @@ import unittest
 import numpy as np
 from numpy.lib.format import open_memmap
 
-import fractalshades.utils as fsutils
-from fractalshades.mprocessing import Multiprocess_filler
+import fractalshades as fs
+from fractalshades.mthreading import Multithreading_iterator
 import test_config
 
+fs.settings.enable_multithreading = True
 
 
 class Test_mproc(unittest.TestCase):
     
     def setUp(self):
         mproc_dir = os.path.join(test_config.temporary_data_dir, "_mproc_dir")
-        fsutils.mkdir_p(mproc_dir)
+        fs.utils.mkdir_p(mproc_dir)
         self.mproc_dir = mproc_dir
     
     def test_memmap(self):
         """
-        Testing that a np.memmap array can be filled by multiprocessing batches
+        Testing that a np.memmap array can be filled by multithreading batches
         /!\ Note that we do not use mmap.flush() in each subprocess
         """
         # Create a 200 Mb file
@@ -41,11 +42,11 @@ class Test_mproc(unittest.TestCase):
                 for item in range(self.count):
                     yield item
 
-            @Multiprocess_filler(iterable_attr="crange", iter_kwargs="item",
+            @Multithreading_iterator(iterable_attr="crange", iter_kwargs="item",
                                  redirect_path_attr="multiprocess_dir")
             def run(self, item):
                 # OK with C order
-                print("in run", item)
+#                print("in run", item)
                 sys.stdout.flush()
                 mmap = open_memmap(
                     filename=os.path.join(self.directory, mmap_file), 
@@ -56,7 +57,7 @@ class Test_mproc(unittest.TestCase):
                 # DO NOT mmap.flush() here - performance hit and no benefit
                 #del mmap
             
-            @Multiprocess_filler(iterable_attr="crange", iter_kwargs="item",
+            @Multithreading_iterator(iterable_attr="crange", iter_kwargs="item",
                                  redirect_path_attr="multiprocess_dir")
             def run_fancy(self, item):
                 # OK with C order
