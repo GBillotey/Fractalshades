@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.7] #, 3.8, 3.9]
+        python-version: [3.8] #, 3.9, 3.10]
 
     steps:
     - uses: actions/checkout@v2
@@ -31,7 +31,7 @@ jobs:
     - name: Install GMP MPFR MPC needed for gmpy2
       run: |
         python -m pip install --upgrade pip
-        python -m pip install https://files.pythonhosted.org/packages/8d/f0/2095cfeddf4ff3d54b26dc0d0d22c82043ae26763063b3126ef089ebf6e8/gmpy2-2.1.2-cp37-cp37m-win_amd64.whl
+        python -m pip install https://files.pythonhosted.org/packages/8d/6f/b87d79fe5b764b97eb5599c5a8ef351fec3b688201d4706c6146e4601d1d/gmpy2-2.1.2-cp38-cp38-win_amd64.whl
 
     - name: Install dependencies
       run: |
