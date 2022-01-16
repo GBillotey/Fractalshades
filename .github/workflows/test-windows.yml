@@ -29,16 +29,23 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Install GMP MPFR MPC needed for gmpy2
+      uses: msys2/setup-msys2@v2
+      with:
+        update: true
+        install: >-
+          msys2 -c base-devel
+          msys2 -c git
+    
+    - name: Install gmpy2
       run: |
         python -m pip install --upgrade pip
         # Download and install from https://github.com/msys2
-        dir
-        echo dir
-        curl.exe -o msys2-x86_64-latest.exe https://github.com/msys2/msys2-installer/releases/download/2021-11-30/msys2-base-x86_64-20211130.sfx.exe
-        dir
-        .\msys2-x86_64-latest.exe in --confirm-command --accept-messages --root C:/msys64
-        dir
-        
+        # dir
+        # echo dir
+        # curl.exe -o msys2-x86_64-latest.exe https://github.com/msys2/msys2-installer/releases/download/2021-11-30/msys2-base-x86_64-20211130.sfx.exe
+        # dir
+        # .\msys2-x86_64-latest.exe in --confirm-command --accept-messages --root C:/msys64
+        # dir
         # pre-built binaries from: https://pypi.org/project/gmpy2/#files
         python -m pip install https://files.pythonhosted.org/packages/8d/6f/b87d79fe5b764b97eb5599c5a8ef351fec3b688201d4706c6146e4601d1d/gmpy2-2.1.2-cp38-cp38-win_amd64.whl
 
