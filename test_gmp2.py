@@ -18,3 +18,6 @@ compiler=mingw32
 
 with open("setup.cfg", "a") as setup_cfg:
     setup_cfg.write(hack_setup_str)
+
+print("### modifed setup.cfg with:\n", hack_setup_str)
+
