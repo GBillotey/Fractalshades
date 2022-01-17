@@ -41,6 +41,7 @@ jobs:
         # Test gmpy2 install
         dir
         python test_gmp2.py
+        echo "$(<setup.cfg)"
         echo $GITHUB_PATH
         echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" >> $GITHUB_PATH
         echo "*** after ** "
