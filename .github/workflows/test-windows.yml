@@ -48,7 +48,7 @@ jobs:
 
     - name: install Fractalshades
       run: |
-        python -m pip install --compiler=mingw32 git+git://github.com/${{ github.repository }}.git@${{ github.sha }}
+        python -m pip install git+git://github.com/${{ github.repository }}.git@${{ github.sha }}
 
     - name: Lint with flake8
       run: |
