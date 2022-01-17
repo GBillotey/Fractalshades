@@ -41,11 +41,15 @@ jobs:
         # Test gmpy2 install
         dir
         python test_gmp2.py
+        
+        C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin\x86_64-w64-mingw32-gcc.exe -- version
 
         echo "$GITHUB_PATH"
         echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" >> $GITHUB_PATH
         echo "*** after ** "
         echo "$GITHUB_PATH"
+        
+        x86_64-w64-mingw32-gcc.exe -- version
 
     - name: Install dependencies
       run: |
@@ -65,3 +69,4 @@ jobs:
     - name: Test with pytest
       run: |
         python -m pytest
+
