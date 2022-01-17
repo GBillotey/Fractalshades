@@ -35,6 +35,10 @@ jobs:
         install: >-
           msys2 -c base-devel
           msys2 -c git
+    - name: Set up MinGW
+      uses: egor-tensin/setup-mingw@v2
+      with:
+        platform: x64
     
     - name: Install gmpy2
       run: |
