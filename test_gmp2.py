@@ -12,8 +12,9 @@ print("2 * 1.0j =", a * 2.)
 
 
 with open("setup.cfg", "a") as setup_cfg:
-    setup_cfg.write("[build]\n")
-    setup_cfg.write("compiler=mingw32\n")
+    pass
+#    setup_cfg.write("[build]\n")
+#    setup_cfg.write("compiler=mingw32\n")
 
 print("### modifed setup.cfg")
 
