@@ -38,6 +38,9 @@ jobs:
         python -m pip install --upgrade pip
         # Download and install from https://github.com/msys2
         python -m pip install https://files.pythonhosted.org/packages/8d/6f/b87d79fe5b764b97eb5599c5a8ef351fec3b688201d4706c6146e4601d1d/gmpy2-2.1.2-cp38-cp38-win_amd64.whl
+        # Test gmpy2 install
+        dir
+        python test_gmp2.py
 
     - name: Install dependencies
       run: |
