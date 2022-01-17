@@ -9,15 +9,11 @@ print("gmpy2 context:\n", ctx)
 print("2 * 1.0j =", a * 2.)
 
 # Hack setup.cfg
-hack_setup_str = (
-"""[build]
-compiler=mingw32
 
-"""
-)
 
 with open("setup.cfg", "a") as setup_cfg:
-    setup_cfg.write(hack_setup_str)
+    setup_cfg.write("[build]\n")
+    setup_cfg.write("compiler=mingw32\n")
 
-print("### modifed setup.cfg with:\n", hack_setup_str)
+print("### modifed setup.cfg")
 
