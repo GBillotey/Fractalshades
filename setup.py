@@ -34,6 +34,7 @@ if sys.platform == "win32":
     #    system PATH when compiling.
     # 3. The code below will moneky-patch distutils to work.
     import distutils.cygwinccompiler
+    os.environ["CC"] = "mingw32"
     distutils.cygwinccompiler.get_msvcr = lambda: []
     # Escaping works differently.
     CONFIG_VERSION = '\\"2019-07-09\\"'
