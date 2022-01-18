@@ -41,7 +41,7 @@ jobs:
         python -m pip install https://files.pythonhosted.org/packages/8d/6f/b87d79fe5b764b97eb5599c5a8ef351fec3b688201d4706c6146e4601d1d/gmpy2-2.1.2-cp38-cp38-win_amd64.whl
 
         # Patch gmpy2 install
-        python win_build\patch_gmp2.py
+        python win_build\patch_gmpy2.py
 
         # C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin\x86_64-w64-mingw32-gcc.exe --version
         # echo "$GITHUB_PATH"
