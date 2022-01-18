@@ -22,24 +22,23 @@ import gmpy2
 # https://github.com/numpy/numpy/issues/11653
 # https://stackoverflow.com/questions/52749662/using-deprecated-numpy-api
 
-CONFIG_VERSION = '"2019-07-09"'
 extra_link_args = []
 
+
 if sys.platform == "win32":
-    # To build for Windows:
-    # 1. Install MingW-W64-builds from https://mingw-w64.org/doku.php/download
-    #    It is important to change the default to 64-bit when installing if a
-    #    64-bit Python is installed in windows.
-    # 2. Put the bin/ folder inside x86_64-8.1.0-posix-seh-rt_v6-rev0 in your
-    #    system PATH when compiling.
-    # 3. The code below will moneky-patch distutils to work.
-    import distutils.cygwinccompiler
-    distutils.cygwinccompiler.get_msvcr = lambda: []
-    # Escaping works differently.
-    CONFIG_VERSION = '\\"2019-07-09\\"'
-    # Make sure that pthreads is linked statically, otherwise we run into problems
-    # on computers where it is not installed.
-    extra_link_args = ["-Wl,-Bstatic", "-lpthread"]
+    pass
+#    # To build for Windows:
+#    # 1. Install MingW-W64-builds from https://mingw-w64.org/doku.php/download
+#    #    It is important to change the default to 64-bit when installing if a
+#    #    64-bit Python is installed in windows.
+#    # 2. Put the bin/ folder inside x86_64-8.1.0-posix-seh-rt_v6-rev0 in your
+#    #    system PATH when compiling.
+#    # 3. The code below will moneky-patch distutils to work.
+#    import distutils.cygwinccompiler
+#    distutils.cygwinccompiler.get_msvcr = lambda: []
+#    # Make sure that pthreads is linked statically, otherwise we run into problems
+#    # on computers where it is not installed.
+#    extra_link_args = ["-Wl,-Bstatic", "-lpthread"]
 
 
 include_dirs = (
@@ -53,7 +52,6 @@ ext_FP = setuptools.Extension(
     [r"src/fractalshades/mpmath_utils/FP_loop.pyx"],
     include_dirs=include_dirs,
     libraries=['gmp', 'mpfr', 'mpc'],
-    define_macros=[('CONFIG_VERSION', CONFIG_VERSION)],
     extra_link_args=extra_link_args
 )
 
