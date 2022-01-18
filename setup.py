@@ -1,6 +1,7 @@
 import sys
 import os
 import setuptools
+import sysconfig
 
 from Cython.Build import cythonize
 import numpy as np
@@ -40,18 +41,27 @@ if sys.platform == "win32":
         "fractalshades.mpmath_utils.FP_loop",
         [r"src/fractalshades/mpmath_utils/FP_loop.pyx"],
         include_dirs=include_dirs,
+        library_dirs=include_dirs,
+        runtime_library_dirs=include_dirs,
         libraries=['gmp', 'mpfr', 'mpc'],
         depends=['gmpy2.h'],
-        data_files = [('',[
-                           'libgcc_s_seh-1.dll',
-                           'libgmp-10.dll',
-                           'libmpc-3.dll',
-                           'libmpfr-6.dll',
-                           'libwinpthread-1.dll',
-                           ])],
         extra_link_args=extra_link_args
     )
 
+    setuptools.setup(
+        ext_modules=cythonize(
+            [ext_FP],
+            include_path=include_dirs,
+            compiler_directives={'language_level' : "3"},
+#            data_files = [('',[
+#                           'libgcc_s_seh-1.dll',
+#                           'libgmp-10.dll',
+#                           'libmpc-3.dll',
+#                           'libmpfr-6.dll',
+#                           'libwinpthread-1.dll',
+#                           ])],
+        )
+    )
 # gmpy2_dir content :
 #  'gmpy2.cp38-win_amd64.pyd'
 #  'gmpy2.h',
@@ -124,10 +134,10 @@ else:
 # https://github.com/PetterS/quickjs/commit/67bc2428b8c0716538b4583f4f2b0a2a5a49106c
 
 
-setuptools.setup(
-    ext_modules=cythonize(
-        [ext_FP],
-        include_path=include_dirs,
-        compiler_directives={'language_level' : "3"}
+    setuptools.setup(
+        ext_modules=cythonize(
+            [ext_FP],
+            include_path=include_dirs,
+            compiler_directives={'language_level' : "3"}
+        )
     )
-)
