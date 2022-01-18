@@ -27,6 +27,8 @@ extra_link_args = []
 
 if sys.platform == "win32":
     
+    os.add_dll_directory(os.path.dirname(gmpy2.__file__))
+
     include_dirs = (
         sys.path
         + [os.path.dirname(gmpy2.__file__)]

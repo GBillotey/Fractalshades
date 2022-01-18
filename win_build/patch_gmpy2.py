@@ -24,3 +24,16 @@ for header in glob.glob("gmpy2_headers/*"):
     if sys.platform == "win32":
         shutil.copy2(header, gmpy2_dir)
 
+# gmpy2_dir content :
+#  'gmpy2.cp38-win_amd64.pyd'
+#  'gmpy2.h',
+#  'gmpy2.pxd',
+#  'libgcc_s_seh-1.dll',
+#  'libgmp-10.dll',
+#  'libmpc-3.dll',
+#  'libmpfr-6.dll',
+#  'libwinpthread-1.dll',
+#  '__init__.pxd',
+#  '__init__.py',
+#  '__pycache__'
+# 
