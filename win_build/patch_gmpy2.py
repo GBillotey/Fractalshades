@@ -19,7 +19,7 @@ print(os.listdir(gmpy2_dir))
 
 print(os.listdir(os.path.dirname(gmpy2_dir)))
 
-for header in glob.glob("gmpy2_headers/*"):
+for header in glob.glob("win_build/gmpy2_headers/*"):
     print("Copy header file", header, "-->", gmpy2_dir)
     if sys.platform == "win32":
         shutil.copy2(header, gmpy2_dir)
