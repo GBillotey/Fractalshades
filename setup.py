@@ -26,7 +26,21 @@ extra_link_args = []
 
 
 if sys.platform == "win32":
-    pass
+    
+    include_dirs = (
+        sys.path
+        + [os.path.dirname(gmpy2.__file__)]
+        + [np.get_include()]  
+    )
+    
+    ext_FP = setuptools.Extension(
+        "fractalshades.mpmath_utils.FP_loop",
+        [r"src/fractalshades/mpmath_utils/FP_loop.pyx"],
+        include_dirs=include_dirs,
+        libraries=['gmp', 'mpfr', 'mpc'],
+        extra_link_args=extra_link_args
+    )
+
 #    # To build for Windows:
 #    # 1. Install MingW-W64-builds from https://mingw-w64.org/doku.php/download
 #    #    It is important to change the default to 64-bit when installing if a
@@ -41,19 +55,33 @@ if sys.platform == "win32":
 #    extra_link_args = ["-Wl,-Bstatic", "-lpthread"]
 
 
-include_dirs = (
-    sys.path
-    + [os.path.dirname(gmpy2.__file__)]
-    + [np.get_include()]  
-)
 
-ext_FP = setuptools.Extension(
-    "fractalshades.mpmath_utils.FP_loop",
-    [r"src/fractalshades/mpmath_utils/FP_loop.pyx"],
-    include_dirs=include_dirs,
-    libraries=['gmp', 'mpfr', 'mpc'],
-    extra_link_args=extra_link_args
-)
+# https://stackoverflow.com/questions/65334494/python-c-extension-packaging-dll-along-with-pyd
+#    Create a directory within your package that will contain all required DLLs your extension will be using
+#    Modify your build procedure to include this directory along with sdist and wheel distributions
+#    Once user imports your package, first thing you do is dynamically modify paths for where DLLs will be searched for (two different methods depending if you are on 3.8 or lower)
+#
+
+
+
+
+
+
+else:
+
+    include_dirs = (
+        sys.path
+        + [os.path.dirname(gmpy2.__file__)]
+        + [np.get_include()]  
+    )
+    
+    ext_FP = setuptools.Extension(
+        "fractalshades.mpmath_utils.FP_loop",
+        [r"src/fractalshades/mpmath_utils/FP_loop.pyx"],
+        include_dirs=include_dirs,
+        libraries=['gmp', 'mpfr', 'mpc'],
+        extra_link_args=extra_link_args
+    )
 
 # Note : MPFR under windows
 # https://github.com/AntonKueltz/fastecdsa/issues/11
@@ -69,7 +97,6 @@ ext_FP = setuptools.Extension(
 # Could not find a working solution online, but were able to make
 # this work with mingw-w64. Visual Studio will not compile QuickJS.
 # https://github.com/PetterS/quickjs/commit/67bc2428b8c0716538b4583f4f2b0a2a5a49106c
-
 
 
 setuptools.setup(

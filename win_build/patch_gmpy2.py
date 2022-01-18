@@ -16,6 +16,9 @@ print("2 * 1.0j =", a * 2.)
 
 print(os.listdir(gmpy2_dir))
 
+
+print(os.listdir(os.path.dirname(gmpy2_dir)))
+
 for header in glob.glob("gmpy2_headers/*"):
     print("Copy header file", header, "-->", gmpy2_dir)
     if sys.platform == "win32":
