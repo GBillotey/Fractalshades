@@ -65,7 +65,6 @@ jobs:
         dir
         python -m build
         dir
-        dir build
 
     - name: Install Fractalshades with no build isolation
       run: |
