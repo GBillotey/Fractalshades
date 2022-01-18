@@ -35,13 +35,36 @@ if sys.platform == "win32":
         + [np.get_include()]  
     )
     
+    # , libraries=['ca_vc_opt_e'], depends = ['cacint.h']) 
     ext_FP = setuptools.Extension(
         "fractalshades.mpmath_utils.FP_loop",
         [r"src/fractalshades/mpmath_utils/FP_loop.pyx"],
         include_dirs=include_dirs,
         libraries=['gmp', 'mpfr', 'mpc'],
+        depends=['gmpy2.h'],
+        data_files = [('',[
+                           'libgcc_s_seh-1.dll',
+                           'libgmp-10.dll',
+                           'libmpc-3.dll',
+                           'libmpfr-6.dll',
+                           'libwinpthread-1.dll',
+                           ])],
         extra_link_args=extra_link_args
     )
+
+# gmpy2_dir content :
+#  'gmpy2.cp38-win_amd64.pyd'
+#  'gmpy2.h',
+#  'gmpy2.pxd',
+#  'libgcc_s_seh-1.dll',
+#  'libgmp-10.dll',
+#  'libmpc-3.dll',
+#  'libmpfr-6.dll',
+#  'libwinpthread-1.dll',
+#  '__init__.pxd',
+#  '__init__.py',
+#  '__pycache__'
+# 
 
 #    # To build for Windows:
 #    # 1. Install MingW-W64-builds from https://mingw-w64.org/doku.php/download
