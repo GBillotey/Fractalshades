@@ -53,11 +53,15 @@ jobs:
 
     - name: Install dependencies
       run: |
+        echo "install build dependencies"
+        python -m pip install -r win_build/built_requirements.txt
+        echo "install libraries needed for the test"
         python -m pip install flake8 pytest
 
     - name: install Fractalshades
       run: |
-        python -m pip install git+git://github.com/${{ github.repository }}.git@${{ github.sha }}
+        echo "install fractalshades"
+        python -m pip install --no-deps --no-build-isolation git+git://github.com/${{ github.repository }}.git@${{ github.sha }}
 
     - name: Lint with flake8
       run: |
