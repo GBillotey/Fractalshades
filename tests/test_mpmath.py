@@ -36,7 +36,7 @@ def cython_loop(max_iter, M, x, y):
     need_Xrange = True
 
     i, partial_dict, xr_dict = fsloop.perturbation_mandelbrot_FP_loop(
-        NP_orbit,
+        NP_orbit.view(dtype=np.float64),
         need_Xrange,
         max_iter,
         M,

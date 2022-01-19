@@ -42,7 +42,7 @@ def numba_path_loop(
     refpath_ptr = np.zeros((2,), dtype=np.int32)
     
     
-    print("npts", npts, has_xr)
+    print("npts", npts, has_xr, "\n ref index:\n", ref_index_xr)
     count = 0
     for j in range(npts):
         for i in (j , j, npts - j - 1):
@@ -57,6 +57,7 @@ def numba_path_loop(
 
     print("count xr", count)
     if count != 14 * 3:
+        print("count", count)
         raise ValueError("Unexpected count")
 
     count = 0
@@ -74,6 +75,7 @@ def numba_path_loop(
             print("** NOT xr", i, val)
 
     if count != 4:
+        print("count", count)
         raise ValueError("Unexpected count")
 
 
