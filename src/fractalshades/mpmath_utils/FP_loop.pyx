@@ -125,9 +125,9 @@ def perturbation_mandelbrot_FP_loop(
     """
 
     cdef:
-        int max_len = orbit.shape[0]
-        int i = 0
-        int print_freq = 0
+        long max_len = orbit.shape[0]
+        long i = 0
+        long print_freq = 0
 #        double complex tmp_dc = 0j
         double curr_partial = PARTIAL_TSHOLD
 
@@ -245,8 +245,8 @@ cdef mpc_t_to_Xrange(mpc_t z_t):
 def perturbation_mandelbrot_nucleus_size_estimate(
         char * seed_x,
         char * seed_y,
-        int seed_prec,
-        int order
+        long seed_prec,
+        long order
     ):
     """
     Hyperbolic component size estimate. Reference :
