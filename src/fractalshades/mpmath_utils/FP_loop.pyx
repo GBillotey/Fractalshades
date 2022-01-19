@@ -23,8 +23,9 @@ np.import_array()
 # https://github.com/aleaxit/gmpy/blob/master/test_cython/test_cython.pyx
 import_gmpy2()
 
-cdef extern from "complex.h":
-    pass
+#cdef extern from "complex.h":
+#    # https://stackoverflow.com/questions/57837255/defining-dcomplex-externally-in-cython
+#    pass
 
 # MPFR - https://machinecognitis.github.io/Math.Mpfr.Native/html/3a4a909f-0c87-700e-42d0-7159d6a6bf37.htm
 cdef extern from "mpfr.h":
@@ -73,6 +74,8 @@ ctypedef np.int32_t DTYPE_INT_t
 DTYPE_COMPLEX = np.complex128
 ctypedef np.complex128_t DTYPE_COMPLEX_t
 
+DTYPE_FLOAT = np.float64
+ctypedef np.float64_t DTYPE_FLOAT_t
 
 ctypedef np.npy_bool DTYPE_BOOL_t
 
@@ -82,7 +85,7 @@ cdef:
 
 
 def perturbation_mandelbrot_FP_loop(
-        np.ndarray[DTYPE_COMPLEX_t, ndim=1] orbit,
+        np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
        # np.ndarray[DTYPE_BOOL_t, ndim=1] orbit_is_Xrange,
         bint need_Xrange,
         int max_iter,
@@ -97,7 +100,8 @@ def perturbation_mandelbrot_FP_loop(
     Parameters
     ----------
     orbit arr
-        low prec (np.complex 128) array which will be filled with the orbit pts
+        low prec (np.complex 128 viewed as 2 np.float64 components)
+        array which will be filled with the orbit pts
     need_Xrange bool
         bool - wether we shall worry about ultra low values (Xrange needed)
     max_iter : maximal iteration.
@@ -124,7 +128,7 @@ def perturbation_mandelbrot_FP_loop(
         int max_len = orbit.shape[0]
         int i = 0
         int print_freq = 0
-        double complex tmp_dc = 0j
+#        double complex tmp_dc = 0j
         double curr_partial = PARTIAL_TSHOLD
 
         mpc_t z_t
@@ -133,7 +137,7 @@ def perturbation_mandelbrot_FP_loop(
         mpfr_t x_t
         mpfr_t y_t
 
-    assert orbit.dtype == DTYPE_COMPLEX
+    assert orbit.dtype == DTYPE_FLOAT
     assert max_iter <= max_len + 1 # (NP_orbit starts at critical point)
 
     orbit_Xrange_register = dict()
@@ -152,8 +156,10 @@ def perturbation_mandelbrot_FP_loop(
     # For standard Mandelbrot the critical point is 0. - initializing
     # the FP z and the NP_orbit
     mpc_set_si_si(z_t, 0, 0, MPC_RNDNN)
-    orbit[0] = 0j
-    
+    # Complex 0. :
+    orbit[0] = 0.
+    orbit[1] = 0.
+
     print_freq = max(10000, (int(max_iter / 100.) // 10000 + 1) * 10000)
     print("============================================")
     print("Mandelbrot iterations, full precision: ", seed_prec)
@@ -165,22 +171,22 @@ def perturbation_mandelbrot_FP_loop(
         mpc_add(z_t, tmp_t, c_t, MPC_RNDNN)
 
         # C _Complex type assignment to numpy complex128 array is not
-        # straightforward, using a temporary complex (should have negligeable
-        # performance impact anyway)
-        tmp_dc.real = mpfr_get_d(mpc_realref(z_t), MPFR_RNDN)
-        tmp_dc.imag = mpfr_get_d(mpc_imagref(z_t), MPFR_RNDN)
-        orbit[i] = tmp_dc
+        # straightforward, using 2 float64 components
+        orbit[2 * i] = mpfr_get_d(mpc_realref(z_t), MPFR_RNDN)
+        orbit[2 * i + 1] = mpfr_get_d(mpc_imagref(z_t), MPFR_RNDN)
         
-        if abs(tmp_dc) > M: # escaping
+        abs_i = np.sqrt(orbit[2 * i] ** 2 + orbit[2 * i + 1] ** 2)
+
+        if abs_i > M: # escaping
             break
 
         # Handles the special case where the orbit goes closer to the critical
         # point than a standard double can handle.
-        if need_Xrange and (abs(orbit[i]) < XRANGE_TSHOLD):
+        if need_Xrange and (abs_i < XRANGE_TSHOLD):
             orbit_Xrange_register[i] = mpc_t_to_Xrange(z_t)
 
         # Hanldes the successive partials
-        if abs(tmp_dc) <= curr_partial:
+        if abs_i <= curr_partial:
             # We need to check more precisely (due to the 'Xrange' cases)
             try:
                 curr_index= next(reversed(orbit_partial_register.keys()))
@@ -199,7 +205,7 @@ def perturbation_mandelbrot_FP_loop(
     
     # If we did not escape from the last loop, first invalid iteration is i + 1
     div = True
-    if (i == max_iter) and (abs(tmp_dc) <= M):
+    if (i == max_iter) and (abs_i <= M):
         div = False
         i += 1
 

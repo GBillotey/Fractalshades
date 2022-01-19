@@ -48,7 +48,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         seed_prec = mpmath.mp.prec
         (i, partial_dict, xr_dict
          ) = fsFP.perturbation_mandelbrot_FP_loop(
-            NP_orbit,
+            NP_orbit.view(dtype=np.float64),
             xr_detect_activated,
             max_iter,
             M_divergence * 2., # to be sure ref exit after close points
@@ -125,7 +125,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         """
         self.init_data_types(datatype)
         # dx for numba: use 1d array not 0d !
-        dx = fsx.mpf_to_Xrange(self.dx, dtype=np.float64).ravel()
+#        dx = fsx.mpf_to_Xrange(self.dx, dtype=np.float64).ravel()
 
         # used for potential post-processing
         self.potential_M = M_divergence
