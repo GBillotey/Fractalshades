@@ -43,11 +43,12 @@ if sys.platform == "win32":
         include_dirs=include_dirs,
         library_dirs=include_dirs,
         # runtime_library_dirs=include_dirs,
-        libraries=['gmp', 'mpfr', 'mpc'],
-        depends=['gmpy2.h'],
+       #  libraries=['gmp', 'mpfr', 'mpc'],
+        # depends=['gmpy2.h'],
         extra_link_args=extra_link_args
     )
 
+    # https://github.com/vhnatyk/gmp-release
     setuptools.setup(
         ext_modules=cythonize(
             [ext_FP],
