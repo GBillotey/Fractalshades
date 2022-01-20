@@ -89,7 +89,7 @@ jobs:
         python -m pip install -r requirements.txt
         echo "install fractalshades"
         # python -m pip install --no-deps --no-build-isolation fractalshades
-        python3 -m pip install --user --force-reinstall --no-deps ./dist/*.whl
+        python3 -m pip install --user --force-reinstall --no-deps ./dist/fractalshades-0.4.0b0-cp38-cp38-win_amd64.whl
 
 
     - name: Lint with flake8
