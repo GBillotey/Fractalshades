@@ -41,9 +41,8 @@ jobs:
         python -m pip install https://files.pythonhosted.org/packages/8d/6f/b87d79fe5b764b97eb5599c5a8ef351fec3b688201d4706c6146e4601d1d/gmpy2-2.1.2-cp38-cp38-win_amd64.whl
 
         dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX86\\x64"
-        echo "test ***** test"
-        dir "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\14.29.30133\bin\HostX86\x64"
-        echo "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\14.29.30133\bin\HostX86\x64" >> $GITHUB_PATH 
+        # dir "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\14.29.30133\bin\HostX86\x64"
+        echo "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX86\\x64" >> $GITHUB_PATH 
         echo "*** GITHUB_PATH:"
         echo "$GITHUB_PATH"
         echo "*** dumpin command:"
