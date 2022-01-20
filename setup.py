@@ -27,20 +27,20 @@ extra_link_args = []
 
 
 if sys.platform == "win32":
-    # To build for Windows:
-    # 1. Install MingW-W64-builds from https://mingw-w64.org/doku.php/download
-    #    It is important to change the default to 64-bit when installing if a
-    #    64-bit Python is installed in windows.
-    # 2. Put the bin/ folder inside x86_64-8.1.0-posix-seh-rt_v6-rev0 in your
-    #    system PATH when compiling.
-    # 3. The code below will moneky-patch distutils to work.
-    import distutils.cygwinccompiler
-    distutils.cygwinccompiler.get_msvcr = lambda: []
-    # Escaping works differently.
-    CONFIG_VERSION = '\\"2019-07-09\\"'
-    # Make sure that pthreads is linked statically, otherwise we run into problems
-    # on computers where it is not installed.
-    extra_link_args = ["-Wl,-Bstatic", "-lpthread"]
+#    # To build for Windows:
+#    # 1. Install MingW-W64-builds from https://mingw-w64.org/doku.php/download
+#    #    It is important to change the default to 64-bit when installing if a
+#    #    64-bit Python is installed in windows.
+#    # 2. Put the bin/ folder inside x86_64-8.1.0-posix-seh-rt_v6-rev0 in your
+#    #    system PATH when compiling.
+#    # 3. The code below will moneky-patch distutils to work.
+#    import distutils.cygwinccompiler
+#    distutils.cygwinccompiler.get_msvcr = lambda: []
+#    # Escaping works differently.
+#    CONFIG_VERSION = '\\"2019-07-09\\"'
+#    # Make sure that pthreads is linked statically, otherwise we run into problems
+#    # on computers where it is not installed.
+#    extra_link_args = ["-Wl,-Bstatic", "-lpthread"]
     
     # os.add_dll_directory(os.path.dirname(gmpy2.__file__))
 
@@ -57,8 +57,13 @@ if sys.platform == "win32":
         include_dirs=include_dirs,
         library_dirs=include_dirs,
         # runtime_library_dirs=include_dirs,
-        libraries=['gmp', 'mpfr', 'mpc'],
-        define_macros=[('CONFIG_VERSION', CONFIG_VERSION)],
+        libraries=['libgcc_s_seh-1',
+                  'libgmp-10',
+                  'libmpc-3',
+                  'libmpfr-6',
+                  'libwinpthread-1',
+                  ],
+        # define_macros=[('CONFIG_VERSION', CONFIG_VERSION)],
         # depends=['gmpy2.h'],
         extra_link_args=extra_link_args
     )
