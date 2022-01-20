@@ -80,7 +80,7 @@ jobs:
     - name: Builds Fractalshades
       run: |
         dir
-        python -m build
+        python setup.py bdist_wheel
         dir .
         dir build
         dir build\lib.win-amd64-3.8
