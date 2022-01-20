@@ -49,8 +49,8 @@ jobs:
         echo "*** GITHUB_PATH:"
         echo "$GITHUB_PATH"
         echo "*** dumpbin command:"
-        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX86\\x64\\dumpbin.exe"
-        dumpbin.exe
+        cd "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX86\\x64"
+        dir
         dumpbin
         echo "*** lib command:"
         lib
