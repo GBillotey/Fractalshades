@@ -49,7 +49,15 @@ if sys.platform == "win32":
         + [os.path.dirname(gmpy2.__file__)]
         + [np.get_include()]  
     )
-    
+
+    # https://digitalmars.com/ctg/implib.html
+    # *************************************************************************
+    # An import library is necessary when calling functions in a DLL; it
+    # provides the stubs that hook up to the DLL at runtime.
+    # *************************************************************************
+    # https://stackoverflow.com/questions/9946322/how-to-generate-an-import-library-lib-file-from-a-dll
+    # *************************************************************************
+
     # , libraries=['ca_vc_opt_e'], depends = ['cacint.h']) 
     ext_FP = setuptools.Extension(
         "fractalshades.mpmath_utils.FP_loop",
