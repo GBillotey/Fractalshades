@@ -16,6 +16,7 @@ print("2 * 1.0j =", a * 2.)
 
 print("\n * listing files in gmpy2 dir :")
 print(os.listdir(gmpy2_dir))
+print("\n * listing files in seite-package dir :")
 print(os.listdir(os.path.dirname(gmpy2_dir)))
 # gmpy2_dir content :
 #  'gmpy2.cp38-win_amd64.pyd'
@@ -44,4 +45,4 @@ for dll in glob.glob(gmpy2_dir + "/" + "*.dll"):
     print("execute:", os_exc)
     os.system(os_exc)
     print("executed, folder content:")
-    print(os.listdir(os.path.dirname(gmpy2_dir)))
+    print(os.listdir(gmpy2_dir))
