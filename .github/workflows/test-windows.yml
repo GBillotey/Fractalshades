@@ -80,9 +80,10 @@ jobs:
     - name: Builds Fractalshades
       run: |
         dir
-        python setup.py build
-        dir
+        python -m build
+        dir .
         dir build
+        dir build\lib.win-amd64-3.8
         dir dist
 
     - name: Install Fractalshades from the built wheel
