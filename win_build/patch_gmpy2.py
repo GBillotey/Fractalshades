@@ -5,18 +5,19 @@ import glob
 
 import gmpy2
 
+gmpy2_dir = os.path.dirname(gmpy2.__file__)
+MVS_dir = "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\14.29.30133\bin\Hostx86\x64"
 
+print("\n * Check gmpy2 install")
 ctx = gmpy2.get_context()
 a = gmpy2.mpc("1.0")
-
-gmpy2_dir = os.path.dirname(gmpy2.__file__)
 print("gmpy2 install DIR:\n", gmpy2_dir)
 print("gmpy2 context:\n", ctx)
 print("2 * 1.0j =", a * 2.)
 
 print("\n * listing files in gmpy2 dir :")
 print(os.listdir(gmpy2_dir))
-print("\n * listing files in seite-package dir :")
+print("\n * listing files in site-package dir :")
 print(os.listdir(os.path.dirname(gmpy2_dir)))
 # gmpy2_dir content :
 #  'gmpy2.cp38-win_amd64.pyd'
@@ -36,6 +37,21 @@ for header in glob.glob("win_build/gmpy2_headers/*"):
     print("Copy header file", header, "-->", gmpy2_dir)
     if sys.platform == "win32":
         shutil.copy2(header, gmpy2_dir)
+
+
+
+print("\n * listing files in Microsoft Visual Studio dir :")
+print(os.listdir(os.path.dirname(MVS_dir)))
+
+print("\n * Adding to system PATH")
+print(os.environ["PATH"])
+os.environ["PATH"] += os.pathsep + MVS_dir
+print("**** after:")
+print(os.environ["PATH"])
+
+os.system("lib")
+os.system("dumpbin")
+
 
 print("\n * Generate import library from the dlls")
 # Note path sep under windows : '\'
