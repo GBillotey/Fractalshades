@@ -88,11 +88,11 @@ def perturbation_mandelbrot_FP_loop(
         np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
        # np.ndarray[DTYPE_BOOL_t, ndim=1] orbit_is_Xrange,
         bint need_Xrange,
-        int max_iter,
+        long max_iter,
         double M,
         char * seed_x,
         char * seed_y,
-        int seed_prec
+        long seed_prec
     ):
     """
     Full precision orbit for standard Mandelbrot
@@ -123,13 +123,14 @@ def perturbation_mandelbrot_FP_loop(
     orbit_partial_register
         dictionnary containing the partials
     """
-
     cdef:
         long max_len = orbit.shape[0]
         long i = 0
         long print_freq = 0
 #        double complex tmp_dc = 0j
         double curr_partial = PARTIAL_TSHOLD
+        double x = 0.
+        double y = 0.
 
         mpc_t z_t
         mpc_t c_t
@@ -172,10 +173,13 @@ def perturbation_mandelbrot_FP_loop(
 
         # C _Complex type assignment to numpy complex128 array is not
         # straightforward, using 2 float64 components
-        orbit[2 * i] = mpfr_get_d(mpc_realref(z_t), MPFR_RNDN)
-        orbit[2 * i + 1] = mpfr_get_d(mpc_imagref(z_t), MPFR_RNDN)
+        x = mpfr_get_d(mpc_realref(z_t), MPFR_RNDN)
+        y = mpfr_get_d(mpc_imagref(z_t), MPFR_RNDN)
+        orbit[2 * i] = x
+        orbit[2 * i + 1] = y
         
-        abs_i = np.sqrt(orbit[2 * i] ** 2 + orbit[2 * i + 1] ** 2)
+        # take the norm 
+        abs_i = c_abs(x, y)
 
         if abs_i > M: # escaping
             break
@@ -220,6 +224,26 @@ def perturbation_mandelbrot_FP_loop(
     mpfr_clear(y_t)
 
     return i, orbit_partial_register, orbit_Xrange_register
+
+cdef c_abs(double x, double y):
+    cdef double res = 0.
+    cdef double absx = np.abs(x)
+    cdef double absy = np.abs(y)
+
+    # We shall avoid underflow in sqrt & ZeroDivisionError
+    if absx >= absy: # >= 0.
+        if x == 0:
+            res = 0.
+        else:
+            res = absx * np.sqrt(1. + (y / x) ** 2)
+    else: # abs(y) > abs(x) >= 0
+        if y == 0:
+            res = 0.
+        else:
+            res = absy * np.sqrt(1. + (x / y) ** 2)
+    return res
+
+
 
 
 cdef mpc_t_to_Xrange(mpc_t z_t):
