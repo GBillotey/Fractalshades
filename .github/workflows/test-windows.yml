@@ -82,6 +82,7 @@ jobs:
         dir
         python setup.py build
         dir
+        dir build
 
     - name: Install Fractalshades from the built wheel
       run: |
