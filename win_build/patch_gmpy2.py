@@ -45,12 +45,15 @@ for header in glob.glob("win_build/gmpy2_headers/*"):
 print("\n * listing files in Microsoft Visual Studio dir :")
 print("MVS_dir", MVS_dir)
 print(os.listdir(MVS_dir))
+print("system dir from python")
+os.system("dir")
+print("system dir from python")
 
 print("\n * Adding to system PATH")
-print(os.environ["PATH"])
+print("...", os.environ["PATH"][-600:])
 os.environ["PATH"] += os.pathsep + MVS_dir
 print("**** after:")
-print(os.environ["PATH"])
+print("...", os.environ["PATH"][-600:])
 
 os.system("lib")
 os.system("dumpbin")
