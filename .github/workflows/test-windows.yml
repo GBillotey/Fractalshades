@@ -53,8 +53,8 @@ jobs:
 
     - name: Install dependencies
       run: |
-        echo "install build dependencies \"
-        python -m pip install -r win_build\built_requirements.txt
+        # echo "install build dependencies \"
+        # python -m pip install -r win_build\built_requirements.txt
         echo "install libraries needed for the test"
         python -m pip install flake8 pytest
         echo "install build dependencies /"
