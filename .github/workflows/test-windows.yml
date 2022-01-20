@@ -42,15 +42,15 @@ jobs:
 
         echo "*** listing MVS folder"
         dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX86\\x64"
-        dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\"
-        dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\bin"
+        dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin"
 
         echo "adding to path"
         echo "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX86\\x64\\" >> $GITHUB_PATH 
         echo "*** GITHUB_PATH:"
         echo "$GITHUB_PATH"
         echo "*** dumpbin command:"
-        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX86\\x64\\dumpbin"
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX86\\x64\\dumpbin.exe"
+        dumpbin.exe
         dumpbin
         echo "*** lib command:"
         lib
