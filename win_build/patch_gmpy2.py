@@ -40,8 +40,6 @@ for header in glob.glob("win_build/gmpy2_headers/*"):
     if sys.platform == "win32":
         shutil.copy2(header, gmpy2_dir)
 
-
-
 print("\n * listing files in Microsoft Visual Studio dir :")
 print("MVS_dir", MVS_dir)
 print(os.listdir(MVS_dir))
@@ -58,7 +56,6 @@ print("...", os.environ["PATH"][-600:])
 os.system("lib")
 os.system("dumpbin")
 
-
 print("\n * Generate import library from the dlls")
 # Note path sep under windows : '\'
 for dll in glob.glob(gmpy2_dir + "/" + "*.dll"):
@@ -66,5 +63,9 @@ for dll in glob.glob(gmpy2_dir + "/" + "*.dll"):
     os_exc = f"win_build\dll2lib.bat 64 {dll}"
     print("execute:", os_exc)
     os.system(os_exc)
-    print("executed, folder content:")
-    print(os.listdir(gmpy2_dir))
+
+for lib in glob.glob("*lib"):
+    shutil.copy2(lib, gmpy2_dir)
+    
+print("executed, folder content:")
+print(os.listdir(gmpy2_dir))
