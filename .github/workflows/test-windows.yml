@@ -82,8 +82,6 @@ jobs:
         dir
         python setup.py bdist_wheel
         dir .
-        dir build
-        dir build\lib.win-amd64-3.8
         dir dist
 
     - name: Install Fractalshades from the built wheel
@@ -91,7 +89,7 @@ jobs:
         python -m pip install -r requirements.txt
         echo "install fractalshades"
         # python -m pip install --no-deps --no-build-isolation fractalshades
-        python3 -m pip install --user --force-reinstall --no-deps ./dist/fractalshades-0.4.0b0-cp38-cp38-linux_x86_64.whl
+        python3 -m pip install --user --force-reinstall --no-deps ./dist/*.whl
 
 
     - name: Lint with flake8
