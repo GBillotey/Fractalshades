@@ -33,7 +33,7 @@ jobs:
     #   with:
     #     platform: x64
 
-    - name: Install gmpy2 and adds the headers
+    - name: Install gmpy2 and adds the headers - creates the .lib files
       run: |
         dir
         python -m pip install --upgrade pip
@@ -44,7 +44,15 @@ jobs:
         echo "test ***** test"
         dir "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\14.29.30133\bin\HostX86\x64"
         echo "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\14.29.30133\bin\HostX86\x64" >> $GITHUB_PATH 
+        echo "*** GITHUB_PATH:"
+        echo "$GITHUB_PATH"
+        echo "*** dumpin command:"
+        dumpbin
+        echo "*** lib command:"
+        lib
+
         # Patch gmpy2 install : add the headers and creates the lib
+        echo "**** Running python gmpy2 pathch script"
         python win_build\patch_gmpy2.py
 
         # C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin\x86_64-w64-mingw32-gcc.exe --version
