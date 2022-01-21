@@ -424,9 +424,9 @@ class Test_Xrange_array(unittest.TestCase):
         np.testing.assert_array_equal(_base >= _base2, base >= base2)
         np.testing.assert_array_equal(_base < _base2, base < base2)
         np.testing.assert_array_equal(_base > _base2, base > base2)
-    
-        shift = np.arange(30)
-        _base2 = Xrange_array(base2 / 2**shift, exp + shift)
+
+        shift = np.arange(40) - 10
+        _base2 = Xrange_array(base2 / 2. ** shift, exp + shift)
         np.testing.assert_array_equal(_base != _base2, base != base2)
      #   print("######################2")
         np.testing.assert_array_equal(_base == _base2, base == base2)
@@ -683,7 +683,7 @@ class Test_Xrange_timing(unittest.TestCase):
     
     def test_timing(self):
         self.assertTrue(self.timing_op1_complex(np.square) < 40)
-        self.assertTrue(self.timing_op2_complex(np.add) < 40)
+        self.assertTrue(self.timing_op2_complex(np.add) < 80)
         self.assertTrue(self.timing_op2_complex(np.multiply) < 40)
         self.assertTrue(self.timing_abs2_complex() < 40)
     
@@ -764,6 +764,8 @@ class Test_Xrange_timing(unittest.TestCase):
     
         np.testing.assert_array_equal(e_res.to_standard(), expected)
 
+        if t1 == 0.:
+            return 0.
         print("\ntiming", ufunc, dtype, t0, t1, t0 / t1)
         return t0 / t1
 
