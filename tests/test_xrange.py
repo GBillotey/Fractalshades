@@ -425,7 +425,7 @@ class Test_Xrange_array(unittest.TestCase):
         np.testing.assert_array_equal(_base < _base2, base < base2)
         np.testing.assert_array_equal(_base > _base2, base > base2)
     
-        shift = np.arange(40)
+        shift = np.arange(30)
         _base2 = Xrange_array(base2 / 2**shift, exp + shift)
         np.testing.assert_array_equal(_base != _base2, base != base2)
      #   print("######################2")
@@ -733,6 +733,8 @@ class Test_Xrange_timing(unittest.TestCase):
         t1 += time.time()
     
         np.testing.assert_array_equal(e_res.to_standard(), expected)
+        if t1 == 0.:
+            return 0.
         return t0 / t1
 
 
