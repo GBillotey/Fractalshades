@@ -1,16 +1,22 @@
 # -*- coding: utf-8 -*-
+"""
+This script patches an existing gmpy2 installation dir in site-package by 
+adding the following files : headers, .lib associated to the dll.
+This then will allow us to link against GMP, MPFR and MPC dlls
+"""
 import os
-import sys
 import shutil
 import glob
 
 import gmpy2
 
 gmpy2_dir = os.path.dirname(gmpy2.__file__)
-MVS_dir = r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\14.29.30133\bin\Hostx86\x64"
-# MVS_dir = r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\14.29.30133\bin\Hostx86\x64"
 
-print("\n * Check gmpy2 install")
+# Find the directory for MS Visual studio cl.exe dumpbin.exe lib.exe
+# Note : should we automate this ?
+MVS_dir = r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\14.29.30133\bin\Hostx86\x64"
+
+print("\n * Checking gmpy2 install")
 ctx = gmpy2.get_context()
 a = gmpy2.mpc("1.0")
 print("gmpy2 install DIR:\n", gmpy2_dir)
@@ -34,29 +40,23 @@ print(os.listdir(os.path.dirname(gmpy2_dir)))
 #  '__init__.py',
 #  '__pycache__'
 
-print("\n * Adding necessary header files")
+print("\n * Adding necessary header files to gmpy2 insatll dir")
+# Currently we store the heeaders locally ; we could also download them
+# at runtime
 for header in glob.glob("win_build/gmpy2_headers/*"):
     print("Copy header file", header, "-->", gmpy2_dir)
-    if sys.platform == "win32":
-        shutil.copy2(header, gmpy2_dir)
+    shutil.copy2(header, gmpy2_dir)
 
-print("\n * listing files in Microsoft Visual Studio dir :")
+print("\n * Listing files in Microsoft Visual Studio dir :")
 print("MVS_dir", MVS_dir)
 print(os.listdir(MVS_dir))
-print("system dir from python")
-os.system("dir")
-print("system dir from python")
-
-print("\n * Adding to system PATH")
-print("...", os.environ["PATH"][-600:])
+print("\n * Adding MVS_dir to system PATH")
 os.environ["PATH"] += os.pathsep + MVS_dir
-print("**** after:")
 print("...", os.environ["PATH"][-600:])
 
-os.system("lib")
-os.system("dumpbin")
 
 print("\n * Generate import library from the dlls")
+# Note : need dumpbin and lib in path
 # Note path sep under windows : '\'
 for dll in glob.glob(gmpy2_dir + "/" + "*.dll"):
     print(">>> dll file:", dll)
@@ -64,6 +64,7 @@ for dll in glob.glob(gmpy2_dir + "/" + "*.dll"):
     print("execute:", os_exc)
     os.system(os_exc)
 
+# Move the created .lib files to gmpy2 install dir
 for lib in glob.glob("*lib"):
     shutil.copy2(lib, gmpy2_dir)
     
