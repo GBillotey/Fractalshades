@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import sys
 import numpy as np
 import numbers
 import re
@@ -1261,18 +1262,32 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
     disregarded.
     """  
     # Unicode character mappings for "pretty print" of the polynomial
-    _superscript_mapping = str.maketrans({
-        "0": "⁰",
-        "1": "¹",
-        "2": "²",
-        "3": "³",
-        "4": "⁴",
-        "5": "⁵",
-        "6": "⁶",
-        "7": "⁷",
-        "8": "⁸",
-        "9": "⁹"
-    })
+    if sys.platform == "linuxe":
+        _superscript_mapping = str.maketrans({
+            "0": "⁰",
+            "1": "¹",
+            "2": "²",
+            "3": "³",
+            "4": "⁴",
+            "5": "⁵",
+            "6": "⁶",
+            "7": "⁷",
+            "8": "⁸",
+            "9": "⁹"
+        })
+    else:
+        _superscript_mapping = str.maketrans({
+            "0": "0",
+            "1": "1",
+            "2": "2",
+            "3": "3",
+            "4": "4",
+            "5": "5",
+            "6": "6",
+            "7": "7",
+            "8": "8",
+            "9": "9"
+        })
 
     def __init__(self, coeffs, cutdeg):
         if isinstance(coeffs, Xrange_array):
@@ -1484,7 +1499,10 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
             else:
                 next_term = f"- {coef}"
             # Polynomial term
-            next_term += self._monome_base_str(power, "X")
+            if sys.platform == "linuxe":
+                next_term += self._monome_base_str(power, "X")
+            else:
+                next_term += self._monome_base_str(power, "X**")
             # Length of the current line with next term added
             line_len = len(out.split('\n')[-1]) + len(next_term)
             # If not the last term in the polynomial, it will be two           
@@ -1500,7 +1518,10 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
 
     @classmethod
     def _monome_base_str(cls, i, var_str):
-        return f"·{var_str}{i.translate(cls._superscript_mapping)}"
+        if sys.platform == "linuxe":
+            return f"·{var_str}{i.translate(cls._superscript_mapping)}"
+        else:
+            return f".{var_str}{i.translate(cls._superscript_mapping)}"
 
 
 class Xrange_SA(Xrange_polynomial):

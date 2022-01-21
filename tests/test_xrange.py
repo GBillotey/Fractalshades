@@ -831,6 +831,8 @@ class Test_Xrange_polynomial(unittest.TestCase):
             _matching(_P([1.]), P(np.asarray([1.])), almost=True, ktol=3., dtype=dtype)
             _matching(_P([1.j]), P(np.asarray([1.j])), almost=True, ktol=3., dtype=dtype)
             _matching(_P([arr]), P(np.asarray([arr])), almost=True, ktol=3., dtype=dtype)
+            
+            print("_Q", _Q)
     
             # checking with cutdeg
             for cutdeg in range(1, 400, 10):
@@ -1318,7 +1320,7 @@ if __name__ == "__main__":
         runner.run(test_config.suite([Test_Xrange_array]))
         runner.run(test_config.suite([Test_Xrange_timing]))
         runner.run(test_config.suite([Test_Xrange_polynomial]))
-        runner.run(test_config.suite([Test_Xrange_SA]))
+        runner.run(test_config.suite([Test_Xrange_SA, Test_Xrange_bivar_SA]))
     else:
         suite = unittest.TestSuite()
         # suite.addTest(Test_Xrange_polynomial("test_deriv"))
