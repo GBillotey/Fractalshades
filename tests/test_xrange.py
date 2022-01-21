@@ -572,8 +572,8 @@ class Test_Xrange_array(unittest.TestCase):
         Xa = Xrange_array(a)
         for exp10 in range(1000):
             Xa = [-10., 0.1, 10., -0.1] * Xa
-        str2 = ("[ 0.00e+00➕1.00e+1000j  0.00e+00➕1.00e-1000j"
-                "  0.00e+00➕3.14e+1000j  0.00e+00➕3.14e-1000j]")
+        str2 = ("[ 0.00e+00+1.00e+1000j  0.00e+00+1.00e-1000j"
+                "  0.00e+00+3.14e+1000j  0.00e+00+3.14e-1000j]")
         with np.printoptions(precision=2, linewidth=100) as _:
             assert Xa.__str__() == str2
             
@@ -616,8 +616,8 @@ class Test_Xrange_array(unittest.TestCase):
     
         Xb = np.array([1., -1.j]) * np.pi * Xrange_array(
                 ["1.e+646456991","1.e-646456991" ])
-        str_14 = ("[ 3.14159265358979e+646456991➕0.00000000000000e+00j\n"
-                 "  0.00000000000000e+00➖3.14159265358979e-646456991j]")
+        str_14 = ("[ 3.14159265358979e+646456991+0.00000000000000e+00j\n"
+                 "  0.00000000000000e+00-3.14159265358979e-646456991j]")
         with np.printoptions(precision=14, linewidth=100) as _:
             assert Xb.__str__() == str_14
         
@@ -1312,7 +1312,7 @@ class Test_Xrange_bivar_SA(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    full_test = False
+    full_test = True
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_Xrange_array]))
