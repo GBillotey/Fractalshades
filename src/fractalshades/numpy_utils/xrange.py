@@ -1085,8 +1085,8 @@ Reference:
         return s
 
     @staticmethod
-    def _to_char(arr, im=False, im_p_char = '\u2795',
-                       im_m_char = '\u2796', **options):
+    def _to_char(arr, im=False, im_p_char = '+',
+                       im_m_char = '-', **options):
         """
         Parameters:
             m2 base 2 real mantissa
