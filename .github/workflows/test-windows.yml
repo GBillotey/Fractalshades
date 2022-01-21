@@ -28,43 +28,18 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    # - name: Set up MinGW
-    #   uses: egor-tensin/setup-mingw@v2
-    #   with:
-    #     platform: x64
-
     - name: Install gmpy2 and adds the headers - creates the .lib files
       run: |
         dir
         python -m pip install --upgrade pip
-        # Download and install from https://github.com/msys2
-        python -m pip install https://files.pythonhosted.org/packages/8d/6f/b87d79fe5b764b97eb5599c5a8ef351fec3b688201d4706c6146e4601d1d/gmpy2-2.1.2-cp38-cp38-win_amd64.whl
+        python -m pip install gmpy2
 
         echo "*** listing MVS folder"
-        dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX86\\x64"
         dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin"
+        dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX86\\x64"
 
-        # echo "adding to path"
-        # echo "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX86\\x64\\" >> $GITHUB_PATH 
-        # echo "*** GITHUB_PATH:"
-        # echo "$GITHUB_PATH"
-        # echo "*** dumpbin command:"
-        # cd "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX86\\x64"
-        # dir
-        # dumpbin
-        # echo "*** lib command:"
-        # lib
-
-        # Patch gmpy2 install : add the headers and creates the lib
         echo "**** Running python gmpy2 pathch script"
         python win_build\patch_gmpy2.py
-
-        # C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin\x86_64-w64-mingw32-gcc.exe --version
-        # echo "$GITHUB_PATH"
-        # echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" >> $GITHUB_PATH
-        # echo "*** after ** "
-        # echo "Checking mingw32"
-        # x86_64-w64-mingw32-gcc.exe --version
 
 
     - name: Install dependencies
@@ -79,9 +54,7 @@ jobs:
 
     - name: Builds Fractalshades
       run: |
-        dir
         python setup.py bdist_wheel
-        dir .
         dir dist
 
     - name: Install Fractalshades from the built wheel
@@ -89,6 +62,8 @@ jobs:
         python -m pip install -r requirements.txt
         echo "install fractalshades"
         # python -m pip install --no-deps --no-build-isolation fractalshades
+        $WHL_TARGET = Get-ChildItem -Path "./dist/fractalshades*win_amd64.whl"
+        echo $WHL_TARGET
         python3 -m pip install --user --force-reinstall --no-deps ./dist/fractalshades-0.4.0b0-cp38-cp38-win_amd64.whl
 
 

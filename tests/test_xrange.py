@@ -18,6 +18,8 @@ from fractalshades.numpy_utils.xrange import (
         Xrange_bivar_SA)
 
 
+
+
 def _matching(res, expected, almost=False, dtype=None, cmp_op=False, ktol=1.5):
     if not cmp_op:
         res = res.to_standard()
@@ -225,14 +227,7 @@ def _test_op2(ufunc, almost=False, cmp_op=False):
                   expected, almost, dtype, cmp_op)
 
 
-def _matching(res, expected, almost=False, dtype=None, cmp_op=False, ktol=1.5):
-    if not cmp_op:
-        res = res.to_standard()
-    if almost:
-        np.testing.assert_allclose(res, expected,
-                                   rtol= ktol * np.finfo(dtype).eps)
-    else:
-        np.testing.assert_array_equal(res, expected)
+
 
 
 class Test_Xrange_array(unittest.TestCase):
@@ -409,7 +404,7 @@ class Test_Xrange_array(unittest.TestCase):
         #   Testing equality with "almost close" floats
         base = - np.ones([40], dtype=np.float64)
         base = np.linspace(0., 1., 40, dtype=np.float64)
-        base2 = base + np.linspace(-1., 1., 40) * np.finfo(np.float64).eps
+        base2 = base + np.linspace(-1., 1., 40) * np.finfo(np.float64).eps * 2.
         exp = np.zeros(40, dtype=np.int32)
     
         _base = Xrange_array(base, exp)
@@ -577,8 +572,8 @@ class Test_Xrange_array(unittest.TestCase):
         Xa = Xrange_array(a)
         for exp10 in range(1000):
             Xa = [-10., 0.1, 10., -0.1] * Xa
-        str2 = ("[ 0.00e+00➕1.00e+1000j  0.00e+00➕1.00e-1000j"
-                "  0.00e+00➕3.14e+1000j  0.00e+00➕3.14e-1000j]")
+        str2 = ("[ 0.00e+00+1.00e+1000j  0.00e+00+1.00e-1000j"
+                "  0.00e+00+3.14e+1000j  0.00e+00+3.14e-1000j]")
         with np.printoptions(precision=2, linewidth=100) as _:
             assert Xa.__str__() == str2
             
@@ -621,8 +616,8 @@ class Test_Xrange_array(unittest.TestCase):
     
         Xb = np.array([1., -1.j]) * np.pi * Xrange_array(
                 ["1.e+646456991","1.e-646456991" ])
-        str_14 = ("[ 3.14159265358979e+646456991➕0.00000000000000e+00j\n"
-                 "  0.00000000000000e+00➖3.14159265358979e-646456991j]")
+        str_14 = ("[ 3.14159265358979e+646456991+0.00000000000000e+00j\n"
+                 "  0.00000000000000e+00-3.14159265358979e-646456991j]")
         with np.printoptions(precision=14, linewidth=100) as _:
             assert Xb.__str__() == str_14
         
@@ -738,7 +733,7 @@ class Test_Xrange_timing(unittest.TestCase):
         t1 += time.time()
     
         np.testing.assert_array_equal(e_res.to_standard(), expected)
-        return t0/t1
+        return t0 / t1
 
 
     def timing_op2_complex(self, ufunc, dtype=np.float64):
@@ -1317,7 +1312,7 @@ class Test_Xrange_bivar_SA(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    full_test = False
+    full_test = True
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_Xrange_array]))

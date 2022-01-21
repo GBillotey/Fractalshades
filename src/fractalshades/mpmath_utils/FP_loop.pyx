@@ -23,9 +23,14 @@ np.import_array()
 # https://github.com/aleaxit/gmpy/blob/master/test_cython/test_cython.pyx
 import_gmpy2()
 
-#cdef extern from "complex.h":
-#    # https://stackoverflow.com/questions/57837255/defining-dcomplex-externally-in-cython
-#    pass
+# Note : do NOT use complex.h it is a can of worms under windows as 
+# Visual Studio is not C99 compatible :
+# https://stackoverflow.com/questions/57837255/defining-dcomplex-externally-in-cython
+# cdef extern from "complex.h":
+#     pass
+
+cdef extern from "math.h":
+    cpdef double hypot(double x, double y)
 
 # MPFR - https://machinecognitis.github.io/Math.Mpfr.Native/html/3a4a909f-0c87-700e-42d0-7159d6a6bf37.htm
 cdef extern from "mpfr.h":
@@ -179,7 +184,7 @@ def perturbation_mandelbrot_FP_loop(
         orbit[2 * i + 1] = y
         
         # take the norm 
-        abs_i = c_abs(x, y)
+        abs_i = hypot(x, y)
 
         if abs_i > M: # escaping
             break
@@ -224,26 +229,6 @@ def perturbation_mandelbrot_FP_loop(
     mpfr_clear(y_t)
 
     return i, orbit_partial_register, orbit_Xrange_register
-
-cdef c_abs(double x, double y):
-    cdef double res = 0.
-    cdef double absx = np.abs(x)
-    cdef double absy = np.abs(y)
-
-    # We shall avoid underflow in sqrt & ZeroDivisionError
-    if absx >= absy: # >= 0.
-        if x == 0:
-            res = 0.
-        else:
-            res = absx * np.sqrt(1. + (y / x) ** 2)
-    else: # abs(y) > abs(x) >= 0
-        if y == 0:
-            res = 0.
-        else:
-            res = absy * np.sqrt(1. + (x / y) ** 2)
-    return res
-
-
 
 
 cdef mpc_t_to_Xrange(mpc_t z_t):
