@@ -1262,7 +1262,7 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
     disregarded.
     """  
     # Unicode character mappings for "pretty print" of the polynomial
-    if sys.platform == "linuxe":
+    if sys.platform == "linux":
         _superscript_mapping = str.maketrans({
             "0": "⁰",
             "1": "¹",
@@ -1499,7 +1499,7 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
             else:
                 next_term = f"- {coef}"
             # Polynomial term
-            if sys.platform == "linuxe":
+            if sys.platform == "linux":
                 next_term += self._monome_base_str(power, "X")
             else:
                 next_term += self._monome_base_str(power, "X**")
@@ -1518,7 +1518,7 @@ class Xrange_polynomial(np.lib.mixins.NDArrayOperatorsMixin):
 
     @classmethod
     def _monome_base_str(cls, i, var_str):
-        if sys.platform == "linuxe":
+        if sys.platform == "linux":
             return f"·{var_str}{i.translate(cls._superscript_mapping)}"
         else:
             return f".{var_str}{i.translate(cls._superscript_mapping)}"

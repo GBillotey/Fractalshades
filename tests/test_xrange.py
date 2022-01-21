@@ -708,7 +708,9 @@ class Test_Xrange_timing(unittest.TestCase):
         t1 += time.time()
     
         np.testing.assert_array_equal(e_res.to_standard(), expected)
-        return t0/t1
+        if t1 == 0.:
+            return 0.
+        return t0 / t1
 
 
     def timing_op1_complex(self, ufunc, dtype=np.float64):

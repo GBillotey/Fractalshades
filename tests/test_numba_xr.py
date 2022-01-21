@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import sys
 import copy
 import numpy as np
 import time
@@ -22,7 +23,6 @@ from fractalshades.numpy_utils.xrange import (
         Xrange_SA,
         Xrange_bivar_SA,
         Xrange_monome,
-        mpf_to_Xrange
 )
 import fractalshades.numpy_utils.numba_xr as numba_xr
 import fractalshades.models as fsmodels
@@ -744,8 +744,9 @@ class Test_numba_xr(unittest.TestCase):
         ok = numba_toXr_conversion()
         self.assertTrue(ok, msg="Numba conversion to Xr test failed")
         
-        ok = numba_tostandard_conversion()
-        self.assertTrue(ok, msg="Numba conversion to standard test failed")
+        if sys.platform == "linux":
+            ok = numba_tostandard_conversion()
+            self.assertTrue(ok, msg="Numba conversion to standard test failed")
     
     def test_unbox_xr_scalar(self):
         res = numba_unbox_xr_scalar(1.0, np.int32(10))
