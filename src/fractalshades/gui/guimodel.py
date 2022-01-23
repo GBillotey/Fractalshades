@@ -1740,6 +1740,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             with PIL.Image.open(image_file) as im:
                 info = im.info
                 nx, ny = im.size
+
                 # print("info debug", info["debug"])
         except FileNotFoundError:
             valid_image = False
@@ -1754,12 +1755,15 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         self._fractal_zoom_init["ny"] = ny
 
         print("****************** dps", info.keys())
+
+        if self.has_dps:
+            self._fractal_zoom_init["dps"] = info.get(
+                "precision", mpmath.mp.dps
+            )
 #        precision = info["precision"]
 #        C = np.log(10.) / np.log(2.)
 #        dps = max(15, int(round(int(precision) / C - 1)))
-        if self.has_dps:
-            print("has dps")
-            self._fractal_zoom_init["dps"] = info["precision"]
+
         # self._presenter["dps"] = ref_zoom[key]
         
         self.validate()

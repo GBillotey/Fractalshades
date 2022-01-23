@@ -43,6 +43,9 @@ def plot(plot_dir):
     x = '-1.0'
     y = '-0.0'
     dx = '5.0'
+#    x = '-1.38489865821023436791757551552306535886843948840412919252407990736646683879'
+#    y = '0.0227499123767246576841168164274146683393042605219762097416661295893851121561'
+#    dx = '2.092546730312027e-65'
     calc_name = 'test'
     
     xy_ratio = 1.0
@@ -58,7 +61,7 @@ def plot(plot_dir):
     zmax = 0.15
 
     # Set to True to enable multi-processing
-    settings.enable_multiprocessing = True
+    settings.enable_multithreading = True
 
     directory = plot_dir
     fractal = fsm.Perturbation_mandelbrot(directory)
@@ -80,6 +83,7 @@ def plot(plot_dir):
              zmin: float=zmin,
              zmax: float=zmax):
 
+        settings.enable_multithreading = False
 
         fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
              theta_deg=0., projection="cartesian", antialiasing=False)

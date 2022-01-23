@@ -26,30 +26,6 @@ from fractalshades.numpy_utils.xrange import (
 )
 import fractalshades.numpy_utils.numba_xr as numba_xr
 import fractalshades.models as fsmodels
-# Allows relative imports when run locally as script
-# https://docs.python-guide.org/writing/structure/
-#if __name__ == "__main__":
-#    sys.path.insert(0, os.path.abspath(
-#            os.path.join(os.path.dirname(__file__), '..')))
-
-
-
-
-# import fractalshades.numpy_utils.numba_xr as numba_xr
-# numba_xr as side effects (defines overload) make sure we only import once
-#if "mumba_xr" not in sys.modules:
-#    import numba_xr
-#    pass
-#else: 
-#    print("ALREADY IMPORTED")
-#print(mumba_xr)
-
-#global imported_numba_xr 
-#if not "imported_numba_xr" in globals():
-#    import numba_xr
-#    imported_numba_xr = True
-#else:
-#    print("ALREADY imported")    
 
 
 from_complex = {np.complex64: np.float32,

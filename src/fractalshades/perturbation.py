@@ -45,7 +45,8 @@ directory : str
     Path for the working base directory
         """
         super().__init__(directory)
-        
+        self.iref = 0 # Only one reference point
+
 
     @fs.utils.zoom_options
     def zoom(self, *,
@@ -147,12 +148,17 @@ directory : str
         kc: full precision, scaling coefficient
         """
         c0 = self.x + 1j * self.y
+#        print("in kc c0", c0)
+#        print("in kc dx", self.dx)
+#        print("in kc dy", self.dy)
         corner_a = c0 + 0.5 * (self.dx + 1j * self.dy)
         corner_b = c0 + 0.5 * (- self.dx + 1j * self.dy)
         corner_c = c0 + 0.5 * (- self.dx - 1j * self.dy)
         corner_d = c0 + 0.5 * (self.dx - 1j * self.dy)
 
         ref = self.FP_params["ref_point"]
+#        print("in kc ref", ref)
+#        print("in kc ref - corner_a", ref - corner_a)
 
         # Let take some margin
         kc = max(abs(ref - corner_a), abs(ref - corner_b),
@@ -231,6 +237,7 @@ directory : str
         Return the FP_params attribute, if not available try to reload it
         from file
         """
+        print("in FP_params", hasattr(self, "_FP_params"))
         if hasattr(self, "_FP_params"):
             return self._FP_params
         FP_params = self.reload_ref_point(scan_only=True)
@@ -276,10 +283,7 @@ directory : str
         ).ravel()
 
         has_xr = (len(ref_xr_python) > 0)
-#        Ref_path = fsxn.Ref_path(
-#            Z_path, ref_index_xr, ref_xr, ref_div_iter,
-#            drift_xr, dx_xr
-#        )
+
         return Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr
 
 
@@ -291,7 +295,7 @@ directory : str
         return os.path.join(self.directory, "data", "SA.dat")
 
 
-    def save_SA(self, FP_params, SA_params, P, n_iter, P_err):
+    def save_SA(self, FP_params, SA_params, SA_kc, P, n_iter, P_err):
         """
         Reload arrays from a data file
            - params = main parameters used for the calculation
@@ -303,37 +307,56 @@ directory : str
 
         with open(save_path, 'wb+') as tmpfile:
             print("SA computed, saving", save_path)
-            for item in (FP_params, SA_params, P, n_iter, P_err):
+            for item in (FP_params, SA_params, SA_kc, P, n_iter, P_err):
                 pickle.dump(item, tmpfile, pickle.HIGHEST_PROTOCOL)
 
 
-    def reload_SA(self):
+    def reload_SA(self, scan_only=False):
         """
         Reload arrays from a data file
-           - params = main parameters used for the calculation
-           - codes = complex_codes, int_codes, termination_codes
-           - arrays : [Z, U, stop_reason, stop_iter]
+           - FP_params = main parameters used for ref pt calc
+           - SA_params = main parameters used for SA calc
+            P, n_iter, P_err : The SA results
+
         """
         save_path = self.SA_file()
         with open(save_path, 'rb') as tmpfile:
             FP_params = pickle.load(tmpfile)
             SA_params = pickle.load(tmpfile)
+            SA_kc = pickle.load(tmpfile)
+            if scan_only:
+                return FP_params, SA_params, SA_kc
             P = pickle.load(tmpfile)
             n_iter = pickle.load(tmpfile)
             P_err = pickle.load(tmpfile)
-        return FP_params, SA_params, P, n_iter, P_err
+        return FP_params, SA_params, SA_kc, P, n_iter, P_err
 
-    def SA_matching(
-         self,
-         sto_FP_params, FP_params,
-         sto_SA_params, SA_params,
-    ):
+    def get_SA_data(self):
+        """ return attribute or try to reload from file """
+        if hasattr(self, "_SA_data"):
+            return self._SA_data
+        else:
+            _, _, _, P, n_iter, P_err = self.reload_SA()
+            return P, n_iter, P_err
+
+    def SA_matching(self):
         """
         Test if the SA stored can be used for this calculation ie 
            - same ref point
            - same SA parameters
         """
-        pass
+        try:
+            (stored_FP_params, stored_SA_params, stored_kc
+             ) = self.reload_SA(scan_only=True)
+        except FileNotFoundError:
+            return False
+
+        valid_FP_params = (stored_FP_params == self.FP_params)
+        valid_SA_params = (stored_SA_params == self.SA_params)
+        valid_kc = (stored_kc == self.kc)
+        print("validate stored SA", valid_FP_params, valid_SA_params, valid_kc)
+
+        return (valid_FP_params and valid_SA_params and valid_kc)
 
 #==============================================================================
 # Printing functions
@@ -385,27 +408,29 @@ directory : str
 
         # Initialise the reference path
         self.get_FP_orbit()
+#        print("got FP orbit")
         (Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr
          ) = self.get_Ref_path()
+#        print("got FP parametes",
+#              (Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr),
+#         )
 
         # Initialise SA interpolation
-        kc = self.ref_point_kc().ravel()  # Make it 1d for numba use
-        SA_params = self.SA_params
-        SA_loop = self.SA_loop()
+        print("Initialise SA interpolation")
+        self.kc = kc = self.ref_point_kc().ravel()  # Make it 1d for numba use
+        if kc == 0.:
+            raise RuntimeError(
+                "Resolution is too low for this zoom depth. Try to increase"
+                "the reference calculation precicion."
+            )
 
-        if SA_params is None:
+        if self.SA_params is None:
             n_iter = 0
             P = None
+            P_err = None
         else:
-            SA_cutdeg = SA_params["cutdeg"]
-            SA_err_sq = SA_params["err"] ** 2
-            SA_stop = SA_params.get("stop", -1)
-            P, n_iter, P_err = numba_SA_run(
-                SA_loop, 
-                Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter,
-                kc, SA_cutdeg, SA_err_sq, SA_stop
-            )
-            print("SA_computed iter", n_iter, ":\n", P)
+            self.get_SA(Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter)
+            P, n_iter, P_err = self.get_SA_data()
 
         # Jitted function used in numba inner-loop
         self._initialize = self.initialize()
@@ -451,38 +476,51 @@ directory : str
         """
         Fast-looping for Julia and Mandelbrot sets computation.
 
-        Parameters
-        *initialize*  function(Z, U, c) modify in place Z, U (return None)
-        *iterate*   function(Z, U, c, n) modify place Z, U (return None)
+        Parameters:
+        -----------
+        chunk_slice : 4-tuple int
+            The calculation tile
+        Z_path : complex128[]
+            The array for the reference point orbit, in low precision
+        has_xr : boolean
+            True if the Z_path needs extended range values - when it gets close
+            to 0.
+        ref_index_xr : int[:]
+            indices for the extended range values
+        ref_xr : X_range[:]
+            The extended range values
+        ref_div_iter : int
+            The first invalid iteration for the reference orbit (either
+            missing or diverging)
+        drift_xr : X_range
+            vector between image center and reference point : center - ref_pt
+        dx_xr :
+            width of the image (self.dx)
+        P : Xrange_polynomial
+            Polynomial from the Series approximation
+        kc :
+            Scaling coefficient for the Series Approximation
+        n_iter :
+            iteration to which "jumps" the SA approximation
 
-        *subset*   bool arrays, iteration is restricted to the subset of current
-                   chunk defined by this array. In the returned arrays the size
-                    of axis ":" is np.sum(subset[ix:ixx, iy:iyy]) - see below
-        *codes*  = complex_codes, int_codes, termination_codes
-        *calc_name* prefix identifig the data files
-        *chunk_slice_c* None - provided by the looping wrapper
+        Returns:
+        --------
+        None
         
-        *iref* *ref_path* : defining the reference path, for iterations with
-            perturbation method. if iref > 0 : means glitch correction loop.
-        
-
-        *gliched* boolean Fractal_Data_array of pixels that should be updated
-                  with a new ref point
-        *irefs*   integer Fractal_Data_array of pixels current ref points
-        
-        
-        Returns 
-        None - save to a file. 
+        Save to a file : 
         *raw_data* = (chunk_mask, Z, U, stop_reason, stop_iter) where
             *chunk_mask*    1d mask
-            *Z*             Final values of iterated complex fields shape [ncomplex, :]
+            *Z*             Final values of iterated fields [ncomplex, :]
             *U*             Final values of int fields [nint, :]       np.int32
             *stop_reason*   Byte codes -> reasons for termination [:]  np.int8
             *stop_iter*     Numbers of iterations when stopped [:]     np.int32
         """
         if self.is_interrupted():
+            print("interrupted", chunk_slice)
             return
+
         if self.res_available(chunk_slice):
+            print("res available: ", chunk_slice)
             return
 
         (c_pix, Z, U, stop_reason, stop_iter
@@ -490,6 +528,12 @@ directory : str
 
         initialize = self._initialize
         iterate = self._iterate
+
+        # TypeError: expected int64, got None
+        # print("stop_iter", stop_iter) stop_iter [[0 0 0 ... 0 0 0]]
+#        print("n_iter", n_iter)
+#        print("ref_div_iter", ref_div_iter)
+#        print("ref_index_xr", ref_index_xr)
 
         numba_cycles_perturb(
             c_pix, Z, U, stop_reason, stop_iter,
@@ -537,15 +581,47 @@ directory : str
         return True
 
 
+    def get_SA(self, Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter):
+        """
+        Check if we have a suitable SA approximation stored for iref, 
+          - otherwise computes and stores it in a file
+        """
+        if self.SA_matching():
+            print("SA already stored")
+            return
+
+        else:            
+            SA_params = self.SA_params
+            FP_params = self.FP_params
+            kc = self.kc
+
+            SA_loop = self.SA_loop()
+            SA_cutdeg = SA_params["cutdeg"]
+            SA_err_sq = SA_params["err"] ** 2
+            SA_stop = SA_params.get("stop", -1)
+
+            P, n_iter, P_err = numba_SA_run(
+                SA_loop, 
+                Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter,
+                kc, SA_cutdeg, SA_err_sq, SA_stop
+            )
+            self._SA_data = (P, n_iter, P_err)
+            self.save_SA(FP_params, SA_params, kc, P, n_iter, P_err)
+            
+            
+
 
     def get_FP_orbit(self, c0=None, newton="cv", order=None,
-                         randomize=False):
+                     max_newton=None):
         """
         # Check if we have a reference point stored for iref, 
           - otherwise computes and stores it in a file
-        
+
         newton: ["cv", "step", None]
         """
+        if newton == "step":
+            raise NotImplementedError("step option not Implemented (yet)")
+        
         # Early escape if file exists
         if self.ref_point_matching():
             print("Ref point already stored")
@@ -554,87 +630,94 @@ directory : str
         # no newton if zoom level is low. TODO: early escape possible
         if self.dx > fs.settings.newton_zoom_level:
             c0 = self.critical_pt
+            self.compute_FP_orbit(c0, None)
             newton = None
 
-        # skip Newton if settings impose it
-        if fs.settings.no_newton:
-            newton = None
-        
         if c0 is None:
             c0 = self.x + 1j * self.y
 
-        if randomize:
-            data_type = self.base_float_type
-            rg = np.random.default_rng(0)
-            diff = rg.random([2], dtype=data_type) * randomize
-            print("RANDOMIZE, diff", diff)
-            c0 = (c0 + self.dx * (diff[0] - 0.5)
-                + self.dy * (diff[1] - 0.5) * 1j)
-
-        pt = c0
-        print("Proposed ref point:\n", c0)
-
-        # If we plan a newton iteration, we launch the process
-        # ball method to find the order, then Newton
-        if (newton is not None) and (newton != "None"):
-            if order is None:
-                k_ball = 0.01
-                order = self.ball_method(c0, self.dx * k_ball)
-                if order is None: # ball method escaped... we try to recover
-                    if randomize < 5:
-                        randomize += 1
-                        print("BALL METHOD RANDOM ", randomize)
-                        self.get_FP_orbit(c0=None, newton=newton, order=None,
-                                 randomize=randomize)
-                    else:
-                        raise RuntimeError("Ball method failed")
-
-            max_newton = 1 if (newton == "step") else None
-            print("newton ", newton, " with order: ", order)
-            print("max newton iter ", max_newton)
-
-            newton_cv, nucleus = self.find_nucleus(
-                    c0, order, max_newton=max_newton)
-
-            if not(newton_cv) and (newton != "step"):
-                max_attempt = 2
-                attempt = 0
-                while not(newton_cv) and attempt < max_attempt:
-                    attempt += 1
-                    old_dps = mpmath.mp.dps
-                    mpmath.mp.dps = int(1.25 * old_dps)
-                    print("Newton not cv, dps boost to: ", mpmath.mp.dps)
-                    if attempt < max_attempt:
-                        newton_cv, nucleus = self.find_nucleus(
-                            c0, order, max_newton=max_newton)
-                    else:
-                        newton_cv, nucleus = self.find_any_nucleus(
-                            c0, order, max_newton=max_newton)
-                        
-#                    newton_cv, nucleus = self.find_any_nucleus(
-#                        c0, order, max_newton=max_newton)
-
-#                if not(newton_cv) and (newton != "step"):
-#                    newton_cv, nucleus = self.find_any_attracting(
-#                        c0, order, max_newton=max_newton)
-
-            if newton_cv or (newton == "step"):
-                shift = nucleus - (self.x + self.y * 1j)
-                print("Reference nucleus at:\n", nucleus, order)
-                print("With shift % from image center:\n",
-                      shift.real / self.dx, shift.imag / self.dy)
-                shift = nucleus - pt
-                print("With shift % from proposed coords:\n",
-                      shift.real / self.dx, shift.imag / self.dy)
-            else:
-                print("Newton failed with order", order)
-                nucleus = pt
-
-            pt = nucleus
-
-        print("compute ref_point")
+        # skip Newton if settings impose it
+        if fs.settings.no_newton or (newton is None) or (newton == "None"):
+            self.compute_FP_orbit(c0, None)
+            return
         
-        self.compute_FP_orbit(pt, order)
+        # Here we will compute a Newton iteration. First, guess a cycle order
+        print("Launching Newton iteration process with ref point:\n", c0)
+#        pt = c0 * 1.0 # Local copy
+
+        # Try Ball method to find the order, then Newton
+        if order is None:
+            k_ball = 1.0
+            order = self.ball_method(c0, self.dx * k_ball)
+            if order is None: 
+                print("##### Ball method failed #####")
+                print("##### Default to image center or c0 #####")
+                self.compute_FP_orbit(c0, None)
+                return
+
+        if order is None:
+            raise ValueError("Order must be specified for Newton"
+                             "iteration")
+        if (newton == "step"):
+            max_newton = 1
+
+        print("newton ", newton, " with order: ", order)
+        print("max newton iter ", max_newton)
+
+        newton_cv, nucleus = self.find_nucleus(
+            c0, order, max_newton=max_newton
+        )
+
+        # If Newton did not CV, we try to boost the dps / precision
+        if not(newton_cv) and (newton != "step"):
+            max_attempt = 2
+            attempt = 0
+            while not(newton_cv) and attempt < max_attempt:
+                attempt += 1
+                old_dps = mpmath.mp.dps
+                mpmath.mp.dps = int(1.25 * old_dps)
+                print(
+                    f"Newton failed, dps boost: {old_dps} -> {mpmath.mp.dps}"
+                )
+                if attempt != max_attempt:
+                    newton_cv, nucleus = self.find_nucleus(
+                        c0, order, max_newton=max_newton
+                )
+                else:
+                    # Last try, we release constraint on the cycle order
+                    newton_cv, nucleus = self.find_any_nucleus(
+                        c0, order, max_newton=max_newton
+                )
+
+        # Still not CV ?
+        if not(newton_cv) and (newton != "step"):
+            print("##### Newton method failed #####")
+            print("##### Default to image center or c0 #####")
+            self.compute_FP_orbit(c0, None)
+            return
+            
+#                shift = nucleus - (self.x + self.y * 1j)
+#                print("Reference nucleus at:\n", nucleus, order)
+#                print("With shift % from image center:\n",
+#                      shift.real / self.dx, shift.imag / self.dy)
+#                shift = nucleus - pt
+#                print("With shift % from proposed coords:\n",
+#                      shift.real / self.dx, shift.imag / self.dy)
+#            else:
+#                print("Newton failed with order", order)
+#                nucleus = pt
+#
+#            pt = nucleus
+
+        shift = nucleus - (self.x + self.y * 1j)
+        shift_x = shift.real / self.dx
+        shift_y = shift.real / self.dx
+        print("Reference nucleus found at shift (expressed in dx units):\n", 
+              f"({shift_x}, {shift_y})",
+              f"with order {order}"
+        )
+        
+        self.compute_FP_orbit(nucleus, order)
 
 
     def compute_FP_orbit(self, ref_point, order=None):
@@ -675,7 +758,7 @@ directory : str
         self._Z_path = Z_path
 
 
-    def ball_method(self, c, px, order=1, M_divergence=1.e5):
+    def ball_method(self, c, px, kind=1, M_divergence=1.e5):
         """
         Use a ball centered on c = x + i y to find the first period (up to 
         maxiter) of nucleus
@@ -684,9 +767,9 @@ directory : str
         max_iter = self.max_iter
         print("ball method", c, type(c), px, type(px))
         
-        if order == 1:
-            return self._ball_method1(c, px, max_iter, M_divergence)
-        elif order == 2:
+        if kind == 1:
+            return self._ball_method(c, px, max_iter, M_divergence)
+        elif kind == 2:
             return self._ball_method2(c, px, max_iter, M_divergence)
 
 
@@ -716,6 +799,7 @@ def numba_cycles_perturb(
     n_iter:
         current iteration
     """
+    print("in numba_cycles_perturb")
     n_iter_init = n_iter
 
     nz, npts = Z.shape
@@ -726,6 +810,8 @@ def numba_cycles_perturb(
     
     for ipt in range(npts): # npts): # DEBUG  #npts):
         n_iter = n_iter_init
+        
+        # print("in numba_cycles_perturb loop")
         # skip this ipt if pixel not active 
         Z_xr_trigger = np.zeros((nz,), dtype=np.bool_)
         refpath_ptr = np.zeros((2,), dtype=np.int32)
@@ -773,7 +859,7 @@ def numba_SA_run(
 
     print_freq = max(5, int(SA_stop / 100000.))
     print_freq *= 1000
-    print("numba_SA_cycles - output every", print_freq)
+#    print("numba_SA_cycles - output every", print_freq)
 
     SA_valid = True
     n_iter = 0

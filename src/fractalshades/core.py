@@ -698,23 +698,26 @@ advanced users when subclassing.
         return res
 
 
-    def clean_up(self, calc_name):
+    def clean_up(self, calc_name=None):
         """
         Deletes all saved data files associated with a given ``calc_name``.
         
         Parameters
         ----------
-        calc_name : str
+        calc_name : str | None
             The string identifying the calculation run for which we want to
-            delete the files. 
+            delete the files.
+            If None, delete all calculation files
         """
-        for pattern in [
-                calc_name + "_*.arr",
-                calc_name + ".params",
-                calc_name + ".report",
-                calc_name + "_pt*.ref",
-                calc_name + "_pt*.sa"
-        ]:
+        if calc_name is None:
+            patterns = ("*.*",)
+        else:
+            patterns = (
+                 calc_name + "_*.arr",
+                 calc_name + ".report",
+                 calc_name + ".params",
+            )
+        for pattern in patterns:
             data_dir = os.path.join(self.directory, "data")
             if not os.path.isdir(data_dir):
                 return
@@ -722,7 +725,7 @@ advanced users when subclassing.
                 for entry in it:
                     if (fnmatch.fnmatch(entry.name, pattern)):
                         os.unlink(entry.path)
-            
+
     @property
     def pts_count(self):
         """ Return the total number of points for the current calculation 
@@ -897,11 +900,15 @@ advanced users when subclassing.
             return False
 
         if self.iref is None:
-            return report["iref"] >= -1 # -2 means not yet calculated
+            # -2 means not yet calculated
+            # -1 means no perturbation / no reference
+            # >= 0 is the orbit index (usually, 0)
+            return report["iref"] >= -1
         else:
             # Glitch logic, not used.
             completed = (report["iref"] >= self.iref)
             not_needed = (report["total-glitched"] == 0)
+            print("completed / not needed", completed, not_needed)
             return (not_needed or completed)
 
 

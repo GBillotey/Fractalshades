@@ -5,7 +5,7 @@ import mpmath
 import numba
 
 import fractalshades as fs
-import fractalshades.numpy_utils.xrange as fsx
+#import fractalshades.numpy_utils.xrange as fsx
 import fractalshades.numpy_utils.numba_xr as fsxn
 import fractalshades.utils as fsutils
 import fractalshades.settings as fssettings
@@ -152,7 +152,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             dzndc = code_int
         else:
             dzndc = -1
-        
+
         # Integer int32 fields codes "U" 
         int_codes = ["ref_cycle_iter"] # Position in ref orbit
 
@@ -191,21 +191,18 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                     # Apply the  Series approximation step
                     U[0] = n_iter
                     c_scaled = c_xr / kc[0]
-#                    print("P", P)
-#                    print("c_scaled", c_scaled, P.__call__(c_scaled), fsxn.to_standard(P.__call__(c_scaled)))
-#                    print("dzndc", dzndc)
+
                     Z[zn] = fsxn.to_standard(P.__call__(c_scaled))
                     if fs.perturbation.need_xr(Z[zn]):
                         Z_xr_trigger[zn] = True
                         Z_xr[zn] = P.__call__(c_scaled)
+
                     if dzndc != -1:
                         P_deriv = P.deriv()
-#                        print("P_deriv", P_deriv)
                         deriv_scale =  dx_xr[0] / kc[0]
                         Z[dzndc] = fsxn.to_standard(
                             P_deriv.__call__(c_scaled) * deriv_scale
                         )
-#                        print("Z[dzndc]", Z[dzndc], P_deriv.__call__(c_scaled), deriv_scale)
                 if (dzndz != -1):
                     Z[dzndz] = 1.
                     
@@ -262,7 +259,6 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                         )
 
                     else:
-                        # ref_is_xr = False
                         ref_zn = ref_path[U[0]]
 
                     #==============================================================
@@ -280,12 +276,12 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                         if not(SA_activated) and (n_iter == 1):
                             # Non-null term needed to 'kick-off'
                             Z[dzndc] = 1.
-    
+
                     #--------------------------------------------------------------
                     # Interior detection - Used only at low zoom level
                     if interior_detect_activated and (n_iter > 1):
                         Z[dzndz] = 2. * (Z[zn] * Z[dzndz])
-    
+
                     #--------------------------------------------------------------
                     # zn subblok
                     if xr_detect_activated:
@@ -299,7 +295,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                                 # standard -> xrange conversion
                                 Z_xr[zn] = fsxn.to_Xrange_scalar(old_zn)
                                 Z_xr_trigger[0] = True
-    
+
                         if Z_xr_trigger[0]:
                             if (ref_is_xr[0]):
                                 Z_xr[zn] = Z_xr[zn] * (Z_xr[zn] + 2. * ref_zn_xr[0])
@@ -307,18 +303,18 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                                 Z_xr[zn] = Z_xr[zn] * (Z_xr[zn] + 2. * ref_zn)
                             # xrange -> standard conversion
                             Z[zn] = fsxn.to_standard(Z_xr[zn])
-    
+
                             # Unlock trigger if we can...
                             Z_xr_trigger[0] = fs.perturbation.need_xr(Z[zn])
                     else:
                         # No risk of underflow, normal perturbation interation
                         Z[zn] = Z[zn] * (Z[zn] + 2. * ref_zn) + c
-    
+
                     #==============================================================
                     if n_iter >= max_iter:
                         stop[0] = reason_max_iter
                         break
-    
+
                     # Interior points detection
                     if interior_detect_activated:
                         bool_stationnary = (
@@ -327,7 +323,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                         if bool_stationnary:
                             stop[0] = reason_stationnary
                             break
-    
+
                     #==============================================================
                     # ZZ = "Total" z + dz
                     U[0] = U[0] + 1
@@ -351,7 +347,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                     if bool_infty:
                         stop[0] = reason_M_divergence
                         break
-    
+
                     # Glitch correction - reference point diverging
                     if (U[0] >= ref_div_iter - 1):
                         # Rebasing - we are already big no underflow risk
@@ -364,14 +360,14 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                         (abs(ZZ.real) <= abs(Z[zn].real))
                         and (abs(ZZ.imag) <= abs(Z[zn].imag))
                     )
-                    if bool_dyn_rebase:# and not(xr_detect_activated): # and not(xr_detect_activated): # bool_dyn_rebase # debug and not(xr_detect_activated)
+                    if bool_dyn_rebase:
                         if xr_detect_activated and Z_xr_trigger[0]:
                             # Can we *really* rebase ??
-                            # Note: if Z[zn] underflows we might miss a rebase...
+                            # Note: if Z[zn] underflows we might miss a rebase
                             # So we cast everything to xr
                             Z_xrn = Z_xr[zn]
                             if ref_is_xr[1]:
-                                # Reference underflows, use available xr reference
+                                # Reference underflows, use available xr ref
                                 ZZ_xr = Z_xrn + ref_zn_xr[1]
                             else:
                                 ZZ_xr = Z_xrn + ref_zn_next
@@ -402,71 +398,54 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
 # Newton search & other related methods
 
     @staticmethod
-    def _ball_method1(c, px, maxiter, M_divergence):#, M_divergence):
-        #c = x + 1j * y
-        z = mpmath.mpc(0.)
-        r0 = px      # first radius
-        r = r0 * 1.
-        az = abs(z)
-        dzdc = mpmath.mpc(0.)
+    def _ball_method(c, px, maxiter, M_divergence):
+        """ Order 1 ball method: Cython wrapper"""
+        x = c.real
+        y = c.imag
+        seed_prec = mpmath.mp.prec
+        
+        order = fsFP.perturbation_mandelbrot_ball_method(
+            str(x).encode('utf8'),
+            str(y).encode('utf8'),
+            seed_prec,
+            str(px).encode('utf8'),
+            maxiter,
+            M_divergence
+        )
+        if order == -1:
+            return None
+        return order
 
-        for i in range(1, maxiter + 1):
-            if i%10000 == 0:
-                print("Ball method", i, r)
-            r = (az  + r)**2 - az**2 + r0
-            z = z**2 + c
-            dzdc =  2. * z * dzdc +  1.
-            az = abs(z)
-            if az > M_divergence:
-                return None
-            if (r > az):
-                print("Ball method 1 found period:", i)
-                return i #, z, dzdc
 
     @staticmethod
     def find_nucleus(c, order, max_newton=None, eps_cv=None):
         """
-        https://en.wikibooks.org/wiki/Fractals/Mathematics/Newton_method#center
-        https://mathr.co.uk/blog/2013-04-01_interior_coordinates_in_the_mandelbrot_set.html
-        https://mathr.co.uk/blog/2018-11-17_newtons_method_for_periodic_points.html
-        https://code.mathr.co.uk/mandelbrot-numerics/blob/HEAD:/c/lib/m_d_nucleus.c
-        Run Newton search to find z0 so that f^n(z0) == 0
+        Run Newton search to find z0 so that f^n(z0) == 0 : Cython wrapper
         """
         if order is None:
-            return False, c
+            raise ValueError("order shall be defined for Newton method")
+
+        x = c.real
+        y = c.imag
+        seed_prec = mpmath.mp.prec
+
         if max_newton is None:
-            max_newton = 80 # max(mpmath.mp.dps, 50)
-#        if eps_cv is None:
-#            eps_cv = mpmath.mpf(2.)**(-mpmath.mp.prec)
-        c_loop = c
+            max_newton = 80
+        if eps_cv is None:
+            eps_cv = mpmath.mpf(val=(2, -seed_prec))
+        
+        is_ok, val = fsFP.perturbation_mandelbrot_find_nucleus(
+            str(x).encode('utf8'),
+            str(y).encode('utf8'),
+            seed_prec,
+            order,
+            max_newton,
+            str(eps_cv).encode('utf8'),
+        )
 
-        hit = False
-        for i_newton in range(max_newton): 
-            print("Newton iteration", i_newton, "order", order)
-            zr = mpmath.mp.zero
-            dzrdc = mpmath.mp.zero
-            h = mpmath.mp.one
-            dh = mpmath.mp.zero
-            for i in range(1, order + 1):# + 1):
-                dzrdc = 2. * dzrdc * zr + 1. #  mpmath.mpf("2.")
-                zr = zr * zr + c_loop
-                # divide by unwanted periods
-                if i < order and order % i == 0:
-                    h *= zr
-                    dh += dzrdc / zr
-            f = zr / h
-            df = (dzrdc * h - zr * dh) / (h * h)
-            cc = c_loop - f / df
-            newton_cv = mpmath.almosteq(cc, c_loop) #abs(cc - c_loop ) <= eps_cv
-            c_loop = cc
-            if newton_cv and (i_newton > 0):
-                if hit:
-                    print("Newton iteration cv @ ", i_newton)
-                    break
-                else:
-                    hit = True
-        return newton_cv, c_loop
-
+        return is_ok, val
+        
+    
     @staticmethod
     def find_any_nucleus(c, order, max_newton=None, eps_cv=None):
         """
@@ -559,12 +538,22 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         ----------
         c0 : position of the nucleus
         order : cycle order
+        
+        Returns
+        ----------
+        nucleus_size : 
+            size estimate of the nucleus
+        julia_size : 
+            size estimate of the Julian embedded set
 
 https://mathr.co.uk/blog/2016-12-24_deriving_the_size_estimate.html
 
 Structure in the parameter dependence of order and chaos for the quadratic map
 Brian R Hunt and Edward Ott
 J. Phys. A: Math. Gen. 30 (1997) 7067–7076
+
+https://fractalforums.org/fractal-mathematics-and-new-theories/28/miniset-and-embedded-julia-size-estimates/912/msg4805#msg4805
+        r_J = r_M ** ((n+1)*(n-1)/n**2)
         """
         x = c0.real
         y = c0.imag
@@ -575,23 +564,9 @@ J. Phys. A: Math. Gen. 30 (1997) 7067–7076
             seed_prec,
             order
         )
-        return nucleus_size
-    
-    @staticmethod
-    def julia_set_size_estimate(nucleus_size):
-        """
-        Julia set size estimate - knowing the nucleus_size
-        
-https://fractalforums.org/fractal-mathematics-and-new-theories/28/miniset-and-embedded-julia-size-estimates/912/msg4805#msg4805
-    # r_J = r_M ** ((n+1)*(n-1)/n**2)
-        """
-        # r_J = r_M ** ((n+1)*(n-1)/n**2)   n = 2 -> r_M ** 0.75
-        raise NotImplementedError()   # TODO
-#        with mpfr.
-#        r_m_mantissa = nucleus_size
-#        r_m_exp = nucleus_size
-#        
-#        return nucleus_size
+        julia_size = nucleus_size # ** 0.75
+        return nucleus_size, julia_size
+
 
 #==============================================================================
 # GUI : "interactive options"
@@ -618,7 +593,7 @@ coords = {{
         c = x + 1j * y
         radius = pix * radius_pixels
         M_divergence = 1.e3
-        order = self._ball_method1(c, radius, maxiter, M_divergence)
+        order = self._ball_method(c, radius, maxiter, M_divergence)
 
         x_str = str(x)
         y_str = str(y)
@@ -639,25 +614,41 @@ ball_order = {{
 
     @fsutils.interactive_options
     def newton_search(self, x, y, pix, dps,
-                          order: int=1):
+                          maxiter: int=100000,
+                          radius_pixels: int=3):
         """ x, y : coordinates of the event """
         c = x + 1j * y
-        
+
+        radius = pix * radius_pixels
+        radius_str = str(radius)
+        M_divergence = 1.e3
+        order = self._ball_method(c, radius, maxiter, M_divergence)
+
         newton_cv = False
-        xn_str = ""
-        yn_str = ""
         max_attempt = 2
         attempt = 0
         while not(newton_cv) and attempt < max_attempt:
+            if order is None:
+                break
             attempt += 1
             dps = int(1.5 * dps)
             print("Newton, dps boost to: ", dps)
             with mpmath.workdps(dps):
-                newton_cv, c_loop = self.find_nucleus(
+                newton_cv, c_newton = self.find_nucleus(
                         c, order, max_newton=None, eps_cv=None)
                 if newton_cv:
-                    xn_str = str(c_loop.real)
-                    yn_str = str(c_loop.imag)
+                    xn_str = str(c_newton.real)
+                    yn_str = str(c_newton.imag)
+
+        if newton_cv:
+            nucleus_size, julia_size = self._nucleus_size_estimate(
+                c_newton, order
+            )
+        else:
+            nucleus_size = None
+            julia_size = None
+            xn_str = ""
+            yn_str = ""
 
         x_str = str(x)
         y_str = str(y)
@@ -666,9 +657,14 @@ ball_order = {{
 newton_search = {{
     "x_start": "{x_str}",
     "y_start": "{y_str}",
+    "maxiter": {maxiter},
+    "radius_pixels": {radius_pixels},
+    "radius": "{radius_str}",
     "order": {order}
     "x_nucleus": "{xn_str}",
     "y_nucleus": "{yn_str}",
+    "nucleus_size": "{nucleus_size}",
+    "julia_size": "{julia_size}",
 }}
 """
         return res_str

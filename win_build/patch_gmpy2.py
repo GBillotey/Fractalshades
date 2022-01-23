@@ -14,6 +14,7 @@ gmpy2_dir = os.path.dirname(gmpy2.__file__)
 
 # Find the directory for MS Visual studio cl.exe dumpbin.exe lib.exe
 # Note : should we automate this ?
+# https://stackoverflow.com/questions/54305638/how-to-find-vswhere-exe-path
 MVS_dir = r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Tools\MSVC\14.29.30133\bin\Hostx86\x64"
 
 print("\n * Checking gmpy2 install")
@@ -43,7 +44,7 @@ print(os.listdir(os.path.dirname(gmpy2_dir)))
 print("\n * Adding necessary header files to gmpy2 insatll dir")
 # Currently we store the heeaders locally ; we could also download them
 # at runtime
-for header in glob.glob("win_build/gmpy2_headers/*"):
+for header in glob.glob("win_build/gmpy2_headers/*.h"):
     print("Copy header file", header, "-->", gmpy2_dir)
     shutil.copy2(header, gmpy2_dir)
 
