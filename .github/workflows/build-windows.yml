@@ -1,0 +1,66 @@
+# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
+
+name: test-windows
+
+on:
+#   push:
+#    branches: [ master ]
+#  pull_request:
+#    branches: [ master ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  build:
+
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [3.8] #, 3.9, 3.10]
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install gmpy2 and adds the headers - creates the .lib files
+      run: |
+        dir
+        python -m pip install --upgrade pip
+        python -m pip install gmpy2
+
+        echo "*** listing MVS folder"
+        dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin"
+        dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX86\\x64"
+
+        echo "**** Running python gmpy2 pathch script"
+        python win_build\patch_gmpy2.py
+
+
+    - name: Install dependencies
+      run: |
+        echo "install libraries needed for the test"
+        python -m pip install pytest
+
+        echo "install build dependencies /"
+        python -m pip install -r win_build/build_requirements.txt
+        dir
+
+    - name: Builds Fractalshades
+      run: |
+        python setup.py bdist_wheel
+        dir dist
+
+    - name: Archive production artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: dist-without-markdown
+        path: |
+            dist
+        retention-days: 5
+
