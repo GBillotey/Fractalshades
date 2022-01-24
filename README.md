@@ -4,7 +4,7 @@
 [![doc-latest](https://github.com/GBillotey/Fractalshades/actions/workflows/doc-latest.yml/badge.svg)](https://github.com/GBillotey/Fractalshades/actions/workflows/doc-latest.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-# Fractal-shades
+# Fractalshades
 The pupose of this python package is to implement efficient algorithms for static and interactive deep-zoom exploration (1.e-2000 and beyong) of a few fractals.
 
 ## Documentation
