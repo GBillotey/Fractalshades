@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 # Fractal-shades
-The pupose of this python package is to propose standard or deep-zoom exploration (1.e-2000 and beyong) of a few fractals.
+The pupose of this python package is to implement efficient algorithms for static and interactive deep-zoom exploration (1.e-2000 and beyong) of a few fractals.
 
 ## Documentation
 https://gbillotey.github.io/Fractalshades/
