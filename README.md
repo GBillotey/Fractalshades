@@ -1,6 +1,6 @@
 [![test-linux](https://github.com/GBillotey/Fractalshades/actions/workflows/test-linux.yml/badge.svg)](https://github.com/GBillotey/Fractalshades/actions/workflows/test-linux.yml)
 [![test-windows](https://github.com/GBillotey/Fractalshades/actions/workflows/test-windows.yml/badge.svg)](https://github.com/GBillotey/Fractalshades/actions/workflows/test-windows.yml)
-[![build-windows](https://github.com/GBillotey/Fractalshades/actions/workflows/test-windows.yml/badge.svg)](https://github.com/GBillotey/Fractalshades/actions/workflows/build-windows.yml)
+[![build-windows](https://github.com/GBillotey/Fractalshades/actions/workflows/build-windows.yml/badge.svg)](https://github.com/GBillotey/Fractalshades/actions/workflows/build-windows.yml)
 [![doc-latest](https://github.com/GBillotey/Fractalshades/actions/workflows/doc-latest.yml/badge.svg)](https://github.com/GBillotey/Fractalshades/actions/workflows/doc-latest.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
