@@ -20,13 +20,13 @@ skip_calc = False
 """If True, no calculation "loop" will be performed. Only the data already
 calculated will be post-processed"""
 
-newton_zoom_level = 1.e-8
+newton_zoom_level = 1.e-5
 """ Minimal zoom level for activating Newton search. For lower zooms, a fixed
 critical point will be used (0. for mandelbrot)"""
 
 std_zoom_level = 1.e-8
 """ Zoom level at which we drop some perturbation techniques optimisation 
-Chosen as this level squared is ~ precision of double
+Chosen as this level squared is ~ precision of float32
 """
 
 xrange_zoom_level = 1.e-300

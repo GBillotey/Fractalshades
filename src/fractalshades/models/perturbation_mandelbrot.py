@@ -353,7 +353,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                         # Rebasing - we are already big no underflow risk
                         U[0] = 0
                         Z[zn] = ZZ
-                        return
+                        break
 
                     # Glitch correction -  "dynamic glitch"
                     bool_dyn_rebase = (
@@ -421,6 +421,9 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
     def find_nucleus(c, order, max_newton=None, eps_cv=None):
         """
         Run Newton search to find z0 so that f^n(z0) == 0 : Cython wrapper
+
+        Includes a "divide by undesired roots" technique so that solutions
+        using divisors of n are disregarded.
         """
         if order is None:
             raise ValueError("order shall be defined for Newton method")
@@ -428,12 +431,11 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         x = c.real
         y = c.imag
         seed_prec = mpmath.mp.prec
-
         if max_newton is None:
             max_newton = 80
         if eps_cv is None:
             eps_cv = mpmath.mpf(val=(2, -seed_prec))
-        
+
         is_ok, val = fsFP.perturbation_mandelbrot_find_nucleus(
             str(x).encode('utf8'),
             str(y).encode('utf8'),
@@ -449,102 +451,49 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
     @staticmethod
     def find_any_nucleus(c, order, max_newton=None, eps_cv=None):
         """
-        https://en.wikibooks.org/wiki/Fractals/Mathematics/Newton_method#center
-        https://mathr.co.uk/blog/2013-04-01_interior_coordinates_in_the_mandelbrot_set.html
-        https://mathr.co.uk/blog/2018-11-17_newtons_method_for_periodic_points.html
-        https://code.mathr.co.uk/mandelbrot-numerics/blob/HEAD:/c/lib/m_d_nucleus.c
-        Run Newton search to find z0 so that f^n(z0) == 0
+        Run Newton search to find z0 so that f^n(z0) == 0 : Cython wrapper
         """
         if order is None:
-            return False, c
+            raise ValueError("order shall be defined for Newton method")
+
+        x = c.real
+        y = c.imag
+        seed_prec = mpmath.mp.prec
         if max_newton is None:
-            max_newton = 80 #max(mpmath.mp.dps, 50)
-#        if eps_cv is None:
-#            eps_cv = mpmath.mpf(2.)**(-mpmath.mp.prec)
-        c_loop = c
+            max_newton = 80
+        if eps_cv is None:
+            eps_cv = mpmath.mpf(val=(2, -seed_prec))
+        
+        is_ok, val = fsFP.perturbation_mandelbrot_find_any_nucleus(
+            str(x).encode('utf8'),
+            str(y).encode('utf8'),
+            seed_prec,
+            order,
+            max_newton,
+            str(eps_cv).encode('utf8'),
+        )
 
-        for i_newton in range(max_newton): 
-            print("Newton iteration ANY", i_newton, "order", order)
-            zr = mpmath.mp.zero
-            dzrdc = mpmath.mp.zero
-#            h = mpmath.mp.one
-#            dh = mpmath.mp.zero
-            for i in range(1, order + 1):# + 1):
-                dzrdc = 2. * dzrdc * zr + 1. #  mpmath.mpf("2.")
-                zr = zr * zr + c_loop
-                # divide by unwanted periods
-#                if i < order and order % i == 0:
-#                    h *= zr
-#                    dh += dzrdc / zr
-            cc = c_loop - zr / dzrdc
-            newton_cv = mpmath.almosteq(cc, c_loop) #abs(cc - c_loop ) <= eps_cv
-            c_loop = cc
-            if newton_cv and (i_newton > 0):
-                print("Newton iteration cv @ ", i_newton)
-                break
-        return newton_cv, c_loop
-
-    @staticmethod
-    def find_any_attracting(c, order, max_newton=None, eps_cv=None):
-        """
-        https://en.wikibooks.org/wiki/Fractals/Mathematics/Newton_method#center
-        https://mathr.co.uk/blog/2013-04-01_interior_coordinates_in_the_mandelbrot_set.html
-        https://mathr.co.uk/blog/2018-11-17_newtons_method_for_periodic_points.html
-        https://code.mathr.co.uk/mandelbrot-numerics/blob/HEAD:/c/lib/m_d_nucleus.c
-        Run Newton search to find z0 so that f^n(z0) == 0
-        """
-        if max_newton is None:
-            max_newton = max(mpmath.mp.dps, 50)
-#        if eps_cv is None:
-#            eps_cv = mpmath.mpf(2.)**(-mpmath.mp.prec)
-#            print("eps_cv", eps_cv)
-        c_loop = c
-
-        for i_newton in range(max_newton):     
-            if (i_newton % 5 == 0):
-                print("attracting ANY", i_newton, " / ", max_newton)
-            zr = c_loop #mpmath.mp.zero
-            dzrdc = mpmath.mp.one# mpmath.mp.zero
-            # d2zrdzdc = 0.   # == 1. hence : constant wrt c...
-            for i in range(1, order + 1):
-                # d2zrdzdc = 2 * (d2zrdzdc * zr + dzrdz * dzrdc)
-                dzrdc = 2. * dzrdc * zr + 1. #mpmath.mp.one
-                zr = zr * zr + c_loop
-#                    zr = zr / 
-#                if abs(zr) < mpmath.mpf("0.0001"):
-#                    print("zr", zr, i)
-            cc = c_loop - (zr - c_loop) / (dzrdc - 1.)#
-
-            newton_cv = mpmath.almosteq(cc, c_loop)
-            #abs(cc - c_loop ) <= eps_cv
-            c_loop = cc
-            if newton_cv:
-                print("attracting ANY iteration cv @ ", i_newton)
-                break
-            
-        return newton_cv, c_loop
-
-
-    # TODO implement atom domain size estimate
-    # https://mathr.co.uk/blog/2013-12-10_atom_domain_size_estimation.html
+        return is_ok, val
 
 
     @staticmethod
     def _nucleus_size_estimate(c0, order):
         """
-        Nucleus size estimate
-        
-        Parameters
-        ----------
-        c0 : position of the nucleus
-        order : cycle order
-        
-        Returns
-        ----------
-        nucleus_size : 
-            size estimate of the nucleus
-        julia_size : 
-            size estimate of the Julian embedded set
+Nucleus size estimate
+
+Parameters:
+-----------
+c0 :
+    position of the nucleus
+order :
+    cycle order
+
+Returns:
+--------
+nucleus_size : 
+    size estimate of the nucleus
+julia_size : 
+    size estimate of the Julian embedded set
 
 https://mathr.co.uk/blog/2016-12-24_deriving_the_size_estimate.html
 
@@ -553,8 +502,8 @@ Brian R Hunt and Edward Ott
 J. Phys. A: Math. Gen. 30 (1997) 7067–7076
 
 https://fractalforums.org/fractal-mathematics-and-new-theories/28/miniset-and-embedded-julia-size-estimates/912/msg4805#msg4805
-        r_J = r_M ** ((n+1)*(n-1)/n**2)
-        """
+    julia size estimate : r_J = r_M ** ((n+1)*(n-1)/n**2)
+"""
         x = c0.real
         y = c0.imag
         seed_prec = mpmath.mp.prec
@@ -564,7 +513,14 @@ https://fractalforums.org/fractal-mathematics-and-new-theories/28/miniset-and-em
             seed_prec,
             order
         )
-        julia_size = nucleus_size # ** 0.75
+        print("raw nucleus_size", nucleus_size)
+        nucleus_size = np.abs(nucleus_size)
+
+        # r_J = r_M ** 0.75 for power 2 Mandelbrot
+        sqrt = np.sqrt(nucleus_size)
+        sqrtsqrt = np.sqrt(sqrt)
+        julia_size = sqrtsqrt * sqrt
+
         return nucleus_size, julia_size
 
 
@@ -660,6 +616,7 @@ newton_search = {{
     "maxiter": {maxiter},
     "radius_pixels": {radius_pixels},
     "radius": "{radius_str}",
+    "calculation dps": {dps}
     "order": {order}
     "x_nucleus": "{xn_str}",
     "y_nucleus": "{yn_str}",

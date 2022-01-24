@@ -83,14 +83,13 @@ def plot(plot_dir):
              zmin: float=zmin,
              zmax: float=zmax):
 
-        settings.enable_multithreading = False
 
         fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
              theta_deg=0., projection="cartesian", antialiasing=False)
 
         fractal.calc_std_div(datatype=np.complex128, calc_name=calc_name,
             subset=None, max_iter=max_iter, M_divergence=1.e3,
-            epsilon_stationnary=1.e-4,
+            epsilon_stationnary=1.e-3,
             SA_params={"cutdeg": 8,
                        "err": 1.e-6},
             interior_detect=interior_detect,

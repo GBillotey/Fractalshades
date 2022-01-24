@@ -311,8 +311,8 @@ class Test_numba_xr(unittest.TestCase):
                 _matching(res_np, expected)
                 
                 print("t_numba", t_numba)
-                print("t_numpy", t_np, t_numba/t_np)
-                expr = (t_numba <  t_np)
+                print("t_numpy", t_np)
+                expr = (t_numba <=  t_np)
                 self.assertTrue(expr, msg="Numba speed below numpy")
                 
                 # Test add a scalar
@@ -345,8 +345,8 @@ class Test_numba_xr(unittest.TestCase):
                 _matching(res_np, expected)
                 
                 print("t_numba", t_numba)
-                print("t_numpy", t_np, t_numba/t_np)
-                expr = (t_numba <  t_np)
+                print("t_numpy", t_np)
+                expr = (t_numba <=  t_np)
                 self.assertTrue(expr, msg="Numba speed below numpy")
                 
                 # Test substract a scalar
@@ -385,8 +385,8 @@ class Test_numba_xr(unittest.TestCase):
                 _matching(res, expected)
                 _matching(res_np, expected)
 
-                print("t_numba, numpy", t_numba, t_np, t_numba/t_np)
-                expr = (t_numba <  t_np)
+                print("t_numba, numpy", t_numba, t_np)
+                expr = (t_numba <=  t_np)
                 self.assertTrue(expr, msg="Numba speed below numpy")
 
                 # Test multiply by a scalar
@@ -430,8 +430,8 @@ class Test_numba_xr(unittest.TestCase):
                           ktol=2.)
                 
                 print("t_numba", t_numba)
-                print("t_numpy", t_np, t_numba/t_np)
-                expr = (t_numba <  t_np)
+                print("t_numpy", t_np)
+                expr = (t_numba <=  t_np)
                 self.assertTrue(expr, msg="Numba speed below numpy")
                 
                 # Test divide by a scalar
@@ -504,7 +504,7 @@ class Test_numba_xr(unittest.TestCase):
 
                     print("t_numba *** test_compare", t_numba)
                     print("t_numpy *** test_compare", t_np) # t_numba/t_np)
-#                    expr = (t_numba <  t_np)
+#                    expr = (t_numba <=  t_np)
 #                    self.assertTrue(expr, msg="Numba speed below numpy")
                     
                     # Test compare with a scalar
@@ -548,8 +548,8 @@ class Test_numba_xr(unittest.TestCase):
                           ktol=2.)
                 
                 print("t_numba", t_numba)
-                print("t_numpy", t_np, t_numba/t_np)
-                expr = (t_numba <  t_np * 2.)
+                print("t_numpy", t_np)
+                expr = (t_numba <=  t_np * 2.)
                 self.assertTrue(expr, msg="Numba speed below numpy")
                 
     def test_abs(self):
@@ -585,8 +585,8 @@ class Test_numba_xr(unittest.TestCase):
                 print("t_numba", t_numba)
                 if t_np == 0.:
                     return
-                print("t_numpy", t_np, t_numba / t_np)
-                expr = (t_numba <  t_np)
+                print("t_numpy", t_np)
+                expr = (t_numba <=  t_np)
                 self.assertTrue(expr, msg="Numba speed below numpy")
 
     def test_abs2(self):
@@ -708,8 +708,8 @@ class Test_numba_xr(unittest.TestCase):
                               ktol=2.)
                     
                     print("t_numba", t_numba)
-                    print("t_numpy", t_np, t_numba/t_np)
-                    expr = (t_numba <  t_np)
+                    print("t_numpy", t_np)
+                    expr = (t_numba <=  t_np)
                     self.assertTrue(expr, msg="Numba speed below numpy")
 
     def test_constant(self):

@@ -39,7 +39,6 @@ if sys.platform == "win32":
     # *************************************************************************
     # https://stackoverflow.com/questions/9946322/how-to-generate-an-import-library-lib-file-from-a-dll
     # *************************************************************************
-
     ext_FP = setuptools.Extension(
         "fractalshades.mpmath_utils.FP_loop",
         [r"src/fractalshades/mpmath_utils/FP_loop.pyx"],
@@ -54,10 +53,8 @@ if sys.platform == "win32":
         extra_link_args=extra_link_args
     )
 
-
 else:
     # Building extension for UNIX-like platforms
-
     ext_FP = setuptools.Extension(
         "fractalshades.mpmath_utils.FP_loop",
         [r"src/fractalshades/mpmath_utils/FP_loop.pyx"],
@@ -65,7 +62,6 @@ else:
         libraries=['gmp', 'mpfr', 'mpc'],
         extra_link_args=extra_link_args
     )
-
 
 setuptools.setup(
     ext_modules=cythonize(

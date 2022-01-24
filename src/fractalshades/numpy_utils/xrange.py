@@ -15,8 +15,11 @@ def mpc_to_Xrange(mpc, dtype=np.complex128):
 
     mpcx_m, mpcx_exp = mpmath.frexp(mpc.real)
     mpcy_m, mpcy_exp = mpmath.frexp(mpc.imag)
-    mpcx_m = float_type(mpcx_m)
-    mpcy_m = float_type(mpcy_m)
+    
+    print("mpcx_m", type(mpcx_m), mpcx_m)
+    print("float_type", type(float_type), float_type)
+    mpcx_m = float_type(float(mpcx_m))
+    mpcy_m = float_type(float(mpcy_m))
 
     if (mpcx_exp >  mpcy_exp):
         case = 1
@@ -47,7 +50,7 @@ def mpc_to_Xrange(mpc, dtype=np.complex128):
 def mpf_to_Xrange(mpf, dtype=np.float64):
     """ Convert a mpc float to a Xrange array"""
     mpf_m, mpf_exp = mpmath.frexp(mpf)
-    return Xrange_array(dtype(mpf_m), np.int32(mpf_exp))
+    return Xrange_array(dtype(float(mpf_m)), np.int32(mpf_exp))
             # np.array(mpf_m, dtype), np.array(mpf_exp, np.int32))
 
 def Xrange_to_mpfc(arr):

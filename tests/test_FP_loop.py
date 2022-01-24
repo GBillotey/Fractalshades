@@ -193,11 +193,16 @@ class Test_newton(unittest.TestCase):
     def test_str_out(self):
         x = "-1.50000000000000000000000000000000000000000000000000000000000001"
         precision = int(len(x) * 3.33)
+        mpmath.mp.prec = precision
         ret = fsFP._test_mpfr_to_python(
             str(x).encode('utf8'),
             precision
         )
+
         is_equal = mpmath.almosteq(mpmath.mpf(x) * 2., ret)
+        print("ret", ret, type(ret))
+        print("ret * 2", ret * 2)
+        print(float(ret))
         self.assertTrue(is_equal)
 
         y = "-1.50000000000000000000000000000000000000000000000000000000000001"
@@ -207,9 +212,10 @@ class Test_newton(unittest.TestCase):
             str(y).encode('utf8'),
             precision
         )
-        print(ret, type(ret))
+        print(ret)
         print(dir(ret))
         print(ret.imag, type(ret.imag))
+        print(float(ret.imag))
 #        a = mpmath.mpc(
 #            mpmath.mpf(ret.real.as_mantissa_exp()),
 #            mpmath.mpf(ret.imag.as_mantissa_exp())
@@ -235,6 +241,7 @@ class Test_newton(unittest.TestCase):
         x = newton_search["x_start"]
         y = newton_search["y_start"]
         precision = int(3522 * 3.3) # precision in bits
+        mpmath.mp.prec = precision
         print("prec", precision)
         # eps_cv = mpmath.mpf(2.)**(-mpmath.mp.prec) is a good first estimate
         eps = mpmath.mpf(val=(2, -precision))

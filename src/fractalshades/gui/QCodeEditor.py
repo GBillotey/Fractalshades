@@ -29,11 +29,9 @@ QWidget {{
 class Fractal_code_editor(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        
+        self.setModal(False)
         self.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                            QtWidgets.QSizePolicy.Preferred)
-#        self.setMinimumWidth(650)
-#        self.setMinimumHeight(650)
 
         self.setStyleSheet(TEXT_EDIT_CSS.format("#1e1e27"))
         self.ce = Fractal_code_widget(self)
@@ -104,4 +102,6 @@ if __name__ == "__main__":
     
     win = Fractal_code_editor()
     win.set_text('print ("Hello World")\n# Test Program')
-    win.exec()
+    win.show()
+
+

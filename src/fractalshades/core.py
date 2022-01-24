@@ -5,17 +5,14 @@ import copy
 import datetime
 import pickle
 import pathlib
-import concurrent
 
 import numpy as np
 from numpy.lib.format import open_memmap
-import mpmath
 import PIL
 import PIL.PngImagePlugin
 import numba
 
 import fractalshades as fs
-import fractalshades.numpy_utils.xrange as fsx
 import fractalshades.settings as fssettings
 import fractalshades.utils as fsutils
 
@@ -310,8 +307,9 @@ class Fractal_plotter:
                 write_layer_report(i, layer, report)
 
 
-    @Multithreading_iterator(iterable_attr="chunk_slices",
-        iter_kwargs="chunk_slice")
+    @Multithreading_iterator(
+        iterable_attr="chunk_slices", iter_kwargs="chunk_slice"
+    )
     def compute_layer_scaling(self, chunk_slice, layer):
         """ Compute the scaling for this layer """
         layer.update_scaling(chunk_slice)
@@ -585,24 +583,7 @@ advanced users when subclassing.
         
         # Launch parallel computing of the inner-loop (Multi-threading with GIL
         # released)
-        if fs.settings.enable_multithreading:
-            print(">>> Launching multithreading parallel calculation loop")
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=os.cpu_count()
-            ) as threadpool:
-                futures = (
-                    threadpool.submit(
-                        self.cycles,
-                        chunk_slice,
-                    )
-                    for chunk_slice in self.chunk_slices()
-                )
-                for fut in concurrent.futures.as_completed(futures):
-                    fut.result()
-        else:
-            print(">>> Launching standard calculation loop")
-            for chunk_slice in self.chunk_slices():
-                self.cycles(chunk_slice)
+        self.cycles(chunk_slice=None)
         
         # Export to human-readable format
         if fs.settings.inspect_calc:
@@ -912,6 +893,8 @@ advanced users when subclassing.
             return (not_needed or completed)
 
 
+    @Multithreading_iterator(
+        iterable_attr="chunk_slices", iter_kwargs="chunk_slice")
     def cycles(self, chunk_slice=None):
         """
         Fast-looping for Julia and Mandelbrot sets computation.
@@ -956,8 +939,6 @@ advanced users when subclassing.
 
         initialize = self._initialize
         iterate = self._iterate
-
-
 
         dx = self.dx
         center = self.x + 1j * self.y

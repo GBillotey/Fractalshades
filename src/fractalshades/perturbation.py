@@ -14,6 +14,7 @@ import numba
 import fractalshades as fs
 import fractalshades.numpy_utils.xrange as fsx
 import fractalshades.numpy_utils.numba_xr as fsxn
+from fractalshades.mthreading import Multithreading_iterator
 # import fractalshades.bivar_series
 
 #from numba.pycc import CC
@@ -178,11 +179,14 @@ directory : str
             ref_point = self.FP_params["ref_point"]
             max_iter_ref = self.FP_params["max_iter"]
         except FileNotFoundError:
+            print("no ref pt file found FP_params")
             return False
 
         # Parameters 'max_iter' borrowed from last "@fsutils.calc_options" call
         calc_options = self.calc_options
         max_iter = calc_options["max_iter"]
+        
+        print("## in ref_point_matching", ref_point, type(ref_point))
 
         drift_xr = fsx.mpc_to_Xrange((self.x + 1j * self.y) - ref_point)
         dx_xr = fsx.mpf_to_Xrange(self.dx)
@@ -206,10 +210,11 @@ directory : str
            - codes = complex_codes, int_codes, termination_codes
            - arrays : [Z, U, stop_reason, stop_iter]
         """
-        save_path = self.ref_point_file()
-        fs.utils.mkdir_p(os.path.dirname(save_path))
+        print("saved ref point")
         self._FP_params = FP_params
         self._Z_path = Z_path
+        save_path = self.ref_point_file()
+        fs.utils.mkdir_p(os.path.dirname(save_path))
         with open(save_path, 'wb+') as tmpfile:
             print("Path computed, saving", save_path)
             pickle.dump(FP_params, tmpfile, pickle.HIGHEST_PROTOCOL)
@@ -250,6 +255,7 @@ directory : str
         Return the Z_path attribute, if not available try to reload it
         from file
         """
+        print("in Z_path", hasattr(self, "_Z_path"))
         if hasattr(self, "_Z_path"):
             return self._Z_path
         FP_params, Z_path = self.reload_ref_point()
@@ -438,40 +444,23 @@ directory : str
 
         # Launch parallel computing of the inner-loop (Multi-threading with GIL
         # released)
-        if fs.settings.enable_multithreading:
-            print(">>> Launching multithreading parallel calculation loop")
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=os.cpu_count()
-            ) as threadpool:
-                futures = (
-                    threadpool.submit(
-                        self.cycles,
-                        chunk_slice,
-                        Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr, 
-                        P, kc, n_iter
-                    )
-                    for chunk_slice in self.chunk_slices()
-                )
-                for fut in concurrent.futures.as_completed(futures):
-                    fut.result()
-        else:
-            print(">>> Launching standard calculation loop")
-            for chunk_slice in self.chunk_slices():
-                self.cycles(
-                    chunk_slice,
-                    Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr, 
-                    P, kc, n_iter
-                )
+        self.cycles(
+            Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr, 
+            P, kc, n_iter,
+            chunk_slice=None
+        )
 
         # Export to human-readable format
         if fs.settings.inspect_calc:
             self.inspect_calc()
 
-
+    @Multithreading_iterator(
+        iterable_attr="chunk_slices", iter_kwargs="chunk_slice")
     def cycles(
-        self, chunk_slice, 
+        self, 
         Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr, 
-        P, kc, n_iter
+        P, kc, n_iter,
+        chunk_slice
     ):
         """
         Fast-looping for Julia and Mandelbrot sets computation.
@@ -574,7 +563,7 @@ directory : str
 #                        print("ok", key, val, dparams[key])
             else:
                 if dparams[key] != val:
-                    print("KO,", key, val, "-->", dparams[key])
+                    print("KO,", key, dparams[key], "-->", val)
                     return False
 #                print("ok", key, val, dparams[key])
 #        print("** TOTAL: param_matching")
@@ -630,8 +619,8 @@ directory : str
         # no newton if zoom level is low. TODO: early escape possible
         if self.dx > fs.settings.newton_zoom_level:
             c0 = self.critical_pt
-            self.compute_FP_orbit(c0, None)
-            newton = None
+            self.compute_critical_orbit(c0)
+            return
 
         if c0 is None:
             c0 = self.x + 1j * self.y
@@ -676,38 +665,22 @@ directory : str
                 attempt += 1
                 old_dps = mpmath.mp.dps
                 mpmath.mp.dps = int(1.25 * old_dps)
-                print(
-                    f"Newton failed, dps boost: {old_dps} -> {mpmath.mp.dps}"
-                )
-                if attempt != max_attempt:
-                    newton_cv, nucleus = self.find_nucleus(
-                        c0, order, max_newton=max_newton
-                )
-                else:
-                    # Last try, we release constraint on the cycle order
-                    newton_cv, nucleus = self.find_any_nucleus(
-                        c0, order, max_newton=max_newton
+                print(f"Newton failed, dps incr. {old_dps} -> {mpmath.mp.dps}")
+
+                newton_cv, nucleus = self.find_nucleus(
+                    c0, order, max_newton=max_newton
                 )
 
-        # Still not CV ?
+                if not(newton_cv) and (attempt == max_attempt):
+                    # Last try, we just release constraint on the cycle order
+                    # and consider also divisors.
+                    newton_cv, nucleus = self.find_any_nucleus(
+                        c0, order, max_newton=max_newton
+                    )
+
+        # Still not CV ? we default to the center of the image
         if not(newton_cv) and (newton != "step"):
-            print("##### Newton method failed #####")
-            print("##### Default to image center or c0 #####")
-            self.compute_FP_orbit(c0, None)
-            return
-            
-#                shift = nucleus - (self.x + self.y * 1j)
-#                print("Reference nucleus at:\n", nucleus, order)
-#                print("With shift % from image center:\n",
-#                      shift.real / self.dx, shift.imag / self.dy)
-#                shift = nucleus - pt
-#                print("With shift % from proposed coords:\n",
-#                      shift.real / self.dx, shift.imag / self.dy)
-#            else:
-#                print("Newton failed with order", order)
-#                nucleus = pt
-#
-#            pt = nucleus
+            nucleus = c0
 
         shift = nucleus - (self.x + self.y * 1j)
         shift_x = shift.real / self.dx
@@ -716,8 +689,36 @@ directory : str
               f"({shift_x}, {shift_y})",
               f"with order {order}"
         )
-        
         self.compute_FP_orbit(nucleus, order)
+
+    def compute_critical_orbit(self, crit):
+        """
+        Basically nothing to 'compute' here, just short-cutting
+        """
+        print("Short cutting ref pt orbit calc for low res")
+        FP_code = self.FP_code
+        # Parameters 'max_iter' borrowed from last "@fsutils.calc_options" call
+        max_iter = self.max_iter
+
+        FP_params = {
+             "ref_point": crit,
+             "dps": mpmath.mp.dps,
+             "order": 0,
+             "max_iter": max_iter,
+             "FP_code": FP_code
+        }
+        # Given the "single reference" implementation the loop will wrap when
+        # we reach div_iter - this is probably better not to do it too often
+        # Let's just pick a reasonnable figure
+        div_iter = min(100, self.max_iter)
+        FP_params["partials"] = {}
+        FP_params["xr"] = {}
+        FP_params["div_iter"] = div_iter
+        
+        Z_path = np.empty([div_iter + 1], dtype=np.complex128)
+        Z_path[:] = crit
+
+        self.save_ref_point(FP_params, Z_path)
 
 
     def compute_FP_orbit(self, ref_point, order=None):
@@ -754,8 +755,6 @@ directory : str
         FP_params["div_iter"] = i
 
         self.save_ref_point(FP_params, Z_path)
-        self._FP_params = FP_params
-        self._Z_path = Z_path
 
 
     def ball_method(self, c, px, kind=1, M_divergence=1.e5):

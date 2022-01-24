@@ -233,7 +233,6 @@ class _Pixmap_figure:
         self.img.save(im_path, format="PNG")
 
 
-
 class Action_func_widget(QFrame):#Widget):#QWidget):
     """
     A Func_widget with parameters & actions group
@@ -357,12 +356,12 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
 
     def show_func_params(self):
         sm = self._submodel
-        ce = Fractal_code_editor()
+        ce = Fractal_code_editor(self)
         str_args = "\n".join([(k + " = " + repr(v)) for (k, v)
                               in sm.getkwargs().items()])
         ce.set_text(str_args)
         ce.setWindowTitle("Parameters")
-        ce.exec()
+        ce.show() # exec()
 
     def show_func_source(self):
         sm = self._submodel
@@ -443,10 +442,11 @@ class Func_widget(QFrame):
             # Connect to the QS
             utypes_combo.currentIndexChanged[int].connect(qs.setCurrentIndex)
             # utypes_combo.activated.connect(qs.setCurrentIndex)
-            
+
             self._layout.addWidget(utypes_combo, i_param, 3, 1, 1)
             for utype in range(n_uargs):
                 self.layout_uarg(qs, i_param, utype)
+
         # The displayed item of the union is denoted by "type_sel" :
         # self.layout_uarg(qs, i_param, fd[(i_param, "type_sel")])
         qs.setCurrentIndex(fd[(i_param, "type_sel")])
@@ -1715,10 +1715,10 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
 
     def fractal_result_slot(self, m_name, res):
         self._view.setCursor(QtGui.QCursor(Qt.CrossCursor))
-        res_display = Fractal_code_editor()
+        res_display = Fractal_code_editor(self)
         res_display.set_text(res)
         res_display.setWindowTitle(f"{m_name} results")
-        res_display.exec()
+        res_display.show() #exec()
 
 
     def pos_tracker(self, kind, val):
@@ -2096,11 +2096,11 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
 
     def display_cmap_code(self):
         """ displays source code for Fractal object """
-        ce = Fractal_code_editor()
+        ce = Fractal_code_editor(self)
         str_args = repr(self._cmap)
         ce.set_text(str_args)
         ce.setWindowTitle("Fractal code")
-        ce.exec()
+        ce.show()
 
     def push_to_param(self):
         """ Try to push to a colormap param if there is one """
