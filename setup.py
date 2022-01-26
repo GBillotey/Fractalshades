@@ -31,14 +31,11 @@ include_dirs = (
 )
 
 if sys.platform == "win32":
-    # *************************************************************************
     # An import library is necessary when calling functions in a DLL; it
     # provides the stubs that hook up to the DLL at runtime.
     # This means, during build process the following files need to be added
     # to gmpy2 site-package directory: header files and .lib files for the dll
-    # *************************************************************************
-    # https://stackoverflow.com/questions/9946322/how-to-generate-an-import-library-lib-file-from-a-dll
-    # *************************************************************************
+# https://stackoverflow.com/questions/9946322/how-to-generate-an-import-library-lib-file-from-a-dll
     ext_FP = setuptools.Extension(
         "fractalshades.mpmath_utils.FP_loop",
         [r"src/fractalshades/mpmath_utils/FP_loop.pyx"],

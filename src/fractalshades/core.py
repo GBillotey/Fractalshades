@@ -238,6 +238,7 @@ class Fractal_plotter:
         )
 
 
+    # multiprocessing: OK
     @Multithreading_iterator(iterable_attr="chunk_slices",
         iter_kwargs="chunk_slice")
     def store_temporary_mmap(self, chunk_slice, batch, inc_posproc_rank):
@@ -255,9 +256,9 @@ class Fractal_plotter:
         mmap = open_memmap(filename=self.temporary_mmap_path(), mode='r+')
         mmap[inc:inc+n_posts, ix:ixx, iy:iyy] = arr_2d
 
-
+    # NO multiprocessing
     @Multithreading_iterator(iterable_attr="chunk_slices",
-        iter_kwargs="chunk_slice")
+        iter_kwargs="chunk_slice", veto_parallel=True)
     def store_data(self, chunk_slice, batch, inc_posproc_rank):
         """ Compute & store temporary arrays for this postproc batch
             (in-RAM version -> shall not use multiprocessing)
@@ -306,9 +307,10 @@ class Fractal_plotter:
             for i, layer in enumerate(self.layers):
                 write_layer_report(i, layer, report)
 
-
+    # NO multiprocessing
     @Multithreading_iterator(
-        iterable_attr="chunk_slices", iter_kwargs="chunk_slice"
+        iterable_attr="chunk_slices", iter_kwargs="chunk_slice",
+        veto_parallel=True
     )
     def compute_layer_scaling(self, chunk_slice, layer):
         """ Compute the scaling for this layer """
@@ -350,6 +352,7 @@ class Fractal_plotter:
                 continue
             self.push_cropped(chunk_slice=None, layer=layer, im=self._im[i])
 
+    # multiprocessing: OK
     @Multithreading_iterator(iterable_attr="chunk_slices",
         iter_kwargs="chunk_slice")
     def push_cropped(self, chunk_slice, layer, im):

@@ -177,6 +177,7 @@ class Submodel(QtCore.QObject):
         setitem(self._dict, key, val)
         self.model_notification.emit(self._keys + tuple([key]), oldval, val)  
 
+separator = typing.TypeVar('gui_separator')
 
 class Func_submodel(Submodel):
     # key, oldval, newval signal

@@ -169,7 +169,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         # Defines SA_loop via a function factory - jitted implementation
         def SA_loop():
             @numba.njit
-            def impl(Pn, n_iter, ref_path_xr, kcX): #, ref_path_xr, is_xr):
+            def impl(Pn, n_iter, ref_path_xr, kcX):
                 """ Series Approximation loop
                 Note that derivatives w.r.t dc will be deduced directly from the
                 S.A polynomial.
@@ -625,39 +625,3 @@ newton_search = {{
 }}
 """
         return res_str
-
-#    @fsutils.interactive_options
-#    def nucleus_size_estimate(self, x, y, pix, dps,
-#                          order: int=1):
-#        """ x, y : coordinates of the event """
-#        c = x + 1j * y
-#        
-#        newton_cv = False
-#        xn_str = ""
-#        yn_str = ""
-#        max_attempt = 2
-#        attempt = 0
-#        while not(newton_cv) and attempt < max_attempt:
-#            attempt += 1
-#            dps = int(1.5 * dps)
-#            print("Newton, dps boost to: ", dps)
-#            with mpmath.workdps(dps):
-#                newton_cv, c_loop = self.find_nucleus(
-#                        c, order, max_newton=None, eps_cv=None)
-#                if newton_cv:
-#                    xn_str = str(c_loop.real)
-#                    yn_str = str(c_loop.imag)
-#
-#        x_str = str(x)
-#        y_str = str(y)
-#
-#        res_str = f"""
-#nucleus_size_estimate = {{
-#    "x_start": "{x_str}",
-#    "y_start": "{y_str}",
-#    "order": {order}
-#    "x_nucleus": "{xn_str}",
-#    "y_nucleus": "{yn_str}",
-#}}
-#"""
-#        return res_str

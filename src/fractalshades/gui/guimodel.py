@@ -81,6 +81,7 @@ from fractalshades.gui.model import (
     Colormap_presenter,
     Presenter,
     type_name,
+    separator
 )
 
 from fractalshades.gui.QCodeEditor import Fractal_code_editor
@@ -370,6 +371,20 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
         ce.setWindowTitle("Source code")
         ce.exec()
         
+class Func_widget_separator(QLabel):
+    def __init__(self, name):
+        """ Defines a graphical separator with label "name" """
+        super().__init__(name + ":")
+        sep_Font = QtGui.QFont()
+        sep_Font.setWeight(QtGui.QFont.StyleItalic)
+        self.setFont(sep_Font)
+        self.setStyleSheet(
+            "border-bottom-width: 1px; "
+            "border-bottom-style: solid; "
+            "border-bottom-color: #b8b8b8; "
+            "border-radius: 0px; "
+        )
+
 
 class Func_widget(QFrame):
     # Signal to inform the model that a parameter has been modified by the 
@@ -405,6 +420,17 @@ class Func_widget(QFrame):
     def layout_param(self, i_param):
         fd = self._submodel._dict
         
+        # Check if we have a separator :
+        if fd[(i_param, "n_types")] == 0:
+            if fd[(i_param, 0, "type")] is separator:
+                sep_name = fd[(i_param, 0, "val")]
+                print("adding separator", sep_name)
+                self._layout.addWidget(Func_widget_separator(sep_name),
+                                       i_param, 0, 1, 4)
+                self._layout.setRowStretch(i_param, 0)
+                return
+
+        # This is not a separator : is a real parameters
         name = fd[(i_param, "name")]
         name_label = QLabel(name)
         myFont = QtGui.QFont()
@@ -2594,7 +2620,6 @@ parameter
         ):
 
 """
-
         self._func = func
         param_names = inspect.signature(func).parameters.keys()
         param0 = next(iter(param_names))
