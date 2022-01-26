@@ -84,7 +84,7 @@ def plot(plot_dir):
          epsilon_stationnary: float=epsilon_stationnary,
          _3: fsgui.separator="Series approximation parameters",
          cutdeg: int=cutdeg,
-         err: int=err,
+         err: float=err,
          _4: fsgui.separator="Plotting parameters",
          interior_color: QtGui.QColor=(0.1, 0.1, 0.1),
          colormap: fscolors.Fractal_colormap=colormap,

@@ -1,30 +1,15 @@
 # -*- coding: utf-8 -*-
-
 import os
 import pickle
-# import copy
-import concurrent
-#import random
-
 import mpmath
 import numpy as np
 import numba
-#import random
 
 import fractalshades as fs
 import fractalshades.numpy_utils.xrange as fsx
 import fractalshades.numpy_utils.numba_xr as fsxn
 from fractalshades.mthreading import Multithreading_iterator
-# import fractalshades.bivar_series
 
-#from numba.pycc import CC
-#cc = CC("fractalshades")
-
-#import fractalshades.numpy_utils.numba_xr # as fsxn
-#import fractalshades.utils as fsutils
-#import fractalshades.postproc as fspp
-#force_recompute_SA = True
-# from fractalshades.mprocessing import Multiprocess_filler
 
 class PerturbationFractal(fs.Fractal):
 
@@ -518,13 +503,17 @@ directory : str
         initialize = self._initialize
         iterate = self._iterate
 
-        numba_cycles_perturb(
+        ret_code = numba_cycles_perturb(
             c_pix, Z, U, stop_reason, stop_iter,
             initialize, iterate,
             Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr,
-            P, kc, n_iter
+            P, kc, n_iter,
+            self._interrupted
         )
- 
+        if ret_code == self.USER_INTERRUPTED:
+            print("Interruption signal received")
+            return
+
         # Saving the results after cycling
         self.update_report_mmap(chunk_slice, stop_reason)
         self.update_data_mmaps(chunk_slice, Z, U, stop_reason, stop_iter)
@@ -677,7 +666,7 @@ directory : str
 
         shift = nucleus - (self.x + self.y * 1j)
         shift_x = shift.real / self.dx
-        shift_y = shift.real / self.dx
+        shift_y = shift.imag / self.dx
         print("Reference nucleus found at shift (expressed in dx units):\n", 
               f"({shift_x}, {shift_y})",
               f"with order {order}"
@@ -768,14 +757,15 @@ directory : str
 # Numba JIT functions =========================================================
 Xr_template = fsx.Xrange_array.zeros([1], dtype=np.complex128)
 Xr_float_template = fsx.Xrange_array.zeros([1], dtype=np.float64)
-
+USER_INTERRUPTED = 1
 
 @numba.njit(nogil=True)
 def numba_cycles_perturb(
     c_pix, Z, U, stop_reason, stop_iter,
     initialize, iterate, 
     Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr,
-    P, kc, n_iter
+    P, kc, n_iter,
+    _interrupted
 ):
     """
     Run the perturbation cycles
@@ -791,20 +781,15 @@ def numba_cycles_perturb(
     n_iter:
         current iteration
     """
-    print("in numba_cycles_perturb")
     n_iter_init = n_iter
 
     nz, npts = Z.shape
     Z_xr = Xr_template.repeat(nz)
     Z_xr_trigger = np.zeros((nz,), dtype=np.bool_)
-
-    # npts = c.size
     
-    for ipt in range(npts): # npts): # DEBUG  #npts):
+    for ipt in range(npts):
         n_iter = n_iter_init
-        
-        # print("in numba_cycles_perturb loop")
-        # skip this ipt if pixel not active 
+
         Z_xr_trigger = np.zeros((nz,), dtype=np.bool_)
         refpath_ptr = np.zeros((2,), dtype=np.int32)
         ref_is_xr = np.zeros((1,), dtype=numba.bool_)
@@ -822,9 +807,12 @@ def numba_cycles_perturb(
             Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr,
             Z_xr_trigger, Z_xr, c_xr, refpath_ptr, ref_is_xr, ref_zn_xr
         )
-
         stop_iter[0, ipt] = n_iter
         stop_reason[0, ipt] = stop_pt[0]
+
+        if _interrupted[0]:
+            return USER_INTERRUPTED
+    return 0
 
 
 @numba.njit

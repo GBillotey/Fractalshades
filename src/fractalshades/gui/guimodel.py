@@ -2361,21 +2361,20 @@ class Fractal_MainWindow(QMainWindow):
         self.set_menubar()
         self.setWindowTitle(f"Fractashades {fs.__version__}")
 
-    
     def set_menubar(self) :
       bar = self.menuBar()
       tools = bar.addMenu("Tools")
+      clear_cache = QAction('Clear calculation cache', tools)
       png_info = QAction('Png info', tools)
       png_cbar = QAction('Colormap from png image', tools)
       template_cbar = QAction('Colormap from templates', tools)
-      tools.addActions((png_info, png_cbar, template_cbar))
+      tools.addActions((clear_cache, png_info, png_cbar, template_cbar))
       tools.triggered[QAction].connect(self.actiontrig)
 
       about = bar.addMenu("About")
       license_txt = QAction('License', about)
       about.addAction(license_txt)
       about.triggered[QAction].connect(self.actiontrig)
-
 
     def actiontrig(self, action):
         if action.text() == "License":
@@ -2386,8 +2385,9 @@ class Fractal_MainWindow(QMainWindow):
             self.cmap_from_png()
         elif action.text() == "Colormap from templates":
             self.cmap_from_template()
-        
-    
+        elif action.text() == "Clear calculation cache":
+            self.clear_cache()
+
     def show_license(self):
         """
         Displays the program license
@@ -2451,25 +2451,37 @@ class Fractal_MainWindow(QMainWindow):
         image_display.exec()
 
     def cmap_from_template(self):
+        """ Dialog to chose a cmap """
         choser = Fractal_cmap_choser(self)
         choser.exec()
 
-    def build_model(self, gui):
+    def clear_cache(self):
+        func_submodel = self.from_register(("func",))
+        print("func_submodel", func_submodel)
+        fractal = next(iter(func_submodel.getkwargs().values()))
+        fractal.clean_up()
+        msg = Fractal_MessageBox()
+        msg.setWindowTitle("Cache cleared")
+        msg.setText("Directory :")
+        msg.setInformativeText(f"{fractal.directory}")
+        msg.exec()
         
+
+    def build_model(self, gui):
         self._gui = gui
         model = self._model = Model()
-        
         # Adds the submodels
         Func_submodel(model, ("func",), gui._func, dps_var=gui._dps)
-
         # Adds the presenters
-        mapping = {"fractal": ("func", gui._fractal),
-                   "image": ("func", gui._image),
-                   "x": ("func", gui._x),
-                   "y": ("func", gui._y),
-                   "dx": ("func", gui._dx),
-                   "xy_ratio": ("func", gui._xy_ratio),
-                   "dps": ("func", gui._dps)}
+        mapping = {
+            "fractal": ("func", gui._fractal),
+            "image": ("func", gui._image),
+            "x": ("func", gui._x),
+            "y": ("func", gui._y),
+            "dx": ("func", gui._dx),
+            "xy_ratio": ("func", gui._xy_ratio),
+            "dps": ("func", gui._dps)
+        }
         Presenter(model, mapping, register_key="image")
 
     def layout(self):

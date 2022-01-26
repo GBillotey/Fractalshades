@@ -382,7 +382,6 @@ class Fractal:
         "total-glitched",
         "dyn-glitched"
     ]
-
     # Note : chunk_mask is pre-computed and saved also but not at the same 
     # stage (at begining of calculation)
     SAVE_ARRS = [
@@ -391,12 +390,12 @@ class Fractal:
         "stop_reason",
         "stop_iter"
     ]
-    
     PROJECTION_ENUM = {
         "cartesian": 1,
         "spherical": 2,
         "expmap": 3
     }
+    USER_INTERRUPTED = 1
 
     def __init__(self, directory):
         """
@@ -419,19 +418,12 @@ directory : str
 iref : int
     the reference point index, when using perturbation technique (if
     not, shall be None)
-glitch_max_attempt : int
-    The maximal number of glitch correction loops
 subset
     A boolean array-like of the size of the image, when False the
     calculation is skipped for this point. It is usually the result
     of a previous calculation that can be passed via a Fractal_array
     wrapper.
     If None (default) all points will be calculated.
-glitch_stop_index : int
-    A calculation can exit for several reasons which are tracked in 
-    `stop_reason` int-array (see below the description of the raw data
-    arrays). Values of `stop_reason` above `glitch_stop_index` indicate
-    glitched pixels, for which the calculation is deemed invalid.
 complex_type :
     the datatype used for Z output arrays
 codes :
@@ -504,9 +496,12 @@ advanced users when subclassing.
 """
         self.directory = directory
         self.iref = None # None when no reference point used / needed
-        self.glitch_max_attempt = 0
         self.subset = None
-        self.glitch_stop_index = None
+        self._interrupted = np.array([0], dtype=np.bool_)
+
+        # Deprecated attributes (new glitch correction algorithm)
+        self.glitch_stop_index = None # deprecated
+        self.glitch_max_attempt = 0 # deprecated
 
     def init_data_types(self, complex_type):
         if type(complex_type) is tuple:
@@ -593,22 +588,18 @@ advanced users when subclassing.
             self.inspect_calc()
 
 
-    @property
-    def interrupt_path(self):
-        return os.path.join(self.directory, "data", "_interrupt.lck")
-
     def raise_interruption(self):
-        pathlib.Path(self.interrupt_path).touch()
+        self._interrupted[0] = True
         
     def lower_interruption(self):
-        if os.path.isfile(self.interrupt_path):
-            os.unlink(self.interrupt_path)
+        self._interrupted[0] = False
+#        if os.path.isfile(self.interrupt_path):
+#            os.unlink(self.interrupt_path)
     
     def is_interrupted(self):
         """ Either programmatically 'interrupted' (from the GUI) or by the user 
         in batch mode through fs.settings.skip_calc """
-        return (os.path.isfile(self.interrupt_path)
-                or fs.settings.skip_calc)
+        return (self._interrupted[0] or fs.settings.skip_calc)
 
     @property
     def ny(self):
@@ -694,21 +685,24 @@ advanced users when subclassing.
             If None, delete all calculation files
         """
         if calc_name is None:
-            patterns = ("*.*",)
-        else:
-            patterns = (
-                 calc_name + "_*.arr",
-                 calc_name + ".report",
-                 calc_name + ".params",
-            )
+            calc_name = "*"
+        patterns = (
+             calc_name + "_*.arr",
+             calc_name + ".report",
+             calc_name + ".params",
+             "ref_pt.dat",
+             "SA.dat"
+        )
         for pattern in patterns:
             data_dir = os.path.join(self.directory, "data")
             if not os.path.isdir(data_dir):
+                print("directory not found", data_dir)
                 return
             with os.scandir(data_dir) as it:
                 for entry in it:
                     if (fnmatch.fnmatch(entry.name, pattern)):
                         os.unlink(entry.path)
+                        print("Deleted: ", entry.name)
 
     @property
     def pts_count(self):
@@ -949,11 +943,15 @@ advanced users when subclassing.
         theta = self.theta_deg / 180. * np.pi # used for expmap
         projection = self.PROJECTION_ENUM[self.projection]
 
-        numba_cycles(
+        ret_code = numba_cycles(
             c_pix, Z, U, stop_reason, stop_iter,
             initialize, iterate,
-            dx, center, xy_ratio, theta, projection  
+            dx, center, xy_ratio, theta, projection,
+            self._interrupted
         )
+        if ret_code == self.USER_INTERRUPTED:
+            print("Interruption signal received")
+            return
 
         # Saving the results after cycling
         self.update_report_mmap(chunk_slice, stop_reason)
@@ -1490,13 +1488,14 @@ advanced users when subclassing.
 
 
 # Numba JIT functions =========================================================
-
+USER_INTERRUPTED = 1
 
 @numba.njit(nogil=True)
 def numba_cycles(
     c_pix, Z, U, stop_reason, stop_iter,
     initialize, iterate,
-    dx, center, xy_ratio, theta, projection  
+    dx, center, xy_ratio, theta, projection,
+    _interrupted
 ):
     """ Run the standard cycles
     """
@@ -1513,9 +1512,12 @@ def numba_cycles(
         n_iter = iterate(
             Zpt, Upt, cpt, stop_pt, 0,
         )
-
         stop_iter[0, ipt] = n_iter
         stop_reason[0, ipt] = stop_pt[0]
+
+        if _interrupted[0]:
+            return USER_INTERRUPTED
+    return 0
 
 
 proj_cartesian = Fractal.PROJECTION_ENUM["cartesian"]
