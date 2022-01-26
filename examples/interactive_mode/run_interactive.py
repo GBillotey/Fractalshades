@@ -54,34 +54,44 @@ def plot(plot_dir):
     nx = 800
     interior_detect = True
     epsilon_stationnary = 0.0001
+    cutdeg = 8
+    err = 1.e-6
     
     colormap = fscolors.cmap_register["classic"]
 
     zmin = 0.00
     zmax = 0.15
 
-    # Set to True to enable multi-processing
+    # Set to True to enable multi-threading
     settings.enable_multithreading = True
 
     directory = plot_dir
     fractal = fsm.Perturbation_mandelbrot(directory)
     
-    def func(fractal: fsm.Perturbation_mandelbrot=fractal,
-             calc_name: str= calc_name,
-             x: mpmath.mpf= x,
-             y: mpmath.mpf= y,
-             dx: mpmath.mpf= dx,
-             xy_ratio: float=xy_ratio,
-             dps: int= dps,
-             max_iter: int=max_iter,
-             nx: int=nx,
-             interior_detect: bool=interior_detect,
-             epsilon_stationnary: float=epsilon_stationnary,
-             interior_color: QtGui.QColor=(0.1, 0.1, 0.1),
-             colormap: fscolors.Fractal_colormap=colormap,
-             cmap_z_kind: typing.Literal["relative", "absolute"]="relative",
-             zmin: float=zmin,
-             zmax: float=zmax):
+    def func(
+        fractal: fsm.Perturbation_mandelbrot=fractal,
+         calc_name: str=calc_name,
+         _1: fsgui.separator="Zoom parameters",
+         x: mpmath.mpf=x,
+         y: mpmath.mpf=y,
+         dx: mpmath.mpf=dx,
+         xy_ratio: float=xy_ratio,
+         dps: int=dps,
+         nx: int=nx,
+         _2: fsgui.separator="Calculation parameters",
+         max_iter: int=max_iter,
+         interior_detect: bool=interior_detect,
+         epsilon_stationnary: float=epsilon_stationnary,
+         _3: fsgui.separator="Series approximation parameters",
+         cutdeg: int=cutdeg,
+         err: int=err,
+         _4: fsgui.separator="Plotting parameters",
+         interior_color: QtGui.QColor=(0.1, 0.1, 0.1),
+         colormap: fscolors.Fractal_colormap=colormap,
+         cmap_z_kind: typing.Literal["relative", "absolute"]="relative",
+         zmin: float=zmin,
+         zmax: float=zmax
+    ):
 
 
         fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,

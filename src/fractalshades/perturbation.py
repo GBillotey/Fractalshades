@@ -518,12 +518,6 @@ directory : str
         initialize = self._initialize
         iterate = self._iterate
 
-        # TypeError: expected int64, got None
-        # print("stop_iter", stop_iter) stop_iter [[0 0 0 ... 0 0 0]]
-#        print("n_iter", n_iter)
-#        print("ref_div_iter", ref_div_iter)
-#        print("ref_index_xr", ref_index_xr)
-
         numba_cycles_perturb(
             c_pix, Z, U, stop_reason, stop_iter,
             initialize, iterate,
@@ -632,7 +626,6 @@ directory : str
         
         # Here we will compute a Newton iteration. First, guess a cycle order
         print("Launching Newton iteration process with ref point:\n", c0)
-#        pt = c0 * 1.0 # Local copy
 
         # Try Ball method to find the order, then Newton
         if order is None:
@@ -929,7 +922,7 @@ def need_xr(x_std):
     )
 
 @numba.njit
-def ensure_xr(val_std, val_xr, is_xr): #_xr, x_std, Z_xr_trigger):
+def ensure_xr(val_std, val_xr, is_xr):
     """
     Return a valid Xrange. if not(Z_xr_trigger) we return x_std
     converted

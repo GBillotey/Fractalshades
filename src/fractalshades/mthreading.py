@@ -43,7 +43,7 @@ import fractalshades as fs
 
 class Multithreading_iterator():
     def __init__(self, iterable_attr, redirect_path_attr=None,
-                 iter_kwargs="key"):
+                 iter_kwargs="key", veto_parallel=False):
         """
         Decorator class for an instance-method *method*
 
@@ -72,14 +72,17 @@ class Multithreading_iterator():
         self.iterable = iterable_attr
         self.redirect_path_attr = redirect_path_attr
         self.iter_kwargs = iter_kwargs
+        self.veto_parallel = veto_parallel
 
     def __call__(self, method):
 
         @functools.wraps(method)
         def wrapper(instance, *args, **kwargs):
-            print("in wrapper")
-
-            if fs.settings.enable_multithreading:
+            parallel = (
+                fs.settings.enable_multithreading and not self.veto_parallel
+            )
+            print("in wrapper, parallel:", parallel)
+            if parallel:
                 self.call_multi_thread(instance, method, *args, **kwargs)
             else:
                 self.call_std(instance, method, *args, **kwargs)
@@ -128,10 +131,52 @@ class Multithreading_iterator():
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=os.cpu_count()
         ) as threadpool:
-            for key in getattr(instance, self.iterable)():
+#            for key in getattr(instance, self.iterable)():
+#                kwargs[self.iter_kwargs] = key
+            full_args = (instance,) + args
+            def get_kwargs(key):
                 kwargs[self.iter_kwargs] = key
-                full_args = (instance,) + args
-                threadpool.submit(method, *full_args, **kwargs).result()
+                return kwargs
+
+            futures = (
+                threadpool.submit(
+                    method,
+                    *full_args,
+                    **get_kwargs(key))
+                for key in getattr(instance, self.iterable)()
+            )
+            for fut in concurrent.futures.as_completed(futures):
+                fut.result()
+    
+    # old
+#        with concurrent.futures.ThreadPoolExecutor(
+#            max_workers=os.cpu_count()
+#        ) as threadpool:
+#            for key in getattr(instance, self.iterable)():
+#                kwargs[self.iter_kwargs] = key
+#                full_args = (instance,) + args
+#                threadpool.submit(method, *full_args, **kwargs).result()   
+        # from core.py
+#        if fs.settings.enable_multithreading:
+#            print(">>> Launching multithreading parallel calculation loop")
+#            with concurrent.futures.ThreadPoolExecutor(
+#                max_workers=os.cpu_count()
+#            ) as threadpool:
+#                futures = (
+#                    threadpool.submit(
+#                        self.cycles,
+#                        chunk_slice,
+#                    )
+#                    for chunk_slice in self.chunk_slices()
+#                )
+#                for fut in concurrent.futures.as_completed(futures):
+#                    fut.result()
+#        else:
+#            print(">>> Launching standard calculation loop")
+#            for chunk_slice in self.chunk_slices():
+#                self.cycles(chunk_slice)
+                
+                
 
     def call_std(self, instance, method, *args, **kwargs):
         """ """
