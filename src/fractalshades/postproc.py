@@ -236,7 +236,7 @@ class Continuous_iter_pp(Postproc):
             Used to avoids loss of precision (banding) for very large iteration
             numbers, usually above several milions. For 
             reference, the largest integer that cannot be accurately
-            represented with a float32 is > 16 M), banding will startto be
+            represented with a float32 is > 16 M), banding will start to be
             noticeable before.
 
         Notes

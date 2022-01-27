@@ -4,6 +4,8 @@ import typing
 import dataclasses
 import math
 import os
+import sys
+import traceback
 import copy
 # import datetime
 import time
@@ -240,6 +242,7 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
     """
     func_performed = pyqtSignal()
     lock_navigation = pyqtSignal(bool)
+    error_in_thread = QtCore.pyqtSignal(Exception)
     
     def __init__(self, parent, func_smodel, action_setting=None,
                  callback=False, may_interrupt=False,
@@ -285,6 +288,9 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
         if locks_navigation: 
             nav_win = getmainwindow(self).centralWidget() 
             self.lock_navigation.connect(nav_win.lock)
+        
+        # Adds Exception handling
+        self.error_in_thread.connect(parent.on_error_in_thread)
             
 
     def add_param_box(self, func_smodel):
@@ -341,18 +347,31 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
     def run_func(self):
         # Ensure that interrupted is not raised
         self.lower_interruption()
-        # Run the function in a dedicated thread
         def thread_job():
             sm = self._submodel
             if self.locks_navigation:
                 self.lock_navigation.emit(True)
+#            self._exc = None
             self._run.setStyleSheet("background-color: red")
-            sm._func(**sm.getkwargs())
-            self._run.setStyleSheet("background-color: #646464")
-            if self.locks_navigation:
-                self.lock_navigation.emit(False)
-            self.func_performed.emit()
+            try:
+                sm._func(**sm.getkwargs())
+            except Exception as e:
+                self.error_in_thread.emit(e)
+#                self._exc = e
+            finally:
+                # Does some clean-up to not lock everything on Error
+                self._run.setStyleSheet("background-color: #646464")
+                if self.locks_navigation:
+                    self.lock_navigation.emit(False)
+                self.func_performed.emit()
+
+        # Now run the function in a dedicated thread
         threading.Thread(target=thread_job).start()
+#        if self._exc is not None:
+#            # Re-raising at mainloop
+#            print("RERAISE $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+#            raise self._exc
+#        self._exc = None
 
 
     def show_func_params(self):
@@ -2534,6 +2553,14 @@ class Fractal_MainWindow(QMainWindow):
             fs.settings.add_figure(_Pixmap_figure(img))
             QApplication.quit()
 
+    @pyqtSlot(Exception)
+    def on_error_in_thread(self, exc):
+        """ A simple callback when error occured in computation computation
+        """
+        print("ERROR detected in thread")
+        raise exc
+
+
 
     def add_image_wget(self):
         mw = Image_widget(self, self.from_register("image"))
@@ -2541,6 +2568,34 @@ class Fractal_MainWindow(QMainWindow):
 
     def from_register(self, register_key):
         return self._model._register[register_key]
+
+
+def excepthook(exc_type, exc_value, exc_traceback):
+    """ Handling GUI Exceptions"""
+#    print("*************************************************************CATEC")
+    exc_str = "".join(
+        traceback.format_exception(exc_type, exc_value, exc_traceback)
+    )
+    msg = QtWidgets.QMessageBox.critical(None, 'GUI Error', exc_str)
+    msg.exec()
+#    del msg
+#    sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+#def thread_excepthook(args):
+#    """ Handling GUI Exceptions in threads - (note the different args) """
+#    (exc_type, exc_value, exc_traceback
+#     ) = (args.exc_type, args.exc_value, args.exc_traceback)
+##    print("*************************************************************CAT2C")
+##    print(traceback.format_exception(exc_type, exc_value, exc_traceback))
+##    print(type(traceback.format_exception(exc_type, exc_value, exc_traceback)))
+##    print(str(traceback.format_exception(exc_type, exc_value, exc_traceback)))
+#    exc_str = "".join(
+#        traceback.format_exception(exc_type, exc_value, exc_traceback)
+#    )
+#    msg = QMessageBox.critical(None, 'GUI Error in thread', exc_str)
+#    msg.exec()
+#    del msg
+##    threading.__excepthook__(exc_type, exc_value, exc_traceback)
 
 
 class Fractal_GUI:
@@ -2679,5 +2734,11 @@ dps: str
         self.mainwin = Fractal_MainWindow(self)
         self.mainwin.show()
         fs.settings.output_context["gui_iter"] = 1
-        app.exec()
-        fs.settings.output_context["gui_iter"] = 0
+        sys.excepthook = excepthook
+#        threading.excepthook = thread_excepthook
+        try:
+            app.exec()
+        finally:
+            fs.settings.output_context["gui_iter"] = 0
+            sys.excepthook = sys.__excepthook__
+#            threading.excepthook = threading.__excepthook__
