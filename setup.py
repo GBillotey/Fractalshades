@@ -41,12 +41,13 @@ if sys.platform == "win32":
         [r"src/fractalshades/mpmath_utils/FP_loop.pyx"],
         include_dirs=include_dirs,
         library_dirs=include_dirs,
-        libraries=['libgcc_s_seh-1',
-                  'libgmp-10',
-                  'libmpc-3',
-                  'libmpfr-6',
-                  'libwinpthread-1',
-                  ],
+        libraries=[
+            'libgcc_s_seh-1',
+            'libgmp-10',
+            'libmpc-3',
+            'libmpfr-6',
+            'libwinpthread-1',
+        ],
         extra_link_args=extra_link_args
     )
 

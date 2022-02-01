@@ -704,6 +704,12 @@ advanced users when subclassing.
                         os.unlink(entry.path)
                         print("Deleted: ", entry.name)
 
+        # Delete also the temporay attributes
+        temp_attrs = ("_FP_params", "_Z_path", "_SA_data")
+        for temp_attr in temp_attrs:
+            if hasattr(self, temp_attr):
+                delattr(self, temp_attr)
+
     @property
     def pts_count(self):
         """ Return the total number of points for the current calculation 
