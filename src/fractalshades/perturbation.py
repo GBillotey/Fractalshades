@@ -116,7 +116,7 @@ directory : str
         return self.reshape2d(post_array, chunk_mask, chunk_slice)
 
 
-    def ref_point_file(self): # , iref, calc_name):
+    def ref_point_file(self):
         """
         Returns the file path to store or retrieve data arrays associated to a 
         reference orbit
@@ -134,17 +134,12 @@ directory : str
         kc: full precision, scaling coefficient
         """
         c0 = self.x + 1j * self.y
-#        print("in kc c0", c0)
-#        print("in kc dx", self.dx)
-#        print("in kc dy", self.dy)
         corner_a = c0 + 0.5 * (self.dx + 1j * self.dy)
         corner_b = c0 + 0.5 * (- self.dx + 1j * self.dy)
         corner_c = c0 + 0.5 * (- self.dx - 1j * self.dy)
         corner_d = c0 + 0.5 * (self.dx - 1j * self.dy)
 
         ref = self.FP_params["ref_point"]
-#        print("in kc ref", ref)
-#        print("in kc ref - corner_a", ref - corner_a)
 
         # Let take some margin
         kc = max(abs(ref - corner_a), abs(ref - corner_b),
@@ -399,12 +394,9 @@ directory : str
 
         # Initialise the reference path
         self.get_FP_orbit()
-#        print("got FP orbit")
         (Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr
          ) = self.get_Ref_path()
-#        print("got FP parametes",
-#              (Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr),
-#         )
+
 
         # Initialise SA interpolation
         print("Initialise SA interpolation")

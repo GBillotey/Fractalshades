@@ -52,6 +52,7 @@ def plot(plot_dir):
     dps = 16
     max_iter = 15000
     nx = 800
+    theta_deg = 0.
     interior_detect = True
     epsilon_stationnary = 0.0001
     cutdeg = 8
@@ -76,6 +77,7 @@ def plot(plot_dir):
          y: mpmath.mpf=y,
          dx: mpmath.mpf=dx,
          xy_ratio: float=xy_ratio,
+         theta_deg: float=theta_deg,
          dps: int=dps,
          nx: int=nx,
          _2: fsgui.separator="Calculation parameters",
@@ -95,7 +97,7 @@ def plot(plot_dir):
 
 
         fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
-             theta_deg=0., projection="cartesian", antialiasing=False)
+             theta_deg=theta_deg, projection="cartesian", antialiasing=False)
 
         fractal.calc_std_div(datatype=np.complex128, calc_name=calc_name,
             subset=None, max_iter=max_iter, M_divergence=1.e3,

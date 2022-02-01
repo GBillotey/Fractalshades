@@ -2,6 +2,9 @@
 import inspect
 import typing
 import functools
+import os
+import pickle
+
 #import dataclasses
 import mpmath
 from operator import getitem, setitem
@@ -12,7 +15,7 @@ from PyQt5 import QtCore
 from PyQt5.QtCore import Qt
 from PyQt5.QtCore import pyqtSignal, pyqtSlot
 
-import fractalshades.colors as fscolors
+import fractalshades as fs
 
 """
 Implementation of a GUI following a Model-View-Presenter interface
@@ -284,13 +287,12 @@ class Func_submodel(Submodel):
 
         else:
             raise ValueError("Unsupported type origin: {}".format(origin))
-            
+
         if fd[(i_param, "n_types")] > 0:
             for i_union, utype in enumerate(uargs):
                 self.insert_uarg(i_param, i_union, utype)
         else:
             self.insert_uarg(i_param, 0, ptype)
-        
 
 
     def insert_uarg(self, i_param, i_union, utype):
@@ -336,7 +338,7 @@ class Func_submodel(Submodel):
         for iparam in range(n_params):
             if fd[(iparam, "name")] != kwarg:
                 continue
-            iunion = fd[(iparam, "type_sel")]
+            iunion = fd[(iparam, "type_sel")] # currently selected TODO  n_types / n_choices
             ichoices = fd[(iparam, "n_choices")]
             # If typing.Literal we infer the val from the choice index
             if ichoices == 0 and iunion == 0:
@@ -347,7 +349,67 @@ class Func_submodel(Submodel):
 #            print("Setting param", param_key, kwarg, val)
             
 
-    
+    @property
+    def param0(self):
+        """ Return the value of the first parameter - which should be, the
+        Fractal object
+        """
+        return next(iter(self.getkwargs().values()))
+
+    def save_func_path(self):
+        """ Return the file where the calling parameters are saved (pickled)
+        """
+        return os.path.join(self.param0.directory, "gui", "params.pickle")
+
+    def save_func_dict(self):
+        """ Save the calling parameters - except unpickable parameters
+        - main Fractal object
+        - gui-separators
+        """
+        print("*** saving kwargs")
+        fd = self._dict.copy()
+
+        unpickables = []
+        for key, val in fd.items():
+            if isinstance(key, tuple) and len(key) == 3:
+                # We filter parameters : if any of the possible type is 
+                # unpickable, we remove
+                if key[2] == "type":
+                    if inspect.isclass(val) and issubclass(val, fs.Fractal):
+                        # This is a Fractal instance, usually first param
+                        unpickables += [key[0]]
+                    if (
+                        isinstance(val, typing.TypeVar)
+                        and (val.__name__ == "gui_separator")
+                    ):
+                        # This is a gui separator, not something the user may
+                        # modify
+                        unpickables += [key[0]]
+
+        for key in list(fd.keys()): # copy through list as we modify on the fly
+            if isinstance(key, tuple):
+                iparam = key[0]
+                if iparam in unpickables:
+                    fd.pop(key)
+
+        save_path = self.save_func_path()
+        fs.utils.mkdir_p(os.path.dirname(save_path))
+        with open(save_path, 'wb+') as param_file:
+            pickle.dump(fd, param_file, pickle.HIGHEST_PROTOCOL)
+
+    def load_func_dict(self):
+        """ Reload parameters stored from last call """
+        print("*** load kwargs")
+        with open(self.save_func_path(), 'rb') as param_file:
+            fd = pickle.load(param_file)
+        
+        if fd["n_params"] != self._dict["n_params"]:
+            raise RuntimeError("Incompatible saved parameters")
+
+        for key in fd.keys():
+            self._dict[key] = fd[key]
+
+
     def __getitem__(self, key):
         """ Adapted to also return the "current value" of a specific kwarg """
         try:
@@ -382,6 +444,7 @@ class Func_submodel(Submodel):
         #  print("in submodel, widget_modified", key, val)
         if isinstance(key, str):
             # Accessing directly a kwarg by its name
+            # TODO: should be only nparams
             self[key] = val
             return
         elif not(isinstance(key, tuple)):
@@ -559,7 +622,7 @@ class Colormap_presenter(Presenter):
                     new_arr = old_arr + [default] * (val - npts)
                 cmap_dic[attr] = new_arr
 
-        return fscolors.Fractal_colormap(**cmap_dic)
+        return fs.colors.Fractal_colormap(**cmap_dic)
         self.build_dict()
 #        print("cmap model_notification", self._keys)
     
@@ -580,7 +643,7 @@ class Colormap_presenter(Presenter):
             modified_kwarg[row] = data
 
         cmap_dic[kwarg_key] = modified_kwarg
-        return fscolors.Fractal_colormap(**cmap_dic)
+        return fs.colors.Fractal_colormap(**cmap_dic)
 
 
 

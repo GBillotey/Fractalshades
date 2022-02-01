@@ -11,6 +11,7 @@ import copy
 import time
 # import textwrap
 #import pprint
+import pickle
 
 import PIL
 import functools
@@ -236,7 +237,7 @@ class _Pixmap_figure:
         self.img.save(im_path, format="PNG")
 
 
-class Action_func_widget(QFrame):#Widget):#QWidget):
+class Action_func_widget(QFrame):
     """
     A Func_widget with parameters & actions group
     """
@@ -332,32 +333,54 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
                 + "subcontrol-position:top left;" #padding:-6 3px;"
                 + "left: 15px;}")# ;
 
-    @property
-    def param0(self):
-        """ Return the value of the first parameter """
-        sm = self._submodel
-        return next(iter(sm.getkwargs().values()))
+#    @property
+#    def param0(self):
+#        """ Return the value of the first parameter - which should be, the
+#        Fractal object
+#        """
+#        return self._submodel.param0
 
     def raise_interruption(self):
-        self.param0.raise_interruption()
+        self._submodel.param0.raise_interruption()
 
     def lower_interruption(self):
-        self.param0.lower_interruption()
+        self._submodel.param0.lower_interruption()
+
+#    def kwargs_path(self):
+#        """ Return the file where the calling parameters are saved (pickled)
+#        """
+#        return self._submodel.kwargs_path()
+    
+#    def save_calling_kwargs(self, kwargs):
+#        """ Save the calling parameters
+#        """
+#        print("*** saving kwargs", kwargs.keys())
+#        return self._submodel.save_calling_kwargs()
+##        with open(self.kwargs_path(), 'wb+') as param_file:
+##            pickle.dump(kwargs, param_file, pickle.HIGHEST_PROTOCOL)
+
+    def load_calling_kwargs(self):
+        """ Reload parameters stored from last call """
+        print("*** load kwargs")
+        with open(self.kwargs_path(), 'rb') as param_file:
+            return pickle.load(param_file)
 
     def run_func(self):
-        # Ensure that interrupted is not raised
+        # Reset the interruption setting
         self.lower_interruption()
+        # Save the func kwargs
+        func_kwargs = self._submodel.getkwargs()
+        self._submodel.save_func_dict()
+
         def thread_job():
-            sm = self._submodel
             if self.locks_navigation:
                 self.lock_navigation.emit(True)
-#            self._exc = None
             self._run.setStyleSheet("background-color: red")
             try:
-                sm._func(**sm.getkwargs())
+                self._submodel._func(**func_kwargs)
             except Exception as e:
+                # send exception to the mainloop
                 self.error_in_thread.emit(e)
-#                self._exc = e
             finally:
                 # Does some clean-up to not lock everything on Error
                 self._run.setStyleSheet("background-color: #646464")
@@ -367,11 +390,6 @@ class Action_func_widget(QFrame):#Widget):#QWidget):
 
         # Now run the function in a dedicated thread
         threading.Thread(target=thread_job).start()
-#        if self._exc is not None:
-#            # Re-raising at mainloop
-#            print("RERAISE $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
-#            raise self._exc
-#        self._exc = None
 
 
     def show_func_params(self):
@@ -1622,8 +1640,14 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
     param_user_modified = pyqtSignal(object)
     on_fractal_result = pyqtSignal(object, object)
 
+    zoom_keys = ("x", "y", "dx", "xy_ratio", "theta_deg")
+    full_zoom_keys = ("x", "y", "nx", "dx", "xy_ratio", "theta_deg", "dps")
+    editable_keys = ("x", "y", "dx")
+
     def __init__(self, parent, view_presenter):
         super().__init__(parent)
+        self._parent = parent
+
         self.setSizePolicy(
             QtWidgets.QSizePolicy.Preferred, 
             QtWidgets.QSizePolicy.Expanding)
@@ -1659,7 +1683,8 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
 
         # Sets Image
         self._qim = None
-        self.reset_im()
+        self.set_zoom_init(try_reload=True)
+        self.set_im()
         
         # Publish / subscribe signals with the submodel
         self._model.model_event.connect(self.model_event_slot)
@@ -1694,6 +1719,8 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         ny = ref_zoom["ny"]
         dx = mpmath.mpf(ref_zoom["dx"])
         pix = dx / float(ref_zoom["nx"])
+        theta = ref_zoom["theta_deg"] * (np.pi / 180.)
+
         with mpmath.workdps(6):
             # Sets the working dps to 10e-8 x pixel size
             dps = int(-mpmath.log10(pix / nx) + 8)
@@ -1706,12 +1733,18 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             pix = dx / float(ref_zoom["nx"])
             center_off_px = px - 0.5 * nx
             center_off_py = 0.5 * ny - py
-            x = x_center + center_off_px * pix
-            y = y_center + center_off_py * pix
+            x = x_center + (
+                np.cos(theta) * center_off_px * pix
+                - np.sin(theta) * center_off_py * pix #
+            )
+            y = y_center + (
+                np.sin(theta) * center_off_px * pix #
+                + np.cos(theta) * center_off_py * pix
+            )
 
             def thread_job(**kwargs):
                 res = getattr(f, m_name)(x, y, pix, dps, **kwargs)
-                # Emit a signal rather than direct call, to avoid a crash
+                # Send a signal rather than direct call, to avoid a crash
                 # QBasicTimer::start: Timers cannot be started from another
                 # thread Segmentation fault (core dumped)
                 self.on_fractal_result.emit(m_name, res)
@@ -1777,7 +1810,44 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
     def xy_ratio(self):
         return self._presenter["xy_ratio"]
 
-    def reset_im(self):
+    def set_zoom_init(self, try_reload=False):
+        """ Resets the zoom init, 
+         - from the saved pickled files
+         - of, if not found, from the script parameters
+        """
+        print("Resetting zoom init")
+        # parent is Fractal_MainWindow - func_wget is not initialized at this
+        # point, so we use the model itself
+        func_sm = self._parent.from_register(("func",))
+        if try_reload:
+            try:
+                func_sm.load_func_dict()
+            except FileNotFoundError:
+                pass
+
+        # We now load the parameters current value from the func model
+        fm_params = func_sm.getkwargs()
+
+        # Setting _fractal_zoom_init from script_params
+        gui = self._parent._gui
+        self._fractal_zoom_init = dict()
+        for key in self.full_zoom_keys:
+            # Mapping with func param as defined through `connect_mouse` method
+            # of the gui object
+            self._fractal_zoom_init[key] = fm_params[getattr(gui, "_" + key)]
+
+        self._fractal_zoom_init["ny"] = int(
+            self._fractal_zoom_init["nx"] / self._fractal_zoom_init["xy_ratio"]
+            + 0.5
+        )
+        print("_fractal_zoom_init as reloaded", self._fractal_zoom_init)
+
+
+    def set_im(self):
+        """
+        This reloads the image and checks that the 
+        metadata is matching the expected values from 'last_call'
+        """
         image_file = os.path.join((self._presenter["fractal"]).directory, 
                                    self._presenter["image"] + ".png")
         valid_image = True
@@ -1789,28 +1859,21 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
                 # print("info debug", info["debug"])
         except FileNotFoundError:
             valid_image = False
-            info = {"x": None, "y": None, "dx": None, "xy_ratio": None}
+            info = dict(zip(self.zoom_keys, (None,) * len(self.zoom_keys)))
             nx = None
             ny = None
 
-        # Storing the "initial" zoom info
-        self._fractal_zoom_init = {k: info[k] for k in 
-                                   ["x", "y", "dx", "xy_ratio"]}
-        self._fractal_zoom_init["nx"] = nx
-        self._fractal_zoom_init["ny"] = ny
-
-        print("****************** dps", info.keys())
-
+        # Storing the "image" zoom info 
+        self._image_zoom_init = {
+            k: info[k] 
+            for k in self.zoom_keys
+        }
+        self._image_zoom_init["nx"] = nx
+        self._image_zoom_init["ny"] = ny
         if self.has_dps:
-            self._fractal_zoom_init["dps"] = info.get(
+            self._image_zoom_init["dps"] = info.get(
                 "precision", mpmath.mp.dps
             )
-#        precision = info["precision"]
-#        C = np.log(10.) / np.log(2.)
-#        dps = max(15, int(round(int(precision) / C - 1)))
-
-        # self._presenter["dps"] = ref_zoom[key]
-        
         self.validate()
 
         for item in [self._qim, self._rect, self._rect_under]:
@@ -1825,7 +1888,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             self.fit_image()
         else:
             self._qim = None
-        
+
         self._rect = None
         self._rect_under = None
         self._drawing_rect = False
@@ -1837,43 +1900,52 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
 
     def check_zoom_init(self):
         """ Checks if the image 'zoom init' matches the parameters ;
-        otherwise, updates the model through a notification request
+        otherwise, warns in the image text display
         """
+        # We store 2 values of the parameters :
+        # the _fractal_zoom_init is a copy of the parameters values "when the 
+        # image has been produced"
+        # the _presenter value is a convenience to access current parameter
+        # value
+        # Here, the check performed is to ensure the image metadata matches
+        # _fractal_zoom_init
         ret = 0
-        keys = ["x", "y", "dx", "xy_ratio"]
+        keys = self.zoom_keys
         if self.has_dps:
-            keys += ["dps"]
+            keys += ("dps",)
 
         for key in keys:
-            expected = self._presenter[key]
+            expected = self._image_zoom_init[key]
             value = self._fractal_zoom_init[key]
-            if value is None:
+            if expected is None: # No image data
                 ret = 2
+                break
             else:
                 casted = self.cast(value, expected)
-                # Send a model modification request
-                self._presenter[key] = casted
-                if casted != str(expected) and (ret != 2):
+                if casted != expected:
+                    print("***unmatching", casted, expected)
                     ret = 1
-                    self._fractal_zoom_init[key] = casted
         return ret
 
     def validate(self):
         """ Sets Image metadata message """
         self.validated = self.check_zoom_init()
         message = {0: "OK, matching",
-                   1: "OK, zoom params updated",
-                   2: "No image found"}
+                   1: "/!\ image metadata mismatch",
+                   2: "Image data missing"}
         self._labels.values_update({"Image metadata": 
             message[self.validated]})
 
 
     def cancel_drawing_rect(self, dclick=False):
+        """ Cancellation cases : double-click or empty rectangle
+        if dclick, we also reset xy_ratio and theta_deg
+        """
         if self._qim is None:
             return
-        keys = ["x", "y", "dx"]
+        keys = self.editable_keys
         if dclick:
-            keys = ["x", "y", "dx", "xy_ratio"]
+            keys = self.zoom_keys
         # resets everything - the zoom ratio only if dclick
         for key in keys:
             value = self._fractal_zoom_init[key]
@@ -1907,15 +1979,16 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
                 cancel = True # zoom is invalid
 
         if cancel:
-#            print("INVALID _object_pos")
             self.cancel_drawing_rect(dclick=dclick)
             if dclick:
                 self.fit_image()
             return
-        
+
         nx = self._fractal_zoom_init["nx"]
         ny = self._fractal_zoom_init["ny"]
-        # new center offet in pixel
+        theta = self._fractal_zoom_init["theta_deg"] * (np.pi / 180.)
+
+        # new center offet in pixel - independent of angle
         topleft, bottomRight = self.selection_corners(rect_pos0, rect_pos1)
         center_off_px = 0.5 * (topleft.x() + bottomRight.x() - nx)
         center_off_py = 0.5 * (ny - topleft.y() - bottomRight.y())
@@ -1936,13 +2009,20 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
                 ref_zoom["dps"] = int(-mpmath.log10(pix * dx_pix / nx) + 8)
     
             with mpmath.workdps(ref_zoom["dps"]):
+                # x, y position is measured on the image -> ref angle is theta
                 for k in ["x", "y"]:
                     if to_mpf[k]:
                         ref_zoom[k] = mpmath.mpf(ref_zoom[k])
-                ref_zoom["x"] += center_off_px * pix
-                ref_zoom["y"] += center_off_py * pix
+                ref_zoom["x"] += pix * (
+                    np.cos(theta) * center_off_px
+                    - np.sin(theta) * center_off_py
+                )
+                ref_zoom["y"] += pix * (
+                    np.sin(theta) * center_off_px
+                    + np.cos(theta) * center_off_py
+                )
                 ref_zoom["dx"] = dx_pix * pix
-    
+
                 #  mpf -> str (back)
                 for (k, v) in to_mpf.items():
                     if v:
@@ -1954,18 +2034,23 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             ref_zoom["x"] = float(ref_zoom["x"])
             ref_zoom["y"] = float(ref_zoom["y"])
             ref_zoom["dx"] = float(ref_zoom["dx"])
-#            print(type(ref_zoom["dx"]), "ref_zoom[dx]")
-#            print(type(ref_zoom["x"]), "ref_zoom[x]")
-#            print(type(ref_zoom["y"]), "ref_zoom[y]")
+
             pix = ref_zoom["dx"] / float(ref_zoom["nx"])
-            ref_zoom["x"] += center_off_px * pix
-            ref_zoom["y"] += center_off_py * pix
+            ref_zoom["x"] += pix * (
+                np.cos(theta) * center_off_px
+                - np.sin(theta) * center_off_py
+            )
+            ref_zoom["y"] += pix * (
+                np.sin(theta) * center_off_px
+                + np.cos(theta) * center_off_py
+            )
             ref_zoom["dx"] = dx_pix * pix
 
-        keys = ["x", "y", "dx"]
+        keys = self.editable_keys # Note that theta is not editable by mouse
         if self.has_dps:
-            keys += ["dps"]
+            keys += ("dps",)
         for key in keys:
+            print("pushing to presenter", key, ref_zoom[key])
             self._presenter[key] = ref_zoom[key]
             
 
@@ -1978,8 +2063,10 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         (pos0,) = self._object_pos
         pos1 = self._object_drag
 
-        # Enforce the correct ratio
+        # Enforce the correct ratioand angle
         topleft, bottomRight = self.selection_corners(pos0, pos1)
+        rotation = self.selection_rotation()
+
         rectF = QtCore.QRectF(topleft, bottomRight)
         if self._rect is not None:
             self._rect.setRect(rectF)
@@ -1993,7 +2080,13 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             self._rect.setPen(QtGui.QPen(QtGui.QColor("black"), 0, Qt.DotLine))
             self._group.addToGroup(self._rect)
 
+        # Now apply the rotation
+        for r in (self._rect_under, self._rect):
+            r.setTransformOriginPoint(r.boundingRect().center())
+            r.setRotation(rotation)
+
     def selection_corners(self, pos0, pos1):
+        """ These are the selection rectangle corners """
         # Enforce the correct ratio
         diffx = abs(pos1.x() - pos0.x())
         diffy = abs(pos1.y() - pos0.y())
@@ -2004,15 +2097,24 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         topleft = QtCore.QPointF(pos0.x() - diffx0, pos0.y() - diffy0)
         bottomRight = QtCore.QPointF(pos0.x() + diffx0, pos0.y() + diffy0)
         return topleft, bottomRight
-
+    
+    def selection_rotation(self):
+        """ The rotation angle """
+        theta_diff_deg = (
+            self._fractal_zoom_init["theta_deg"]
+            - self._presenter["theta_deg"]
+        )
+        print("**** theta_diff_deg", theta_diff_deg)
+        return theta_diff_deg
 
     def model_event_slot(self, keys, val):
         """ A model item has been modified - will it impact the widget ? """
         # Find the mathching "mapping" - None if no match
         mapped = next((k for k, v in self._mapping.items() if v == keys), None)
         if mapped in ["image", "fractal"]:
-            self.reset_im()
-        elif mapped in ["x", "y", "dx", "xy_ratio", "dps"]:
+            self.set_zoom_init()
+            self.set_im()
+        elif mapped in ["x", "y", "dx", "xy_ratio", "theta_deg", "dps"]:
             pass
         else:
             if mapped is not None:
@@ -2416,7 +2518,7 @@ class Fractal_MainWindow(QMainWindow):
             with open(license_file) as f:
                 license_str = f.read()
         msg = Fractal_MessageBox()
-        msg.setWindowTitle("Fractalshades license")
+        msg.setWindowTitle("Fractalshades " + fs.__version__)
         msg.setText(license_str.splitlines()[0])
         msg.setInformativeText(license_str.splitlines()[2])
         msg.setDetailedText(license_str)
@@ -2491,7 +2593,7 @@ class Fractal_MainWindow(QMainWindow):
         model = self._model = Model()
         # Adds the submodels
         Func_submodel(model, ("func",), gui._func, dps_var=gui._dps)
-        # Adds the presenters
+        # Adds the presenters - Note
         mapping = {
             "fractal": ("func", gui._fractal),
             "image": ("func", gui._image),
@@ -2499,6 +2601,7 @@ class Fractal_MainWindow(QMainWindow):
             "y": ("func", gui._y),
             "dx": ("func", gui._dx),
             "xy_ratio": ("func", gui._xy_ratio),
+            "theta_deg": ("func", gui._theta_deg),
             "dps": ("func", gui._dps)
         }
         Presenter(model, mapping, register_key="image")
@@ -2560,8 +2663,6 @@ class Fractal_MainWindow(QMainWindow):
         print("ERROR detected in thread")
         raise exc
 
-
-
     def add_image_wget(self):
         mw = Image_widget(self, self.from_register("image"))
         self.setCentralWidget(mw)
@@ -2572,30 +2673,10 @@ class Fractal_MainWindow(QMainWindow):
 
 def excepthook(exc_type, exc_value, exc_traceback):
     """ Handling GUI Exceptions"""
-#    print("*************************************************************CATEC")
     exc_str = "".join(
         traceback.format_exception(exc_type, exc_value, exc_traceback)
     )
-    msg = QtWidgets.QMessageBox.critical(None, 'GUI Error', exc_str)
-    msg.exec()
-#    del msg
-#    sys.__excepthook__(exc_type, exc_value, exc_traceback)
-
-#def thread_excepthook(args):
-#    """ Handling GUI Exceptions in threads - (note the different args) """
-#    (exc_type, exc_value, exc_traceback
-#     ) = (args.exc_type, args.exc_value, args.exc_traceback)
-##    print("*************************************************************CAT2C")
-##    print(traceback.format_exception(exc_type, exc_value, exc_traceback))
-##    print(type(traceback.format_exception(exc_type, exc_value, exc_traceback)))
-##    print(str(traceback.format_exception(exc_type, exc_value, exc_traceback)))
-#    exc_str = "".join(
-#        traceback.format_exception(exc_type, exc_value, exc_traceback)
-#    )
-#    msg = QMessageBox.critical(None, 'GUI Error in thread', exc_str)
-#    msg.exec()
-#    del msg
-##    threading.__excepthook__(exc_type, exc_value, exc_traceback)
+    QMessageBox.critical(None, 'GUI Error', exc_str)
 
 
 class Fractal_GUI:
@@ -2639,6 +2720,7 @@ parameter
         - `QtGui.QColor=(0., 0., 1.)` (RGB color)
         - `QtGui.QColor=(0., 0., 1., 0)` (RGBA color)
         - `fs.colors.Fractal_colormap`
+        - `fs.gui.separator` (Adds a titled spacer)
     
     A parameter that the user will choose among a list of discrete values can
     be represented by a `typing.Literal` :
@@ -2704,8 +2786,10 @@ image_param: str
         """
         self._image = image_param
 
-    def connect_mouse(self, x="x", y="y", dx="dx", xy_ratio="xy_ratio",
-                      dps="dps"):
+    def connect_mouse(
+        self, x="x", y="y", dx="dx", nx="nx", xy_ratio="xy_ratio",
+        theta_deg="theta_deg", dps="dps"
+    ):
         """
 Binds some parameters of the ``func`` passed to the
 `fractalshades.gui.Fractal_GUI` constructor with GUI mouse events.
@@ -2713,18 +2797,24 @@ Binds some parameters of the ``func`` passed to the
 Parameters
 ---------- 
 x: str
-    Name of the parameter holding the x-axis center of the image
+    Name of the parameter for the x-axis center of the image
 y: str
-    Name of the parameter holding the y-axis center of the image
+    Name of the parameter for the y-axis center of the image
 dx: str
-    Name of the parameter holding the x-axis width of the image
+    Name of the parameter for the x-axis width of the image
+nx: str
+    Name of the parameter for the x-axis width of the image
 xy_ratio: str
-    Name of the parameter holding the ratio width / height of the image
+    Name of the parameter for the ratio width / height of the image
 dps: str
-    Name of the parameter holding the precision (for the mpmath arbitrary
-    precision)."""
-        self._x, self._y, self._dx = x, y, dx
+    Name of the parameter for the precision in base-10 digits (mpmath arbitrary
+    precision).
+theta_deg: str
+    Name of the parameter for the image rotation angle in degree.
+"""
+        self._x, self._y, self._dx, self._nx = x, y, dx, nx
         self._xy_ratio, self._dps = xy_ratio, dps
+        self._theta_deg = theta_deg
 
     def show(self):
         """
@@ -2735,10 +2825,8 @@ dps: str
         self.mainwin.show()
         fs.settings.output_context["gui_iter"] = 1
         sys.excepthook = excepthook
-#        threading.excepthook = thread_excepthook
         try:
             app.exec()
         finally:
             fs.settings.output_context["gui_iter"] = 0
             sys.excepthook = sys.__excepthook__
-#            threading.excepthook = threading.__excepthook__
