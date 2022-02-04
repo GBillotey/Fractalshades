@@ -45,14 +45,14 @@ def plot(directory):
     y = "0.001645580546820209430325900"
     dx = "16.e-22"
     precision = 30
-    nx = 1600
+    nx = 2400
 
     colormap = fscolors.cmap_register["autumn"]
 
     # Set to True if you only want to rerun the post-processing part
     settings.skip_calc = False
     # Set to True to enable multi-processing
-    settings.enable_multiprocessing = True
+    settings.enable_multithreading = True
 
 
     f = fsm.Perturbation_mandelbrot(directory)

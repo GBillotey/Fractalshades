@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 __author__ = "G. Billotey"
 __license__ = "MIT"
-__version__ = "0.4.0.b0"
+__version__ = "0.4.1"
 
 from .settings import get_figures, close
 from .utils import zoom_options, calc_options, interactive_options

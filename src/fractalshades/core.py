@@ -548,6 +548,29 @@ advanced users when subclassing.
         if isinstance(x, str) or isinstance(y, str) or isinstance(dx, str):
             raise RuntimeError("Float expected")
 
+    def new_status(self, wget):
+        """ Return a dictionnary that can hold the current progress status """
+        self._status_wget = wget
+        status = {
+            "Tiles": {
+                "val": 0,
+                "str_val": "- / -"
+            }
+        }
+        return status
+
+    def set_status(self, key, str_val):
+        """ Just a simple text status """
+        self._status_wget.update_status(key, str_val)
+
+    def incr_tiles_status(self):
+        """ Dealing with more complex status : 
+        Increase by 1 the number of computed tiles reported in status bar
+        """
+        dic = self._status_wget._status
+        dic["Tiles"]["val"] += 1
+        str_val = str(dic["Tiles"]["val"]) + " / " + str(self.chunks_count)
+        self._status_wget.update_status("Tiles", str_val)
 
     def run(self):
         """
@@ -582,7 +605,7 @@ advanced users when subclassing.
         # Launch parallel computing of the inner-loop (Multi-threading with GIL
         # released)
         self.cycles(chunk_slice=None)
-        
+
         # Export to human-readable format
         if fs.settings.inspect_calc:
             self.inspect_calc()
@@ -676,7 +699,7 @@ advanced users when subclassing.
     def clean_up(self, calc_name=None):
         """
         Deletes all saved data files associated with a given ``calc_name``.
-        
+
         Parameters
         ----------
         calc_name : str | None
@@ -748,7 +771,8 @@ advanced users when subclassing.
         if r != 0:
             cx += 1
         (cy, r) = divmod(self.ny, chunk_size)
-        if r != 0: cy += 1
+        if r != 0:
+            cy += 1
         return cx * cy
 
     def chunk_rank(self, chunk_slice):
@@ -760,7 +784,8 @@ advanced users when subclassing.
         chunk_item_x = ix // chunk_size
         chunk_item_y = iy // chunk_size
         (cy, r) = divmod(self.ny, chunk_size)
-        if r != 0: cy += 1
+        if r != 0:
+            cy += 1
         return chunk_item_x * cy + chunk_item_y
 
     def chunk_from_rank(self, rank):
@@ -958,6 +983,9 @@ advanced users when subclassing.
         if ret_code == self.USER_INTERRUPTED:
             print("Interruption signal received")
             return
+
+        if hasattr(self, "_status_wget"):
+            self.incr_tiles_status()
 
         # Saving the results after cycling
         self.update_report_mmap(chunk_slice, stop_reason)

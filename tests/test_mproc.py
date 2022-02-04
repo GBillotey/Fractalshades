@@ -42,8 +42,8 @@ class Test_mproc(unittest.TestCase):
                 for item in range(self.count):
                     yield item
 
-            @Multithreading_iterator(iterable_attr="crange", iter_kwargs="item",
-                                 redirect_path_attr="multiprocess_dir")
+            @Multithreading_iterator(iterable_attr="crange",
+                                     iter_kwargs="item")
             def run(self, item):
                 # OK with C order
 #                print("in run", item)
@@ -57,8 +57,8 @@ class Test_mproc(unittest.TestCase):
                 # DO NOT mmap.flush() here - performance hit and no benefit
                 #del mmap
             
-            @Multithreading_iterator(iterable_attr="crange", iter_kwargs="item",
-                                 redirect_path_attr="multiprocess_dir")
+            @Multithreading_iterator(iterable_attr="crange",
+                                     iter_kwargs="item")
             def run_fancy(self, item):
                 # OK with C order
                 mmap = open_memmap(

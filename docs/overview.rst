@@ -21,15 +21,10 @@ Some fractals are only available at double precision, while some also allow
 ultra-deep zooming (*1.e-2000* scale and beyong) thanks to state-of-the-art
 algorithm (based on perturbation technique).
 
-The time-critical core-loops benefit from multiprocesssing and leverage
+The time-critical core-loops are run in parallel on CPU and leverage
 just-in-time compiling through numba.
-
-Known limitations :
-
-    - Fractalshades targets currently only UNIX-like operating systems, as
-      its multiprocessing implementation relies on forking. A future release
-      may target also windows if I have the time (the main roadblock
-      being, I do not have access to a windows machine at home)
+Arbitrary precision calculations use a dedicated C-extension compiled with
+Cython.
 
 The main drivers for this hobby project has been the mathematical interest
 and the aesthetics, hence the post-processing that reveals the structure of

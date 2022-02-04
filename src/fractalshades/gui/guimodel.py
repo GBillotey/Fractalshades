@@ -7,7 +7,7 @@ import os
 import sys
 import traceback
 import copy
-# import datetime
+import datetime
 import time
 # import textwrap
 #import pprint
@@ -27,7 +27,7 @@ import numpy as np
 from PyQt5 import QtCore
 from PyQt5.QtCore import Qt
 #from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import pyqtSignal, pyqtSlot
+from PyQt5.QtCore import pyqtSignal, pyqtSlot, QTimer
 
 from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtWidgets import (
@@ -44,7 +44,7 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QCheckBox,
     QLabel,
-#    QStatusBar,
+    QStatusBar,
 #    QMenuBar,
 #    QToolBar,
     QComboBox,
@@ -200,6 +200,20 @@ QTableView::item::selected {
 #}
 #"""
 
+STATUS_BAR_CSS = """
+QStatusBar {
+background: #7e7e7e;
+}
+QStatusBar::item {
+background: #646464;
+}
+QStatusBar QLabel {
+margin: 2px;
+border: 0;
+background: #646464;
+}
+"""
+
 def getapp():
     app = QtCore.QCoreApplication.instance()
     if app is None:
@@ -237,10 +251,71 @@ class _Pixmap_figure:
         self.img.save(im_path, format="PNG")
 
 
+class Calc_status_bar(QStatusBar):
+    
+    def __init__(self, func_model):
+        super().__init__()
+        self.setStyleSheet(STATUS_BAR_CSS)
+        self._func_model = func_model
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.on_time_incr)
+        self.reset_status()
+        self.layout()
+        print("debug2 status", self._layout)
+
+    def reset_status(self):
+        """ Reset the properties of the status according to the fractal
+        object """
+        status = {
+            "elapsed": {
+                "val": 0.,
+                "str_val": str(datetime.timedelta()),
+            },
+        }
+        fractal = self._func_model.param0
+        status.update(fractal.new_status(self))
+        self._status = status
+
+    def layout(self):
+        self._layout = dict()
+        for k, v in self._status.items():
+            str_label = self.label(k)
+            self._layout[k] = QLabel(str_label)
+            self.addWidget(self._layout[k])
+
+    def start_timer(self):
+        self.reset_status()
+        for key in self._layout.keys():
+            self.update_status(key)
+        # Update timer display every second
+        self.timer.start(1000 * 1)
+
+    def stop_timer(self):
+        self.timer.stop()
+
+    def on_time_incr(self):
+        self._status["elapsed"]["val"] += 1.
+        curr_time = datetime.timedelta(seconds=self._status["elapsed"]["val"])
+        self.update_status("elapsed", str(curr_time))
+
+    def update_status(self, key, str_val=None):
+        """ Update the text status and refresh the display
+        if str_val is None, only refresh the display
+        """
+        if str_val is not None:
+            self._status[key]["str_val"] = str_val
+        wget = self._layout[key]
+        wget.setText(self.label(key))
+
+    def label(self, key):
+        return key + ": " + self._status[key]["str_val"]
+
+
 class Action_func_widget(QFrame):
     """
     A Func_widget with parameters & actions group
     """
+    func_started = pyqtSignal()
     func_performed = pyqtSignal()
     lock_navigation = pyqtSignal(bool)
     error_in_thread = QtCore.pyqtSignal(Exception)
@@ -252,8 +327,7 @@ class Action_func_widget(QFrame):
         self._submodel = func_smodel
         self.may_interrupt = may_interrupt
         self.locks_navigation = locks_navigation
-        
-        
+
         # Parameters and action boxes
         param_box = self.add_param_box(func_smodel)
         action_box = self.add_action_box()
@@ -274,7 +348,6 @@ class Action_func_widget(QFrame):
         # adds a binding to the image modified of other setting
         if action_setting is not None:
             (setting, keys) = action_setting
-#            print("*********************action_setting", action_setting)
             model = func_smodel._model
             model.declare_setting(setting, keys)
             self.func_performed.connect(functools.partial(
@@ -292,7 +365,10 @@ class Action_func_widget(QFrame):
         
         # Adds Exception handling
         self.error_in_thread.connect(parent.on_error_in_thread)
-            
+
+        # Starts / stops status bar timer
+        self.func_started.connect(parent.status_bar.start_timer)#)
+        self.func_performed.connect(parent.status_bar.stop_timer)#)
 
     def add_param_box(self, func_smodel):
         self._param_widget = Func_widget(self, func_smodel)
@@ -301,7 +377,7 @@ class Action_func_widget(QFrame):
         param_scrollarea = QScrollArea(self)
         param_scrollarea.setWidget(self._param_widget)
         param_scrollarea.setWidgetResizable(True)
-        
+
         param_layout.addWidget(param_scrollarea)
         param_box.setLayout(param_layout)
         self.set_border_style(param_box)
@@ -330,34 +406,14 @@ class Action_func_widget(QFrame):
             "QGroupBox{border:1px solid #646464;"
                 + "border-radius:5px;margin-top: 1ex;}"
             + "QGroupBox::title{subcontrol-origin: margin;"
-                + "subcontrol-position:top left;" #padding:-6 3px;"
-                + "left: 15px;}")# ;
-
-#    @property
-#    def param0(self):
-#        """ Return the value of the first parameter - which should be, the
-#        Fractal object
-#        """
-#        return self._submodel.param0
+                + "subcontrol-position:top left;"
+                + "left: 15px;}")
 
     def raise_interruption(self):
         self._submodel.param0.raise_interruption()
 
     def lower_interruption(self):
         self._submodel.param0.lower_interruption()
-
-#    def kwargs_path(self):
-#        """ Return the file where the calling parameters are saved (pickled)
-#        """
-#        return self._submodel.kwargs_path()
-    
-#    def save_calling_kwargs(self, kwargs):
-#        """ Save the calling parameters
-#        """
-#        print("*** saving kwargs", kwargs.keys())
-#        return self._submodel.save_calling_kwargs()
-##        with open(self.kwargs_path(), 'wb+') as param_file:
-##            pickle.dump(kwargs, param_file, pickle.HIGHEST_PROTOCOL)
 
     def load_calling_kwargs(self):
         """ Reload parameters stored from last call """
@@ -373,6 +429,7 @@ class Action_func_widget(QFrame):
         self._submodel.save_func_dict()
 
         def thread_job():
+            self.func_started.emit()
             if self.locks_navigation:
                 self.lock_navigation.emit(True)
             self._run.setStyleSheet("background-color: red")
@@ -411,7 +468,7 @@ class Action_func_widget(QFrame):
 class Func_widget_separator(QLabel):
     def __init__(self, name):
         """ Defines a graphical separator with label "name" """
-        super().__init__(name + ":")
+        super().__init__(name)
         sep_Font = QtGui.QFont()
         sep_Font.setWeight(QtGui.QFont.StyleItalic)
         self.setFont(sep_Font)
@@ -538,16 +595,12 @@ class Func_widget(QFrame):
             atom_wget.user_modified.connect(functools.partial(
                     self.on_user_mod, (i_param, i_union, "val"),
                     atom_wget.value))
-            qs.addWidget(atom_wget)#, i_param, 3, 1, 1)
+            qs.addWidget(atom_wget)
             
             if isinstance(atom_wget, Atom_Presenter_mixin):
                 atom_wget.request_presenter.connect(functools.partial(
                     self.on_presenter, (i_param, i_union, "val")))
             
-    
-#    def layout_field(self, qs, i_param, i_union, ifield):
-#        fd = self._submodel.func_dict
-#        pass
     
     def reset_layout(self):
         """ Delete every item in self._layout """
@@ -658,20 +711,31 @@ class Atom_QCheckBox(QCheckBox, Atom_Edit_mixin):
 
     def on_model_event(self, val):
         self.setChecked(val)
-        
-class Atom_QBoolComboBox(QComboBox, Atom_Edit_mixin):
+
+
+class NoWheel_mixin:
+    def eventFilter(self, widget, evt):
+        """ Prevent annoying wheel action for Combobox derived classes """
+        if evt.type() == QtCore.QEvent.Wheel:
+            evt.ignore()
+            return True
+        return super(QComboBox, self).eventFilter(widget, evt)
+
+
+class Atom_QBoolComboBox(QComboBox, Atom_Edit_mixin, NoWheel_mixin):
     user_modified = pyqtSignal()
 
     def __init__(self, atom_type, val, model, parent=None):
         super().__init__(parent)
+        self.installEventFilter(self)
+        self.setStyleSheet(COMBO_BOX_CSS)
+
         self._type = atom_type
         self._choices = ["True", "False"]
         self._values = [True, False]
         self.currentTextChanged.connect(self.on_user_event)
         self.addItems(str(c) for c in self._choices)
         self.setCurrentIndex(self._values.index(val))
-        
-        self.setStyleSheet(COMBO_BOX_CSS)#"background:#000000")
 
     def value(self):
         return self._values[self.currentIndex()]
@@ -866,25 +930,26 @@ class Atom_QPlainTextEdit(QPlainTextEdit, Atom_Edit_mixin):
         return QtCore.QSize(self.width(), self.height())
 
 
-class Atom_QComboBox(QComboBox, Atom_Edit_mixin):
+class Atom_QComboBox(QComboBox, Atom_Edit_mixin, NoWheel_mixin):
     user_modified = pyqtSignal()
 
     def __init__(self, atom_type, val, model, parent=None):
         super().__init__(parent)
+        self.setStyleSheet(COMBO_BOX_CSS)
+        self.installEventFilter(self)
+
         self._type = atom_type
         self._choices = typing.get_args(atom_type)
         self.currentTextChanged.connect(self.on_user_event)
         self.addItems(str(c) for c in self._choices)
         self.setCurrentIndex(val)
-        
-        self.setStyleSheet(COMBO_BOX_CSS)#"background:#000000")
 
     def value(self):
         return self.currentIndex()
 
     def on_user_event(self):
         self.user_modified.emit()
-    
+
     def on_model_event(self, val):
         self.setCurrentIndex(val)
 
@@ -1834,6 +1899,9 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         for key in self.full_zoom_keys:
             # Mapping with func param as defined through `connect_mouse` method
             # of the gui object
+            if key == "dps":
+                if gui._dps is None:
+                    continue
             self._fractal_zoom_init[key] = fm_params[getattr(gui, "_" + key)]
 
         self._fractal_zoom_init["ny"] = int(
@@ -2607,6 +2675,7 @@ class Fractal_MainWindow(QMainWindow):
         Presenter(model, mapping, register_key="image")
 
     def layout(self):
+        self.add_status_bar()
         self.add_image_wget()
         self.add_func_wget()
         self.add_image_status()
@@ -2645,6 +2714,12 @@ class Fractal_MainWindow(QMainWindow):
         if fs.settings.output_context["doc"]:
             # We are building the doc we need an image
             func_wget.run_func()
+
+    def add_status_bar(self):
+        # the status bar need access to the fractal object, which will be
+        # provided through the func model
+        self.status_bar = Calc_status_bar(self.from_register(("func",)))
+        self.setStatusBar(self.status_bar)
 
     @pyqtSlot(object)
     def func_callback(self, func_widget):
@@ -2720,7 +2795,9 @@ parameter
         - `QtGui.QColor=(0., 0., 1.)` (RGB color)
         - `QtGui.QColor=(0., 0., 1., 0)` (RGBA color)
         - `fs.colors.Fractal_colormap`
-        - `fs.gui.separator` (Adds a titled spacer)
+        - `fs.gui.separator` (Not really a parameter, this special type is used
+                              to  insert a titled for a group of parameters in
+                              the GUI)
     
     A parameter that the user will choose among a list of discrete values can
     be represented by a `typing.Literal` :
@@ -2751,11 +2828,13 @@ parameter
         def func(
             fractal: fsm.Perturbation_mandelbrot=fractal,
             calc_name: str=calc_name,
+            _1: fsgui.separator="Zoom parameters",
             x: mpmath.mpf=x,
             y: mpmath.mpf=y,
             dx: mpmath.mpf=dx,
             xy_ratio: float=xy_ratio,
             dps: int= dps,
+            _2: fsgui.separator="Calculation parameters",
             max_iter: int=max_iter,
             optional_float: typing.Optional[float]=3.14159,
             choices_str: typing.Literal["a", "b", "c"]="c",
@@ -2806,9 +2885,9 @@ nx: str
     Name of the parameter for the x-axis width of the image
 xy_ratio: str
     Name of the parameter for the ratio width / height of the image
-dps: str
+dps: str | None
     Name of the parameter for the precision in base-10 digits (mpmath arbitrary
-    precision).
+    precision). If not using arbitrary precision, it is NEEDED to pass None.
 theta_deg: str
     Name of the parameter for the image rotation angle in degree.
 """

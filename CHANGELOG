@@ -1,6 +1,16 @@
+Rev 0.4.1
 - Improved Fieldlines default postproc when using mirrored cmap
 - Typo name Disp_Layer -> Disp_layer
 - added Collaz fractal
-- use gmpy2 cython bindings for faster full-precision calculations (compiled as C-extension)
+- use gmpy2 bindings through Cython C-extension for faster full-precision
+  calculations
 - improved glitch correction : use single-reference based method
 - use multi-threading + NOGIL compilation to improve portability under Windows
+- build under windows
+- added progress status bar
+- cleaner deparation of parameters by themes in GUI
+- rotation in GUI
+- Newton search in GUI
+- When one quit and relaunch the GUI, all previous parameters are reloaded
+
+

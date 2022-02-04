@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 =============================================================
-COllatz explorer - Naïve algorithm with standard precision
+Collatz explorer - Naïve algorithm with standard precision
 =============================================================
 
 This is a simple template to start exploring the Collatz set with
-the GUI. Resolution limited to approx 1.e-13 due to double (float64) precision
+a GUI. Resolution limited to approx 1.e-13 due to double (float64) precision
 Good exploration !
 """
 import typing
@@ -22,16 +22,11 @@ import fractalshades.gui as fsgui
 
 from fractalshades.postproc import (
     Postproc_batch,
-    Continuous_iter_pp,
-    DEM_normal_pp,
     Raw_pp,
 )
 from fractalshades.colors.layers import (
     Color_layer,
     Bool_layer,
-    Virtual_layer,
-    Normal_map_layer,
-    Disp_layer
 )
 
 
@@ -43,7 +38,9 @@ def plot(plot_dir):
     x = 0.0
     y = 0.0
     dx = 5.
-    xy_ratio = 2.0
+    xy_ratio = 1.7777
+    theta_deg = 0.
+
     max_iter = 1000
     nx = 2000
     M_divergence = 1000.0
@@ -55,7 +52,7 @@ def plot(plot_dir):
   
 
     # Set to True to enable multi-processing
-    settings.enable_multiprocessing = True
+    settings.enable_multithreading = True
     # Set to True in case RAM issue (Memory error)
     settings.optimize_RAM = False
     settings.inspect_calc = True
@@ -63,20 +60,26 @@ def plot(plot_dir):
     directory = plot_dir
     fractal = fsm.Collatz(directory)
     
-    def func(fractal: fsm.Mandelbrot=fractal,
-             calc_name: str= calc_name,
-             x: float= x,
-             y: float= y,
-             dx: float= dx,
-             xy_ratio: float=xy_ratio,
-             max_iter: int=max_iter,
-             nx: int=nx,
-             M_divergence: float=M_divergence,
-             interior_color: QtGui.QColor=interior_color,
-             colormap: fscolors.Fractal_colormap=colormap,
-             cmap_z_kind: typing.Literal["relative", "absolute"]=cmap_z_kind,
-             zmin: float=zmin,
-             zmax: float=zmax):
+    def func(
+        fractal: fsm.Mandelbrot=fractal,
+        calc_name: str= calc_name,
+         _1: fsgui.separator="Zoom parameters",
+         x: float= x,
+         y: float= y,
+         dx: float= dx,
+         xy_ratio: float=xy_ratio,
+         theta_deg: float=theta_deg,
+         _2: fsgui.separator="Calculation parameters",
+         max_iter: int=max_iter,
+         nx: int=nx,
+         _3: fsgui.separator="Plotting parameters",
+         M_divergence: float=M_divergence,
+         interior_color: QtGui.QColor=interior_color,
+         colormap: fscolors.Fractal_colormap=colormap,
+         cmap_z_kind: typing.Literal["relative", "absolute"]=cmap_z_kind,
+         zmin: float=zmin,
+         zmax: float=zmax
+    ):
 
 
         fractal.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,

@@ -198,6 +198,7 @@ class Func_submodel(Submodel):
         self.model_notification.connect(self._model.model_notified_slot)
         # Bindings for dps
         if dps_var is not None:
+            print("dps_var", dps_var)
             self.connect_dps(dps_var)
     
     def connect_dps(self, dps_var):
@@ -376,7 +377,7 @@ class Func_submodel(Submodel):
                 # unpickable, we remove
                 if key[2] == "type":
                     if inspect.isclass(val) and issubclass(val, fs.Fractal):
-                        # This is a Fractal instance, usually first param
+                        # This is a Fractal instance, usually only first param
                         unpickables += [key[0]]
                     if (
                         isinstance(val, typing.TypeVar)
