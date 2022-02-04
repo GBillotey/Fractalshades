@@ -43,14 +43,15 @@ from fractalshades.colors.layers import (
 
 
 def plot(plot_dir):
-    fs.settings.enable_multiprocessing = True
+    fs.settings.enable_multithreading = True
     fs.settings.inspect_calc = True
+
     # A simple showcase using perturbation technique
     x = "-1.768667862837488812627419470"
     y = "0.001645580546820209430325900"
     dx = "18.e-22"
     precision = 30
-    nx = 3600
+    nx = 2400
     xy_ratio = 16. / 9.
 
     calc_name="mandelbrot"
@@ -103,8 +104,8 @@ def plot(plot_dir):
                 Fieldlines_pp(n_iter=3, swirl=0., damping_ratio=1.0))
 
     plotter = fs.Fractal_plotter(pp)   
-    plotter.add_layer(Bool_layer("interior", output=True))
-    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=True))
+    plotter.add_layer(Bool_layer("interior", output=False))
+    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=False))
     plotter.add_layer(Virtual_layer("fieldlines", func=None, output=False))
     plotter.add_layer(Color_layer(
             "cont_iter",
@@ -122,7 +123,7 @@ def plot(plot_dir):
     # "Continuous iteration" and "fieldines values"
     plotter["cont_iter"].set_twin_field(plotter["fieldlines"], 0.0001)
 
-    # This is where we define the lighting (here 3 ccolored light sources)
+    # This is where we define the lighting (here 2 ccolored light sources)
     # and apply the shading
     light = Blinn_lighting(0.4, np.array([1., 1., 1.]))
     light.add_light_source(

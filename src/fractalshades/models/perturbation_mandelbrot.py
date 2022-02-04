@@ -51,7 +51,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             NP_orbit.view(dtype=np.float64),
             xr_detect_activated,
             max_iter,
-            M_divergence * 2., # to be sure ref exit after close points
+            M_divergence * 2, # to be sure ref exit after close points
             str(x).encode('utf8'),
             str(y).encode('utf8'),
             seed_prec
@@ -67,7 +67,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         max_iter: int,
         M_divergence: float,
         epsilon_stationnary: float,
-        SA_params={"cutdeg": 2, "eps": 1e-6},
+        SA_params={"cutdeg": 32, "eps": 1e-6},
         interior_detect: bool=False,
         calc_dzndc: bool=True):
         """
@@ -105,11 +105,9 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
            * - keys
              - values 
            * - cutdeg
-             - int: polynomial degree used for first iteration  
-           * - cutdeg_glitch
-             - int: polynomial degree used for glitch correction 
+             - int: polynomial degree used for approximation (default: 32)
            * - SA_err
-             - float: maximal relative error before stopping SA 
+             - float: relative error criteria (default: 1.e-6)
 
         if `None` SA is not activated.
     interior_detect : bool
@@ -124,8 +122,6 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         
         """
         self.init_data_types(datatype)
-        # dx for numba: use 1d array not 0d !
-#        dx = fsx.mpf_to_Xrange(self.dx, dtype=np.float64).ravel()
 
         # used for potential post-processing
         self.potential_M = M_divergence
@@ -349,11 +345,11 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                         break
 
                     # Glitch correction - reference point diverging
-                    if (U[0] >= ref_div_iter - 1):
+                    if (U[0] >= (ref_div_iter - 1)):
                         # Rebasing - we are already big no underflow risk
                         U[0] = 0
                         Z[zn] = ZZ
-                        break
+                        continue
 
                     # Glitch correction -  "dynamic glitch"
                     bool_dyn_rebase = (

@@ -3,7 +3,7 @@ Application-level settings
 
 .. automodule:: fractalshades.settings
 
-   .. autodata:: enable_multiprocessing 
+   .. autodata:: enable_multithreading
 
    .. autodata:: optimize_RAM 
 
@@ -14,8 +14,6 @@ Application-level settings
    .. autodata:: no_newton
 
    .. autodata:: inspect_calc
-
-   .. autodata:: glitch_off_last_iref
 
    .. autodata:: chunk_size
 

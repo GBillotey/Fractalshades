@@ -41,7 +41,7 @@ def plot(directory):
     """
     # A simple showcase using perturbation technique
     precision = 164
-    nx = 3600
+    nx = 2400
     x = '-1.99996619445037030418434688506350579675531241540724851511761922944801584242342684381376129778868913812287046406560949864353810575744772166485672496092803920095332'
     y = '-0.00000000000000000000000000000000030013824367909383240724973039775924987346831190773335270174257280120474975614823581185647299288414075519224186504978181625478529'
     dx = '1.8e-157'
@@ -51,7 +51,7 @@ def plot(directory):
     # Set to True if you only want to rerun the post-processing part
     settings.skip_calc = False
     # Set to True to enable multi-processing
-    settings.enable_multiprocessing = True
+    settings.enable_multithreading = True
 
     f = fsm.Perturbation_mandelbrot(directory)
     f.zoom(precision=precision,
@@ -71,7 +71,7 @@ def plot(directory):
             max_iter=1000000,
             M_divergence=1.e3,
             epsilon_stationnary=1.e-3,
-            SA_params={"cutdeg": 8,
+            SA_params={"cutdeg": 32,
                        "err": 1.e-6},
             interior_detect=True)
 

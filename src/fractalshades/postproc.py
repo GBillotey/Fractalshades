@@ -321,9 +321,6 @@ class Continuous_iter_pp(Postproc):
         else:
             raise NotImplementedError("Potential 'kind' unsupported")
 
-        if type(nu_frac) == fsx.Xrange_array:
-            nu_frac = nu_frac.to_standard()
-
         # We need to take care of special cases to ensure that
         # -1 < nu_frac <= 0. 
         # This happen e.g. when the pixel hasn't reach the limit circle
@@ -335,9 +332,11 @@ class Continuous_iter_pp(Postproc):
         nu = (n - self._floor_iter) + nu_frac
         val = nu
 
-        context_update = {"potential_dic": self.potential_dic,
-                         "nu_frac": nu_frac,
-                         "n": n}
+        context_update = {
+            "potential_dic": self.potential_dic,
+            "nu_frac": nu_frac,
+            "n": n
+        }
 
         return val, context_update
     

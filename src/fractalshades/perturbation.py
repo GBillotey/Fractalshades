@@ -78,12 +78,24 @@ directory : str
         self.y = mpmath.mpf(y)
         self.dx = mpmath.mpf(dx)
 
+    def new_status(self, wget):
+        """ Return a dictionnary that can hold the current progress status """
+        base_status = super().new_status(wget)
+        status = {
+            "Reference": {
+                "str_val": "--"
+            },
+            "Series approx.": {
+                "str_val": "--"
+            },
+        }
+        status.update(base_status)
+        return status
 
     @property
     def xr_detect_activated(self):
         """ Triggers use of special dataype to avoid underflow in double """
         return (self.dx < fs.settings.xrange_zoom_level)
-
 
     def postproc_chunck(self, postproc_keys, chunk_slice, calc_name):
         """
@@ -143,7 +155,7 @@ directory : str
 
         # Let take some margin
         kc = max(abs(ref - corner_a), abs(ref - corner_b),
-                 abs(ref - corner_c), abs(ref - corner_d)) * 2.0
+                 abs(ref - corner_c), abs(ref - corner_d)) * 1.1
 
         return fsx.mpf_to_Xrange(kc, dtype=np.float64)
 
@@ -379,6 +391,8 @@ directory : str
         done for each tile and each glitch correction iteration, so i enables
         calculation to restart from an unfinished status.
         """
+        has_status_bar = hasattr(self, "_status_wget")
+
         if not(self.res_available()):
             # We write the param file and initialize the
             # memmaps for progress reports and calc arrays
@@ -393,9 +407,13 @@ directory : str
         self._mask_beg_end = None
 
         # Initialise the reference path
+        if has_status_bar:
+            self.set_status("Reference", "running")
         self.get_FP_orbit()
         (Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr
          ) = self.get_Ref_path()
+        if has_status_bar:
+            self.set_status("Reference", "completed")
 
 
         # Initialise SA interpolation
@@ -412,8 +430,12 @@ directory : str
             P = None
             P_err = None
         else:
+            if has_status_bar:
+                self.set_status("Series approx.", "running")
             self.get_SA(Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter)
             P, n_iter, P_err = self.get_SA_data()
+            if has_status_bar:
+                self.set_status("Series approx.", "completed")
 
         # Jitted function used in numba inner-loop
         self._initialize = self.initialize()
@@ -426,6 +448,8 @@ directory : str
             P, kc, n_iter,
             chunk_slice=None
         )
+        if has_status_bar:
+            self.set_status("Tiles", "completed")
 
         # Export to human-readable format
         if fs.settings.inspect_calc:
@@ -506,6 +530,9 @@ directory : str
             print("Interruption signal received")
             return
 
+        if hasattr(self, "_status_wget"):
+            self.incr_tiles_status()
+
         # Saving the results after cycling
         self.update_report_mmap(chunk_slice, stop_reason)
         self.update_data_mmaps(chunk_slice, Z, U, stop_reason, stop_iter)
@@ -583,9 +610,10 @@ directory : str
 
         newton: ["cv", "step", None]
         """
+        
         if newton == "step":
             raise NotImplementedError("step option not Implemented (yet)")
-        
+
         # Early escape if file exists
         if self.ref_point_matching():
             print("Ref point already stored")

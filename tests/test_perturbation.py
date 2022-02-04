@@ -383,7 +383,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         precision = 200
         nx = 1600
         complex_type = np.complex128
-        SA_params = {"cutdeg": 8,
+        SA_params = {"cutdeg": 32,
                      "err": 1.e-6}
         c0 = np.array([242, 248, 163]) / 255.
         c1 = np.array([160, 105, 87]) / 255.
@@ -500,7 +500,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         self.assertTrue(err < err_max)
 
 if __name__ == "__main__":
-    full_test = True
+    full_test = False
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_Perturbation_mandelbrot]))

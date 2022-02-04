@@ -4,8 +4,9 @@
 Mandelbrot explorer - Naïve algorithm with standard precision
 =============================================================
 
-This is a simple template to start exploring the Mandelbrot set with
+This is a simple "toy" template to start exploring the Mandelbrot set with
 the GUI. Resolution limited to approx 1.e-13 due to double (float64) precision
+
 Good exploration !
 """
 import typing
@@ -38,12 +39,14 @@ def plot(plot_dir):
     """
     Example interactive
     """
+    calc_name = 'test'
+
     x = -1.0
     y = -0.0
     dx = 5.0
-    calc_name = 'test'
-
     xy_ratio = 1.0
+    theta_deg=0.
+
     max_iter = 15000
     nx = 800
     epsilon_stationnary = 0.0001
@@ -61,21 +64,26 @@ def plot(plot_dir):
     directory = plot_dir
     fractal = fsm.Mandelbrot(directory)
     
-    def func(fractal: fsm.Mandelbrot=fractal,
-             calc_name: str= calc_name,
-             x: float= x,
-             y: float= y,
-             dx: float= dx,
-             xy_ratio: float=xy_ratio,
-             max_iter: int=max_iter,
-             nx: int=nx,
-             epsilon_stationnary: float=epsilon_stationnary,
-             interior_color: QtGui.QColor=(0.1, 0.1, 0.1),
-             colormap: fscolors.Fractal_colormap=colormap,
-             cmap_z_kind: typing.Literal["relative", "absolute"]="relative",
-             zmin: float=zmin,
-             zmax: float=zmax):
-
+    def func(
+        fractal: fsm.Mandelbrot=fractal,
+         calc_name: str= calc_name,
+         _1: fsgui.separator="Zoom parameters",
+         x: float= x,
+         y: float= y,
+         dx: float= dx,
+         xy_ratio: float=xy_ratio,
+         theta_deg: float=theta_deg,
+         _2: fsgui.separator="Calculation parameters",
+         max_iter: int=max_iter,
+         nx: int=nx,
+         epsilon_stationnary: float=epsilon_stationnary,
+         _3: fsgui.separator="Plotting parameters",
+         interior_color: QtGui.QColor=(0.1, 0.1, 0.1),
+         colormap: fscolors.Fractal_colormap=colormap,
+         cmap_z_kind: typing.Literal["relative", "absolute"]="relative",
+         zmin: float=zmin,
+         zmax: float=zmax
+    ):
 
         fractal.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
              theta_deg=0., projection="cartesian", antialiasing=False)
@@ -142,7 +150,8 @@ def plot(plot_dir):
 
     gui = fsgui.Fractal_GUI(func)
     gui.connect_image(image_param="calc_name")
-    gui.connect_mouse(x="x", y="y", dx="dx", xy_ratio="xy_ratio", dps=None)
+    gui.connect_mouse(dps=None)#x="x", y="y", dx="dx", xy_ratio="xy_ratio",
+                      # dps=None)
     gui.show()
 
 

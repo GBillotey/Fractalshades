@@ -39,7 +39,9 @@ This package relies on the following dependencies:
 
 They should install automatically through `pip`. A special case is gmpy2 as it
 needs the most recent versions of GMP, MPFR and MPC multi-precision
-arithmetic libraries. If your distribution does not include them you will have
+arithmetic libraries. Under Windows, the recent wheels of gmpy2 (rev >= 2.1.2)
+already ship the latest GMP / MPFR / MPC dll.
+Under Unix / Linux, if your distribution does not include them you will have
 to install them manually :
 
 .. code-block:: console
@@ -48,6 +50,7 @@ to install them manually :
     sudo apt-get install libmpfr-dev
     sudo apt-get install libmpfi-dev
     sudo apt-get install libmpc-dev
+
 
 .. [#f1] These instructions describe installation to your Python home
          directory. You could also consider the installation of
@@ -63,7 +66,12 @@ A 5-minutes guide to fractalshades
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The best way to start is probably to have a look at the 
-:doc:`examples/index` section.
+:doc:`examples/index` section. Download one of the examples from the GUI
+examples section, run it in an empty directory : good exploration :
+
+.. code-block:: console
+
+    python3 run_interactive.py
 
 Fractalshades exposes 3 kinds of component each implementing a different
 functionality:
@@ -150,4 +158,5 @@ The following main components can be seen:
     zoom level (from the image panel).
 
 
-
+  - in orange, the **status bar**. It provides information on the calculation
+    progress (full precision orbit, series approximation, current tile, ...)
