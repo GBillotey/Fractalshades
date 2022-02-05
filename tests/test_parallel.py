@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import unittest
-import concurrent
+import concurrent.futures
 import os
 
 import numpy as np

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import functools
-import concurrent
+import concurrent.futures
 import fractalshades as fs
 
 

@@ -54,25 +54,6 @@ class Test_mmap(unittest.TestCase):
         mmap[:] = arr
         print("Finished our Task on Process: {}".format(os.getpid()))
         
-#        
-#    def test_in_process(self):
-#        func = self.run_mmap.__func__
-#        with globalized(func
-#             ), concurrent.futures.ProcessPoolExecutor(
-#                max_workers=1) as subprocess:
-#            subprocess.submit(func, (self, self.thread_file)).result()
-#            
-#        # check correct execution
-#        mmap = open_memmap(
-#            filename=os.path.join(self._mmap_dir, self.thread_file), 
-#            mode='w+',
-#            dtype=np.int32,
-#            shape=(self.nx, self.ny),
-#            fortran_order=False,
-#            version=None)
-#        arr = mmap[:]
-#        print("arr", arr)
-#        
 
     def test_in_thread(self):
         with concurrent.futures.ThreadPoolExecutor(
