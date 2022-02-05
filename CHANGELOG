@@ -1,5 +1,7 @@
-Rev 0.4.1
-- fix concurrent.futures import
+Rev 0.4.3
+- fixed typo in run_interactive.py
+Rev 0.4.2
+- fixed concurrent.futures import
 Rev 0.4.1
 - Improved Fieldlines default postproc when using mirrored cmap
 - Typo name Disp_Layer -> Disp_layer

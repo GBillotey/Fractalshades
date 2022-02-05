@@ -55,11 +55,11 @@ def plot(plot_dir):
     xy_ratio = 1.0
     dps = 16
     max_iter = 15000
-    nx = 800
+    nx = 600
     theta_deg = 0.
     interior_detect = True
     epsilon_stationnary = 0.0001
-    cutdeg = 8
+    cutdeg = 32
     err = 1.e-6
     
     colormap = fscolors.cmap_register["classic"]
@@ -121,8 +121,10 @@ def plot(plot_dir):
         fractal.calc_std_div(datatype=np.complex128, calc_name=calc_name,
             subset=None, max_iter=max_iter, M_divergence=1.e3,
             epsilon_stationnary=1.e-3,
-            SA_params={"cutdeg": 32,
-                       "err": 1.e-6},
+            SA_params={
+                "cutdeg": cutdeg,
+                "err": err
+            },
             interior_detect=interior_detect,
             )
 
