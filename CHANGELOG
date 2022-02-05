@@ -1,4 +1,6 @@
 Rev 0.4.1
+- fix concurrent.futures import
+Rev 0.4.1
 - Improved Fieldlines default postproc when using mirrored cmap
 - Typo name Disp_Layer -> Disp_layer
 - added Collaz fractal
