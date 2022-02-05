@@ -62,10 +62,11 @@ jobs:
         echo "install fractalshades"
         $WHL_TARGETs = Get-ChildItem  "./dist/" -Recurse "*.whl"
         echo $WHL_TARGETs
+        echo "wheel first" $WHL_TARGETs[0]
         foreach ($WHL_TARGET in $WHL_TARGETs){
             echo "wheel found" $WHL_TARGET
+            python3 -m pip install --user --force-reinstall --no-deps $WHL_TARGET
         }
-        python3 -m pip install --user --force-reinstall --no-deps ./dist/fractalshades-0.4.0b0-cp38-cp38-win_amd64.whl
 
     - name: Test with pytest
       run: |
