@@ -60,8 +60,11 @@ jobs:
       run: |
         python -m pip install -r requirements.txt
         echo "install fractalshades"
-        $WHL_TARGET = Get-ChildItem -Path "./dist/fractalshades*win_amd64.whl"
-        echo $WHL_TARGET
+        $WHL_TARGETs = Get-ChildItem  "./dist/" -Recurse "*.whl"
+        echo $WHL_TARGETs
+        foreach ($WHL_TARGET in $WHL_TARGETs){
+            echo "wheel found" $WHL_TARGET
+        }
         python3 -m pip install --user --force-reinstall --no-deps ./dist/fractalshades-0.4.0b0-cp38-cp38-win_amd64.whl
 
     - name: Test with pytest
