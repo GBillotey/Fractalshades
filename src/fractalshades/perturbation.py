@@ -191,7 +191,7 @@ directory : str
         print("ref point matching", matching)
         print("dps -->", (mpmath.mp.dps <= self.FP_params["dps"] + 3))
         print("position -->", ((drift_xr / dx_xr).abs2() < 1.e6))
-        print("max_iter -->", (max_iter_ref >= max_iter))
+        print("max_iter -->", (max_iter_ref >= max_iter), max_iter_ref, max_iter)
         return matching
 
 
@@ -757,9 +757,7 @@ directory : str
         """
         FP_code = self.FP_code
         # Parameters 'max_iter' borrowed from last "@fsutils.calc_options" call
-        max_iter = self.max_iter
-        if order is not None:
-            max_iter = min(order, max_iter) # at order + 1, we wrap 
+        max_iter = self.max_iter 
 
         FP_params = {
              "ref_point": ref_point,
@@ -769,9 +767,16 @@ directory : str
              "FP_code": FP_code
         }
 
-        Z_path = np.empty([max_iter + 1], dtype=np.complex128)
+        # If order is defined, we wrap
+        ref_orbit_len = max_iter + 1
+        if order is not None:
+            ref_orbit_len = min(order, ref_orbit_len) # at order + 1, we wrap 
+        FP_params["ref_orbit_len"] = ref_orbit_len
+        Z_path = np.empty([ref_orbit_len], dtype=np.complex128)
 
         print("Computing full precision path with max_iter", max_iter)
+        if order is not None:
+            print("order known, wraping at", ref_orbit_len)
 
         i, partial_dict, xr_dict = self.FP_loop(Z_path, ref_point)
         FP_params["partials"] = partial_dict

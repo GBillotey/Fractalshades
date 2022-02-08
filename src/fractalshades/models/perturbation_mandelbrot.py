@@ -40,7 +40,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         xr_detect_activated = self.xr_detect_activated
         # Parameters borrowed from last "@fsutils.calc_options" call
         calc_options = self.calc_options
-        max_iter = (NP_orbit.shape)[0] - 1# calc_options["max_iter"]
+        max_orbit_iter = (NP_orbit.shape)[0] - 1# calc_options["max_iter"]
         M_divergence = calc_options["M_divergence"]
 
         x = c0.real
@@ -50,7 +50,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
          ) = fsFP.perturbation_mandelbrot_FP_loop(
             NP_orbit.view(dtype=np.float64),
             xr_detect_activated,
-            max_iter,
+            max_orbit_iter,
             M_divergence * 2, # to be sure ref exit after close points
             str(x).encode('utf8'),
             str(y).encode('utf8'),
