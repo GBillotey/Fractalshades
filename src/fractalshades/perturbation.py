@@ -256,14 +256,20 @@ directory : str
 
 
     def get_Ref_path(self):
-        """ Builds a Ref_path object from FP_params and ref_path
+        """ Builds a Ref_path tuple from FP_params and ref_path
         This object will be used in numba jitted functions
         """
         FP_params = self.FP_params
         Z_path = self.Z_path
         
         ref_xr_python = FP_params["xr"]
-        ref_div_iter = FP_params["div_iter"]
+        ref_order = FP_params["order"]
+        ref_div_iter = FP_params["div_iter"] # The first invalid iter
+        # ref_div_iter should be ref div iter of the FP, only if it is div.
+        # Otherwise, the max_iter from calc param
+        if ref_order is not None: # The reference orbit is a cycle
+            ref_div_iter = self.max_iter + 1
+
         dx_xr = fsx.mpf_to_Xrange(self.dx, dtype=self.float_type).ravel()
 
         # Build 2 arrays to avoid using a dict in numba
@@ -282,7 +288,8 @@ directory : str
 
         has_xr = (len(ref_xr_python) > 0)
 
-        return Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr
+        return (Z_path, has_xr, ref_index_xr, ref_xr,
+                ref_div_iter, ref_order, drift_xr, dx_xr)
 
 
     def SA_file(self): # , iref, calc_name):
@@ -410,8 +417,8 @@ directory : str
         if has_status_bar:
             self.set_status("Reference", "running")
         self.get_FP_orbit()
-        (Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr
-         ) = self.get_Ref_path()
+        (Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
+         drift_xr, dx_xr) = self.get_Ref_path()
         if has_status_bar:
             self.set_status("Reference", "completed")
 
@@ -432,7 +439,8 @@ directory : str
         else:
             if has_status_bar:
                 self.set_status("Series approx.", "running")
-            self.get_SA(Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter)
+            self.get_SA(Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter,
+                        ref_order)
             P, n_iter, P_err = self.get_SA_data()
             if has_status_bar:
                 self.set_status("Series approx.", "completed")
@@ -444,7 +452,7 @@ directory : str
         # Launch parallel computing of the inner-loop (Multi-threading with GIL
         # released)
         self.cycles(
-            Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr, 
+            Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order, drift_xr, dx_xr, 
             P, kc, n_iter,
             chunk_slice=None
         )
@@ -459,7 +467,7 @@ directory : str
         iterable_attr="chunk_slices", iter_kwargs="chunk_slice")
     def cycles(
         self, 
-        Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr, 
+        Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order, drift_xr, dx_xr, 
         P, kc, n_iter,
         chunk_slice
     ):
@@ -519,10 +527,13 @@ directory : str
         initialize = self._initialize
         iterate = self._iterate
 
+        if ref_order is None:
+            ref_order = 2**62 # a quite large int64
+
         ret_code = numba_cycles_perturb(
             c_pix, Z, U, stop_reason, stop_iter,
             initialize, iterate,
-            Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr,
+            Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order, drift_xr, dx_xr,
             P, kc, n_iter,
             self._interrupted
         )
@@ -572,7 +583,8 @@ directory : str
         return True
 
 
-    def get_SA(self, Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter):
+    def get_SA(self, Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter,
+               ref_order):
         """
         Check if we have a suitable SA approximation stored for iref, 
           - otherwise computes and stores it in a file
@@ -591,9 +603,12 @@ directory : str
             SA_err_sq = SA_params["err"] ** 2
             SA_stop = SA_params.get("stop", -1)
 
+            if ref_order is None:
+                ref_order = 2**62 # a quite large int64
+
             P, n_iter, P_err = numba_SA_run(
                 SA_loop, 
-                Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter,
+                Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
                 kc, SA_cutdeg, SA_err_sq, SA_stop
             )
             self._SA_data = (P, n_iter, P_err)
@@ -649,39 +664,46 @@ directory : str
         if order is None:
             raise ValueError("Order must be specified for Newton"
                              "iteration")
-        if (newton == "step"):
-            max_newton = 1
 
-        print("newton ", newton, " with order: ", order)
+        print("Launch Newton", newton, " with order: ", order)
         print("max newton iter ", max_newton)
-
+        eps_pixel = self.dx * (1. / self.nx)
         newton_cv, nucleus = self.find_nucleus(
-            c0, order, max_newton=max_newton
+            c0, order, eps_pixel, max_newton=max_newton
         )
+        print("first", newton_cv, nucleus)
 
         # If Newton did not CV, we try to boost the dps / precision
-        if not(newton_cv) and (newton != "step"):
+        if not(newton_cv):
             max_attempt = 2
             attempt = 0
+            dps = mpmath.mp.dps
+            old_dps = dps
+
             while not(newton_cv) and attempt < max_attempt:
                 attempt += 1
-                old_dps = mpmath.mp.dps
-                mpmath.mp.dps = int(1.25 * old_dps)
-                print(f"Newton failed, dps incr. {old_dps} -> {mpmath.mp.dps}")
+                dps = int(1.25 * dps)
+                
+                with mpmath.workdps(dps):
+                    print(f"Newton failed, dps incr. {old_dps} -> {dps}")
+                    eps_pixel = self.dx * (1. / self.nx)
 
-                newton_cv, nucleus = self.find_nucleus(
-                    c0, order, max_newton=max_newton
-                )
-
-                if not(newton_cv) and (attempt == max_attempt):
-                    # Last try, we just release constraint on the cycle order
-                    # and consider also divisors.
-                    newton_cv, nucleus = self.find_any_nucleus(
-                        c0, order, max_newton=max_newton
+                    newton_cv, nucleus = self.find_nucleus(
+                        c0, order, eps_pixel, max_newton=max_newton
                     )
+                    print("incr", newton_cv, nucleus)
+
+                    if not(newton_cv) and (attempt == max_attempt):
+                        # Last try, we just release constraint on the cycle order
+                        # and consider also divisors.
+                        newton_cv, nucleus = self.find_any_nucleus(
+                            c0, order, eps_pixel, max_newton=max_newton
+                        )
+                        print("any", newton_cv, nucleus)
 
         # Still not CV ? we default to the center of the image
-        if not(newton_cv) and (newton != "step"):
+        if not(newton_cv):
+            order = None # We cannot wrap the ref point here...
             nucleus = c0
 
         shift = nucleus - (self.x + self.y * 1j)
@@ -700,23 +722,23 @@ directory : str
         print("Short cutting ref pt orbit calc for low res")
         FP_code = self.FP_code
         # Parameters 'max_iter' borrowed from last "@fsutils.calc_options" call
-        max_iter = self.max_iter
+        # max_iter = self.max_iter
 
         FP_params = {
              "ref_point": crit,
              "dps": mpmath.mp.dps,
-             "order": 0,
-             "max_iter": max_iter,
+             "order": 100,
+             "max_iter": self.max_iter,
              "FP_code": FP_code
         }
         # Given the "single reference" implementation the loop will wrap when
         # we reach div_iter - this is probably better not to do it too often
         # Let's just pick a reasonnable figure
-        div_iter = min(100, self.max_iter)
+        div_iter = 100 # min(100, self.max_iter)
         FP_params["partials"] = {}
         FP_params["xr"] = {}
         FP_params["div_iter"] = div_iter
-        
+
         Z_path = np.empty([div_iter + 1], dtype=np.complex128)
         Z_path[:] = crit
 
@@ -738,7 +760,9 @@ directory : str
         FP_code = self.FP_code
         # Parameters 'max_iter' borrowed from last "@fsutils.calc_options" call
         max_iter = self.max_iter
-        
+        if order is not None:
+            max_iter = min(order, max_iter) # at order + 1, we wrap 
+
         FP_params = {
              "ref_point": ref_point,
              "dps": mpmath.mp.dps,
@@ -749,7 +773,7 @@ directory : str
 
         Z_path = np.empty([max_iter + 1], dtype=np.complex128)
 
-        print("Computing full precision path")
+        print("Computing full precision path with max_iter", max_iter)
 
         i, partial_dict, xr_dict = self.FP_loop(Z_path, ref_point)
         FP_params["partials"] = partial_dict
@@ -783,7 +807,7 @@ USER_INTERRUPTED = 1
 def numba_cycles_perturb(
     c_pix, Z, U, stop_reason, stop_iter,
     initialize, iterate, 
-    Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr,
+    Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order, drift_xr, dx_xr,
     P, kc, n_iter,
     _interrupted
 ):
@@ -824,7 +848,7 @@ def numba_cycles_perturb(
         
         n_iter = iterate(
             cpt, Zpt, Upt, stop_pt, n_iter,
-            Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr,
+            Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order, drift_xr, dx_xr,
             Z_xr_trigger, Z_xr, c_xr, refpath_ptr, ref_is_xr, ref_zn_xr
         )
         stop_iter[0, ipt] = n_iter
@@ -838,7 +862,7 @@ def numba_cycles_perturb(
 @numba.njit
 def numba_SA_run(
         SA_loop, 
-        ref_path, has_xr, ref_index_xr, ref_xr, ref_div_iter,
+        ref_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
         kc, SA_cutdeg, SA_err_sq, SA_stop
 ):
     """
@@ -852,6 +876,8 @@ def numba_SA_run(
     SA_stop : user-provided max SA iter. If -1, will default to ref_path length
     ref_div_iter : point where Reference point DV
     """
+    # Note : SA 23064 23063 for order 23063
+    print("SA", ref_div_iter, ref_order)
     if SA_stop == -1:
         SA_stop = ref_div_iter
     else:
@@ -862,6 +888,7 @@ def numba_SA_run(
 #    print("numba_SA_cycles - output every", print_freq)
 
     SA_valid = True
+    n_real_iter = 0
     n_iter = 0
 
     P0_arr = Xr_template.repeat(1)
@@ -879,7 +906,14 @@ def numba_SA_run(
     out_xr = Xr_template.repeat(2)
 
     while SA_valid:
-        n_iter +=1
+        # wraps to 0 when reaching cycle order
+        if n_iter >= ref_order:
+            n_iter -= ref_order
+
+        # incr iter
+        n_real_iter +=1
+        n_iter += 1
+
         # keep a copy in case this iter is invalidated
         P_old = P.coeffs.copy()
 
@@ -911,7 +945,7 @@ def numba_SA_run(
         if n_iter % print_freq == 0 and SA_valid:
             ssum = np.sqrt(coeffs_sum)
             print(
-                "SA running", n_iter,
+                "SA running", n_real_iter,
                 "err: ", fsxn.to_Xrange_scalar(P.err[0]),
                 "<< ", ssum
             )
@@ -951,7 +985,7 @@ def ref_path_c_from_pix(pix, dx, drift):
     Parameters
     ----------
     pix :  complex
-        pixel location in farction of dx
+        pixel location in fraction of dx
         
     Returns
     -------

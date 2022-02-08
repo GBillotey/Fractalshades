@@ -2172,7 +2172,6 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             self._fractal_zoom_init["theta_deg"]
             - self._presenter["theta_deg"]
         )
-        print("**** theta_diff_deg", theta_diff_deg)
         return theta_diff_deg
 
     def model_event_slot(self, keys, val):

@@ -67,7 +67,7 @@ A 5-minutes guide to fractalshades
 
 The best way to start is probably to have a look at the 
 :doc:`examples/index` section. Download one of the examples from the GUI
-examples section, run it in an empty directory : good exploration :
+examples section, run it in an empty directory : good exploration !
 
 .. code-block:: console
 

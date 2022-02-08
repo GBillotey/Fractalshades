@@ -177,7 +177,8 @@ def perturbation_mandelbrot_FP_loop(
         mpfr_t x_t, y_t
 
     assert orbit.dtype == DTYPE_FLOAT
-    assert max_iter <= max_len + 1 # (NP_orbit starts at critical point)
+    print(max_iter, max_len, max_iter * 2)
+    assert (max_iter + 1) * 2 == max_len # (NP_orbit starts at critical point)
 
     orbit_Xrange_register = dict()
     orbit_partial_register = dict()
@@ -535,7 +536,8 @@ def perturbation_mandelbrot_find_nucleus(
     long seed_prec,
     long order,
     long max_newton,
-    char *seed_eps_cv
+    char *seed_eps_cv,
+    char *seed_eps_valid
 ):
     """
     Run Newton search to find z0 so that f^n(z0) == 0 (n being the order input)
@@ -718,7 +720,11 @@ def perturbation_mandelbrot_find_nucleus(
         mpc_abs(abs_diff, tmp_t1, MPFR_RNDN)
         cmp = mpfr_greaterequal_p(eps_t, abs_diff)
         if cmp != 0:
-            newton_cv = True
+            # Sanity check that c_t is not a 'red herring' - zr_t shall be null
+            # with 'enough' precision - depend on local pixel size
+            mpc_abs(abs_diff, zr_t, MPFR_RNDN)
+            mpfr_set_str(eps_t, seed_eps_valid, 10, MPFR_RNDN)
+            newton_cv  = (mpfr_greaterequal_p(eps_t, abs_diff) != 0)
             break
 
     gmpy_mpc = GMPy_MPC_From_mpc(c_t)
@@ -750,7 +756,8 @@ def perturbation_mandelbrot_find_any_nucleus(
     long seed_prec,
     long order,
     long max_newton,
-    char *seed_eps_cv
+    char *seed_eps_cv,
+    char *seed_eps_valid
 ):
     """
     Run Newton search to find z0 so that f^n(z0) == 0 (n being the order input)
@@ -890,7 +897,11 @@ def perturbation_mandelbrot_find_any_nucleus(
         mpc_abs(abs_diff, tmp_t1, MPFR_RNDN)
         cmp = mpfr_greaterequal_p(eps_t, abs_diff)
         if cmp != 0:
-            newton_cv = True
+            # Sanity check that c_t is not a 'red herring' - zr_t shall be null
+            # with 'enough' precision - depend on local pixel size
+            mpc_abs(abs_diff, zr_t, MPFR_RNDN)
+            mpfr_set_str(eps_t, seed_eps_valid, 10, MPFR_RNDN)
+            newton_cv  = (mpfr_greaterequal_p(eps_t, abs_diff) != 0)
             break
 
     gmpy_mpc = GMPy_MPC_From_mpc(c_t)

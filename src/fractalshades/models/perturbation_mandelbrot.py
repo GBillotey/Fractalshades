@@ -40,7 +40,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         xr_detect_activated = self.xr_detect_activated
         # Parameters borrowed from last "@fsutils.calc_options" call
         calc_options = self.calc_options
-        max_iter = calc_options["max_iter"]
+        max_iter = (NP_orbit.shape)[0] - 1# calc_options["max_iter"]
         M_divergence = calc_options["M_divergence"]
 
         x = c0.real
@@ -227,7 +227,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             @numba.njit
             def numba_impl(
                 c, Z, U, stop, n_iter,
-                ref_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr,
+                ref_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order, drift_xr, dx_xr,
                 Z_xr_trigger, Z_xr, c_xr, refpath_ptr, ref_is_xr, ref_zn_xr
             ):
                 """
@@ -247,13 +247,17 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                     #==============================================================
                     # Load reference point value @ U[0]
                     # refpath_ptr = [prev_idx, curr_xr]
+
+                    # Wrapping if we reach the cycle order
+                    if U[0] >= ref_order:
+                        U[0] = U[0] % ref_order
+
                     if xr_detect_activated:
                         ref_zn = fs.perturbation.ref_path_get(
                             ref_path, U[0],
                             has_xr, ref_index_xr, ref_xr, refpath_ptr,
                             ref_is_xr, ref_zn_xr, 0
                         )
-
                     else:
                         ref_zn = ref_path[U[0]]
 
@@ -414,12 +418,14 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
 
 
     @staticmethod
-    def find_nucleus(c, order, max_newton=None, eps_cv=None):
+    def find_nucleus(c, order, eps_pixel, max_newton=None, eps_cv=None):
         """
         Run Newton search to find z0 so that f^n(z0) == 0 : Cython wrapper
 
         Includes a "divide by undesired roots" technique so that solutions
         using divisors of n are disregarded.
+        
+        # eps_pixel = self.dx * (1. / self.nx)
         """
         if order is None:
             raise ValueError("order shall be defined for Newton method")
@@ -439,13 +445,14 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             order,
             max_newton,
             str(eps_cv).encode('utf8'),
+            str(eps_pixel).encode('utf8'),
         )
 
         return is_ok, val
         
     
     @staticmethod
-    def find_any_nucleus(c, order, max_newton=None, eps_cv=None):
+    def find_any_nucleus(c, order, eps_pixel, max_newton=None, eps_cv=None):
         """
         Run Newton search to find z0 so that f^n(z0) == 0 : Cython wrapper
         """
@@ -467,6 +474,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             order,
             max_newton,
             str(eps_cv).encode('utf8'),
+            str(eps_pixel).encode('utf8'),
         )
 
         return is_ok, val
@@ -587,7 +595,7 @@ ball_order = {{
             print("Newton, dps boost to: ", dps)
             with mpmath.workdps(dps):
                 newton_cv, c_newton = self.find_nucleus(
-                        c, order, max_newton=None, eps_cv=None)
+                        c, order, pix, max_newton=None, eps_cv=None)
                 if newton_cv:
                     xn_str = str(c_newton.real)
                     yn_str = str(c_newton.imag)
