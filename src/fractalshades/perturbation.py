@@ -403,13 +403,13 @@ directory : str
         if not(self.res_available()):
             # We write the param file and initialize the
             # memmaps for progress reports and calc arrays
-            # /!\ It is not process safe, do it before multi-processing
+            # /!\ It is not thread safe, do it before multithreading
             # loop
             fs.utils.mkdir_p(os.path.join(self.directory, "data"))
             self.open_report_mmap()
             self.open_data_mmaps()
             self.save_params()
-        
+
         # Lazzy compilation of subset boolean array chunk-span
         self._mask_beg_end = None
 
@@ -677,29 +677,27 @@ directory : str
         if not(newton_cv):
             max_attempt = 2
             attempt = 0
-            dps = mpmath.mp.dps
-            old_dps = dps
+            old_dps = mpmath.mp.dps
 
             while not(newton_cv) and attempt < max_attempt:
                 attempt += 1
-                dps = int(1.25 * dps)
+                mpmath.mp.dps = int(1.25 * mpmath.mp.dps)
                 
-                with mpmath.workdps(dps):
-                    print(f"Newton failed, dps incr. {old_dps} -> {dps}")
-                    eps_pixel = self.dx * (1. / self.nx)
+                print(f"Newton failed, dps incr. {old_dps} -> {mpmath.mp.dps}")
+                eps_pixel = self.dx * (1. / self.nx)
 
-                    newton_cv, nucleus = self.find_nucleus(
+                newton_cv, nucleus = self.find_nucleus(
+                    c0, order, eps_pixel, max_newton=max_newton
+                )
+                print("incr", newton_cv, nucleus)
+
+                if not(newton_cv) and (attempt == max_attempt):
+                    # Last try, we just release constraint on the cycle order
+                    # and consider also divisors.
+                    newton_cv, nucleus = self.find_any_nucleus(
                         c0, order, eps_pixel, max_newton=max_newton
                     )
-                    print("incr", newton_cv, nucleus)
-
-                    if not(newton_cv) and (attempt == max_attempt):
-                        # Last try, we just release constraint on the cycle order
-                        # and consider also divisors.
-                        newton_cv, nucleus = self.find_any_nucleus(
-                            c0, order, eps_pixel, max_newton=max_newton
-                        )
-                        print("any", newton_cv, nucleus)
+                    print("any", newton_cv, nucleus)
 
         # Still not CV ? we default to the center of the image
         if not(newton_cv):
