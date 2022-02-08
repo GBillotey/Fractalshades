@@ -364,6 +364,81 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         self.test_name = test_name
         self.check_current_layer(0.15)
 
+    @test_config.no_stdout
+    def test_glitch_divref5(self):
+        """
+        Testing based on fail5 test case
+        """
+        test_name = self.test_glitch_divref5.__name__
+        calc_name = "fail5"
+        
+        x = '-1.8583883137588246496170054595'
+        y = '0.000062628913856889509589212598191'
+        dx = '4.688599337510725e-19'
+        precision = 18
+        nx = 1000
+        complex_type = np.complex128
+
+        black = np.array([0, 0, 0]) / 255.
+        citrus2 = np.array([103, 189, 0]) / 255.
+        # citrus2 = np.array([64, 109, 0]) / 255.
+        
+        colors = np.vstack((citrus2[np.newaxis, :],
+                            # citrus3[np.newaxis, :],
+                            black[np.newaxis, :]))
+        colormap = fscolors.Fractal_colormap(kinds="Lch", colors=colors,
+             grad_npts=200, grad_funcs="x", extent="mirror")
+        
+        
+        layer_name = test_name + "_potential_" + calc_name
+        m = self.calc(x, y, dx, precision, nx, complex_type, test_name,
+                 calc_name, glitch_max_attempt=10)
+        pp = Postproc_batch(m, calc_name)
+        pp.add_postproc(layer_name, Continuous_iter_pp())
+        pp.add_postproc("interior", Raw_pp("stop_reason",
+                               func=lambda x: np.isin(x, [0, 2])))
+        pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
+        
+        plotter = fs.Fractal_plotter(pp)   
+        plotter.add_layer(Bool_layer("interior", output=False))
+        plotter.add_layer(Normal_map_layer("DEM_map", max_slope=45, output=True))
+        # As divref glitch correction implies some random,
+        # we test with absolute z range
+        plotter.add_layer(Color_layer(
+                layer_name,
+                func=lambda x: np.log(x),
+                colormap=colormap,
+                probes_z=[7.92, 7.93],
+                probes_kind="absolute",
+                output=True))
+        plotter[layer_name].set_mask(plotter["interior"],
+                                      mask_color=(0., 0., 0.))
+
+        light = Blinn_lighting(0.1, np.array([1., 1., 1.]))
+        light.add_light_source(
+            k_diffuse=1.3,
+            k_specular=25.0,
+            shininess=150.,
+            angles=(30., 50.),
+            coords=None,
+            color=np.array([1.0, 1.0, 1.0]),
+            )
+        light.add_light_source(
+            k_diffuse=0.0,
+            k_specular=3.0,
+            shininess=150.,
+            angles=(30., 50.),
+            coords=None,
+            color=np.array([1.0, 1.0, 1.0]),
+            material_specular_color=np.array([1.0, 1.0, 1.0])
+            )
+        plotter[layer_name].shade(plotter["DEM_map"], light)
+        plotter.plot()
+
+        self.layer = plotter[layer_name]
+        self.test_name = test_name
+        self.check_current_layer(0.15)
+
 
     @test_config.no_stdout
     def test_glitch_dyn(self):
@@ -500,11 +575,11 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         self.assertTrue(err < err_max)
 
 if __name__ == "__main__":
-    full_test = False
+    full_test = True
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_Perturbation_mandelbrot]))
     else:
         suite = unittest.TestSuite()
-        suite.addTest(Test_Perturbation_mandelbrot("test_glitch_dyn"))
+        suite.addTest(Test_Perturbation_mandelbrot("test_glitch_divref5"))
         runner.run(suite)

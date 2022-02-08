@@ -144,7 +144,7 @@ class Test_ref_path(unittest.TestCase):
         6758064 7433792 8109744 8785472 9461312]"""
         
         # ref_path = self.f.get_Ref_path()
-        (ref_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, drift_xr, dx_xr
+        (ref_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order, drift_xr, dx_xr
          ) = self.f.get_Ref_path()
 
         print("ref_path", ref_path)
@@ -241,10 +241,12 @@ class Test_newton(unittest.TestCase):
         x = newton_search["x_start"]
         y = newton_search["y_start"]
         precision = int(3522 * 3.3) # precision in bits
+        pix = int(84 * 3.3) # precision in bits
         mpmath.mp.prec = precision
         print("prec", precision)
         # eps_cv = mpmath.mpf(2.)**(-mpmath.mp.prec) is a good first estimate
         eps = mpmath.mpf(val=(2, -precision))
+        eps_pix = mpmath.mpf(val=(2, -pix))
         print("eps", eps)
 
         is_ok, val = fsFP.perturbation_mandelbrot_find_nucleus(
@@ -254,11 +256,14 @@ class Test_newton(unittest.TestCase):
             newton_search["order"],
             80,
             str(eps).encode('utf8'),
+            str(eps_pix).encode('utf8'),
         )
 
-        with mpmath.workprec(precision):
+        with mpmath.workprec(precision - 10):
             print(val)
             expected = mpmath.mpf(newton_search["x_nucleus"])
+            print("**expected", expected.real)
+            print("**got", is_ok, val.real)
             is_equal = mpmath.almosteq(expected.real, val.real)
 
         self.assertTrue(is_equal)
@@ -269,14 +274,15 @@ if __name__ == "__main__":
     full_test = False
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
-        runner.run(test_config.suite([Test_ref_path]))
+        runner.run(test_config.suite([Test_ref_path,
+                                      Test_newton]))
     else:
         suite = unittest.TestSuite()
 #        suite.addTest(Test_bivar_SA("test_basic"))
 ##        suite.addTest(Test_bivar_SA("test_SA"))
 #        suite.addTest(Test_bivar_SA("test_bivar_SA"))
-        suite.addTest(Test_newton("test_ball_method"))
-        suite.addTest(Test_newton("test_str_out"))
+#        suite.addTest(Test_newton("test_ball_method"))
+#        suite.addTest(Test_newton("test_str_out"))
         suite.addTest(Test_newton("test_newton"))
 #        suite.addTest(Test_ref_path("test_print"))
         # suite.addTest(Test_bivar_SA("test_bivar_SA"))

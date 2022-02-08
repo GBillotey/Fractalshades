@@ -195,7 +195,7 @@ class Mandelbrot(fs.Fractal):
                     if n_iter > max_order:
                         stop_reason[0] = 0
                         break
-    
+
                     # If n is not a 'partial' for this point it cannot be the 
                     # cycle order : early exit
                     Z[5] = Z[5]**2 + c
@@ -204,7 +204,7 @@ class Mandelbrot(fs.Fractal):
                         Z[4] = m # Cannot assign to the real part 
                     else:
                         continue
-    
+
                     # Early exit if n it is not a multiple of one of the
                     # known_orders (provided by the user)
                     if known_orders is not None:
