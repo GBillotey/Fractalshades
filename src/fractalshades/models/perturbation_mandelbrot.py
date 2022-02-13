@@ -67,7 +67,8 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         max_iter: int,
         M_divergence: float,
         epsilon_stationnary: float,
-        SA_params={"cutdeg": 32, "eps": 1e-6},
+#        SA_params={"cutdeg": 32, "eps": 1e-6},
+        BLA_params={"eps": 1e-6},
         interior_detect: bool=False,
         calc_dzndc: bool=True):
         """
@@ -148,6 +149,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             dzndc = code_int
         else:
             dzndc = -1
+        nz = len(complex_codes)
 
         # Integer int32 fields codes "U" 
         int_codes = ["ref_cycle_iter"] # Position in ref orbit
@@ -161,50 +163,37 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         self.codes = (complex_codes, int_codes, stop_codes)
         print("###self.codes", self.codes)
 
+        
+        def dZndz_iter():
+            """ Elementary dzndz iteration - used for reference cycle"""
+            def impl(zn, dzndz):
+                return 2. * zn * dzndz
+        self.dZndz_iter = dZndz_iter
 
-        # Defines SA_loop via a function factory - jitted implementation
-        def SA_loop():
+        def dZndc_iter():
+            """ Elementary dzndz iteration - used for reference cycle"""
+            def impl(zn, dzndc):
+                return 2. * zn * dzndc + 1.
+        self.dZndc_iter = dZndc_iter
+
+        def dfdz():
+            """ The tangent approximation - used for BLA approx"""
             @numba.njit
-            def impl(Pn, n_iter, ref_path_xr, kcX):
-                """ Series Approximation loop
-                Note that derivatives w.r.t dc will be deduced directly from the
-                S.A polynomial.
-                """
-                return Pn * (Pn + 2. * ref_path_xr) + kcX
+            def impl(z):
+                return 2. * z
             return impl
-        self.SA_loop = SA_loop
+        self.dfdz = dfdz
 
-        # Defines initialize via a function factory
+        # Initialise output arrays
         def initialize():
-
             @numba.njit
-            def numba_init_impl(Z, U, c_xr, Z_xr_trigger, Z_xr, P, kc, dx_xr, n_iter):
-                """
-                ... mostly the SA
-                """
-
-                if P is not None:
-                    # Apply the  Series approximation step
-                    U[0] = n_iter
-                    c_scaled = c_xr / kc[0]
-
-                    Z[zn] = fsxn.to_standard(P.__call__(c_scaled))
-                    if fs.perturbation.need_xr(Z[zn]):
-                        Z_xr_trigger[zn] = True
-                        Z_xr[zn] = P.__call__(c_scaled)
-
-                    if dzndc != -1:
-                        P_deriv = P.deriv()
-                        deriv_scale =  dx_xr[0] / kc[0]
-                        Z[dzndc] = fsxn.to_standard(
-                            P_deriv.__call__(c_scaled) * deriv_scale
-                        )
+            def numba_init_impl(Z, U, c_xr):
+                """ dzndz shall be filled with 1 to avoid cancellation """
                 if (dzndz != -1):
                     Z[dzndz] = 1.
-                    
             return numba_init_impl
-
         self.initialize = initialize
+
 
         # Defines iterate via a function factory - jitted implementation
         def iterate():
@@ -216,54 +205,98 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                 interior_detect 
                 and (self.dx > fssettings.newton_zoom_level)
             )
-            # SA triggered for deeper zoom
-            SA_activated = (
-                (SA_params is not None) 
-                and (self.dx < fssettings.newton_zoom_level)
-            )
             # Xr triggered for ultra-deep zoom
             xr_detect_activated = self.xr_detect_activated
             
             @numba.njit
             def numba_impl(
-                c, Z, U, stop, n_iter,
-                ref_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order, drift_xr, dx_xr,
-                Z_xr_trigger, Z_xr, c_xr, refpath_ptr, ref_is_xr, ref_zn_xr
+                c, c_xr, Z, U, stop,
+                Zn_path, ref_order, ref_index_xr, ref_xr,
+                A_bla, B_bla, r_bla, dZndz_path, dZndc_path
             ):
                 """
-                dz(n+1)dc   <- 2. * dzndc * zn + 1.
-                dz(n+1)dz   <- 2. * dzndz * zn
-                z(n+1)      <- zn**2 + c 
-                
-                Termination codes
-                0 -> max_iter reached ('interior')
-                1 -> M_divergence reached by np.abs(zn)
-                2 -> dzndz stationnary ('interior detection')
-                """
-                
+Parameters
+----------
+c, c_xr: scalars
+     values of c (resp. as complex 128 and as Xrange)
+Z, U, stop: arrays
+     arrays, raw outputs for this pixel
+n_iter: int
+     current iteration
+Zn_path
+     'full precision' orbit, stored at standard precision
+ref_order: int
+     The full precision orbit order (if no known order, this is simply a very
+     large number 2**62)
+ref_index_xr :
+    The orbit indices for which eXtended range scalars shall be used to avoid
+    cancellation
+ref_xr :
+    The above-mentionned Xr values in the orbit
+dZndz_path, dZndc_path :
+    the reference orbit derivatives, if available
+
+Return
+------
+niter: int
+    the exit iteration
+"""
+                Z_xr_trigger = np.zeros((1,), dtype=np.bool_)
+                Z_xr = fs.perturbation.Xr_template.repeat(nz)
+                ref_orbit_len = Zn_path.shape[0] # /!\ this only the ref pt,
+                                                   # not max_iter
+                refpath_ptr = np.zeros((2,), dtype=np.int32)
+
+                has_xr = (len(ref_index_xr) > 0)
+                ref_is_xr = np.zeros((1,), dtype=numba.bool_)
+                ref_zn_xr = fs.perturbation.Xr_template.repeat(1)
+
+                # Number of stages in BLA tree
+                stages_bla = fs.perturbation.stages_bla(ref_orbit_len)
+
+                n_iter = 0
+                # Wrapping if we reach the cycle order
+                if U[0] >= ref_order:
+                    U[0] = U[0] % ref_order
+
                 while True:
+                    #==========================================================
+                    # Try a BLA_step
+                    step = 0
+                    if (U[0] != 0) and (U[0] %8 == 0):
+                        (Ai, Bi, step) = fs.perturbation.ref_BLA_get(
+                            A_bla, B_bla, r_bla, stages_bla, Z[zn], U[0]
+                        )
+                        # print("--> BLA step", n_iter, U[0], step, Ai, Bi)
+
+                    if step != 0:
+                        n_iter += step
+                        U[0] = (U[0] + step) % ref_order
+                        if calc_dzndc:
+                            Z[dzndz] = Ai * Z[dzndz]
+                        if calc_dzndc:
+                            Z[dzndc] = Ai * Z[dzndc] + Bi
+                        Z[zn] = Ai * Z[zn] + Bi * c
+                        continue
+
+                    #==========================================================
+                    # BLA failed, launching a full perturbation iteration
                     n_iter += 1
-
-                    #==============================================================
-                    # Load reference point value @ U[0]
+                    # Load reference point value @ U[0] taking into account
+                    # potential xr case
                     # refpath_ptr = [prev_idx, curr_xr]
-
-                    # Wrapping if we reach the cycle order
-                    if U[0] >= ref_order:
-                        U[0] = U[0] % ref_order
-
                     if xr_detect_activated:
                         ref_zn = fs.perturbation.ref_path_get(
-                            ref_path, U[0],
+                            Zn_path, U[0],
                             has_xr, ref_index_xr, ref_xr, refpath_ptr,
                             ref_is_xr, ref_zn_xr, 0
                         )
                     else:
-                        ref_zn = ref_path[U[0]]
+                        ref_zn = Zn_path[U[0]]
 
-                    #==============================================================
+                    #==========================================================
                     # Pertubation iter block
-                    #--------------------------------------------------------------
+                    #----------------------------------------------------------
                     # dzndc subblock
                     if calc_dzndc:
                     # This is an approximation as we do not store the ref pt
@@ -272,17 +305,22 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                     # Z[dzndc] =  2 * (
                     #    (ref_path_zn + Z[zn]) * Z[dzndc]
                     #    + Z[zn] * ref_path_dzndc
-                        Z[dzndc] = 2. * (ref_zn + Z[zn]) * Z[dzndc]
-                        if not(SA_activated) and (n_iter == 1):
+                        ref_dzndc = dZndc_path[U[0]]
+                        Z[dzndc] = (
+                            2. * (ref_zn + Z[zn]) * Z[dzndc]
+                            + ref_dzndc * Z[zn]
+                        )
+                        if (n_iter == 1): 
                             # Non-null term needed to 'kick-off'
+                            # we do not use anymore not(SA_activated)
                             Z[dzndc] = 1.
 
-                    #--------------------------------------------------------------
+                    #----------------------------------------------------------
                     # Interior detection - Used only at low zoom level
                     if interior_detect_activated and (n_iter > 1):
                         Z[dzndz] = 2. * (Z[zn] * Z[dzndz])
 
-                    #--------------------------------------------------------------
+                    #----------------------------------------------------------
                     # zn subblok
                     if xr_detect_activated:
                         # We shall pay attention to overflow
@@ -310,7 +348,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                         # No risk of underflow, normal perturbation interation
                         Z[zn] = Z[zn] * (Z[zn] + 2. * ref_zn) + c
 
-                    #==============================================================
+                    #==========================================================
                     if n_iter >= max_iter:
                         stop[0] = reason_max_iter
                         break
@@ -324,23 +362,23 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                             stop[0] = reason_stationnary
                             break
 
-                    #==============================================================
+                    #==========================================================
                     # ZZ = "Total" z + dz
-                    U[0] = U[0] + 1
+                    U[0] = (U[0] + 1) % ref_order
 
                     if xr_detect_activated:
                         ref_zn_next = fs.perturbation.ref_path_get(
-                            ref_path, U[0],
+                            Zn_path, U[0],
                             has_xr, ref_index_xr, ref_xr, refpath_ptr,
                             ref_is_xr, ref_zn_xr, 1
                         )
                     else:
-                        ref_zn_next = ref_path[U[0]]
+                        ref_zn_next = Zn_path[U[0]]
 
 
                     # computation involve doubles only
                     ZZ = Z[zn] + ref_zn_next
-                    full_sq_norm = ZZ.real**2 + ZZ.imag**2
+                    full_sq_norm = ZZ.real ** 2 + ZZ.imag ** 2
     
                     # Flagged as 'diverging'
                     bool_infty = (full_sq_norm > M_divergence_sq)
@@ -349,7 +387,9 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                         break
 
                     # Glitch correction - reference point diverging
-                    if (U[0] >= (ref_div_iter - 1)):
+                    # Note: should never be triggered if ref pt is a cycle
+                    if (U[0] >= ref_orbit_len):
+                        assert ref_order >= 2**62 # debug 
                         # Rebasing - we are already big no underflow risk
                         U[0] = 0
                         Z[zn] = ZZ

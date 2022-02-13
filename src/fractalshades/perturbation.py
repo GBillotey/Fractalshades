@@ -85,7 +85,7 @@ directory : str
             "Reference": {
                 "str_val": "--"
             },
-            "Series approx.": {
+            "Bilin. approx": {
                 "str_val": "--"
             },
         }
@@ -118,8 +118,8 @@ directory : str
         for key, val in complex_dic.items():
             # If this field is found in a full precision array, we add it :
             if key == self.FP_code:
-                Z_path = self.Z_path
-                full_Z[val, :] += Z_path[U[0, :]]  # U[0] is ref_cycle_iter
+                Zn_path = self.Zn_path
+                full_Z[val, :] += Zn_path[U[0, :]]  # U[0] is ref_cycle_iter
 
         full_raw_data = (chunk_mask, full_Z, U, stop_reason, stop_iter)
 
@@ -128,36 +128,14 @@ directory : str
         return self.reshape2d(post_array, chunk_mask, chunk_slice)
 
 
+    # file, matching,save, reload, Params, data
+
     def ref_point_file(self):
         """
         Returns the file path to store or retrieve data arrays associated to a 
         reference orbit
         """
         return os.path.join(self.directory, "data", "ref_pt.dat")
-
-
-    def ref_point_kc(self):
-        """
-        Return a scaling coefficient used as a convergence radius for serie 
-        approximation, or as a reference scale for derivatives.
-
-        Returns:
-        --------
-        kc: full precision, scaling coefficient
-        """
-        c0 = self.x + 1j * self.y
-        corner_a = c0 + 0.5 * (self.dx + 1j * self.dy)
-        corner_b = c0 + 0.5 * (- self.dx + 1j * self.dy)
-        corner_c = c0 + 0.5 * (- self.dx - 1j * self.dy)
-        corner_d = c0 + 0.5 * (self.dx - 1j * self.dy)
-
-        ref = self.FP_params["ref_point"]
-
-        # Let take some margin
-        kc = max(abs(ref - corner_a), abs(ref - corner_b),
-                 abs(ref - corner_c), abs(ref - corner_d)) * 1.1
-
-        return fsx.mpf_to_Xrange(kc, dtype=np.float64)
 
 
     def ref_point_matching(self):
@@ -195,7 +173,7 @@ directory : str
         return matching
 
 
-    def save_ref_point(self, FP_params, Z_path):
+    def save_ref_point(self, FP_params, Zn_path):
         """
         Write to a data file the following data:
            - params = main parameters used for the calculation
@@ -204,13 +182,13 @@ directory : str
         """
         print("saved ref point")
         self._FP_params = FP_params
-        self._Z_path = Z_path
+        self._Zn_path = Zn_path
         save_path = self.ref_point_file()
         fs.utils.mkdir_p(os.path.dirname(save_path))
         with open(save_path, 'wb+') as tmpfile:
             print("Path computed, saving", save_path)
             pickle.dump(FP_params, tmpfile, pickle.HIGHEST_PROTOCOL)
-            pickle.dump(Z_path, tmpfile, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(Zn_path, tmpfile, pickle.HIGHEST_PROTOCOL)
 
 
     def reload_ref_point(self, scan_only=False):
@@ -225,8 +203,8 @@ directory : str
             FP_params = pickle.load(tmpfile)
             if scan_only:
                 return FP_params
-            Z_path = pickle.load(tmpfile)
-        return FP_params, Z_path
+            Zn_path = pickle.load(tmpfile)
+        return FP_params, Zn_path
 
     @property
     def FP_params(self):
@@ -242,25 +220,25 @@ directory : str
         return FP_params
         
     @property
-    def Z_path(self):
+    def Zn_path(self):
         """
-        Return the Z_path attribute, if not available try to reload it
+        Return the Zn_path attribute, if not available try to reload it
         from file
         """
-        print("in Z_path", hasattr(self, "_Z_path"))
-        if hasattr(self, "_Z_path"):
-            return self._Z_path
-        FP_params, Z_path = self.reload_ref_point()
-        self._Z_path = Z_path
-        return Z_path
+        print("in Zn_path", hasattr(self, "_Zn_path"))
+        if hasattr(self, "_Zn_path"):
+            return self._Zn_path
+        _, Zn_path = self.reload_ref_point()
+        self._Zn_path = Zn_path
+        return Zn_path
 
 
-    def get_Ref_path(self):
+    def get_ref_path_data(self):
         """ Builds a Ref_path tuple from FP_params and ref_path
-        This object will be used in numba jitted functions
+        This tuple will be used in numba jitted functions
         """
         FP_params = self.FP_params
-        Z_path = self.Z_path
+        Zn_path = self.Zn_path
         
         ref_xr_python = FP_params["xr"]
         ref_order = FP_params["order"]
@@ -288,86 +266,165 @@ directory : str
 
         has_xr = (len(ref_xr_python) > 0)
 
-        return (Z_path, has_xr, ref_index_xr, ref_xr,
-                ref_div_iter, ref_order, drift_xr, dx_xr)
+
+        print("ref_div_iter", ref_div_iter, np.shape(Zn_path)[0])
+        print("has_xr", has_xr, (len(ref_index_xr) > 0))
+#        assert(ref_div_iter == np.shape(Zn_path)[0])
+        assert(has_xr == (len(ref_index_xr) > 0))
+
+        return (Zn_path, ref_order, ref_index_xr, ref_xr, drift_xr, dx_xr)
 
 
-    def SA_file(self): # , iref, calc_name):
+    def ref_point_kc(self):
+        """
+        Return a scaling coefficient used as a convergence radius for serie 
+        approximation, or as a reference scale for derivatives.
+
+        Returns:
+        --------
+        kc: full precision, scaling coefficient
+        """
+        c0 = self.x + 1j * self.y
+        corner_a = c0 + 0.5 * (self.dx + 1j * self.dy)
+        corner_b = c0 + 0.5 * (- self.dx + 1j * self.dy)
+        corner_c = c0 + 0.5 * (- self.dx - 1j * self.dy)
+        corner_d = c0 + 0.5 * (self.dx - 1j * self.dy)
+
+        ref = self.FP_params["ref_point"]
+
+        # Let take some margin
+        kc = max(abs(ref - corner_a), abs(ref - corner_b),
+                 abs(ref - corner_c), abs(ref - corner_d)) * 1.1
+
+        return fsx.mpf_to_Xrange(kc, dtype=np.float64)
+
+
+    def BLA_file(self): # , iref, calc_name):
         """
         Returns the file path to store or retrieve data arrays associated to a 
         Series Approximation
         """
-        return os.path.join(self.directory, "data", "SA.dat")
+        return os.path.join(self.directory, "data", "BLA.dat")
+
+    def BLA_param_matching(self, BLA_full_params):
+        """
+        Test if the BLA can be used for this calculation ie 
+           - same kc
+           - same FP_params
+        """
+        try:
+            stored_BLA_full_params = self.BLA_full_params
+        except FileNotFoundError:
+            print("no ref pt file found BLA_params")
+            return False
+        
+        kc_stored = stored_BLA_full_params["kc"]
+        kc_expected = BLA_full_params["kc"]
+        ref_stored = stored_BLA_full_params["FP_params"]["ref_point"]
+        ref_expected = BLA_full_params["FP_params"]["ref_point"]
+        eps_stored = stored_BLA_full_params["eps"]
+        eps_expected = BLA_full_params["eps"]
+        
+        matching = (
+            (kc_stored == kc_expected)
+            and (ref_stored == ref_expected)
+            and (eps_stored == eps_expected)
+        )
+        print("Result of BLA matching:", matching)
+        return matching
 
 
-    def save_SA(self, FP_params, SA_params, SA_kc, P, n_iter, P_err):
+
+    def save_BLA(self, BLA_full_params, A, B, r):
         """
-        Reload arrays from a data file
-           - params = main parameters used for the calculation
-           - codes = complex_codes, int_codes, termination_codes
-           - arrays : [Z, U, stop_reason, stop_iter]
+        Save BLA parameters and data tree arrays
         """
-        save_path = self.SA_file()
+        print("SAVE BLA")
+        print("BLA_full_params: \n", BLA_full_params)
+        print("A:\n", A)
+        print("B:\n", B)
+        print("r:\n", r)
+        self._BLA_full_params = BLA_full_params
+        self._BLA_arrays = (A, B, r)
+
+        save_path = self.BLA_file()
         fs.utils.mkdir_p(os.path.dirname(save_path))
 
         with open(save_path, 'wb+') as tmpfile:
-            print("SA computed, saving", save_path)
-            for item in (FP_params, SA_params, SA_kc, P, n_iter, P_err):
+            print("BLA computed, saving", save_path)
+            for item in (BLA_full_params, A, B, r):
                 pickle.dump(item, tmpfile, pickle.HIGHEST_PROTOCOL)
 
 
-    def reload_SA(self, scan_only=False):
+    def reload_BLA(self, scan_only=False):
         """
         Reload arrays from a data file
-           - FP_params = main parameters used for ref pt calc
-           - SA_params = main parameters used for SA calc
-            P, n_iter, P_err : The SA results
+           - FP_params = parameters used for ref pt calc
+           - BLA_params = parameters used for BLA calc
+            A, B, r : The BLA data arrays
 
         """
-        save_path = self.SA_file()
+        save_path = self.BLA_file()
         with open(save_path, 'rb') as tmpfile:
-            FP_params = pickle.load(tmpfile)
-            SA_params = pickle.load(tmpfile)
-            SA_kc = pickle.load(tmpfile)
+            BLA_full_params = pickle.load(tmpfile)
             if scan_only:
-                return FP_params, SA_params, SA_kc
-            P = pickle.load(tmpfile)
-            n_iter = pickle.load(tmpfile)
-            P_err = pickle.load(tmpfile)
-        return FP_params, SA_params, SA_kc, P, n_iter, P_err
+                return BLA_full_params
+            A = pickle.load(tmpfile)
+            B = pickle.load(tmpfile)
+            r = pickle.load(tmpfile)
+        return BLA_full_params, A, B, r
 
-    def get_SA_data(self):
+    @property
+    def BLA_full_params(self):
+        """
+        Return the BLA_full_params attribute, if not available try to reload it
+        from file
+        """
+        if hasattr(self, "_BLA_full_params"):
+            return self._BLA_full_params
+        BLA_full_params = self.reload_BLA(scan_only=True)
+        self._BLA_full_params = BLA_full_params
+        return BLA_full_params
+
+    @property
+    def BLA_arrays(self):
         """ return attribute or try to reload from file """
-        if hasattr(self, "_SA_data"):
-            return self._SA_data
+        if hasattr(self, "_BLA_arrays"):
+            return self._BLA_arrays
         else:
-            _, _, _, P, n_iter, P_err = self.reload_SA()
-            return P, n_iter, P_err
+            _, A, B, r = self.reload_BLA()
+            return (A, B, r)
 
-    def SA_matching(self):
+    def get_BLA_data(self):
+        """ Builds a Ref_path tuple from FP_params and ref_path
+        This tuple will be used in numba jitted functions
         """
-        Test if the SA stored can be used for this calculation ie 
-           - same ref point
-           - same SA parameters
-        """
-        try:
-            (stored_FP_params, stored_SA_params, stored_kc
-             ) = self.reload_SA(scan_only=True)
-        except FileNotFoundError:
-            return False
-
-        valid_FP_params = (stored_FP_params == self.FP_params)
-        valid_SA_params = (stored_SA_params == self.SA_params)
-        valid_kc = (stored_kc == self.kc)
-        print("validate stored SA", valid_FP_params, valid_SA_params, valid_kc)
-
-        return (valid_FP_params and valid_SA_params and valid_kc)
+        BLA_full_params = self.BLA_full_params
+        (A, B, r) = self.BLA_arrays
+        return BLA_full_params, A, B, r
+#    def BLA_matching(self):
+#        """
+#        Test if the BLA stored can be used for this calculation ie 
+#           - same ref point
+#           - same BLA parameters
+#        """
+#        try:
+#            (stored_FP_params, stored_BLA_params
+#             ) = self.reload_BLA(scan_only=True)
+#        except FileNotFoundError:
+#            return False
+#
+#        valid_FP_params = (stored_FP_params == self.FP_params)
+#        valid_BLA_params = (stored_BLA_params == self.BLA_params)
+#        # valid_kc = (stored_kc == self.kc)
+#        print("validate stored FP / BLA", valid_FP_params, valid_BLA_params)
+#
+#        return (valid_FP_params and valid_BLA_params)
 
 #==============================================================================
 # Printing functions
-
     @staticmethod
-    def print_FP(FP_params, ref_path):
+    def print_FP(FP_params, Zn_path):
         """
         Just a pretty-print of the reference path
         """
@@ -379,15 +436,15 @@ directory : str
                     print(k, f"({kv}) --> ", str(vv))
             except AttributeError:
                 print(k, " --> ", v)
-        print("ref_path, shape: ", ref_path.shape, ref_path.dtype) 
-        print(ref_path)
+        print("Zn_path, shape: ", Zn_path.shape, Zn_path.dtype) 
+        print(Zn_path)
         print("--------------------------------------------------------------")
 
 #==============================================================================
 # Calculation functions
     def run(self):
         """
-        Launch a full perturbation calculation with glitch correction.
+        Launch a full perturbation calculation with bilinear approximation.
 
         The parameters from the last 
         @ `fractalshades.zoom_options`\-tagged method call and last
@@ -395,8 +452,8 @@ directory : str
 
         If calculation results are already there, the parameters will be
         compared and if identical, the calculation will be skipped. This is
-        done for each tile and each glitch correction iteration, so i enables
-        calculation to restart from an unfinished status.
+        done for each tile so allows calculation to restart from an unfinished
+        state.
         """
         has_status_bar = hasattr(self, "_status_wget")
 
@@ -417,33 +474,29 @@ directory : str
         if has_status_bar:
             self.set_status("Reference", "running")
         self.get_FP_orbit()
-        (Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
-         drift_xr, dx_xr) = self.get_Ref_path()
+        (Zn_path, ref_order, ref_index_xr, ref_xr, drift_xr, dx_xr
+         ) = self.get_ref_path_data()
+        # Deduce the derivatives at normal precision
+        dZndz_path, dZndc_path = ref_path_derivatives(
+            Zn_path, self.dZndz_iter(), self.dZndc_iter())
         if has_status_bar:
             self.set_status("Reference", "completed")
 
-
-        # Initialise SA interpolation
-        print("Initialise SA interpolation")
+        # Initialize the BLA 
         self.kc = kc = self.ref_point_kc().ravel()  # Make it 1d for numba use
-        if kc == 0.:
+        if kc == 0.: # Precision is way too small, throws an error
             raise RuntimeError(
-                "Resolution is too low for this zoom depth. Try to increase"
+                "Resolution is too low for this zoom depth. Increase"
                 "the reference calculation precicion."
             )
+        if self.BLA_params is not None:
+            print("Initialise BLA interpolation")
+            if has_status_bar:
+                self.set_status("Bilin. approx", "running")
+            print("** kc", kc)
+            self.get_BLA_tree(Zn_path, kc)
+            BLA_full_params, A_bla, B_bla, r_bla = self.get_BLA_data()
 
-        if self.SA_params is None:
-            n_iter = 0
-            P = None
-            P_err = None
-        else:
-            if has_status_bar:
-                self.set_status("Series approx.", "running")
-            self.get_SA(Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter,
-                        ref_order)
-            P, n_iter, P_err = self.get_SA_data()
-            if has_status_bar:
-                self.set_status("Series approx.", "completed")
 
         # Jitted function used in numba inner-loop
         self._initialize = self.initialize()
@@ -452,8 +505,8 @@ directory : str
         # Launch parallel computing of the inner-loop (Multi-threading with GIL
         # released)
         self.cycles(
-            Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order, drift_xr, dx_xr, 
-            P, kc, n_iter,
+            Zn_path, ref_order, ref_index_xr, ref_xr, drift_xr, dx_xr, 
+            A_bla, B_bla, r_bla, dZndz_path, dZndc_path,
             chunk_slice=None
         )
         if has_status_bar:
@@ -467,8 +520,8 @@ directory : str
         iterable_attr="chunk_slices", iter_kwargs="chunk_slice")
     def cycles(
         self, 
-        Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order, drift_xr, dx_xr, 
-        P, kc, n_iter,
+        Zn_path, ref_order, ref_index_xr, ref_xr, drift_xr, dx_xr, 
+        A_bla, B_bla, r_bla, dZndz_path, dZndc_path,
         chunk_slice
     ):
         """
@@ -478,18 +531,15 @@ directory : str
         -----------
         chunk_slice : 4-tuple int
             The calculation tile
-        Z_path : complex128[]
+        Zn_path : complex128[]
             The array for the reference point orbit, in low precision
         has_xr : boolean
-            True if the Z_path needs extended range values - when it gets close
+            True if the Zn_path needs extended range values - when it gets close
             to 0.
         ref_index_xr : int[:]
             indices for the extended range values
         ref_xr : X_range[:]
             The extended range values
-        ref_div_iter : int
-            The first invalid iteration for the reference orbit (either
-            missing or diverging)
         drift_xr : X_range
             vector between image center and reference point : center - ref_pt
         dx_xr :
@@ -497,9 +547,7 @@ directory : str
         P : Xrange_polynomial
             Polynomial from the Series approximation
         kc :
-            Scaling coefficient for the Series Approximation
-        n_iter :
-            iteration to which "jumps" the SA approximation
+            Scaling c coefficient for the BLA
 
         Returns:
         --------
@@ -533,10 +581,11 @@ directory : str
         ret_code = numba_cycles_perturb(
             c_pix, Z, U, stop_reason, stop_iter,
             initialize, iterate,
-            Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order, drift_xr, dx_xr,
-            P, kc, n_iter,
+            Zn_path, ref_order, ref_index_xr, ref_xr, drift_xr, dx_xr,
+            A_bla, B_bla, r_bla, dZndz_path, dZndc_path,
             self._interrupted
         )
+
         if ret_code == self.USER_INTERRUPTED:
             print("Interruption signal received")
             return
@@ -583,39 +632,25 @@ directory : str
         return True
 
 
-    def get_SA(self, Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter,
-               ref_order):
+    def get_BLA_tree(self, Zn_path, kc):
         """
-        Check if we have a suitable SA approximation stored for iref, 
-          - otherwise computes and stores it in a file
+        Check if we already have a BLA stored otherwise compute and stores it in
+        a file
         """
-        if self.SA_matching():
-            print("SA already stored")
+        BLA_full_params = self.BLA_params.copy()
+        BLA_full_params["FP_params"] = self.FP_params
+        BLA_full_params["kc"] = kc
+    
+        if self.BLA_param_matching(BLA_full_params):
+            print("BLA already stored")
             return
 
-        else:            
-            SA_params = self.SA_params
-            FP_params = self.FP_params
-            kc = self.kc
-
-            SA_loop = self.SA_loop()
-            SA_cutdeg = SA_params["cutdeg"]
-            SA_err_sq = SA_params["err"] ** 2
-            SA_stop = SA_params.get("stop", -1)
-
-            if ref_order is None:
-                ref_order = 2**62 # a quite large int64
-
-            P, n_iter, P_err = numba_SA_run(
-                SA_loop, 
-                Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
-                kc, SA_cutdeg, SA_err_sq, SA_stop
-            )
-            self._SA_data = (P, n_iter, P_err)
-            self.save_SA(FP_params, SA_params, kc, P, n_iter, P_err)
-            
-            
-
+        dfdz = self.dfdz()
+        eps = self.BLA_params["eps"]
+        A_bla, B_bla, r_bla, stages = numba_make_BLA(Zn_path, dfdz, kc, eps)
+        BLA_full_params["stages"] = stages
+        self.save_BLA(BLA_full_params, A_bla, B_bla, r_bla)
+    
 
     def get_FP_orbit(self, c0=None, newton="cv", order=None,
                      max_newton=None):
@@ -623,21 +658,20 @@ directory : str
         # Check if we have a reference point stored for iref, 
           - otherwise computes and stores it in a file
 
-        newton: ["cv", "step", None]
+        newton: ["cv", "None", None]
         """
-        
         if newton == "step":
-            raise NotImplementedError("step option not Implemented (yet)")
+            raise NotImplementedError("step option not Implemented")
 
         # Early escape if file exists
         if self.ref_point_matching():
             print("Ref point already stored")
             return
 
-        # no newton if zoom level is low. TODO: early escape possible
+        # no newton if zoom level is low, just pick the critical point.
         if self.dx > fs.settings.newton_zoom_level:
             c0 = self.critical_pt
-            self.compute_critical_orbit(c0)
+            self.make_constant_orbit(c0)
             return
 
         if c0 is None:
@@ -713,7 +747,7 @@ directory : str
         )
         self.compute_FP_orbit(nucleus, order)
 
-    def compute_critical_orbit(self, crit):
+    def make_constant_orbit(self, crit):
         """
         Basically nothing to 'compute' here, just short-cutting
         """
@@ -737,10 +771,10 @@ directory : str
         FP_params["xr"] = {}
         FP_params["div_iter"] = div_iter
 
-        Z_path = np.empty([div_iter + 1], dtype=np.complex128)
-        Z_path[:] = crit
+        Zn_path = np.empty([div_iter + 1], dtype=np.complex128)
+        Zn_path[:] = crit
 
-        self.save_ref_point(FP_params, Z_path)
+        self.save_ref_point(FP_params, Zn_path)
 
 
     def compute_FP_orbit(self, ref_point, order=None):
@@ -772,18 +806,18 @@ directory : str
         if order is not None:
             ref_orbit_len = min(order, ref_orbit_len) # at order + 1, we wrap 
         FP_params["ref_orbit_len"] = ref_orbit_len
-        Z_path = np.empty([ref_orbit_len], dtype=np.complex128)
+        Zn_path = np.empty([ref_orbit_len], dtype=np.complex128)
 
         print("Computing full precision path with max_iter", max_iter)
         if order is not None:
             print("order known, wraping at", ref_orbit_len)
 
-        i, partial_dict, xr_dict = self.FP_loop(Z_path, ref_point)
+        i, partial_dict, xr_dict = self.FP_loop(Zn_path, ref_point)
         FP_params["partials"] = partial_dict
         FP_params["xr"] = xr_dict
         FP_params["div_iter"] = i
 
-        self.save_ref_point(FP_params, Z_path)
+        self.save_ref_point(FP_params, Zn_path)
 
 
     def ball_method(self, c, px, kind=1, M_divergence=1.e5):
@@ -801,7 +835,9 @@ directory : str
             return self._ball_method2(c, px, max_iter, M_divergence)
 
 
+#==============================================================================
 # Numba JIT functions =========================================================
+#==============================================================================
 Xr_template = fsx.Xrange_array.zeros([1], dtype=np.complex128)
 Xr_float_template = fsx.Xrange_array.zeros([1], dtype=np.float64)
 USER_INTERRUPTED = 1
@@ -810,8 +846,8 @@ USER_INTERRUPTED = 1
 def numba_cycles_perturb(
     c_pix, Z, U, stop_reason, stop_iter,
     initialize, iterate, 
-    Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order, drift_xr, dx_xr,
-    P, kc, n_iter,
+    Zn_path, ref_order, ref_index_xr, ref_xr, drift_xr, dx_xr,
+    A_bla, B_bla, r_bla, dZndz_path, dZndc_path,
     _interrupted
 ):
     """
@@ -828,31 +864,20 @@ def numba_cycles_perturb(
     n_iter:
         current iteration
     """
-    n_iter_init = n_iter
-
-    nz, npts = Z.shape
-    Z_xr = Xr_template.repeat(nz)
-    Z_xr_trigger = np.zeros((nz,), dtype=np.bool_)
+    _, npts = Z.shape
     
     for ipt in range(npts):
-        n_iter = n_iter_init
-
-        Z_xr_trigger = np.zeros((nz,), dtype=np.bool_)
-        refpath_ptr = np.zeros((2,), dtype=np.int32)
-        ref_is_xr = np.zeros((1,), dtype=numba.bool_)
-        ref_zn_xr = Xr_template.repeat(1)
-
+        cpt, c_xr = ref_path_c_from_pix(c_pix[ipt], dx_xr, drift_xr)
         Zpt = Z[:, ipt]
         Upt = U[:, ipt]
-        cpt, c_xr = ref_path_c_from_pix(c_pix[ipt], dx_xr, drift_xr)
         stop_pt = stop_reason[:, ipt]
 
-        initialize(Zpt, Upt, c_xr, Z_xr_trigger, Z_xr, P, kc, dx_xr, n_iter)
-        
+        initialize(Zpt, Upt, c_xr)
+
         n_iter = iterate(
-            cpt, Zpt, Upt, stop_pt, n_iter,
-            Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order, drift_xr, dx_xr,
-            Z_xr_trigger, Z_xr, c_xr, refpath_ptr, ref_is_xr, ref_zn_xr
+            cpt, c_xr, Zpt, Upt, stop_pt,
+            Zn_path, ref_order, ref_index_xr, ref_xr,
+            A_bla, B_bla, r_bla, dZndz_path, dZndc_path
         )
         stop_iter[0, ipt] = n_iter
         stop_reason[0, ipt] = stop_pt[0]
@@ -861,99 +886,181 @@ def numba_cycles_perturb(
             return USER_INTERRUPTED
     return 0
 
+@numba.njit
+def numba_make_BLA(ref_path, dfdz, kc, eps):
+    """
+    Generates a BVA tree with
+    - bilinear approximation coefficients A and B
+    - validaty radius
+        z_n+2**stg = f**stg(z_n, c) with |c| < r_stg_n is approximated by 
+        z_n+2**stg = A_stg_n * z_n + B_stg_n * c
+    """
+    # number of needed "stages" (ref_orbit_len).bit_length()
+    kc_std = fsxn.to_standard(kc[0])
+    ref_orbit_len = ref_path.shape[0] #min(ref_order, ref_div_iter) # at order + 1, we wrap
+    print("ref_orbit_len", ref_orbit_len)
+
+    A = np.zeros((2 * ref_orbit_len,), dtype=np.complex128)
+    B = np.zeros((2 * ref_orbit_len,), dtype=np.complex128)
+    r = np.zeros((2 * ref_orbit_len,), dtype=np.float64) # Xr_float_template.repeat(2 * ref_orbit_len)
+
+    stages = init_BLA(A, B, r, ref_path, dfdz, kc_std, eps)
+    
+    return A, B, r, stages
 
 @numba.njit
-def numba_SA_run(
-        SA_loop, 
-        ref_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
-        kc, SA_cutdeg, SA_err_sq, SA_stop
-):
+def init_BLA(A, B, r, ref_path, dfdz, kc_std, eps):
     """
-    SA_loop function with signature (P, n_iter, ref_zn_xr, kcX)
-    Ref_path : Ref_path object
-    kc = Xrange float
-    SA_err_sq : float
-    SA_stop : int or -1
-    SA_cutdeg :  int
-    
-    SA_stop : user-provided max SA iter. If -1, will default to ref_path length
-    ref_div_iter : point where Reference point DV
+    Initialize BLA tree at stg 0
     """
-    # Note : SA 23064 23063 for order 23063
-    print("SA", ref_div_iter, ref_order)
-    if SA_stop == -1:
-        SA_stop = ref_div_iter
-    else:
-        SA_stop = min(ref_div_iter, SA_stop)
+    ref_orbit_len = ref_path.shape[0] #min(ref_order, ref_div_iter) # at order + 1, we wrap
+     
+    for i in range(ref_orbit_len):
+        i_0 = 2 * i # BLA index for (i, 0)
+        A[i_0] = dfdz(ref_path[i])
+        B[i_0] = 1.
+        if A[i_0] == 0:
+             r[i_0] = 0.
+             continue
+        # We use the following criteria :
+        # |Z + z| shall stay *far* from O or discontinuity of F', for each c
+        # For std Mandelbrot it means from z = 0
+        # |zn| << |Zn|
+        # For Burning ship x = 0 or y = 0
+        # |zn| << |Xn|,  |zn| << |Yn|
+        # We could additionnally consider a criterian based on hessian
+        # |z| < A e / h where h Hessian - not useful (redundant)
+        # for Mandelbrot & al.
+        mA = np.abs(A[i_0])
+        mZ = np.abs(ref_path[i]) # for Burning ship & al use rather:
+                                 # mZ = min(ref_path[i].real, ref_path[i].imag);
+        r[i_0] =  mZ / mA * eps
 
-    print_freq = max(5, int(SA_stop / 100000.))
-    print_freq *= 1000
-#    print("numba_SA_cycles - output every", print_freq)
+    # Now the combine step
+    # number of needed "stages" (ref_orbit_len).bit_length()
+    stages = stages_bla(ref_orbit_len)
+    for stg in range(1, stages):
+        print("*** stage", stg)
+        combine_BLA(A, B, r, kc_std, stg, ref_orbit_len, eps)
+    return stages
 
-    SA_valid = True
-    n_real_iter = 0
-    n_iter = 0
+@numba.njit
+def stages_bla(ref_orbit_len):
+    """
+    number of needed "stages" (ref_orbit_len).bit_length()
+    """
+    return int(np.ceil(np.log2(ref_orbit_len + 1))) # TODO confirm the +1 ???
 
-    P0_arr = Xr_template.repeat(1)
-    P0_err = Xr_float_template.repeat(1)
-    P = fsx.Xrange_SA(P0_arr, cutdeg=SA_cutdeg, err=P0_err) # P0
+@numba.njit
+def combine_BLA(A, B, r, kc_std, stg, ref_orbit_len, eps):
+    """ Populate successive stages of a BLA tree
+    A_bla, B_bla, r_bla : data of the BLA tree
+    kc : majorant of |c|
+    stg : stage of the tree that is populated by merging (stg - 1) items
+    ref_orbit_len : the len for the reference orbit
+    """
+    # Combine all BVA at stage stg-1 to make stage stg with stg > 0
+    step = (1 << stg)
 
-    kcX_arr = Xr_template.repeat(2)
-    kcX_arr[1] = kc[0]
-    kcX_err = Xr_float_template.repeat(1)
-    kcX = fsx.Xrange_SA(kcX_arr, cutdeg=SA_cutdeg, err=kcX_err)
-    
-    # refpath_ptr = [prev_idx, curr_xr]
-    refpath_ptr = np.zeros((2,), dtype=numba.int32)
-    out_is_xr = np.zeros((2,), dtype=numba.bool_)
-    out_xr = Xr_template.repeat(2)
+    for i in range(0, ref_orbit_len - step, step):
+        ii = i + (step // 2)
+        # If ref_orbit_len is not a power of 2, we might get out of the array
+        if ii >= ref_orbit_len:
+            break
+        index1 = BLA_index(i, stg - 1)
+        index2 = BLA_index(ii, stg - 1)
+        index_res = BLA_index(i, stg)
 
-    while SA_valid:
-        # wraps to 0 when reaching cycle order
-        if n_iter >= ref_order:
-            n_iter -= ref_order
+        assert(index1 < 2 * ref_orbit_len)
+#        if index2 >= 2 * ref_orbit_len:
+#            print("error index", i, ii, step, step // 2, index1, index2, index_res, 2 * ref_orbit_len)
+#            # 2112 ----2120----> 2128 // max : 2123
+        assert(index2 < 2 * ref_orbit_len)
+        assert(index_res < 2 * ref_orbit_len)
 
-        # incr iter
-        n_real_iter +=1
-        n_iter += 1
+        # Combines linear approximations
+        A[index_res] = A[index1] * A[index2]
+        B[index_res] = (B[index1] * A[index2] + B[index2])
 
-        # keep a copy in case this iter is invalidated
-        P_old = P.coeffs.copy()
+        # Combines the validity radii
+        r1 = r[index1]
+        r2 = r[index2]
+        # r1 is a direct criteria however for r2 we need to go 'backw the flow'
+        # z0 -> z1 -> z2 with z1 = A1 z0 + B1 c, |z1| < r2
+        mA1 = np.abs(A[index1])
+        mB1 = np.abs(B[index1])
+        if mA1 == 0.:
+            r[index_res] = 0.
+            continue
+        r2_backw = max(0., (r2 - mB1 * kc_std) / (mA1))
+        r[index_res] = min(r1, r2_backw)
 
-        # Load reference point value
-        # refpath_ptr = [prev_idx, curr_xr]
-        ref_zn = ref_path_get(
-            ref_path, n_iter - 1,
-            has_xr, ref_index_xr, ref_xr, refpath_ptr,
-            out_is_xr, out_xr, 0
-        )
+@numba.njit
+def BLA_index(i, stg):
+    """
+    Retun the indices in BVA table for this iteration and stage
+    this is the jump from i to j = i + (1 << stg)
+    """
+    # ex : 16 nb, st max = 4 (st in [0, 4])
+    # 0  ->  0,  1,  3,  7, 15   [31 first missing]
+    # 1  ->  2
+    # 2  ->  4,  5
+    # 3  ->  6
+    # 4  ->  8,  9, 11
+    # 5  -> 10
+    # 6  -> 12, 13
+    # 7  -> 14
+    # 8  -> 16, 17, 19, 23
+    # 9  -> 18
+    # 10 -> 20, 21
+    # 11 -> 22
+    # 12 -> 24, 25, 27 
+    # 13 -> 26
+    # 14 -> 28, 29
+    # 15 -> 30
+    # index = (2 * i) + ((1 << stg) - 1) = i + j - 1
+    return (2 * i) + ((1 << stg) - 1)
 
-        ref_zn_xr = ensure_xr(ref_zn, out_xr[0], out_is_xr[0])
-        P = SA_loop(P, n_iter, ref_zn_xr, kcX)
 
-        coeffs_sum = fsxn.Xrange_scalar(0., numba.int32(0))
-        for i in range(len(P.coeffs)):
-            coeffs_sum = coeffs_sum + fsxn.extended_abs2(P.coeffs[i])
-        err_abs2 = P.err[0] * P.err[0]
+@numba.njit
+def ref_BLA_get(A_bla, B_bla, r_bla, stages_bla, zn, n_iter):
+    """
+    Paramters:
+    ----------
+    A_bla, B_bla, r_bla: arrays
+        Bilinear approx tree
+    zn :
+        The current value of dz
+    n_iter :
+        The current iteration for ref pt
 
-        SA_valid = (
-            (err_abs2  <= SA_err_sq * coeffs_sum) # relative err
-            and (coeffs_sum <= 1.e6) # 1e6 to allow 'low zoom'
-            and (n_iter < SA_stop)
-        )
-        if not(SA_valid):
-            P_ret = fsx.Xrange_polynomial(P_old, P.cutdeg)
-            n_iter -= 1
+    Returns:
+    --------
+    Ai, Bi
+        Ai and Bi the applicable 
+     step
+         The interation "jump" provided by this linear interpolation
+    """
+    NULL = A_bla[0], B_bla[0], 0
 
-        if n_iter % print_freq == 0 and SA_valid:
-            ssum = np.sqrt(coeffs_sum)
-            print(
-                "SA running", n_real_iter,
-                "err: ", fsxn.to_Xrange_scalar(P.err[0]),
-                "<< ", ssum
-            )
+    _iter = n_iter
+    for stages in range(stages_bla):
+        if _iter & 1:
+            break
+        _iter = _iter >> 1
+    assert (n_iter % (1 << stages)) == 0
 
-    return P_ret, n_iter, P.err
+    # numba version of reversed(range(stages_bla)):
+    for stg in range(stages, -1, -1):
+        index_bla = BLA_index(n_iter, stg)
+        if index_bla >= len(r_bla):
+            continue
+        step =  (1 << stg)
+        r = r_bla[index_bla]
+        # Important to use strict comparisons here: to rule out underflow
+        if ((abs(zn.real) < r) and (abs(zn.imag) < r)):
+            return A_bla[index_bla], B_bla[index_bla], step
+    return NULL # No BLA applicable
 
 
 @numba.njit
@@ -962,7 +1069,7 @@ def need_xr(x_std):
     True if norm L-inf of std is lower than xrange_zoom_level
     """
     return (
-        (abs(x_std).real < fs.settings.xrange_zoom_level)
+        (abs(x_std.real) < fs.settings.xrange_zoom_level)
          and (abs(x_std.imag) < fs.settings.xrange_zoom_level)
     )
 
@@ -984,7 +1091,9 @@ def ensure_xr(val_std, val_xr, is_xr):
 def ref_path_c_from_pix(pix, dx, drift):
     """
     Returns the true c (coords from ref point) from the pixel coords
-    
+    This is ONLY a final stage translation + homothetie, to avoid use of 
+    Xrange when storing c value (as they are pre-scaled by dx)
+
     Parameters
     ----------
     pix :  complex
@@ -1004,7 +1113,7 @@ def ref_path_get(ref_path, idx, has_xr, ref_index_xr, ref_xr, refpath_ptr,
     """
     Alternative to getitem which also takes as input prev_idx, curr_xr :
     allows to optimize the look-up of Xrange values in case of successive calls
-    with strictly increasing idx.
+    with increasing idx.
 
     idx :
         index requested
@@ -1013,14 +1122,14 @@ def ref_path_get(ref_path, idx, has_xr, ref_index_xr, ref_xr, refpath_ptr,
         Contract : curr_xr the smallest integer that verify :
             prev_idx <= ref_index_xr[curr_xr]
             or curr_xr = ref_index_xr.size (No more xr)
+            
+    out_is_xr, out_xr
+        in-place modification at out_index (out_index usually 0)
+
     Returns
     -------
-    (val, xr_val, is_xr, prev_idx, curr_xr)
-        val : np.complex128
-        xr_val : complex128_Xrange_scalar
-        is_xr : bool
-        prev_idx == refpath_ptr[0] : int
-        curr_xr == refpath_ptr[1] : int (index in path.ref_xr)
+    val
+        standard value: ref_path[idx]
     """
     if not(has_xr):
         return ref_path[idx]
@@ -1066,3 +1175,27 @@ def ref_path_get(ref_path, idx, has_xr, ref_index_xr, ref_xr, refpath_ptr,
         out_xr[out_index] = ref_xr[refpath_ptr[1]]
 
         return ref_path[idx]
+
+@numba.njit
+def ref_path_derivatives(Zn_path, dZndz_iter, dZndc_iter):
+    """
+    Computes the needed derivatives from reference path
+    Empty array returned if not needed
+    """
+    orbit_len = Zn_path.shape[0]
+    if dZndz_iter is not None:
+        dZndz_path = np.empty(Zn_path.shape, dtype=np.complex128)
+        for i in range(orbit_len - 1):
+            dZndz_path[i + 1] = dZndz_iter(Zn_path[i], dZndz_path[i])
+    else:
+        dZndz_path = np.empty((0,), dtype=np.complex128)
+
+    if dZndc_iter is not None:
+        dZndc_path = np.empty(Zn_path.shape, dtype=np.complex128)
+        for i in range(orbit_len - 1):
+            dZndc_path[i + 1] = dZndc_iter(Zn_path[i], dZndc_path[i])
+    else:
+        dZndc_path = np.empty((0,), dtype=np.complex128)
+
+    return dZndz_path, dZndc_path
+        

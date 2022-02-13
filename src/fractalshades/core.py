@@ -992,7 +992,6 @@ advanced users when subclassing.
         self.update_data_mmaps(chunk_slice, Z, U, stop_reason, stop_iter)
 
 
-
     def init_cycling_arrays(self, chunk_slice):
 
         c_pix = np.ravel(self.chunk_pixel_pos(chunk_slice))

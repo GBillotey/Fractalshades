@@ -41,6 +41,9 @@ coordinates of a deep zoom are already known."""
 inspect_calc = False
 """ Outputs a synthesis files of the calculation done. Useful for debugging"""
 
+debug = False
+""" flag for debugging purposes """
+
 #glitch_off_last_iref = True / not needed in new implementation
 #"""Turns glitch correction off for last reference point run."""
 
