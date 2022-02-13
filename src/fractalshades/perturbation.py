@@ -839,8 +839,8 @@ def numba_cycles_perturb(
 
         Z_xr_trigger = np.zeros((nz,), dtype=np.bool_)
         refpath_ptr = np.zeros((2,), dtype=np.int32)
-        ref_is_xr = np.zeros((1,), dtype=numba.bool_)
-        ref_zn_xr = Xr_template.repeat(1)
+        ref_is_xr = np.zeros((2,), dtype=numba.bool_)
+        ref_zn_xr = Xr_template.repeat(2)
 
         Zpt = Z[:, ipt]
         Upt = U[:, ipt]
@@ -880,7 +880,8 @@ def numba_SA_run(
     ref_div_iter : point where Reference point DV
     """
     # Note : SA 23064 23063 for order 23063
-    print("SA", ref_div_iter, ref_order)
+    # ref_path[ref_order-1] ** 2 == -c OK
+    print("SA", ref_div_iter, ref_order)#, ref_path[ref_order-1])
     if SA_stop == -1:
         SA_stop = ref_div_iter
     else:
@@ -905,17 +906,10 @@ def numba_SA_run(
     
     # refpath_ptr = [prev_idx, curr_xr]
     refpath_ptr = np.zeros((2,), dtype=numba.int32)
-    out_is_xr = np.zeros((2,), dtype=numba.bool_)
-    out_xr = Xr_template.repeat(2)
+    out_is_xr = np.zeros((1,), dtype=numba.bool_)
+    out_xr = Xr_template.repeat(1)
 
     while SA_valid:
-        # wraps to 0 when reaching cycle order
-        if n_iter >= ref_order:
-            n_iter -= ref_order
-
-        # incr iter
-        n_real_iter +=1
-        n_iter += 1
 
         # keep a copy in case this iter is invalidated
         P_old = P.coeffs.copy()
@@ -923,10 +917,17 @@ def numba_SA_run(
         # Load reference point value
         # refpath_ptr = [prev_idx, curr_xr]
         ref_zn = ref_path_get(
-            ref_path, n_iter - 1,
+            ref_path, n_iter,
             has_xr, ref_index_xr, ref_xr, refpath_ptr,
             out_is_xr, out_xr, 0
         )
+
+        # incr iter
+        n_real_iter +=1
+        n_iter += 1
+        # wraps to 0 when reaching cycle order
+        if n_iter >= ref_order:
+            n_iter -= ref_order
 
         ref_zn_xr = ensure_xr(ref_zn, out_xr[0], out_is_xr[0])
         P = SA_loop(P, n_iter, ref_zn_xr, kcX)
@@ -943,7 +944,7 @@ def numba_SA_run(
         )
         if not(SA_valid):
             P_ret = fsx.Xrange_polynomial(P_old, P.cutdeg)
-            n_iter -= 1
+            n_real_iter -= 1
 
         if n_iter % print_freq == 0 and SA_valid:
             ssum = np.sqrt(coeffs_sum)

@@ -240,18 +240,21 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                 1 -> M_divergence reached by np.abs(zn)
                 2 -> dzndz stationnary ('interior detection')
                 """
-                
+                # print("in numba_impl", ref_div_iter, max_iter, ref_order, len(ref_path))
+                # in numba_impl 100001 100000 4611686018427387904
+                # in numba_impl 100001 100000 2123
+                # Usually len(ref_path) == ref_order
+
+                # Wrapping if we reach the cycle order
+                if U[0] >= ref_order:
+                    U[0] = U[0] % ref_order
+
                 while True:
                     n_iter += 1
 
                     #==============================================================
                     # Load reference point value @ U[0]
                     # refpath_ptr = [prev_idx, curr_xr]
-
-                    # Wrapping if we reach the cycle order
-                    if U[0] >= ref_order:
-                        U[0] = U[0] % ref_order
-
                     if xr_detect_activated:
                         ref_zn = fs.perturbation.ref_path_get(
                             ref_path, U[0],
@@ -326,7 +329,11 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
 
                     #==============================================================
                     # ZZ = "Total" z + dz
-                    U[0] = U[0] + 1
+                    U[0] += 1
+                    if U[0] >= ref_order:
+                        U[0] = U[0] % ref_order
+
+
 
                     if xr_detect_activated:
                         ref_zn_next = fs.perturbation.ref_path_get(
@@ -349,7 +356,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                         break
 
                     # Glitch correction - reference point diverging
-                    if (U[0] >= (ref_div_iter - 1)):
+                    if (U[0] >= ref_div_iter - 1):
                         # Rebasing - we are already big no underflow risk
                         U[0] = 0
                         Z[zn] = ZZ
