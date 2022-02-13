@@ -953,7 +953,7 @@ def numba_SA_run(
                 "<< ", ssum
             )
 
-    return P_ret, n_iter, P.err
+    return P_ret, n_real_iter, P.err
 
 
 @numba.njit
