@@ -834,12 +834,16 @@ def numba_cycles_perturb(
     """
 
     nz, npts = Z.shape
+    Z_xr = Xr_template.repeat(1)
+    Z_xr_trigger = np.zeros((1,), dtype=np.bool_)
 
     for ipt in range(npts):
 
+        refpath_ptr = np.zeros((2,), dtype=np.int32)
+        ref_is_xr = np.zeros((2,), dtype=numba.bool_)
+        ref_zn_xr = fs.perturbation.Xr_template.repeat(2)
+
         Zpt = Z[:, ipt]
-        Z_xr = Xr_template.repeat(1)
-        Z_xr_trigger = np.zeros((nz,), dtype=np.bool_)
         Upt = U[:, ipt]
         cpt, c_xr = ref_path_c_from_pix(c_pix[ipt], dx_xr, drift_xr)
         stop_pt = stop_reason[:, ipt]
@@ -850,6 +854,7 @@ def numba_cycles_perturb(
         n_iter = iterate(
             cpt, c_xr, Zpt, Z_xr, Z_xr_trigger, Upt, stop_pt, n_iter_init,
             Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
+            refpath_ptr, ref_is_xr, ref_zn_xr
         )
         stop_iter[0, ipt] = n_iter
         stop_reason[0, ipt] = stop_pt[0]

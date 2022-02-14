@@ -229,6 +229,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             def numba_impl(
                 c, c_xr, Z, Z_xr, Z_xr_trigger, U, stop, n_iter,
                 Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
+                refpath_ptr, ref_is_xr, ref_zn_xr
             ):
                 """
                 dz(n+1)dc   <- 2. * dzndc * zn + 1.
@@ -240,15 +241,6 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                 1 -> M_divergence reached by np.abs(zn)
                 2 -> dzndz stationnary ('interior detection')
                 """
-                # print("in numba_impl", ref_div_iter, max_iter, ref_order, len(Zn_path))
-                # in numba_impl 100001 100000 4611686018427387904
-                # in numba_impl 100001 100000 2123
-                # Usually len(Zn_path) == ref_order
-
-                refpath_ptr = np.zeros((2,), dtype=np.int32)
-                ref_is_xr = np.zeros((2,), dtype=numba.bool_)
-                ref_zn_xr = fs.perturbation.Xr_template.repeat(2)
-
                 # Wrapping if we reach the cycle order
                 if U[0] >= ref_order:
                     U[0] = U[0] % ref_order
