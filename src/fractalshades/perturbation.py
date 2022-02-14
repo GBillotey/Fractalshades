@@ -118,8 +118,8 @@ directory : str
         for key, val in complex_dic.items():
             # If this field is found in a full precision array, we add it :
             if key == self.FP_code:
-                Z_path = self.Z_path
-                full_Z[val, :] += Z_path[U[0, :]]  # U[0] is ref_cycle_iter
+                Zn_path = self.Zn_path
+                full_Z[val, :] += Zn_path[U[0, :]]  # U[0] is ref_cycle_iter
 
         full_raw_data = (chunk_mask, full_Z, U, stop_reason, stop_iter)
 
@@ -195,7 +195,7 @@ directory : str
         return matching
 
 
-    def save_ref_point(self, FP_params, Z_path):
+    def save_ref_point(self, FP_params, Zn_path):
         """
         Write to a data file the following data:
            - params = main parameters used for the calculation
@@ -204,13 +204,13 @@ directory : str
         """
         print("saved ref point")
         self._FP_params = FP_params
-        self._Z_path = Z_path
+        self._Zn_path = Zn_path
         save_path = self.ref_point_file()
         fs.utils.mkdir_p(os.path.dirname(save_path))
         with open(save_path, 'wb+') as tmpfile:
             print("Path computed, saving", save_path)
             pickle.dump(FP_params, tmpfile, pickle.HIGHEST_PROTOCOL)
-            pickle.dump(Z_path, tmpfile, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(Zn_path, tmpfile, pickle.HIGHEST_PROTOCOL)
 
 
     def reload_ref_point(self, scan_only=False):
@@ -225,8 +225,8 @@ directory : str
             FP_params = pickle.load(tmpfile)
             if scan_only:
                 return FP_params
-            Z_path = pickle.load(tmpfile)
-        return FP_params, Z_path
+            Zn_path = pickle.load(tmpfile)
+        return FP_params, Zn_path
 
     @property
     def FP_params(self):
@@ -242,25 +242,25 @@ directory : str
         return FP_params
         
     @property
-    def Z_path(self):
+    def Zn_path(self):
         """
-        Return the Z_path attribute, if not available try to reload it
+        Return the Zn_path attribute, if not available try to reload it
         from file
         """
-        print("in Z_path", hasattr(self, "_Z_path"))
-        if hasattr(self, "_Z_path"):
-            return self._Z_path
-        FP_params, Z_path = self.reload_ref_point()
-        self._Z_path = Z_path
-        return Z_path
+        print("in Zn_path", hasattr(self, "_Zn_path"))
+        if hasattr(self, "_Zn_path"):
+            return self._Zn_path
+        FP_params, Zn_path = self.reload_ref_point()
+        self._Zn_path = Zn_path
+        return Zn_path
 
 
-    def get_Ref_path(self):
-        """ Builds a Ref_path tuple from FP_params and ref_path
+    def get_path_data(self):
+        """ Builds a Zn_path data tuple from FP_params and Zn_path
         This object will be used in numba jitted functions
         """
         FP_params = self.FP_params
-        Z_path = self.Z_path
+        Zn_path = self.Zn_path
         
         ref_xr_python = FP_params["xr"]
         ref_order = FP_params["order"]
@@ -288,7 +288,7 @@ directory : str
 
         has_xr = (len(ref_xr_python) > 0)
 
-        return (Z_path, has_xr, ref_index_xr, ref_xr,
+        return (Zn_path, has_xr, ref_index_xr, ref_xr,
                 ref_div_iter, ref_order, drift_xr, dx_xr)
 
 
@@ -367,7 +367,7 @@ directory : str
 # Printing functions
 
     @staticmethod
-    def print_FP(FP_params, ref_path):
+    def print_FP(FP_params, Zn_path):
         """
         Just a pretty-print of the reference path
         """
@@ -379,8 +379,8 @@ directory : str
                     print(k, f"({kv}) --> ", str(vv))
             except AttributeError:
                 print(k, " --> ", v)
-        print("ref_path, shape: ", ref_path.shape, ref_path.dtype) 
-        print(ref_path)
+        print("ref_path, shape: ", Zn_path.shape, Zn_path.dtype) 
+        print(Zn_path)
         print("--------------------------------------------------------------")
 
 #==============================================================================
@@ -417,8 +417,8 @@ directory : str
         if has_status_bar:
             self.set_status("Reference", "running")
         self.get_FP_orbit()
-        (Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
-         drift_xr, dx_xr) = self.get_Ref_path()
+        (Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
+         drift_xr, dx_xr) = self.get_path_data()
         if has_status_bar:
             self.set_status("Reference", "completed")
 
@@ -439,7 +439,7 @@ directory : str
         else:
             if has_status_bar:
                 self.set_status("Series approx.", "running")
-            self.get_SA(Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter,
+            self.get_SA(Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter,
                         ref_order)
             P, n_iter, P_err = self.get_SA_data()
             if has_status_bar:
@@ -452,7 +452,8 @@ directory : str
         # Launch parallel computing of the inner-loop (Multi-threading with GIL
         # released)
         self.cycles(
-            Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order, drift_xr, dx_xr, 
+            Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
+            drift_xr, dx_xr, 
             P, kc, n_iter,
             chunk_slice=None
         )
@@ -467,7 +468,8 @@ directory : str
         iterable_attr="chunk_slices", iter_kwargs="chunk_slice")
     def cycles(
         self, 
-        Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order, drift_xr, dx_xr, 
+        Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
+        drift_xr, dx_xr, 
         P, kc, n_iter,
         chunk_slice
     ):
@@ -478,10 +480,10 @@ directory : str
         -----------
         chunk_slice : 4-tuple int
             The calculation tile
-        Z_path : complex128[]
+        Zn_path : complex128[]
             The array for the reference point orbit, in low precision
         has_xr : boolean
-            True if the Z_path needs extended range values - when it gets close
+            True if the Zn_path needs extended range values - when it gets close
             to 0.
         ref_index_xr : int[:]
             indices for the extended range values
@@ -533,7 +535,8 @@ directory : str
         ret_code = numba_cycles_perturb(
             c_pix, Z, U, stop_reason, stop_iter,
             initialize, iterate,
-            Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order, drift_xr, dx_xr,
+            Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
+            drift_xr, dx_xr,
             P, kc, n_iter,
             self._interrupted
         )
@@ -583,7 +586,7 @@ directory : str
         return True
 
 
-    def get_SA(self, Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter,
+    def get_SA(self, Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter,
                ref_order):
         """
         Check if we have a suitable SA approximation stored for iref, 
@@ -608,7 +611,7 @@ directory : str
 
             P, n_iter, P_err = numba_SA_run(
                 SA_loop, 
-                Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
+                Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
                 kc, SA_cutdeg, SA_err_sq, SA_stop
             )
             self._SA_data = (P, n_iter, P_err)
@@ -737,10 +740,10 @@ directory : str
         FP_params["xr"] = {}
         FP_params["div_iter"] = div_iter
 
-        Z_path = np.empty([div_iter + 1], dtype=np.complex128)
-        Z_path[:] = crit
+        Zn_path = np.empty([div_iter + 1], dtype=np.complex128)
+        Zn_path[:] = crit
 
-        self.save_ref_point(FP_params, Z_path)
+        self.save_ref_point(FP_params, Zn_path)
 
 
     def compute_FP_orbit(self, ref_point, order=None):
@@ -772,18 +775,18 @@ directory : str
         if order is not None:
             ref_orbit_len = min(order, ref_orbit_len) # at order + 1, we wrap 
         FP_params["ref_orbit_len"] = ref_orbit_len
-        Z_path = np.empty([ref_orbit_len], dtype=np.complex128)
+        Zn_path = np.empty([ref_orbit_len], dtype=np.complex128)
 
         print("Computing full precision path with max_iter", max_iter)
         if order is not None:
             print("order known, wraping at", ref_orbit_len)
 
-        i, partial_dict, xr_dict = self.FP_loop(Z_path, ref_point)
+        i, partial_dict, xr_dict = self.FP_loop(Zn_path, ref_point)
         FP_params["partials"] = partial_dict
         FP_params["xr"] = xr_dict
         FP_params["div_iter"] = i
 
-        self.save_ref_point(FP_params, Z_path)
+        self.save_ref_point(FP_params, Zn_path)
 
 
     def ball_method(self, c, px, kind=1, M_divergence=1.e5):
@@ -809,9 +812,10 @@ USER_INTERRUPTED = 1
 @numba.njit(nogil=True)
 def numba_cycles_perturb(
     c_pix, Z, U, stop_reason, stop_iter,
-    initialize, iterate, 
-    Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order, drift_xr, dx_xr,
-    P, kc, n_iter,
+    initialize, iterate,
+    Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
+    drift_xr, dx_xr,
+    P, kc, n_iter_init,
     _interrupted
 ):
     """
@@ -828,31 +832,24 @@ def numba_cycles_perturb(
     n_iter:
         current iteration
     """
-    n_iter_init = n_iter
 
     nz, npts = Z.shape
-    Z_xr = Xr_template.repeat(nz)
-    Z_xr_trigger = np.zeros((nz,), dtype=np.bool_)
-    
-    for ipt in range(npts):
-        n_iter = n_iter_init
 
-        Z_xr_trigger = np.zeros((nz,), dtype=np.bool_)
-        refpath_ptr = np.zeros((2,), dtype=np.int32)
-        ref_is_xr = np.zeros((2,), dtype=numba.bool_)
-        ref_zn_xr = Xr_template.repeat(2)
+    for ipt in range(npts):
 
         Zpt = Z[:, ipt]
+        Z_xr = Xr_template.repeat(1)
+        Z_xr_trigger = np.zeros((nz,), dtype=np.bool_)
         Upt = U[:, ipt]
         cpt, c_xr = ref_path_c_from_pix(c_pix[ipt], dx_xr, drift_xr)
         stop_pt = stop_reason[:, ipt]
 
-        initialize(Zpt, Upt, c_xr, Z_xr_trigger, Z_xr, P, kc, dx_xr, n_iter)
-        
+        initialize(c_xr, Zpt, Z_xr, Z_xr_trigger, Upt, P, kc, dx_xr,
+                   n_iter_init)
+
         n_iter = iterate(
-            cpt, Zpt, Upt, stop_pt, n_iter,
-            Z_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order, drift_xr, dx_xr,
-            Z_xr_trigger, Z_xr, c_xr, refpath_ptr, ref_is_xr, ref_zn_xr
+            cpt, c_xr, Zpt, Z_xr, Z_xr_trigger, Upt, stop_pt, n_iter_init,
+            Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
         )
         stop_iter[0, ipt] = n_iter
         stop_reason[0, ipt] = stop_pt[0]
@@ -865,7 +862,7 @@ def numba_cycles_perturb(
 @numba.njit
 def numba_SA_run(
         SA_loop, 
-        ref_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
+        Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
         kc, SA_cutdeg, SA_err_sq, SA_stop
 ):
     """
@@ -917,7 +914,7 @@ def numba_SA_run(
         # Load reference point value
         # refpath_ptr = [prev_idx, curr_xr]
         ref_zn = ref_path_get(
-            ref_path, n_iter,
+            Zn_path, n_iter,
             has_xr, ref_index_xr, ref_xr, refpath_ptr,
             out_is_xr, out_xr, 0
         )

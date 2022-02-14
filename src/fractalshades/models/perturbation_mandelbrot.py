@@ -165,12 +165,12 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         # Defines SA_loop via a function factory - jitted implementation
         def SA_loop():
             @numba.njit
-            def impl(Pn, n_iter, ref_path_xr, kcX):
+            def impl(Pn, n_iter, Zn_xr, kcX):
                 """ Series Approximation loop
                 Note that derivatives w.r.t dc will be deduced directly from the
                 S.A polynomial.
                 """
-                return Pn * (Pn + 2. * ref_path_xr) + kcX
+                return Pn * (Pn + 2. * Zn_xr) + kcX
             return impl
         self.SA_loop = SA_loop
 
@@ -178,17 +178,19 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         def initialize():
 
             @numba.njit
-            def numba_init_impl(Z, U, c_xr, Z_xr_trigger, Z_xr, P, kc, dx_xr, n_iter):
+            def numba_init_impl(c_xr, Z, Z_xr, Z_xr_trigger, U, P, kc, dx_xr,
+                                n_iter_init):
                 """
                 ... mostly the SA
+                Initialize 'in place' at n_iter_init :
+                    Z[zn], Z[dzndz], Z[dzndc]
                 """
-
                 if P is not None:
                     # Apply the  Series approximation step
-                    U[0] = n_iter
+                    U[0] = n_iter_init
                     c_scaled = c_xr / kc[0]
-
                     Z[zn] = fsxn.to_standard(P.__call__(c_scaled))
+
                     if fs.perturbation.need_xr(Z[zn]):
                         Z_xr_trigger[zn] = True
                         Z_xr[zn] = P.__call__(c_scaled)
@@ -201,9 +203,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                         )
                 if (dzndz != -1):
                     Z[dzndz] = 1.
-                    
             return numba_init_impl
-
         self.initialize = initialize
 
         # Defines iterate via a function factory - jitted implementation
@@ -224,11 +224,11 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             # Xr triggered for ultra-deep zoom
             xr_detect_activated = self.xr_detect_activated
             
+
             @numba.njit
             def numba_impl(
-                c, Z, U, stop, n_iter,
-                ref_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order, drift_xr, dx_xr,
-                Z_xr_trigger, Z_xr, c_xr, refpath_ptr, ref_is_xr, ref_zn_xr
+                c, c_xr, Z, Z_xr, Z_xr_trigger, U, stop, n_iter,
+                Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
             ):
                 """
                 dz(n+1)dc   <- 2. * dzndc * zn + 1.
@@ -240,10 +240,14 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                 1 -> M_divergence reached by np.abs(zn)
                 2 -> dzndz stationnary ('interior detection')
                 """
-                # print("in numba_impl", ref_div_iter, max_iter, ref_order, len(ref_path))
+                # print("in numba_impl", ref_div_iter, max_iter, ref_order, len(Zn_path))
                 # in numba_impl 100001 100000 4611686018427387904
                 # in numba_impl 100001 100000 2123
-                # Usually len(ref_path) == ref_order
+                # Usually len(Zn_path) == ref_order
+
+                refpath_ptr = np.zeros((2,), dtype=np.int32)
+                ref_is_xr = np.zeros((2,), dtype=numba.bool_)
+                ref_zn_xr = fs.perturbation.Xr_template.repeat(2)
 
                 # Wrapping if we reach the cycle order
                 if U[0] >= ref_order:
@@ -257,12 +261,12 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
                     # refpath_ptr = [prev_idx, curr_xr]
                     if xr_detect_activated:
                         ref_zn = fs.perturbation.ref_path_get(
-                            ref_path, U[0],
+                            Zn_path, U[0],
                             has_xr, ref_index_xr, ref_xr, refpath_ptr,
                             ref_is_xr, ref_zn_xr, 0
                         )
                     else:
-                        ref_zn = ref_path[U[0]]
+                        ref_zn = Zn_path[U[0]]
 
                     #==============================================================
                     # Pertubation iter block
@@ -337,12 +341,12 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
 
                     if xr_detect_activated:
                         ref_zn_next = fs.perturbation.ref_path_get(
-                            ref_path, U[0],
+                            Zn_path, U[0],
                             has_xr, ref_index_xr, ref_xr, refpath_ptr,
                             ref_is_xr, ref_zn_xr, 1
                         )
                     else:
-                        ref_zn_next = ref_path[U[0]]
+                        ref_zn_next = Zn_path[U[0]]
 
 
                     # computation involve doubles only
