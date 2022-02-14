@@ -1196,6 +1196,8 @@ def ref_path_derivatives(Zn_path, dZndz_iter, dZndc_iter):
             dZndc_path[i + 1] = dZndc_iter(Zn_path[i], dZndc_path[i])
     else:
         dZndc_path = np.empty((0,), dtype=np.complex128)
+        
+    print("dZndc_path", dZndc_path)
 
     return dZndz_path, dZndc_path
         
