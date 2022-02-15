@@ -477,8 +477,11 @@ directory : str
         (Zn_path, ref_order, ref_index_xr, ref_xr, drift_xr, dx_xr
          ) = self.get_ref_path_data()
         # Deduce the derivatives at normal precision
+#        dZndz_iter = self.dZndz_iter()
+#        dZndc_iter = self.dZndc_iter()
         dZndz_path, dZndc_path = ref_path_derivatives(
-            Zn_path, self.dZndz_iter(), self.dZndc_iter())
+            Zn_path, self.dZndz_iter(), self.dZndc_iter()
+        )
         if has_status_bar:
             self.set_status("Reference", "completed")
 
@@ -897,31 +900,27 @@ def numba_make_BLA(ref_path, dfdz, kc, eps):
     """
     # number of needed "stages" (ref_orbit_len).bit_length()
     kc_std = fsxn.to_standard(kc[0])
-    ref_orbit_len = ref_path.shape[0] #min(ref_order, ref_div_iter) # at order + 1, we wrap
+    ref_orbit_len = ref_path.shape[0]
     print("ref_orbit_len", ref_orbit_len)
 
     A = np.zeros((2 * ref_orbit_len,), dtype=np.complex128)
     B = np.zeros((2 * ref_orbit_len,), dtype=np.complex128)
-    r = np.zeros((2 * ref_orbit_len,), dtype=np.float64) # Xr_float_template.repeat(2 * ref_orbit_len)
-
+    r = np.zeros((2 * ref_orbit_len,), dtype=np.float64)
     stages = init_BLA(A, B, r, ref_path, dfdz, kc_std, eps)
     
     return A, B, r, stages
 
 @numba.njit
-def init_BLA(A, B, r, ref_path, dfdz, kc_std, eps):
+def init_BLA(A, B, r, Zn_path, dfdz, kc_std, eps):
     """
     Initialize BLA tree at stg 0
     """
-    ref_orbit_len = ref_path.shape[0] #min(ref_order, ref_div_iter) # at order + 1, we wrap
+    ref_orbit_len = Zn_path.shape[0] #min(ref_order, ref_div_iter) # at order + 1, we wrap
      
     for i in range(ref_orbit_len):
         i_0 = 2 * i # BLA index for (i, 0)
-        A[i_0] = dfdz(ref_path[i])
+        A[i_0] = dfdz(Zn_path[i])
         B[i_0] = 1.
-        if A[i_0] == 0:
-             r[i_0] = 0.
-             continue
         # We use the following criteria :
         # |Z + z| shall stay *far* from O or discontinuity of F', for each c
         # For std Mandelbrot it means from z = 0
@@ -931,16 +930,15 @@ def init_BLA(A, B, r, ref_path, dfdz, kc_std, eps):
         # We could additionnally consider a criterian based on hessian
         # |z| < A e / h where h Hessian - not useful (redundant)
         # for Mandelbrot & al.
-        mA = np.abs(A[i_0])
-        mZ = np.abs(ref_path[i]) # for Burning ship & al use rather:
-                                 # mZ = min(ref_path[i].real, ref_path[i].imag);
-        r[i_0] =  mZ / mA * eps
+        mZ = np.abs(Zn_path[i]) # for Burning ship & al use rather:
+                                # mZ = min(Zn_path[i].real, Zn_path[i].imag);
+        r[i_0] =  mZ * eps # max(0., (mZ - mB * kc_std) / (mA + 1.) * eps) # Note that
+        # we need to consider due to orbit wrapping
 
     # Now the combine step
     # number of needed "stages" (ref_orbit_len).bit_length()
     stages = stages_bla(ref_orbit_len)
     for stg in range(1, stages):
-        print("*** stage", stg)
         combine_BLA(A, B, r, kc_std, stg, ref_orbit_len, eps)
     return stages
 
@@ -949,7 +947,7 @@ def stages_bla(ref_orbit_len):
     """
     number of needed "stages" (ref_orbit_len).bit_length()
     """
-    return int(np.ceil(np.log2(ref_orbit_len + 1))) # TODO confirm the +1 ???
+    return int(np.ceil(np.log2(ref_orbit_len)))
 
 @numba.njit
 def combine_BLA(A, B, r, kc_std, stg, ref_orbit_len, eps):
@@ -964,19 +962,12 @@ def combine_BLA(A, B, r, kc_std, stg, ref_orbit_len, eps):
 
     for i in range(0, ref_orbit_len - step, step):
         ii = i + (step // 2)
-        # If ref_orbit_len is not a power of 2, we might get out of the array
+        # If ref_orbit_len is not a power of 2, we might get outside the array
         if ii >= ref_orbit_len:
             break
         index1 = BLA_index(i, stg - 1)
         index2 = BLA_index(ii, stg - 1)
         index_res = BLA_index(i, stg)
-
-        assert(index1 < 2 * ref_orbit_len)
-#        if index2 >= 2 * ref_orbit_len:
-#            print("error index", i, ii, step, step // 2, index1, index2, index_res, 2 * ref_orbit_len)
-#            # 2112 ----2120----> 2128 // max : 2123
-        assert(index2 < 2 * ref_orbit_len)
-        assert(index_res < 2 * ref_orbit_len)
 
         # Combines linear approximations
         A[index_res] = A[index1] * A[index2]
@@ -989,16 +980,13 @@ def combine_BLA(A, B, r, kc_std, stg, ref_orbit_len, eps):
         # z0 -> z1 -> z2 with z1 = A1 z0 + B1 c, |z1| < r2
         mA1 = np.abs(A[index1])
         mB1 = np.abs(B[index1])
-        if mA1 == 0.:
-            r[index_res] = 0.
-            continue
-        r2_backw = max(0., (r2 - mB1 * kc_std) / (mA1))
+        r2_backw = max(0., (r2 - mB1 * kc_std) / (mA1 + 1.))
         r[index_res] = min(r1, r2_backw)
 
 @numba.njit
 def BLA_index(i, stg):
     """
-    Retun the indices in BVA table for this iteration and stage
+    Return the indices in BVA table for this iteration and stage
     this is the jump from i to j = i + (1 << stg)
     """
     # ex : 16 nb, st max = 4 (st in [0, 4])
@@ -1050,12 +1038,15 @@ def ref_BLA_get(A_bla, B_bla, r_bla, stages_bla, zn, n_iter):
         _iter = _iter >> 1
     assert (n_iter % (1 << stages)) == 0
 
+    invalid_step = (len(r_bla) // 2) - n_iter # The first invalid step
+
     # numba version of reversed(range(stages_bla)):
     for stg in range(stages, -1, -1):
-        index_bla = BLA_index(n_iter, stg)
-        if index_bla >= len(r_bla):
+        step = (1 << stg)
+        if step >= invalid_step:
             continue
-        step =  (1 << stg)
+        index_bla = BLA_index(n_iter, stg)
+        assert(index_bla < len(r_bla))
         r = r_bla[index_bla]
         # Important to use strict comparisons here: to rule out underflow
         if ((abs(zn.real) < r) and (abs(zn.imag) < r)):
@@ -1184,20 +1175,24 @@ def ref_path_derivatives(Zn_path, dZndz_iter, dZndc_iter):
     """
     orbit_len = Zn_path.shape[0]
     if dZndz_iter is not None:
-        dZndz_path = np.empty(Zn_path.shape, dtype=np.complex128)
+        dZndz_path = np.empty((orbit_len,), dtype=np.complex128)
+        dZndz_path[0] = 0.
         for i in range(orbit_len - 1):
             dZndz_path[i + 1] = dZndz_iter(Zn_path[i], dZndz_path[i])
     else:
+        print("** empty dZndz_path")
         dZndz_path = np.empty((0,), dtype=np.complex128)
 
     if dZndc_iter is not None:
-        dZndc_path = np.empty(Zn_path.shape, dtype=np.complex128)
+        dZndc_path = np.empty((orbit_len,), dtype=np.complex128)
+        dZndc_path[0] = 0.
         for i in range(orbit_len - 1):
             dZndc_path[i + 1] = dZndc_iter(Zn_path[i], dZndc_path[i])
     else:
+        print("** empty dZndc_path")
         dZndc_path = np.empty((0,), dtype=np.complex128)
         
-    print("dZndc_path", dZndc_path)
+    print("*** dZndc_path", dZndc_path)
 
     return dZndz_path, dZndc_path
         

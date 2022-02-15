@@ -166,14 +166,18 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         
         def dZndz_iter():
             """ Elementary dzndz iteration - used for reference cycle"""
+            @numba.njit
             def impl(zn, dzndz):
                 return 2. * zn * dzndz
+            return impl
         self.dZndz_iter = dZndz_iter
 
         def dZndc_iter():
             """ Elementary dzndz iteration - used for reference cycle"""
+            @numba.njit
             def impl(zn, dzndc):
                 return 2. * zn * dzndc + 1.
+            return impl
         self.dZndc_iter = dZndc_iter
 
         def dfdz():
@@ -263,10 +267,10 @@ niter: int
                     #==========================================================
                     # Try a BLA_step
                     step = 0
-                    if (U[0] != 0) and (U[0] %8 == 0):
-                        (Ai, Bi, step) = fs.perturbation.ref_BLA_get(
-                            A_bla, B_bla, r_bla, stages_bla, Z[zn], U[0]
-                        )
+                    # if (U[0] != 0) and (U[0] %8 == 0):
+                    (Ai, Bi, step) = fs.perturbation.ref_BLA_get(
+                        A_bla, B_bla, r_bla, stages_bla, Z[zn], U[0]
+                    )
                         # print("--> BLA step", n_iter, U[0], step, Ai, Bi)
 
                     if step != 0:
@@ -276,6 +280,7 @@ niter: int
                             Z[dzndz] = Ai * Z[dzndz]
                         if calc_dzndc:
                             Z[dzndc] = Ai * Z[dzndc] + Bi
+                        
                         Z[zn] = Ai * Z[zn] + Bi * c
                         continue
 
@@ -310,10 +315,10 @@ niter: int
                             2. * (ref_zn + Z[zn]) * Z[dzndc]
                             + ref_dzndc * Z[zn]
                         )
-                        if (n_iter == 1): 
-                            # Non-null term needed to 'kick-off'
-                            # we do not use anymore not(SA_activated)
-                            Z[dzndc] = 1.
+#                        if (n_iter == 1): 
+#                            # Non-null term needed to 'kick-off'
+#                            # we do not use anymore not(SA_activated)
+#                            Z[dzndc] = 1.
 
                     #----------------------------------------------------------
                     # Interior detection - Used only at low zoom level
@@ -424,6 +429,7 @@ niter: int
                             # No risk of underflow - safe to rebase
                             U[0] = 0
                             Z[zn] = ZZ
+                            Z[dzndc] += dZndc_path[U[0]]
     
                 # End of while loop
                 return n_iter

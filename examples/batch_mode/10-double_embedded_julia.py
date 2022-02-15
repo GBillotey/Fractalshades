@@ -140,7 +140,7 @@ def plot(plot_dir):
         angles=(55., 20.),
         coords=None,
         color=np.array([1., 1., 1.]))
-    plotter["cont_iter"].shade(plotter["DEM_map"], light)
+    # plotter["cont_iter"].shade(plotter["DEM_map"], light)
     plotter.plot()
 
 

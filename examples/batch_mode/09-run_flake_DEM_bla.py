@@ -41,7 +41,7 @@ def plot(directory):
     """
     # A simple showcase using perturbation technique
     precision = 164
-    nx = 2400
+    nx = 6400
     x = '-1.99996619445037030418434688506350579675531241540724851511761922944801584242342684381376129778868913812287046406560949864353810575744772166485672496092803920095332'
     y = '-0.00000000000000000000000000000000030013824367909383240724973039775924987346831190773335270174257280120474975614823581185647299288414075519224186504978181625478529'
     dx = '1.8e-157'
@@ -72,7 +72,7 @@ def plot(directory):
             max_iter=1000000,
             M_divergence=1.e3,
             epsilon_stationnary=1.e-3,
-            BLA_params={"eps": 1.e-6},
+            BLA_params={"eps": 1.e-12},
             interior_detect=True)
 
     f.run()
@@ -86,13 +86,13 @@ def plot(directory):
     
     plotter = fs.Fractal_plotter(pp)   
     plotter.add_layer(Bool_layer("interior", output=False))
-    # plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=True))
+    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=True))
     # plotter.add_layer(Virtual_layer("potential", func=None, output=False))
     plotter.add_layer(Color_layer(
             "potential",
             func="np.log(x)",
             colormap=colormap,
-            probes_z=[0., .002],
+            probes_z=[0., .02],
             probes_kind="absolute",
             output=True
     ))
@@ -120,7 +120,7 @@ def plot(directory):
         angles=(75., 20.),
         coords=None,
         color=np.array([1., 1., 1.]))
-    # plotter["DEM"].shade(plotter["DEM_map"], light)
+    # plotter["potential"].shade(plotter["DEM_map"], light)
 
     plotter.plot()
 
