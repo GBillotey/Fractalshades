@@ -792,15 +792,13 @@ directory : str
         Use a ball centered on c = x + i y to find the first period (up to 
         maxiter) of nucleus
         """
-        
         max_iter = self.max_iter
         print("ball method", c, type(c), px, type(px))
-        
+
         if kind == 1:
             return self._ball_method(c, px, max_iter, M_divergence)
         elif kind == 2:
             return self._ball_method2(c, px, max_iter, M_divergence)
-
 
 #==============================================================================
 # GUI : "interactive options"
@@ -1109,7 +1107,6 @@ def numba_iterate(
                 U[0] = U[0] % ref_order
 
 
-
             if xr_detect_activated:
                 ref_zn_next = fs.perturbation.ref_path_get(
                     Zn_path, U[0],
@@ -1174,7 +1171,7 @@ def numba_iterate(
 
 
 
-
+# Series approximations
 @numba.njit
 def numba_SA_run(
         SA_loop, 
@@ -1270,6 +1267,12 @@ def numba_SA_run(
     return P_ret, n_real_iter, P.err
 
 
+# Bilinear approximation
+# Note: the bilinear arrays being cheap, they  will not be stored but
+# re-computed if needed
+
+
+
 @numba.njit
 def need_xr(x_std):
     """
@@ -1318,7 +1321,7 @@ def ref_path_get(ref_path, idx, has_xr, ref_index_xr, ref_xr, refpath_ptr,
     """
     Alternative to getitem which also takes as input prev_idx, curr_xr :
     allows to optimize the look-up of Xrange values in case of successive calls
-    with strictly increasing idx.
+    with increasing idx.
 
     idx :
         index requested
