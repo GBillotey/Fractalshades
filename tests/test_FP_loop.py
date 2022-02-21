@@ -134,7 +134,7 @@ class Test_ref_path(unittest.TestCase):
         f.get_FP_orbit()
         print("################# after get_FP_orbit")
         cls.FP_params = f.FP_params
-        cls.ref_path = f.Z_path
+        cls.ref_path = f.Zn_path
 
 
     def test_numba_path(self):
@@ -145,7 +145,7 @@ class Test_ref_path(unittest.TestCase):
         
         # ref_path = self.f.get_Ref_path()
         (ref_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order, drift_xr, dx_xr
-         ) = self.f.get_Ref_path()
+         ) = self.f.get_path_data()
 
         print("ref_path", ref_path)
         
@@ -271,7 +271,7 @@ class Test_newton(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    full_test = False
+    full_test = True
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_ref_path,
