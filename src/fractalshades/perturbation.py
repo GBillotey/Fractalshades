@@ -616,8 +616,6 @@ directory : str
             )
             self._SA_data = (P, n_iter, P_err)
             self.save_SA(FP_params, SA_params, kc, P, n_iter, P_err)
-            
-            
 
 
     def get_FP_orbit(self, c0=None, newton="cv", order=None,
@@ -794,17 +792,114 @@ directory : str
         Use a ball centered on c = x + i y to find the first period (up to 
         maxiter) of nucleus
         """
-        
         max_iter = self.max_iter
         print("ball method", c, type(c), px, type(px))
-        
+
         if kind == 1:
             return self._ball_method(c, px, max_iter, M_divergence)
         elif kind == 2:
             return self._ball_method2(c, px, max_iter, M_divergence)
 
+#==============================================================================
+# GUI : "interactive options"
+#==============================================================================
+    def coords(self, x, y, pix, dps):
+        """ x, y : coordinates of the event """
+        x_str = str(x)
+        y_str = str(y)
+        res_str = f"""
+coords = {{
+    "x": "{x_str}"
+    "y": "{y_str}"
+}}
+"""
+        return res_str
 
-# Numba JIT functions =========================================================
+    def ball_method_order(self, x, y, pix, dps,
+                          maxiter: int=100000,
+                          radius_pixels: int=25):
+        """ x, y : coordinates of the event """
+        c = x + 1j * y
+        radius = pix * radius_pixels
+        M_divergence = 1.e3
+        order = self._ball_method(c, radius, maxiter, M_divergence)
+
+        x_str = str(x)
+        y_str = str(y)
+        radius_str = str(radius)
+        res_str = f"""
+ball_order = {{
+    "x": "{x_str}",
+    "y": "{y_str}",
+    "maxiter": {maxiter},
+    "radius_pixels": {radius_pixels},
+    "radius": "{radius_str}",
+    "M_divergence": {M_divergence},
+    "order": {order}
+}}
+"""
+        return res_str
+
+    def newton_search(self, x, y, pix, dps,
+                          maxiter: int=100000,
+                          radius_pixels: int=3):
+        """ x, y : coordinates of the event """
+        c = x + 1j * y
+
+        radius = pix * radius_pixels
+        radius_str = str(radius)
+        M_divergence = 1.e3
+        order = self._ball_method(c, radius, maxiter, M_divergence)
+
+        newton_cv = False
+        max_attempt = 2
+        attempt = 0
+        while not(newton_cv) and attempt < max_attempt:
+            if order is None:
+                break
+            attempt += 1
+            dps = int(1.5 * dps)
+            print("Newton, dps boost to: ", dps)
+            with mpmath.workdps(dps):
+                newton_cv, c_newton = self.find_nucleus(
+                        c, order, pix, max_newton=None, eps_cv=None)
+                if newton_cv:
+                    xn_str = str(c_newton.real)
+                    yn_str = str(c_newton.imag)
+
+        if newton_cv:
+            nucleus_size, julia_size = self._nucleus_size_estimate(
+                c_newton, order
+            )
+        else:
+            nucleus_size = None
+            julia_size = None
+            xn_str = ""
+            yn_str = ""
+
+        x_str = str(x)
+        y_str = str(y)
+
+        res_str = f"""
+newton_search = {{
+    "x_start": "{x_str}",
+    "y_start": "{y_str}",
+    "maxiter": {maxiter},
+    "radius_pixels": {radius_pixels},
+    "radius": "{radius_str}",
+    "calculation dps": {dps}
+    "order": {order}
+    "x_nucleus": "{xn_str}",
+    "y_nucleus": "{yn_str}",
+    "nucleus_size": "{nucleus_size}",
+    "julia_size": "{julia_size}",
+}}
+"""
+        return res_str
+
+#==============================================================================
+# Numba JIT functions
+#==============================================================================
 Xr_template = fsx.Xrange_array.zeros([1], dtype=np.complex128)
 Xr_float_template = fsx.Xrange_array.zeros([1], dtype=np.float64)
 USER_INTERRUPTED = 1
@@ -864,6 +959,219 @@ def numba_cycles_perturb(
     return 0
 
 
+def numba_initialize(zn, dzndz, dzndc):
+    @numba.njit
+    def numba_init_impl(c_xr, Z, Z_xr, Z_xr_trigger, U, P, kc, dx_xr,
+                        n_iter_init):
+        """
+        ... mostly the SA
+        Initialize 'in place' at n_iter_init :
+            Z[zn], Z[dzndz], Z[dzndc]
+        """
+        if P is not None:
+            # Apply the  Series approximation step
+            U[0] = n_iter_init
+            c_scaled = c_xr / kc[0]
+            Z[zn] = fsxn.to_standard(P.__call__(c_scaled))
+
+            if fs.perturbation.need_xr(Z[zn]):
+                Z_xr_trigger[zn] = True
+                Z_xr[zn] = P.__call__(c_scaled)
+
+            if dzndc != -1:
+                P_deriv = P.deriv()
+                deriv_scale =  dx_xr[0] / kc[0]
+                Z[dzndc] = fsxn.to_standard(
+                    P_deriv.__call__(c_scaled) * deriv_scale
+                )
+        if (dzndz != -1):
+            Z[dzndz] = 1.
+    return numba_init_impl
+
+
+# Defines iterate via a function factory - jitted implementation
+def numba_iterate(
+        M_divergence_sq, max_iter, reason_max_iter, reason_M_divergence,
+        epsilon_stationnary_sq, interior_detect_activated, reason_stationnary,
+        SA_activated, xr_detect_activated,
+        calc_dzndc,
+        zn, dzndz, dzndc,
+        p_iter_zn, p_iter_dzndz, p_iter_dzndc
+):
+
+    @numba.njit
+    def numba_impl(
+        c, c_xr, Z, Z_xr, Z_xr_trigger, U, stop, n_iter,
+        Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
+        refpath_ptr, ref_is_xr, ref_zn_xr,
+    ):
+        """
+        dz(n+1)dc   <- 2. * dzndc * zn + 1.
+        dz(n+1)dz   <- 2. * dzndz * zn
+        z(n+1)      <- zn**2 + c 
+        
+        Termination codes
+        0 -> max_iter reached ('interior')
+        1 -> M_divergence reached by np.abs(zn)
+        2 -> dzndz stationnary ('interior detection')
+        """
+        # Wrapping if we reach the cycle order
+        if U[0] >= ref_order:
+            U[0] = U[0] % ref_order
+
+        while True:
+            n_iter += 1
+
+            #==============================================================
+            # Load reference point value @ U[0]
+            # refpath_ptr = [prev_idx, curr_xr]
+            if xr_detect_activated:
+                ref_zn = fs.perturbation.ref_path_get(
+                    Zn_path, U[0],
+                    has_xr, ref_index_xr, ref_xr, refpath_ptr,
+                    ref_is_xr, ref_zn_xr, 0
+                )
+            else:
+                ref_zn = Zn_path[U[0]]
+
+            #==============================================================
+            # Pertubation iter block
+            #--------------------------------------------------------------
+            # dzndc subblock
+            if calc_dzndc:
+            # This is an approximation as we do not store the ref pt
+            # derivatives 
+            # Full term would be :
+            # Z[dzndc] =  2 * (
+            #    (ref_path_zn + Z[zn]) * Z[dzndc]
+            #    + Z[zn] * ref_path_dzndc
+                Z[dzndc] = p_iter_dzndc(Z, zn, dzndc, ref_zn) # 2. * (ref_zn + Z[zn]) * Z[dzndc]
+                if not(SA_activated) and (n_iter == 1):
+                    # Non-null term needed to 'kick-off'
+                    Z[dzndc] = 1.
+
+            #--------------------------------------------------------------
+            # Interior detection - Used only at low zoom level
+            if interior_detect_activated and (n_iter > 1):
+                Z[dzndz] = p_iter_dzndz(Z, zn, dzndz) # 2. * (Z[zn] * Z[dzndz])
+
+            #--------------------------------------------------------------
+            # zn subblok
+            if xr_detect_activated:
+                # We shall pay attention to overflow
+                if not(Z_xr_trigger[0]):
+                    # try a standard iteration
+                    old_zn = Z[zn]
+                    Z[zn] = p_iter_zn(Z, zn, ref_zn, c)
+                    # Z[zn] * (Z[zn] + 2. * ref_zn)
+                    if fs.perturbation.need_xr(Z[zn]):
+                        # Standard iteration underflows
+                        # standard -> xrange conversion
+                        Z_xr[zn] = fsxn.to_Xrange_scalar(old_zn)
+                        Z_xr_trigger[0] = True
+
+                if Z_xr_trigger[0]:
+                    if (ref_is_xr[0]):
+                        Z_xr[zn] = p_iter_zn(Z_xr, zn, ref_zn_xr[0], c)
+                        # Z_xr[zn] * (Z_xr[zn] + 2. * ref_zn_xr[0])
+                    else:
+                        Z_xr[zn] = p_iter_zn(Z_xr, zn, ref_zn, c)
+                        # Z_xr[zn] = Z_xr[zn] * (Z_xr[zn] + 2. * ref_zn)
+                    # xrange -> standard conversion
+                    Z[zn] = fsxn.to_standard(Z_xr[zn])
+
+                    # Unlock trigger if we can...
+                    Z_xr_trigger[0] = fs.perturbation.need_xr(Z[zn])
+            else:
+                # No risk of underflow, normal perturbation interation
+                Z[zn] = p_iter_zn(Z, zn, ref_zn, c)#Z[zn] * (Z[zn] + 2. * ref_zn) + c
+
+            #==============================================================
+            if n_iter >= max_iter:
+                stop[0] = reason_max_iter
+                break
+
+            # Interior points detection
+            if interior_detect_activated:
+                bool_stationnary = (
+                    Z[dzndz].real ** 2 + Z[dzndz].imag ** 2
+                        < epsilon_stationnary_sq)
+                if bool_stationnary:
+                    stop[0] = reason_stationnary
+                    break
+
+            #==============================================================
+            # ZZ = "Total" z + dz
+            U[0] += 1
+            if U[0] >= ref_order:
+                U[0] = U[0] % ref_order
+
+
+            if xr_detect_activated:
+                ref_zn_next = fs.perturbation.ref_path_get(
+                    Zn_path, U[0],
+                    has_xr, ref_index_xr, ref_xr, refpath_ptr,
+                    ref_is_xr, ref_zn_xr, 1
+                )
+            else:
+                ref_zn_next = Zn_path[U[0]]
+
+
+            # computation involve doubles only
+            ZZ = Z[zn] + ref_zn_next
+            full_sq_norm = ZZ.real**2 + ZZ.imag**2
+
+            # Flagged as 'diverging'
+            bool_infty = (full_sq_norm > M_divergence_sq)
+            if bool_infty:
+                stop[0] = reason_M_divergence
+                break
+
+            # Glitch correction - reference point diverging
+            if (U[0] >= ref_div_iter - 1):
+                # Rebasing - we are already big no underflow risk
+                U[0] = 0
+                Z[zn] = ZZ
+                continue
+
+            # Glitch correction -  "dynamic glitch"
+            bool_dyn_rebase = (
+                (abs(ZZ.real) <= abs(Z[zn].real))
+                and (abs(ZZ.imag) <= abs(Z[zn].imag))
+            )
+            if bool_dyn_rebase:
+                if xr_detect_activated and Z_xr_trigger[0]:
+                    # Can we *really* rebase ??
+                    # Note: if Z[zn] underflows we might miss a rebase
+                    # So we cast everything to xr
+                    Z_xrn = Z_xr[zn]
+                    if ref_is_xr[1]:
+                        # Reference underflows, use available xr ref
+                        ZZ_xr = Z_xrn + ref_zn_xr[1]
+                    else:
+                        ZZ_xr = Z_xrn + ref_zn_next
+
+                    bool_dyn_rebase_xr = (
+                        fsxn.extended_abs2(ZZ_xr)
+                        <= fsxn.extended_abs2(Z_xrn)   
+                    )
+                    if bool_dyn_rebase_xr:
+                        U[0] = 0
+                        Z_xr[zn] = ZZ_xr
+                        Z[zn] = fsxn.to_standard(ZZ_xr)
+                else:
+                    # No risk of underflow - safe to rebase
+                    U[0] = 0
+                    Z[zn] = ZZ
+
+        # End of while loop
+        return n_iter
+
+    return numba_impl
+
+
+
+# Series approximations
 @numba.njit
 def numba_SA_run(
         SA_loop, 
@@ -959,6 +1267,12 @@ def numba_SA_run(
     return P_ret, n_real_iter, P.err
 
 
+# Bilinear approximation
+# Note: the bilinear arrays being cheap, they  will not be stored but
+# re-computed if needed
+
+
+
 @numba.njit
 def need_xr(x_std):
     """
@@ -1007,7 +1321,7 @@ def ref_path_get(ref_path, idx, has_xr, ref_index_xr, ref_xr, refpath_ptr,
     """
     Alternative to getitem which also takes as input prev_idx, curr_xr :
     allows to optimize the look-up of Xrange values in case of successive calls
-    with strictly increasing idx.
+    with increasing idx.
 
     idx :
         index requested
