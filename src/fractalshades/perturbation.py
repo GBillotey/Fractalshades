@@ -452,6 +452,7 @@ directory : str
         if self.BLA_params is None:
             M_bla = None
             r_bla = None
+            bla_len = None
             stages_bla = None
         else:
             print("Initialise BLA interpolation")
@@ -1052,36 +1053,32 @@ def numba_iterate(
         w_iter = n_iter
         if w_iter >= ref_order:
             w_iter = w_iter % ref_order
-
-#        if BLA_activated:
-#            M_i = np.empty((2,), dtype=numba.complex128)
+        ref_orbit_len = Zn_path.shape[0]
 
         while True:
             #==========================================================
             # Try a BLA_step
-            if BLA_activated:  # Bin mask: (2**n) - 1
-                if (w_iter & STG_MASK) == 0:
-                    #       [ M[0]    0     0]
-                    #  M =  [    0 M[0]  M[1]] 
-                    #       [    0    0     1]
-                    #
-                    #       [dzndc]
-                    #  Zn = [   zn]
-                    #       [    c]
-                    #
-                    #  Z_(n+1) = M * Zn
-                    #
-                    A, B, step = ref_BLA_get(
-                        M_bla, r_bla, bla_len, stages_bla, Z[zn], w_iter
-                    )
-                    if step != 0:
-                        # print("!! skip:", step)
-                        n_iter += step
-                        w_iter = (w_iter + step) % ref_order
-                        if calc_dzndc:
-                            Z[dzndc] = A * Z[dzndc]
-                        Z[zn] = A * Z[zn] + B * c
-                        continue
+            if BLA_activated and (w_iter & STG_MASK) == 0:
+                #       [    A    0     0]
+                #  M =  [    0    A     B] 
+                #       [    0    0     1]
+                #
+                #       [dzndc]
+                #  Zn = [   zn]
+                #       [    c]
+                #
+                #  Z_(n+1) = M * Zn
+                #
+                A, B, step = ref_BLA_get(
+                    M_bla, r_bla, bla_len, stages_bla, Z[zn], w_iter, ref_orbit_len
+                )
+                if step != 0:
+                    n_iter += step
+                    w_iter = (w_iter + step) % ref_order
+                    if calc_dzndc:
+                        Z[dzndc] = A * Z[dzndc]
+                    Z[zn] = A * Z[zn] + B * c
+                    continue
 
             #==============================================================
             # BLA failed, launching a full perturbation iteration
@@ -1195,7 +1192,6 @@ def numba_iterate(
                 Z[zn] = ZZ
                 if calc_dzndc and not(SA_activated):
                     Z[dzndc] = Z[dzndc] + dZndc_path[w_iter]
-#                    Z[dzndc] = dZndc_path[w_iter]
                 w_iter = 0
                 continue
 
@@ -1225,16 +1221,13 @@ def numba_iterate(
                         Z[zn] = fsxn.to_standard(ZZ_xr)
                         if calc_dzndc and not(SA_activated):
                             Z[dzndc] = Z[dzndc] + dZndc_path[w_iter]
-                            # Z[dzndc] = dZndc_path[w_iter]
                         w_iter = 0
                 else:
                     # No risk of underflow - safe to rebase
                     Z[zn] = ZZ
                     if calc_dzndc and not(SA_activated):
                         Z[dzndc] = Z[dzndc] + dZndc_path[w_iter]
-                        # Z[dzndc] = dZndc_path[w_iter]
                     w_iter = 0
-                    
 
         # End of iterations for this point
         U[0] = w_iter
@@ -1392,11 +1385,6 @@ def init_BLA(M_bla, r_bla, Zn_path, dZndc_path, dfdz, calc_dzndc, d2fdz2, kc_std
         M_bla[i_0, 0] = A
         M_bla[i_0, 1] = 1.
 
-#        if calc_dzndc:
-#            M_bla[i_0, 2] = A
-#            M_bla[i_0, 3] = 0.#d2fdz2(Zn_i) * dZndc_path[i]
-#            M_bla[i_0, 4] = 0.
-
         # We use the following criteria :
         # |Z + z| shall stay *far* from O or discontinuity of F', for each c
         # For std Mandelbrot it means from z = 0
@@ -1451,21 +1439,6 @@ def combine_BLA(M, r, calc_dzndc, kc_std, stg, ref_orbit_len, eps):
         #           [     0      1]   [     0      1]
         M[index_res, 0] = M[index2, 0] * M[index1, 0]
         M[index_res, 1] = M[index2, 0] * M[index1, 1] + M[index2, 1]
-#        if calc_dzndc:
-#            #           [ M2[2] M2[3] M2[4]]   [ M1[2] M1[3] M1[4]]
-#            #  M_res =  [     0 M2[0] M2[1]] * [     0 M1[0] M1[1]]
-#            #           [     0     0     1]   [     0     0     1]
-#            M[index_res, 2] = M[index2, 2] * M[index1, 2]
-#            M[index_res, 3] = 0.
-##            (
-##                M[index2, 2] * M[index1, 3] + M[index2, 3] * M[index1, 0]
-##            )
-#            M[index_res, 4] = 0.
-#            (
-#                M[index2, 2] * M[index1, 4]
-#                + M[index2, 3] * M[index1, 1]
-#                + M[index2, 4]
-#            )
 
         # Combines the validity radii
         r1 = r[index1]
@@ -1512,7 +1485,7 @@ def BLA_index(i, stg):
     return (2 * i) + ((1 << stg) - 1)
 
 @numba.njit
-def ref_BLA_get(M_bla, r_bla, bla_len, stages_bla, zn, n_iter):
+def ref_BLA_get(M_bla, r_bla, bla_len, stages_bla, zn, n_iter, ref_orbit_len):
     """
     Paramters:
     ----------
@@ -1538,7 +1511,7 @@ def ref_BLA_get(M_bla, r_bla, bla_len, stages_bla, zn, n_iter):
         _iter = _iter >> 1
     # assert (n_iter % (1 << stages)) == 0
 
-    invalid_step = (len(r_bla) // 2) - n_iter # The first invalid step
+    invalid_step = ref_orbit_len - n_iter # The first invalid step !! FALSE
 
     # numba version of reversed(range(stages_bla)):
     for stg in range(stages, STG_COMPRESSED - 1, -1):

@@ -614,7 +614,10 @@ class DEM_pp(Postproc):
         dzndc = Z[complex_dic["dzndc"], :]
 
         if potential_dic["kind"] == "infinity":
+            print("--> pp, DEM, inf")
             abs_zn = np.abs(zn)
+            print("abs_zn bounds", np.min(abs_zn), np.max(abs_zn))
+            print("dzndc bounds", np.min(np.abs(dzndc)), np.max(np.abs(dzndc)))
             val = abs_zn * np.log(abs_zn) / np.abs(dzndc)
 
         elif potential_dic["kind"] == "convergent":
