@@ -421,11 +421,18 @@ directory : str
         if has_status_bar:
             self.set_status("Reference", "completed")
             
-        # Initialize the derived ref path
+        # Initialize the derived ref path - with scale !
         if not(self.calc_dzndc):
             dZndc_path = None
         else:
-            dZndc_path = numba_dZndc_path(Zn_path, self.dfdz)
+            dx_xr = fsx.mpf_to_Xrange(self.dx, dtype=self.float_type).ravel()
+            casted_ref_order = ref_order # 
+            if ref_order is None:
+                casted_ref_order = (1 << 62) # a quite large int64
+            dZndc_path = numba_dZndc_path(
+                    Zn_path, has_xr, ref_index_xr, ref_xr,
+                    ref_div_iter, casted_ref_order,
+                    self.dfdz, dx_xr)
 
         # Initialise SA interpolation
         print("Initialise SA interpolation")
@@ -551,7 +558,7 @@ directory : str
         iterate = self._iterate
 
         if ref_order is None:
-            ref_order = 2**62 # a quite large int64
+            ref_order = (1 << 62) # a quite large int64
 
         ret_code = numba_cycles_perturb(
             c_pix, Z, U, stop_reason, stop_iter,
@@ -936,7 +943,7 @@ Xr_template = fsx.Xrange_array.zeros([1], dtype=np.complex128)
 Xr_float_template = fsx.Xrange_array.zeros([1], dtype=np.float64)
 USER_INTERRUPTED = 1
 STG_COMPRESSED = 3
-STG_MASK = 2 ** STG_COMPRESSED - 1
+STG_SKIP_MASK = (1 << STG_COMPRESSED) - 1
 
 @numba.njit(nogil=True)
 def numba_cycles_perturb(
@@ -965,6 +972,11 @@ def numba_cycles_perturb(
     nz, npts = Z.shape
     Z_xr = Xr_template.repeat(1)
     Z_xr_trigger = np.zeros((1,), dtype=np.bool_)
+
+#    ref_orbit_len = Zn_path.shape[0]
+#    first_invalid_index = min(ref_orbit_len, ref_div_iter, ref_order)
+#    print("****first invalid", first_invalid_index, "min of", ref_orbit_len, ref_div_iter, ref_order)
+
 
     for ipt in range(npts):
 
@@ -1053,12 +1065,19 @@ def numba_iterate(
         w_iter = n_iter
         if w_iter >= ref_order:
             w_iter = w_iter % ref_order
+        # We know that :
+        # ref_orbit_len = max_iter + 1 >= ref_div_iter
+        # if order is not None:
+        #    ref_orbit_len = min(order, ref_orbit_len)
+
         ref_orbit_len = Zn_path.shape[0]
+        first_invalid_index = min(ref_orbit_len, ref_div_iter, ref_order)
+        
 
         while True:
             #==========================================================
             # Try a BLA_step
-            if BLA_activated and (w_iter & STG_MASK) == 0:
+            if BLA_activated and (w_iter & STG_SKIP_MASK) == 0:
                 #       [    A    0     0]
                 #  M =  [    0    A     B] 
                 #       [    0    0     1]
@@ -1070,9 +1089,11 @@ def numba_iterate(
                 #  Z_(n+1) = M * Zn
                 #
                 A, B, step = ref_BLA_get(
-                    M_bla, r_bla, bla_len, stages_bla, Z[zn], w_iter, ref_orbit_len
+                    M_bla, r_bla, bla_len, stages_bla, Z[zn], w_iter,
+                    first_invalid_index
                 )
                 if step != 0:
+                    assert w_iter != 0
                     n_iter += step
                     w_iter = (w_iter + step) % ref_order
                     if calc_dzndc:
@@ -1107,6 +1128,8 @@ def numba_iterate(
             #    + Z[zn] * ref_path_dzndc
                 ref_dzndc = dZndc_path[w_iter]
                 Z[dzndc] = p_iter_dzndc(Z, ref_zn, ref_dzndc) # 2. * (ref_zn + Z[zn]) * Z[dzndc]
+#                if n_iter == 1: # Non null term to kick-off if no rebase
+#                    Z[dzndc] = 1.
 
             #--------------------------------------------------------------
             # Interior detection - Used only at low zoom level
@@ -1127,16 +1150,12 @@ def numba_iterate(
                         # standard -> xrange conversion
                         Z_xr[zn] = fsxn.to_Xrange_scalar(old_zn)
                         Z_xr_trigger[0] = True
-                    # elif fs.perturbation.no_perturb(Z[zn]):
-                        
 
                 if Z_xr_trigger[0]:
                     if (ref_is_xr[0]):
                         Z_xr[zn] = p_iter_zn(Z_xr, ref_zn_xr[0], c)
-                        # Z_xr[zn] * (Z_xr[zn] + 2. * ref_zn_xr[0])
                     else:
                         Z_xr[zn] = p_iter_zn(Z_xr, ref_zn, c)
-                        # Z_xr[zn] = Z_xr[zn] * (Z_xr[zn] + 2. * ref_zn)
                     # xrange -> standard conversion
                     Z[zn] = fsxn.to_standard(Z_xr[zn])
 
@@ -1144,7 +1163,7 @@ def numba_iterate(
                     Z_xr_trigger[0] = fs.perturbation.need_xr(Z[zn])
             else:
                 # No risk of underflow, normal perturbation interation
-                Z[zn] = p_iter_zn(Z, ref_zn, c)#Z[zn] * (Z[zn] + 2. * ref_zn) + c
+                Z[zn] = p_iter_zn(Z, ref_zn, c)
 
             #==============================================================
             if n_iter >= max_iter:
@@ -1176,7 +1195,7 @@ def numba_iterate(
                 ref_zn_next = Zn_path[w_iter]
 
 
-            # computation involve doubles only
+            # div condition computation involve doubles only
             ZZ = Z[zn] + ref_zn_next
             full_sq_norm = ZZ.real ** 2 + ZZ.imag ** 2
 
@@ -1189,9 +1208,10 @@ def numba_iterate(
             # Glitch correction - reference point diverging
             if (w_iter >= ref_div_iter - 1):
                 # Rebasing - we are already big no underflow risk
+#                print("diverging rebase", w_iter)
                 Z[zn] = ZZ
-                if calc_dzndc and not(SA_activated):
-                    Z[dzndc] = Z[dzndc] + dZndc_path[w_iter]
+#                if calc_dzndc and not(SA_activated):
+#                    Z[dzndc] = Z[dzndc] #+ dZndc_path[w_iter]
                 w_iter = 0
                 continue
 
@@ -1219,18 +1239,23 @@ def numba_iterate(
                     if bool_dyn_rebase_xr:
                         Z_xr[zn] = ZZ_xr
                         Z[zn] = fsxn.to_standard(ZZ_xr)
-                        if calc_dzndc and not(SA_activated):
-                            Z[dzndc] = Z[dzndc] + dZndc_path[w_iter]
+#                        if calc_dzndc and not(SA_activated):
+#                            Z[dzndc] = Z[dzndc] #+ dZndc_path[w_iter]
                         w_iter = 0
+                        continue
                 else:
                     # No risk of underflow - safe to rebase
+#                    print("dynamic rebase", w_iter)
                     Z[zn] = ZZ
-                    if calc_dzndc and not(SA_activated):
-                        Z[dzndc] = Z[dzndc] + dZndc_path[w_iter]
+#                    if calc_dzndc and not(SA_activated):
+#                        Z[dzndc] = Z[dzndc] #+ dZndc_path[w_iter]
+                    # assert w_iter != 0
                     w_iter = 0
+                    continue
 
         # End of iterations for this point
         U[0] = w_iter
+#        print(n_iter, w_iter, "--> exit with zn dzndc", Z[zn], Z[dzndc])
         return n_iter
 
     return numba_impl
@@ -1485,7 +1510,8 @@ def BLA_index(i, stg):
     return (2 * i) + ((1 << stg) - 1)
 
 @numba.njit
-def ref_BLA_get(M_bla, r_bla, bla_len, stages_bla, zn, n_iter, ref_orbit_len):
+def ref_BLA_get(M_bla, r_bla, bla_len, stages_bla, zn, n_iter,
+                first_invalid_index):
     """
     Paramters:
     ----------
@@ -1509,9 +1535,9 @@ def ref_BLA_get(M_bla, r_bla, bla_len, stages_bla, zn, n_iter, ref_orbit_len):
         if _iter & 1:
             break
         _iter = _iter >> 1
-    # assert (n_iter % (1 << stages)) == 0
 
-    invalid_step = ref_orbit_len - n_iter # The first invalid step !! FALSE
+    # The first invalid step /!\
+    invalid_step = first_invalid_index - n_iter 
 
     # numba version of reversed(range(stages_bla)):
     for stg in range(stages, STG_COMPRESSED - 1, -1):
@@ -1571,23 +1597,42 @@ def ref_path_c_from_pix(pix, dx, drift):
     return fsxn.to_standard(c_xr), c_xr
 
 @numba.njit
-def numba_dZndc_path(Zn_path, dfdz):
+def numba_dZndc_path(Zn_path, has_xr, ref_index_xr, ref_xr,
+                    ref_div_iter, ref_order, dfdz, dx_xr):
+    """
+    Compute dZndc in Xr, store in std
+    """
+    print("in numba_dZndc_path, ref_div_iter, ref_order", ref_div_iter, ref_order)
+
+    dx = fsxn.to_standard(dx_xr[0])
     ref_orbit_len = Zn_path.shape[0]
-    dZndc_path = np.zeros((2 * ref_orbit_len,), dtype=numba.complex128)
-    dZndc_path[0] = 0.
-    for i in range(ref_orbit_len - 1):
+    dZndc_path = np.zeros((ref_orbit_len,), dtype=numba.complex128)
+    dZndc_xr = Xr_template.repeat(1)
+
+    print("ref_div_iter == ref_orbit_len ?", ref_div_iter, ref_orbit_len, ref_order)
+
+    for i in range(1, min(ref_orbit_len, ref_div_iter)):#ref_div_iter - 1):
         # dz(n+1)dc = f'(zn) * dzndc + 1.
-        dZndc_path[i + 1] = dfdz(Zn_path[i]) * dZndc_path[i] + 1.
+        # TODO: if Zn_path is Xr ??
+#        dZndc_xr[0] = dfdz(Zn_path[i]) * dZndc_xr[0] + dx_xr[0]
+#        dZndc_path[i + 1] = fsxn.to_standard(dZndc_xr[0])
+        dZndc_path[i] = dfdz(Zn_path[i - 1]) * dZndc_path[i - 1] + dx
     # /!\ Special case "wrapped" at 0
-    wrapped = ref_orbit_len - 1
-    dZndc_path[0] = dfdz(Zn_path[wrapped]) * dZndc_path[wrapped] + 1.
-    
+    print("i == ref_order ?", i, ref_order)
+    if (i == ref_order - 1):
+        print("wrapped")
+        # /!\ We have a cycle, use the "wrapped" value at 0
+        # Note that this value will be used... al lot !
+#    dZndc_xr[0] = dfdz(Zn_path[wrapped]) * dZndc_xr[0] + dx_xr[0]
+#    dZndc_path[0] = fsxn.to_standard(dZndc_xr[0])
+        dZndc_path[0] = dfdz(Zn_path[i]) * dZndc_path[i] + dx
+
     # Debug
-    print("****dZndc_path:")
-    for i in range(0, ref_orbit_len, 100):
-        j = min(i + 10, ref_orbit_len)
-        print("[", i, ":", j, "]:")
-        print(dZndc_path[i: j])
+#    print("****dZndc_path:", ref_orbit_len)
+#    for i in range(0, ref_orbit_len, 1000):
+#        j = min(i + 10, ref_orbit_len)
+#        print("[", i, ":", j, "]:")
+#        print(dZndc_path[i: j])
     return dZndc_path
 
 @numba.njit

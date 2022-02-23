@@ -102,10 +102,12 @@ https://www.deviantart.com/microfractal/art/Mandelbrot-Deep-Julia-Morphing-22-Go
             max_iter=10100100,
             M_divergence=1.e3,
             epsilon_stationnary=1.e-3,
-            SA_params={
-                "cutdeg": 64,
-                "err": 1.e-6
-            },
+            SA_params=None,
+#            SA_params={
+#                "cutdeg": 64,
+#                "err": 1.e-6
+#            },
+            BLA_params={"eps": 1e-6},
             interior_detect=False)
 
     f.run()
@@ -154,7 +156,7 @@ https://www.deviantart.com/microfractal/art/Mandelbrot-Deep-Julia-Morphing-22-Go
         angles=(90., 40.),
         coords=None,
         color=np.array([1.0, 1.0, 1.0]))
-    plotter["cont_iter"].shade(plotter["DEM_map"], light)
+#    plotter["cont_iter"].shade(plotter["DEM_map"], light)
     
 
     plotter.plot()

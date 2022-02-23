@@ -63,8 +63,8 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         max_iter: int,
         M_divergence: float,
         epsilon_stationnary: float,
-        SA_params={"cutdeg": 32, "eps": 1e-6},
-        BLA_params={"eps": 1e-8},
+        SA_params=None,
+        BLA_params={"eps": 1e-6},
         interior_detect: bool=False,
         calc_dzndc: bool=True
 ):
@@ -221,11 +221,8 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             return 2. * (Z[zn] * Z[dzndz])
 
         @numba.njit
-        def p_iter_dzndc(Z, ref_zn, ref_dzndc):#, k_orbit):
-#            if k_orbit:
-            return 2. * (ref_zn + Z[zn]) * Z[dzndc] # + ref_dzndc * Z[zn]) # + 1.
-#            else:
-#                return 2. * (ref_zn + Z[zn]) * Z[dzndc]
+        def p_iter_dzndc(Z, ref_zn, ref_dzndc):
+            return 2. * ((ref_zn + Z[zn]) * Z[dzndc] + ref_dzndc * Z[zn])
 
         def iterate():
             return fs.perturbation.numba_iterate(

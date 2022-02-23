@@ -51,7 +51,7 @@ def plot(plot_dir):
     y = "0.001645580546820209430325900"
     dx = "18.e-22"
     precision = 30
-    nx = 1200
+    nx = 2400
     xy_ratio = 16. / 9.
 
     calc_name="mandelbrot"
@@ -89,9 +89,9 @@ def plot(plot_dir):
             max_iter=100000,
             M_divergence=1.e3,
             epsilon_stationnary=1.e-3,
-#            SA_params=None,
-            SA_params={"cutdeg": 32,
-                       "err": 1.e-6},
+            SA_params=None,
+#            SA_params={"cutdeg": 32,
+#                       "err": 1.e-6},
             BLA_params={"eps": 1.e-6},
             interior_detect=False)
     f.run()

@@ -59,8 +59,7 @@ def plot(plot_dir):
     theta_deg = 0.
     interior_detect = True
     epsilon_stationnary = 0.0001
-    cutdeg = 32
-    err = 1.e-6
+    eps = 1.e-6
     
     colormap = fscolors.cmap_register["classic"]
     cmap_z_kind = "relative"
@@ -91,9 +90,8 @@ def plot(plot_dir):
          max_iter: int=max_iter,
          interior_detect: bool=interior_detect,
          epsilon_stationnary: float=epsilon_stationnary,
-         _3: fsgui.separator="Series approximation parameters",
-         cutdeg: int=cutdeg,
-         err: float=err,
+         _3: fsgui.separator="Bilinear series parameters",
+         eps: float=eps,
          _4: fsgui.separator="Plotting parameters: continuous iteration",
          interior_color: QtGui.QColor=(0.1, 0.1, 0.1),
          colormap: fscolors.Fractal_colormap=colormap,
@@ -121,9 +119,9 @@ def plot(plot_dir):
         fractal.calc_std_div(datatype=np.complex128, calc_name=calc_name,
             subset=None, max_iter=max_iter, M_divergence=1.e3,
             epsilon_stationnary=1.e-3,
-            SA_params={
-                "cutdeg": cutdeg,
-                "err": err
+            SA_params=None,
+            BLA_params={
+                "eps": eps
             },
             interior_detect=interior_detect,
             )
