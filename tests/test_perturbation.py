@@ -113,7 +113,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
                 self.layer = plotter[layer_name]
                 self.test_name = test_name
-                self.check_current_layer()
+                self.check_current_layer(err_max=0.04)
 
 
     @test_config.no_stdout
@@ -133,19 +133,17 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         fs.settings.enable_multiprocessing = True
         fs.settings.inspect_calc = True
 
-        for SA_params in [{"cutdeg": 64, "err": 1.e-6},
-                          {"cutdeg": 8, "err": 1.e-6},
-                          None]:
-            with self.subTest(SA_params=SA_params):
-                if SA_params is None:
-                    calc_name = "noSA"
+        for BLA_params in [{"eps": 1.e-6}, None]:
+            with self.subTest(BLA_params=BLA_params):
+                if BLA_params is None:
+                    calc_name = "noBLA"
                 else:
-                    calc_name = str(SA_params["cutdeg"]) + "SA"
+                    calc_name = str(BLA_params["eps"]) + "BLA"
 
                 layer_name = test_name + "_potential_" + calc_name
 
                 m = self.calc(x, y, dx, precision, nx, complex_type, test_name,
-                         calc_name, SA_params=SA_params)
+                         calc_name, BLA_params=BLA_params)
                 pp = Postproc_batch(m, calc_name)
                 pp.add_postproc(layer_name, Continuous_iter_pp())
                 pp.add_postproc("interior", Raw_pp("stop_reason",
@@ -206,8 +204,8 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         max_iter = 350000
         nx = 600 
         complex_type = np.complex128
-        SA_params = {"cutdeg": 64,
-                     "err": 1.e-6}
+#        SA_params = {"cutdeg": 64,
+#                     "err": 1.e-6}
         c0 = np.array([1, 122, 193]) / 255.
         c1 = np.array([0, 54, 109]) / 255.
         c2 = np.array([5, 48, 99]) / 255.
@@ -235,7 +233,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
         layer_name = test_name + "_potential_" + calc_name
         m = self.calc(x, y, dx, precision, nx, complex_type, test_name,
-                 calc_name, glitch_max_attempt=10, SA_params=SA_params,
+                 calc_name, glitch_max_attempt=10,
                  calc_fast=False, xy_ratio=1., max_iter=max_iter)
         pp = Postproc_batch(m, calc_name)
         pp.add_postproc(layer_name, Continuous_iter_pp())
@@ -458,8 +456,8 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         precision = 200
         nx = 1600
         complex_type = np.complex128
-        SA_params = {"cutdeg": 32,
-                     "err": 1.e-6}
+#        SA_params = {"cutdeg": 32,
+#                     "err": 1.e-6}
         c0 = np.array([242, 248, 163]) / 255.
         c1 = np.array([160, 105, 87]) / 255.
         c2 = np.array([202, 128, 21]) / 255.
@@ -487,7 +485,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
         layer_name = test_name + "_potential_" + calc_name
         m = self.calc(x, y, dx, precision, nx, complex_type, test_name,
-                 calc_name, glitch_max_attempt=10, SA_params=SA_params,
+                 calc_name, glitch_max_attempt=10,# SA_params=SA_params,
                  calc_fast=True, xy_ratio=16/9.)
         pp = Postproc_batch(m, calc_name)
         pp.add_postproc(layer_name, Continuous_iter_pp())
@@ -519,7 +517,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
     def calc(self, x, y, dx, precision, nx, complex_type, test_name, calc_name,
             interior_detect=False, antialiasing=False, xy_ratio=1.0,
-            SA_params={"cutdeg": 64, "err": 1.e-6},
+            BLA_params={"eps": 1.e-6},
             glitch_max_attempt=1, calc_fast=False, max_iter=50000):
         
         test_dir = os.path.join(self.perturb_dir, test_name)
@@ -544,7 +542,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 M_divergence=1.e3,
                 epsilon_stationnary=1.e-3,
                 interior_detect=False,
-                SA_params=SA_params,
+                BLA_params=BLA_params,
                 calc_dzndc=False)
         else:
             mandelbrot.calc_std_div(
@@ -555,7 +553,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 M_divergence=1.e3,
                 epsilon_stationnary=1.e-3,
                 interior_detect=interior_detect,
-                SA_params=SA_params)
+                BLA_params=BLA_params)
 
         mandelbrot.clean_up(calc_name)
         mandelbrot.run()
