@@ -73,8 +73,7 @@ def plot(directory):
             max_iter=50000, #00,
             M_divergence=1.e3,
             epsilon_stationnary=1.e-3,
-            SA_params={"cutdeg": 8,
-                       "err": 1.e-6},
+            BLA_params={"eps": 1.e-6},
             interior_detect=True,
             )
 

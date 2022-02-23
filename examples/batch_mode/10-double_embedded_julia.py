@@ -89,9 +89,10 @@ def plot(plot_dir):
             max_iter=100000,
             M_divergence=1.e3,
             epsilon_stationnary=1.e-3,
-#            SA_params=None,
-            SA_params={"cutdeg": 32,
-                       "err": 1.e-6},
+            SA_params=None,
+#            SA_params={"cutdeg": 32,
+#                       "err": 1.e-6},
+            BLA_params={"eps": 1.e-6},
             interior_detect=False)
     f.run()
 

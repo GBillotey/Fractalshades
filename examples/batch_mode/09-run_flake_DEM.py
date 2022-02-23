@@ -71,8 +71,8 @@ def plot(directory):
             max_iter=1000000,
             M_divergence=1.e3,
             epsilon_stationnary=1.e-3,
-            SA_params={"cutdeg": 32,
-                       "err": 1.e-6},
+            SA_params=None,
+            BLA_params={"eps": 1.e-6},
             interior_detect=True)
 
     f.run()

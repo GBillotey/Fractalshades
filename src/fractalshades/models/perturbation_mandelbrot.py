@@ -36,7 +36,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         xr_detect_activated = self.xr_detect_activated
         # Parameters borrowed from last "@fsutils.calc_options" call
         calc_options = self.calc_options
-        max_orbit_iter = (NP_orbit.shape)[0] - 1# calc_options["max_iter"]
+        max_orbit_iter = (NP_orbit.shape)[0] - 1
         M_divergence = calc_options["M_divergence"]
 
         x = c0.real
@@ -63,7 +63,8 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         max_iter: int,
         M_divergence: float,
         epsilon_stationnary: float,
-        SA_params={"cutdeg": 32, "eps": 1e-6},
+        SA_params=None,
+        BLA_params={"eps": 1e-6},
         interior_detect: bool=False,
         calc_dzndc: bool=True
 ):
@@ -158,9 +159,32 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         self.codes = (complex_codes, int_codes, stop_codes)
         print("###self.codes", self.codes)
 
+        #======================================================================
+        # Define the functions used for BLA approximation
+        # BLA triggered ?
+        BLA_activated = (
+            (BLA_params is not None) 
+            and (self.dx < fs.settings.newton_zoom_level)
+        )
 
+        @numba.njit
+        def _f(z):
+            return z * z
+        self.f = _f
+
+        @numba.njit
+        def _dfdz(z):
+            return 2. * z
+        self.dfdz = _dfdz
+
+        @numba.njit
+        def _d2fdz2(z):
+            return 2.
+        self.d2fdz2 = _d2fdz2
+
+        #======================================================================
         # Defines SA_loop via a function factory - jitted implementation
-        # SA triggered for deeper zoom
+        # SA triggered ?
         SA_activated = (
             (SA_params is not None) 
             and (self.dx < fs.settings.newton_zoom_level)
@@ -188,23 +212,23 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         xr_detect_activated = self.xr_detect_activated
 
         @numba.njit
-        def p_iter_zn(Z, _zn, ref_zn, c):
-            return Z[_zn] * (Z[_zn] + 2. * ref_zn) + c
+        def p_iter_zn(Z, ref_zn, c):
+            return Z[zn] * (Z[zn] + 2. * ref_zn) + c
 
         @numba.njit
-        def p_iter_dzndz(Z, _zn, _dzndz):
-            # Only used at low zoom
-            return 2. * (Z[_zn] * Z[dzndz])
+        def p_iter_dzndz(Z):
+            # Only used at low zoom - assumes dzndz == 0 
+            return 2. * (Z[zn] * Z[dzndz])
 
         @numba.njit
-        def p_iter_dzndc(Z, _zn, _dzndc, ref_zn):
-            return 2. * (ref_zn + Z[_zn]) * Z[_dzndc]
+        def p_iter_dzndc(Z, ref_zn, ref_dzndc):
+            return 2. * ((ref_zn + Z[zn]) * Z[dzndc] + ref_dzndc * Z[zn])
 
         def iterate():
             return fs.perturbation.numba_iterate(
                 M_divergence_sq, max_iter, reason_max_iter, reason_M_divergence,
                 epsilon_stationnary_sq, interior_detect_activated, reason_stationnary,
-                SA_activated, xr_detect_activated,
+                SA_activated, xr_detect_activated, BLA_activated,
                 calc_dzndc,
                 zn, dzndz, dzndc,
                 p_iter_zn, p_iter_dzndz, p_iter_dzndc

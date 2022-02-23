@@ -535,8 +535,8 @@ class DEM_normal_pp(Postproc):
             # potential: phi = log(zn) / 2**n 
                 normal = zn / dzndc# zn / dzndc
                 normal = normal / np.abs(normal)
-                if type(normal) == fsx.Xrange_array:
-                    normal = normal.to_standard()
+#                if type(normal) == fsx.Xrange_array:
+#                    normal = normal.to_standard()
 
             elif potential_dic["kind"] == "convergent":
             # pulls back the normal direction from an approximation of
@@ -614,8 +614,12 @@ class DEM_pp(Postproc):
         dzndc = Z[complex_dic["dzndc"], :]
 
         if potential_dic["kind"] == "infinity":
+            print("--> pp, DEM, inf")
             abs_zn = np.abs(zn)
+            print("abs_zn bounds", np.min(abs_zn), np.max(abs_zn))
+            print("dzndc bounds", np.min(np.abs(dzndc)), np.max(np.abs(dzndc)))
             val = abs_zn * np.log(abs_zn) / np.abs(dzndc)
+            print("val bounds", np.min(val), np.max(val))
 
         elif potential_dic["kind"] == "convergent":
             zr = Z[complex_dic["zr"]]
