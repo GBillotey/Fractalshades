@@ -71,7 +71,7 @@ def plot(plot_dir):
 
     plotter = fs.Fractal_plotter(pp)   
     plotter.add_layer(Bool_layer("interior", output=False))
-    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=True))
+    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=False))
     plotter.add_layer(Color_layer(
             "cont_iter",
             func="np.log(x)",
