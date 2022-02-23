@@ -86,7 +86,7 @@ def plot(plot_dir):
     ):
 
         fractal.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
-             theta_deg=0., projection="cartesian", antialiasing=False)
+             theta_deg=theta_deg, projection="cartesian", antialiasing=False)
 
         fractal.base_calc(
             calc_name=calc_name,

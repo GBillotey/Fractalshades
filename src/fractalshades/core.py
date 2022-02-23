@@ -655,22 +655,26 @@ advanced users when subclassing.
 #            return type_modifier == "Xrange"
 #        return False
 
-    @property
-    def base_complex_type(self):
-        complex_type = self.complex_type
-        if type(complex_type) is tuple:
-            _, complex_type = complex_type
-        return complex_type
+#    @property
+#    def base_complex_type(self):
+#        complex_type = self.complex_type
+#        if type(complex_type) is tuple:
+#            raise NotImplementedError(
+#                "complex type shall be float64 or complex128"
+#            )
+#        return complex_type
 
-    @property
-    def base_float_type(self):
-        return self.float_type
+#    @property
+#    def base_float_type(self):
+#        return self.float_type
 
     @property
     def float_type(self):
-        select = {np.dtype(np.complex64): np.float32,
-                  np.dtype(np.complex128): np.float64}
-        return select[np.dtype(self.base_complex_type)]
+        select = {
+            np.dtype(np.float64): np.float64,
+            np.dtype(np.complex128): np.float64
+        }
+        return select[np.dtype(self.complex_type)]
 
     @property    
     def params(self):
@@ -839,7 +843,7 @@ advanced users when subclassing.
         width, as a complex
            pix = center + (pix_frac_x * dx,  pix_frac_x * dy)
         """
-        data_type = self.base_float_type
+        data_type = self.float_type
 
         theta = self.theta_deg / 180. * np.pi
         (nx, ny) = (self.nx, self.ny)
@@ -999,7 +1003,7 @@ advanced users when subclassing.
         if self.subset is not None:
             chunk_mask = self.subset[chunk_slice]
             c_pix = c_pix[chunk_mask]
-        
+
         # Initialise the result arrays
         (n_pts,) = c_pix.shape
 

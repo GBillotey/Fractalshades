@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-from .perturbation_mandelbrot import Perturbation_mandelbrot
-from .mandelbrot import Mandelbrot
-from .mandelbrot_N import Mandelbrot_N
+
+from .mandelbrot_M2 import Mandelbrot, Perturbation_mandelbrot
+from .mandelbrot_Mn import Mandelbrot_N
+from .burning_ship import Burning_ship
 from .collatz import Collatz

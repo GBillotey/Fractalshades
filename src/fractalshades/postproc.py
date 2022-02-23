@@ -109,6 +109,7 @@ class Postproc:
         """ Filter None values : removing them from post_dic.
         """
         self.batch = None
+        self._holomorphic = None
 
     def link_batch(self, batch):
         """
@@ -134,6 +135,17 @@ class Postproc:
     def context(self):
         return self.batch.context
 
+    @property
+    def holomorphic(self):
+        if self._holomorphic is None:
+            complex_type = self.batch.fractal.complex_type
+            select = {
+                np.dtype(np.float64): False,
+                np.dtype(np.complex128): True
+            }
+            self._holomorphic = select[np.dtype(complex_type)]
+        return self._holomorphic
+
     def ensure_context(self, key):
         """
         Check that the provided context contains the expected data
@@ -152,6 +164,28 @@ class Postproc:
         """ Subclasses should implement
         """
         raise NotImplementedError()
+        
+    def get_zn(self, Z, complex_dic):
+        if self.holomorphic:
+            return Z[complex_dic["zn"], :]
+        else:
+            return Z[complex_dic["xn"], :] + 1j * Z[complex_dic["yn"], :]
+        
+    def get_dzndc(self, Z, complex_dic, abs_zn):
+        if self.holomorphic:
+            return Z[complex_dic["dzndc"], :]
+        else:
+            # Note : if there is some skew, we will need to take it into account
+            # rotation ???
+            X = Z[complex_dic["xn"], :] / abs_zn
+            Y = Z[complex_dic["yn"], :] / abs_zn
+            dXdA = Z[complex_dic["dxnda"], :]
+            dXdB = Z[complex_dic["dxndb"], :]
+            dYdA = Z[complex_dic["dynda"], :]
+            dYdB = Z[complex_dic["dyndb"], :]
+            U = X * dXdA + Y * dYdA
+            V = X * dXdB + Y * dYdB
+            return U + 1j * V
 
 
 class Raw_pp(Postproc):
@@ -292,8 +326,8 @@ class Continuous_iter_pp(Postproc):
 
 
         n = stop_iter[0, :]
-        zn = Z[complex_dic["zn"], :]
         potential_dic = self.potential_dic
+        zn = self.get_zn(Z, complex_dic) #["zn"], :]
 
         if potential_dic["kind"] == "infinity":
             d = potential_dic["d"]
@@ -610,16 +644,16 @@ class DEM_pp(Postproc):
         (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
             termination_dic) = self.raw_data
 
-        zn = Z[complex_dic["zn"], :]
-        dzndc = Z[complex_dic["dzndc"], :]
+        zn = self.get_zn(Z, complex_dic) #Z[complex_dic["zn"], :]
 
         if potential_dic["kind"] == "infinity":
-            print("--> pp, DEM, inf")
+#            print("--> pp, DEM, inf")
             abs_zn = np.abs(zn)
-            print("abs_zn bounds", np.min(abs_zn), np.max(abs_zn))
-            print("dzndc bounds", np.min(np.abs(dzndc)), np.max(np.abs(dzndc)))
+            dzndc = self.get_dzndc(Z, complex_dic, abs_zn) #, :]
+#            print("abs_zn bounds", np.min(abs_zn), np.max(abs_zn))
+#            print("dzndc bounds", np.min(np.abs(dzndc)), np.max(np.abs(dzndc)))
             val = abs_zn * np.log(abs_zn) / np.abs(dzndc)
-            print("val bounds", np.min(val), np.max(val))
+#            print("val bounds", np.min(val), np.max(val))
 
         elif potential_dic["kind"] == "convergent":
             zr = Z[complex_dic["zr"]]
