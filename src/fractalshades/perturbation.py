@@ -1072,10 +1072,6 @@ def numba_iterate(
         ref_orbit_len = Zn_path.shape[0]
         first_invalid_index = min(ref_orbit_len, ref_div_iter, ref_order)
 
-#        if xr_detect_activated:
-#            Z_xr[zn] = fsxn.to_Xrange_scalar(Z[zn])
-#            Z_xr[dzndc] = fsxn.to_Xrange_scalar(Z[dzndc])
-
         while True:
             #==========================================================
             # Try a BLA_step
@@ -1592,9 +1588,8 @@ def ref_path_c_from_pix(pix, dx, drift):
 def numba_dZndc_path(Zn_path, has_xr, ref_index_xr, ref_xr,
                     ref_div_iter, ref_order, dfdz, dx_xr, xr_detect_activated):
     """
-    Compute dZndc in Xr, store in std
+    Compute dZndc in Xr, or std precision, depending on xr_detect_activated
     """
-    print("in numba_dZndc_path, ref_div_iter, ref_order", ref_div_iter, ref_order)
     ref_orbit_len = Zn_path.shape[0]
     valid_pts = min(ref_orbit_len, ref_div_iter)
 
@@ -1602,7 +1597,6 @@ def numba_dZndc_path(Zn_path, has_xr, ref_index_xr, ref_xr,
     dx = fsxn.to_standard(dx_xr[0])
 
     if xr_act:
-        print("in numba_dZndc_path with XR ON")
         dZndc_path = np.zeros((1,), dtype=numba.complex128) # dummy
         dZndc_xr_path = Xr_template.repeat(ref_orbit_len) 
 
@@ -1618,8 +1612,6 @@ def numba_dZndc_path(Zn_path, has_xr, ref_index_xr, ref_xr,
             )
             ref_zn_xr = ensure_xr(ref_zn, out_xr[0], out_is_xr[0])
             dZndc_xr_path[i] = dfdz(ref_zn_xr) * dZndc_xr_path[i - 1] + dx_xr[0]
-            if i % 100000 == 0:
-                print("dzndc_xr", i, fsxn.to_Xrange_scalar(dZndc_xr_path[i]))
 
         if (i == ref_order - 1):
             # /!\ We have a cycle, use the "wrapped" value at 0
@@ -1641,16 +1633,6 @@ def numba_dZndc_path(Zn_path, has_xr, ref_index_xr, ref_xr,
             # /!\ We have a cycle, use the "wrapped" value at 0
             # Note that this value will be used... a lot !
             dZndc_path[0] = dfdz(Zn_path[i]) * dZndc_path[i] + dx
-
-    # Debug
-    print("****dZndc_path:", ref_orbit_len)
-    for i in range(0, ref_orbit_len, 100000):
-        j = min(i + 10, ref_orbit_len)
-        print("[", i, ":", j, "]:")
-        if xr_act:
-            print(dZndc_xr_path[i: j])
-        else:
-            print(dZndc_path[i: j])
 
     return dZndc_path, dZndc_xr_path
 
