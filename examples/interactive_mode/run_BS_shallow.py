@@ -94,7 +94,7 @@ def plot(plot_dir):
             subset=None,
             max_iter=max_iter,
             M_divergence=M_divergence,
-            epsilon_stationnary=1.e-4,
+#            epsilon_stationnary=1.e-4,
         )
 
         if fractal.res_available():
@@ -131,9 +131,9 @@ def plot(plot_dir):
         light = Blinn_lighting(0.2, np.array([1., 1., 1.]))
         light.add_light_source(
             k_diffuse=0.8,
-            k_specular=50.,
+            k_specular=200.,
             shininess=350.,
-            angles=(20., 50.),
+            angles=(50., 20.),
             coords=None,
             color=np.array([1.0, 1.0, 0.9]))
         plotter["DEM"].shade(plotter["DEM_map"], light)

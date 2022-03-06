@@ -9,7 +9,7 @@ import fractalshades.mpmath_utils.FP_loop as fsFP
 @numba.njit
 def sgn(x):
     # Sign with no 0 case (0 mapped to 1)
-    if x < 0:
+    if x < 0.:
         return -1.
     return 1.
 
@@ -26,6 +26,20 @@ def diffabs(X, x):
             return -x
         else:
             return (2 * X + x)
+
+@numba.njit
+def ddiffabsdX(X, x):
+    # Evaluates |X + x| - |X|
+    if X >= 0.:
+        if (X + x) >= 0.:
+            return 0.
+        else:
+            return -2.
+    else:
+        if (X + x) <= 0.:
+            return 0.
+        else:
+            return 2.
 
 @numba.njit
 def ddiffabsdx(X, x):
@@ -63,7 +77,6 @@ class Burning_ship(fs.Fractal):
             subset,
             max_iter: int,
             M_divergence: float,
-            epsilon_stationnary: float
 ):
         """
     Basic iterations for Burning ship standard set (power 2).
@@ -81,11 +94,6 @@ class Burning_ship(fs.Fractal):
     M_divergence : float
         The diverging radius. If reached, the loop is exited with exit code
         "divergence"
-    epsilon_stationnary : float
-        A small float to early exit non-divergent cycles (based on
-        cumulated dzndz product). If reached, the loop is exited with exit
-        code "stationnary" (Those points should belong to Mandelbrot set
-        interior). A typical value is 1.e-3
         
     Notes
     =====
@@ -111,7 +119,6 @@ class Burning_ship(fs.Fractal):
 
         def iterate():
             Mdiv_sq = self.M_divergence ** 2
-            epscv_sq = self.epsilon_stationnary ** 2
             max_iter = self.max_iter
 
             @numba.njit
@@ -144,10 +151,6 @@ class Burning_ship(fs.Fractal):
                         stop_reason[0] = 1
                         break
 
-#                    if Z[1].real**2 + Z[1].imag ** 2 < epscv_sq:
-#                        stop_reason[0] = 2
-#                        break
-
                 # End of while loop
                 return n_iter
 
@@ -177,6 +180,7 @@ class Perturbation_burning_ship(fs.PerturbationFractal):
         # Set parameters for the full precision orbit
         self.critical_pt = 0.
         self.FP_code = ["xn", "yn"]
+        self.holomorphic = False
 
 
     def FP_loop(self, NP_orbit, c0):
@@ -202,32 +206,33 @@ class Perturbation_burning_ship(fs.PerturbationFractal):
             str(y).encode('utf8'),
             seed_prec
         )
+        print("** FP_loop")
+        print("partial_dict", partial_dict)
+        print("xr_dict", xr_dict)
+        print("NP_orbit", NP_orbit.dtype, NP_orbit.shape)
+        print(NP_orbit)
+        
+        
         return i, partial_dict, xr_dict
 
 
     @fs.utils.calc_options
     def calc_std_div(self, *,
         calc_name: str,
-        datatype,
         subset,
         max_iter: int,
         M_divergence: float,
-        epsilon_stationnary: float,
-        SA_params=None,
         BLA_params={"eps": 1e-6},
-#        interior_detect: bool=False,
-        calc_dzndc: bool=True
+        calc_hessian: bool=True
 ):
         """
-    Perturbation iterations (arbitrary precision) for Mandelbrot standard set
+    Perturbation iterations (arbitrary precision) for Burning ship standard set
     (power 2).
 
     Parameters
     ==========
     calc_name : str
          The string identifier for this calculation
-    datatype :
-        The dataype for operation on complex. Usually `np.complex128`
     subset : 
         A boolean array-like, where False no calculation is performed
         If `None`, all points are calculated. Defaults to `None`.
@@ -237,13 +242,7 @@ class Perturbation_burning_ship(fs.PerturbationFractal):
     M_divergence : float
         The diverging radius. If reached, the loop is exited with exit code
         "divergence"
-    epsilon_stationnary : float
-        EXPERIMENTAL for perturbation.
-        A small float to early exit non-divergent cycles (based on
-        cumulated dzndz product). If reached, the loop is exited with exit
-        code "stationnary" (Those points should belong to Mandelbrot set)
-        Used only if interior_detect is True
-    SA_params :
+    BLA_params :
         The dictionnary of parameters for Series-Approximation :
 
         .. list-table:: 
@@ -252,24 +251,18 @@ class Perturbation_burning_ship(fs.PerturbationFractal):
 
            * - keys
              - values 
-           * - cutdeg
-             - int: polynomial degree used for approximation (default: 32)
-           * - SA_err
+           * - eps
              - float: relative error criteria (default: 1.e-6)
 
-        if `None` SA is not activated.
-    interior_detect : bool
-        EXPERIMENTAL for perturbation.
-        If True activates interior point detection
-        
+        if `None`, BLA is not activated.
+
     References
     ==========
     .. [1] <https://mathr.co.uk/blog/2021-05-14_deep_zoom_theory_and_practice.html>
-
     .. [2] <http://www.fractalforums.com/announcements-and-news>
         
         """
-        self.init_data_types(datatype)
+        self.init_data_types(np.float64)
 
         # used for potential post-processing
         self.potential_M = M_divergence
@@ -280,19 +273,18 @@ class Perturbation_burning_ship(fs.PerturbationFractal):
         yn = 1
         code_int = 2
 
-        if calc_dzndc:
-            code_int += 1
+        if calc_hessian:
             complex_codes += ["dxnda", "dxndb", "dynda", "dyndb"]
-            dxnda = code_int
-            dxndb = code_int
-            dynda = code_int
-            dyndb = code_int
+            dxnda = code_int + 0
+            dxndb = code_int + 1
+            dynda = code_int + 2
+            dyndb = code_int + 3
+            code_int += 4
         else:
             dxnda = -1
             dxndb = -1
             dynda = -1
             dyndb = -1
-
 
         # Integer int32 fields codes "U" 
         int_codes = ["ref_cycle_iter"] # Position in ref orbit
@@ -313,78 +305,117 @@ class Perturbation_burning_ship(fs.PerturbationFractal):
             (BLA_params is not None) 
             and (self.dx < fs.settings.newton_zoom_level)
         )
-
-#        @numba.njit
-#        def _f(x, y):
-#            return z * z
-#        self.f = _f
+        # H = [dfxdx dfxdy]    [dfx] = H x [dx]
+        #     [dfydx dfydy]    [dfy]       [dy]
 
         @numba.njit
-        def _dfdx(x, y):
-            return (2. * x, 2. * sgn(x) * abs(y))
-        self.dfdx = _dfdx
+        def _dfxdx(x, y):
+            return 2. * x
+        self.dfxdx = _dfxdx
 
         @numba.njit
-        def _dfdy(x, y):
-            return (-2. * y, 2. * sgn(y) * abs(x))
-        self.dfdy = _dfdy
+        def _dfxdy(x, y):
+            return -2. * y
+        self.dfxdy = _dfxdy
 
+        @numba.njit
+        def _dfydx(x, y):
+            return 2. * sgn(x) * np.abs(y)
+        self.dfydx = _dfydx
+
+        @numba.njit
+        def _dfydy(x, y):
+            return 2. * sgn(y) * np.abs(x)
+        self.dfydy = _dfydy
 
         #----------------------------------------------------------------------
         # Defines initialize - jitted implementation
         def initialize():
             return fs.perturbation.numba_initialize_BS(
-                    xn, yn,
-                    dxnda, dxndb, dynda, dyndb,
+                xn, yn, dxnda, dxndb, dynda, dyndb
             )
         self.initialize = initialize
 
         #----------------------------------------------------------------------
         # Defines iterate - jitted implementation
         M_divergence_sq = self.M_divergence ** 2
-        epsilon_stationnary_sq = self.epsilon_stationnary ** 2
+
         # Xr triggered for ultra-deep zoom
         xr_detect_activated = self.xr_detect_activated
 
 
         @numba.njit
-        def p_iter_zn(Z, ref_zn, c):
-            ref_xn = ref_zn.real
-            ref_yn = ref_zn.imag
-            ref_xyn = ref_zn.real * ref_zn.imag
-            return (
-                (
-                    Z[xn] * (Z[xn] + 2. * ref_xn)
-                    - Z[yn] * (Z[yn] + 2. * ref_yn)
-                    + c.real
-                ),
-                    2 * diffabs(
-                        ref_xyn,
-                        ref_xyn + Z[xn] * ref_xn + Z[yn] * ref_yn
-                ) + c.imag
+        def p_iter_zn(Z, ref_xn, ref_yn, a, b):
+            # Modifies in-place xn, yn
+            # print("in p_iter_zn", Z, ref_xn, ref_yn, a, b)
+            ref_xyn = ref_xn * ref_yn
+            new_xn = (
+                Z[xn] * (Z[xn] + 2. * ref_xn) - Z[yn] * (Z[yn] + 2. * ref_yn)
+                + a
             )
+            new_yn = (
+                2. * diffabs(
+                    ref_xyn,
+                    Z[xn] * Z[yn] + Z[xn] * ref_xn + Z[yn] * ref_yn
+                ) - b
+            )
+            Z[xn] = new_xn
+            Z[yn] = new_yn
+            # print("out p_iter_zn", Z, new_xn, new_yn, xn, yn)
 
         @numba.njit
-        def p_iter_dzndc(Z, ref_zn, ref_dzndx, ref_dzndy):
-            ref_xn = ref_zn.real
-            ref_yn = ref_zn.imag
-            ref_xyn = ref_zn.real * ref_zn.imag
-            return (
-                
+        def p_iter_hessian(
+            Z, ref_xn, ref_yn,            
+            ref_dxnda, ref_dxndb, ref_dynda, ref_dyndb
+        ):
+#            print("in hessian",  Z, Z.shape, xn, yn, dxnda, dxndb, dynda, dyndb)
+#            print("ref",  ref_xn, ref_yn, ref_dxnda, ref_dxndb, ref_dynda, ref_dyndb)
+            # Modifies in-place the Hessian matrix
+            ref_xyn = ref_xn * ref_yn
+
+            _opX = ref_xyn
+            d_opX_da = ref_dxnda * ref_yn + ref_xn * ref_dynda
+            d_opX_db = ref_dxndb * ref_yn + ref_xn * ref_dyndb
+
+            _opx = Z[xn] * Z[yn] + Z[xn] * ref_xn + Z[yn] * ref_yn
+            d_opx_da = (
+                Z[dxnda] * Z[yn] + Z[xn] * Z[dynda]
+                + Z[dxnda] * ref_xn + Z[xn] * ref_dxnda
+                + Z[dynda] * ref_yn + Z[yn] * ref_dynda
             )
-                    
-                    
-                    
-                    #2. * ((ref_zn + Z[zn]) * Z[dzndc] + ref_dzndc * Z[zn])
+            d_opx_db = (
+                Z[dxndb] * Z[yn] + Z[xn] * Z[dyndb]
+                + Z[dxndb] * ref_xn + Z[xn] * ref_dxndb
+                + Z[dyndb] * ref_yn + Z[yn] * ref_dyndb
+            )
+            _ddiffabsdX = ddiffabsdX(_opX, _opx)
+            _ddiffabsdx = ddiffabsdX(_opX, _opx)
+
+            new_dxnda = (
+                2. * ((ref_xn + Z[xn]) * Z[dxnda] + ref_dxnda * Z[xn])
+                -2. * ((ref_yn + Z[yn]) * Z[dynda] + ref_dynda * Z[yn])
+            )
+            new_dxndb = (
+                2. * ((ref_xn + Z[xn]) * Z[dxndb] + ref_dxndb * Z[xn])
+                -2. * ((ref_yn + Z[yn]) * Z[dyndb] + ref_dyndb * Z[yn])
+            )
+            new_dynda = 2. * (_ddiffabsdX * d_opX_da + _ddiffabsdx * d_opx_da)
+            new_dyndb = 2. * (_ddiffabsdX * d_opX_db + _ddiffabsdx * d_opx_db)
+
+            Z[dxnda] = new_dxnda
+            Z[dxndb] = new_dxndb
+            Z[dynda] = new_dynda
+            Z[dyndb] = new_dyndb
+#            assert False
+
 
         def iterate():
             return fs.perturbation.numba_iterate_BS(
                 M_divergence_sq, max_iter, reason_max_iter, reason_M_divergence,
-                epsilon_stationnary_sq, interior_detect_activated, reason_stationnary,
-                SA_activated, xr_detect_activated, BLA_activated,
-                calc_dzndc,
-                zn, dzndz, dzndc,
-                p_iter_zn, p_iter_dzndc
+                xr_detect_activated, BLA_activated,
+                calc_hessian,
+                xn, yn, dxnda, dxndb, dynda, dyndb,
+                p_iter_zn, p_iter_hessian
             )
         self.iterate = iterate
 

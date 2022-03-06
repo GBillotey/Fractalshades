@@ -955,7 +955,12 @@ def perturbation_mandelbrot_find_any_nucleus(
 #==============================================================================
 #==============================================================================
 # The Burning ship ! Work in progress...
-    
+# This code is largely inspired by the following paper:
+#
+# [1] At the Helm of the Burning Ship, Claude Heiland-Allen, 2019
+# Proceedings of EVA London 2019 (EVA 2019)
+# http://dx.doi.org/10.14236/ewic/EVA2019.74
+
 def perturbation_BS_FP_loop(
         np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
         bint need_Xrange,
@@ -1113,11 +1118,12 @@ cdef void iter_BS(
     mpfr_sqr(xsq_t, xn_t, MPFR_RNDN)
     mpfr_sqr(ysq_t, yn_t, MPFR_RNDN)
     mpfr_mul(xy_t, xn_t, yn_t, MPFR_RNDN)
+
+    mpfr_sub(xn_t, xsq_t, ysq_t, MPFR_RNDN)
+    mpfr_add(xn_t, xn_t, a_t, MPFR_RNDN)
+
     mpfr_abs(xy_t, xy_t, MPFR_RNDN)
     mpfr_mul_si(xy_t, xy_t, 2, MPFR_RNDN)
-    mpfr_sub(xn_t, xsq_t, ysq_t, MPFR_RNDN)
-    # push the results
-    mpfr_add(xn_t, xn_t, a_t, MPFR_RNDN)
     mpfr_sub(yn_t, xy_t, b_t, MPFR_RNDN)
     return
 
@@ -1129,6 +1135,8 @@ cdef void iter_J_BS(
     mpfr_t abs_xn, mpfr_t abs_yn, mpfr_t tmp_xx, mpfr_t tmp_xy, 
     mpfr_t tmp_yx, mpfr_t tmp_yy, mpfr_t _tmp
 ):
+    # if var_ab_xy == 0 : we compute the derivatives wrt a, b / c = a + i b
+    # if var_ab_xy == 1 : we compute the derivatives wrt x, y / z1 = x + i y
     cdef int sgn_xn, sgn_yn
     # One Jacobian burning ship iteration
     # dxndx <- 2 * (xn * dxndx - yn * dyndx) [+ 1]
@@ -1479,7 +1487,7 @@ def perturbation_BS_ball_method(
     mpfr_inits2(seed_prec, xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t, NULL)
     mpfr_inits2(seed_prec, dxnda_t, dxndb_t, dynda_t, dyndb_t, delta_t, NULL)
     mpfr_inits2(seed_prec, abs_xn, abs_yn, tmp_xx, tmp_xy, tmp_yx, tmp_yy, NULL)
-    mpfr_inits2(seed_prec, a, b, c, d, NULL)
+    # mpfr_inits2(seed_prec, a, b, c, d, NULL)
     mpfr_inits2(seed_prec, rx_t, ry_t, NULL)
     mpfr_init2(_tmp, seed_prec)
 
@@ -1511,6 +1519,7 @@ def perturbation_BS_ball_method(
 #    mpc_abs(az_t, z_t, MPFR_RNDN)
     
     for i in range(1, maxiter + 1):
+        # print("i", i)
         iter_J_BS(
             0,
             xn_t, yn_t, dxnda_t, dxndb_t, dynda_t, dyndb_t,
@@ -1522,7 +1531,7 @@ def perturbation_BS_ball_method(
         # [rY]          [Y]
         matsolve(
             rx_t, ry_t,
-            a, b, c, d,
+            dxnda_t, dxndb_t, dynda_t, dyndb_t,
             xn_t, yn_t,
             delta_t, _tmp
         )
@@ -1530,16 +1539,19 @@ def perturbation_BS_ball_method(
         # if |xn + i yn| > M_divergence:
         x = mpfr_get_d(xn_t, MPFR_RNDN)
         y = mpfr_get_d(yn_t, MPFR_RNDN)
+        # print("x y", x, y)
         if hypot(x, y) > M_divergence: # escaping
             ret = -1
             break
 
-        # Or did we find a cycle |(rx, ry)] < 1
-        cmpx = mpfr_cmp_d(rx_t, 1.)
-        cmpy = mpfr_cmp_d(ry_t, 1.)
+        # Or did we find a cycle |(rx, ry)| < 1
+        mpfr_abs(_tmp, rx_t, MPFR_RNDN)
+        cmpx = mpfr_cmp_d(_tmp, 1.)
+        mpfr_abs(_tmp, ry_t, MPFR_RNDN)
+        cmpy = mpfr_cmp_d(_tmp, 1.)
         # Return a positive value if op1 > op2, zero if op1 = op2, and a
         # negative value if op1 < op2.
-        if (cmpx <= 0) and (cmpx <= 0):
+        if cmpx and cmpy:
             rx = mpfr_get_d(rx_t, MPFR_RNDN)
             ry = mpfr_get_d(ry_t, MPFR_RNDN)
             if hypot(rx, ry) < 1.:
@@ -1549,7 +1561,7 @@ def perturbation_BS_ball_method(
     mpfr_clears(xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t, NULL)
     mpfr_clears(dxnda_t, dxndb_t, dynda_t, dyndb_t, delta_t, NULL)
     mpfr_clears(abs_xn, abs_yn, tmp_xx, tmp_xy, tmp_yx, tmp_yy, NULL)
-    mpfr_clears(a, b, c, d, NULL)
+    # mpfr_clears(a, b, c, d, NULL)
     mpfr_clears(rx_t, ry_t, NULL)
     mpfr_clear(_tmp)
 

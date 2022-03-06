@@ -283,7 +283,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         # Set parameters for the full precision orbit
         self.critical_pt = 0.
         self.FP_code = "zn"
-
+        self.holomorphic = True
 
     def FP_loop(self, NP_orbit, c0):
         """
@@ -310,11 +310,10 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         )
         return i, partial_dict, xr_dict
 
-
     @fs.utils.calc_options
     def calc_std_div(self, *,
         calc_name: str,
-        datatype,
+        # datatype,
         subset,
         max_iter: int,
         M_divergence: float,
@@ -332,8 +331,6 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
     ==========
     calc_name : str
          The string identifier for this calculation
-    datatype :
-        The dataype for operation on complex. Usually `np.complex128`
     subset : 
         A boolean array-like, where False no calculation is performed
         If `None`, all points are calculated. Defaults to `None`.
@@ -375,7 +372,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
     .. [2] <http://www.fractalforums.com/announcements-and-news>
         
         """
-        self.init_data_types(datatype)
+        self.init_data_types(np.complex128)
 
         # used for potential post-processing
         self.potential_M = M_divergence
@@ -423,20 +420,20 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             and (self.dx < fs.settings.newton_zoom_level)
         )
 
-        @numba.njit
-        def _f(z):
-            return z * z
-        self.f = _f
+#        @numba.njit
+#        def _f(z):
+#            return z * z
+#        self.f = _f
 
         @numba.njit
         def _dfdz(z):
             return 2. * z
         self.dfdz = _dfdz
 
-        @numba.njit
-        def _d2fdz2(z):
-            return 2.
-        self.d2fdz2 = _d2fdz2
+#        @numba.njit
+#        def _d2fdz2(z):
+#            return 2.
+#        self.d2fdz2 = _d2fdz2
 
         #----------------------------------------------------------------------
         # Defines SA_loop via a function factory - jitted implementation
@@ -469,16 +466,16 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
 
         @numba.njit
         def p_iter_zn(Z, ref_zn, c):
-            return Z[zn] * (Z[zn] + 2. * ref_zn) + c
+            Z[zn] = Z[zn] * (Z[zn] + 2. * ref_zn) + c
 
         @numba.njit
         def p_iter_dzndz(Z):
-            # Only used at low zoom - assumes dzndz == 0 
-            return 2. * (Z[zn] * Z[dzndz])
+            # Only used at low zoom - assumes dZndz == 0 
+            Z[dzndz] = 2. * (Z[zn] * Z[dzndz])
 
         @numba.njit
         def p_iter_dzndc(Z, ref_zn, ref_dzndc):
-            return 2. * ((ref_zn + Z[zn]) * Z[dzndc] + ref_dzndc * Z[zn])
+            Z[dzndc] = 2. * ((ref_zn + Z[zn]) * Z[dzndc] + ref_dzndc * Z[zn])
 
         def iterate():
             return fs.perturbation.numba_iterate(

@@ -664,9 +664,21 @@ class DEM_pp(Postproc):
             else:
                 (dXdA, dXdB, dYdA, dYdB) = self.get_dzndc(Z, complex_dic)
                 # In which direction ? Lets take the mean
-                abs_dzndc = np.sqrt(
-                    dXdA ** 2 + dXdB ** 2 + dYdA ** 2 + dYdB ** 2
-                )
+#                abs_dzndc = np.sqrt(
+#                    dXdA ** 2 + dXdB ** 2 + dYdA ** 2 + dYdB ** 2
+#                )
+                # Lets take the maximal singular value
+# https://scicomp.stackexchange.com/questions/8899/robust-algorithm-for-2-times-2-svd
+                # J = [dXdA dXdB] = [a b]
+                #     [dYdA dYdB]   [c d]
+                Q = np.hypot(dXdA + dYdB, dXdB - dYdA)
+                R = np.hypot(dXdA - dYdB, dXdB + dYdA)
+                abs_dzndc = 0.5 * (Q + R)
+#                S1 = dXdA ** 2 + dXdB ** 2 + dYdA ** 2 + dYdB ** 2
+#                S2 = np.sqrt(
+#                    dXdA ** 2 + dXdB ** 2 + dYdA ** 2 + dYdB ** 2
+#                    + 4 * (dXdA * + dYdB)
+#                )
 #                normal = (
 #                    (dXdA * zn.real + dYdA * zn.imag)
 #                    + 1j * (dXdB * zn.real + dYdB * zn.imag)

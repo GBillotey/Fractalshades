@@ -59,7 +59,7 @@ def plot(directory):
             y=y,
             dx=dx,
             nx=nx,
-            xy_ratio=1.0,
+            xy_ratio=1.,
             theta_deg=0., 
             projection="cartesian",
             antialiasing=False)
