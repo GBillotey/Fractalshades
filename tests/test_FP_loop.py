@@ -156,7 +156,8 @@ class Test_ref_path(unittest.TestCase):
     def test_print(self):
         fs.perturbation.PerturbationFractal.print_FP(
             self.FP_params, self.ref_path
-        )
+        )    
+
 
 class Test_newton(unittest.TestCase):
 
@@ -268,10 +269,123 @@ class Test_newton(unittest.TestCase):
 
         self.assertTrue(is_equal)
 
+class Test_BS(unittest.TestCase):
 
+    def test_path(self):
+        x = 0.1
+        y = 0.1
+        c = x + 1j * y
+        npts = 10
+
+        orbit_complex = np.empty((npts,), dtype=np.complex128)
+        orbit_float = orbit_complex.view(np.float64)
+        
+        (i, partial_dict, xr_dict
+         ) = fsFP.perturbation_BS_FP_loop(
+            orbit_float,
+            False,
+            npts - 1,
+            1000.,
+            str(x).encode('utf8'),
+            str(y).encode('utf8'),
+            53
+        )
+        print("orbit_complex", orbit_complex)
+        print("i", i)
+        z = complex(0.)
+        for i in range(10):
+            assert orbit_complex[i] == z
+            x = z.real
+            y = z.imag
+            new_x = x ** 2 - y ** 2 + c.real
+            new_y = 2 * np.abs(x * y) - c.imag
+            z = new_x + 1j * new_y
+#            print("new_z", i + 1, z)
+    
+    def test_order(self):
+        x_str = "-1.7545128115395"
+        y_str = "0.0015894811966473"
+        seed_px = "0.001"
+
+        order = fsFP.perturbation_BS_ball_method(
+            x_str.encode('utf8'),
+            y_str.encode('utf8'),
+            53,
+            seed_px.encode('utf8'),
+            100,
+            1000. 
+        )
+        assert order == 3
+
+        x_str = "0.88410156557344"
+        y_str = "1.5218981991448"
+        seed_px = "0.012"
+
+        order = fsFP.perturbation_BS_ball_method(
+            x_str.encode('utf8'),
+            y_str.encode('utf8'),
+            53,
+            seed_px.encode('utf8'),
+            100,
+            1000. 
+        )
+        assert order == 3
+
+    def test_newton(self):
+        x_str = "-1.7545128115395"
+        y_str = "0.0015894811966473"
+        seed_px = "0.001"
+        seed_prec = 53
+        order = 3
+        eps_cv = mpmath.mpf(val=(2, -seed_prec))
+         
+        is_ok, val = fsFP.perturbation_BS_find_any_nucleus(
+            x_str.encode('utf8'),
+            y_str.encode('utf8'),
+            seed_prec,
+            order,
+            40,
+            str(eps_cv).encode('utf8'),
+            seed_px.encode('utf8'),
+        )
+        assert order == 3
+        print(is_ok, val)
+
+        x_str = "0.88410156557344"
+        y_str = "1.5218981991448"
+        seed_px = "0.012"
+        seed_prec = 53
+        order = 3
+        eps_cv = mpmath.mpf(val=(2, -seed_prec))
+         
+        is_ok, val = fsFP.perturbation_BS_find_any_nucleus(
+            x_str.encode('utf8'),
+            y_str.encode('utf8'),
+            seed_prec,
+            order,
+            40,
+            str(eps_cv).encode('utf8'),
+            seed_px.encode('utf8'),
+        )
+        assert order == 3
+        print(is_ok, val)
+
+#        x_str = "-1.7545128115395"
+#        y_str = "0.0015894811966473"
+#        seed_px = "0.001"
+#
+#        order = fsFP.perturbation_BS_ball_method(
+#            x_str.encode('utf8'),
+#            y_str.encode('utf8'),
+#            53,
+#            seed_px.encode('utf8'),
+#            100,
+#            1000. 
+#        )
+#        assert order == 3
 
 if __name__ == "__main__":
-    full_test = True
+    full_test = False
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_ref_path,
@@ -283,7 +397,10 @@ if __name__ == "__main__":
 #        suite.addTest(Test_bivar_SA("test_bivar_SA"))
 #        suite.addTest(Test_newton("test_ball_method"))
 #        suite.addTest(Test_newton("test_str_out"))
-        suite.addTest(Test_newton("test_newton"))
+        # suite.addTest(Test_newton("test_newton"))
 #        suite.addTest(Test_ref_path("test_print"))
-        # suite.addTest(Test_bivar_SA("test_bivar_SA"))
+        # suite.addTest(Test_bivar_SA("test_bivar_SA"))Test_BS
+        suite.addTest(Test_BS("test_path"))
+        suite.addTest(Test_BS("test_order"))
+        suite.addTest(Test_BS("test_newton"))
         runner.run(suite)

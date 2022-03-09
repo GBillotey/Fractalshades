@@ -1130,8 +1130,8 @@ cdef void iter_BS(
 
 cdef void iter_J_BS(
     int var_ab_xy,
-    mpfr_t xn_t, mpfr_t yn_t, mpfr_t dxndx_t, mpfr_t dxndy_t,
-    mpfr_t dyndx_t, mpfr_t dyndy_t,
+    mpfr_t xn_t, mpfr_t yn_t,
+    mpfr_t dxndx_t, mpfr_t dxndy_t,mpfr_t dyndx_t, mpfr_t dyndy_t,
     mpfr_t abs_xn, mpfr_t abs_yn, mpfr_t tmp_xx, mpfr_t tmp_xy, 
     mpfr_t tmp_yx, mpfr_t tmp_yy, mpfr_t _tmp
 ):
@@ -1152,8 +1152,10 @@ cdef void iter_J_BS(
     mpfr_mul(tmp_xx, xn_t, dxndx_t, MPFR_RNDN)
     mpfr_mul(_tmp, yn_t, dyndx_t, MPFR_RNDN)
     mpfr_sub(tmp_xx, tmp_xx, _tmp, MPFR_RNDN)
+#    print("before, tmp_xx", mpfr_get_d(tmp_xx, MPFR_RNDN), var_ab_xy)
     if var_ab_xy == 0:
         mpfr_add_si(tmp_xx, tmp_xx, 1, MPFR_RNDN)
+#        print("after, tmp_xx", mpfr_get_d(tmp_xx, MPFR_RNDN))
 
     # dxndy <- 2 * (xn * dxndy - yn * dyndy)
     mpfr_mul(tmp_xy, xn_t, dxndy_t, MPFR_RNDN)
@@ -1174,7 +1176,7 @@ cdef void iter_J_BS(
     mpfr_mul_si(_tmp, _tmp, sgn_xn, MPFR_RNDN)
     mpfr_add(tmp_yy, tmp_yy, _tmp, MPFR_RNDN)
     if var_ab_xy == 0:
-        mpfr_add_si(tmp_xx, tmp_xx, -1, MPFR_RNDN)
+        mpfr_add_si(tmp_yy, tmp_yy, -1, MPFR_RNDN)
 
     # push the result
     mpfr_mul_si(dxndx_t, tmp_xx, 2, MPFR_RNDN)
@@ -1246,15 +1248,15 @@ cdef void matsolve(
 
     det(delta, a, b, c, d, _tmp)
     mpfr_ui_div(delta, ui_one, delta, MPFR_RNDN)
-    #  [x] = delta x [ d -c] x [e]
-    #  [y]           [-b  a]   [f]
+    #  [x] = delta x [ d -b] x [e]
+    #  [y]           [-c  a]   [f]
     mpfr_mul(x_res, d, e, MPFR_RNDN)
-    mpfr_mul(_tmp, c, f, MPFR_RNDN)
+    mpfr_mul(_tmp, b, f, MPFR_RNDN)
     mpfr_sub(x_res, x_res, _tmp, MPFR_RNDN)
     mpfr_mul(x_res, x_res, delta, MPFR_RNDN)
 
     mpfr_mul(y_res, a, f, MPFR_RNDN)
-    mpfr_mul(_tmp, b, e, MPFR_RNDN)
+    mpfr_mul(_tmp, c, e, MPFR_RNDN)
     mpfr_sub(y_res, y_res, _tmp, MPFR_RNDN)
     mpfr_mul(y_res, y_res, delta, MPFR_RNDN)
     return
@@ -1269,6 +1271,7 @@ def perturbation_BS_nucleus_size_estimate(
     """
     Hyperbolic component size estimate. Reference :
     https://mathr.co.uk/blog/2016-12-24_deriving_the_size_estimate.html
+    https://fractalforums.org/fractal-mathematics-and-new-theories/28/miniset-and-embedded-julia-size-estimates/912/msg4815#msg4815
     
     Parameters:
     -----------
@@ -1363,15 +1366,15 @@ def perturbation_BS_nucleus_size_estimate(
         det(delta_t, dxndx_t, dxndy_t, dyndx_t, dyndy_t, _tmp)
         mpfr_ui_div(delta_t, ui_one, delta_t, MPFR_RNDN)
         # Now, by components
-        # Ln^-1 = delta * [ dyndy  -dyndx]
-        #                 [-dxndy   dxndx]
+        # Ln^-1 = delta * [ dyndy  -dxndy]
+        #                 [-dyndx   dxndx]
         mpfr_mul(_tmp, delta_t, dyndy_t, MPFR_RNDN)
         mpfr_add(bn_xx_t, bn_xx_t, _tmp, MPFR_RNDN)
         
-        mpfr_mul(_tmp, delta_t, dyndx_t, MPFR_RNDN)
+        mpfr_mul(_tmp, delta_t, dxndy_t, MPFR_RNDN)
         mpfr_sub(bn_xy_t, bn_xy_t, _tmp, MPFR_RNDN)
 
-        mpfr_mul(_tmp, delta_t, dxndy_t, MPFR_RNDN)
+        mpfr_mul(_tmp, delta_t, dyndx_t, MPFR_RNDN)
         mpfr_sub(bn_yx_t, bn_yx_t, _tmp, MPFR_RNDN)
         
         mpfr_mul(_tmp, delta_t, dxndx_t, MPFR_RNDN)
@@ -1390,7 +1393,7 @@ def perturbation_BS_nucleus_size_estimate(
     mpfr_rec_sqrt(delta_t, _tmp, MPFR_RNDN)
     size = mpfr_t_to_Xrange(delta_t)
     
-    # Skew : normalized(beta)^-1
+    # Skew : normalized(beta)^-1  TODO seems False, transpose COMATRICE 
     mpfr_ui_div(tmp_xx, ui_one, tmp_xx, MPFR_RNDN)
     mpfr_mul(bn_xx_t, bn_xx_t, tmp_xx, MPFR_RNDN)
     mpfr_mul(bn_xy_t, bn_xy_t, tmp_xy, MPFR_RNDN)
@@ -1472,6 +1475,7 @@ def perturbation_BS_ball_method(
     """
     cdef:
         int cmp = 0
+        unsigned long int ui_one = 1
         long ret = -1
         long i = 0
         double x, y, rx, ry
@@ -1480,7 +1484,7 @@ def perturbation_BS_ball_method(
         mpfr_t dxnda_t, dxndb_t, dynda_t, dyndb_t, delta_t
         mpfr_t abs_xn, abs_yn, tmp_xx, tmp_xy, tmp_yx, tmp_yy
         mpfr_t a, b, c, d
-        mpfr_t rx_t, ry_t
+        mpfr_t rx_t, ry_t, pix_t, inv_pix_t
         mpfr_t _tmp
 
     # initialisation
@@ -1488,7 +1492,7 @@ def perturbation_BS_ball_method(
     mpfr_inits2(seed_prec, dxnda_t, dxndb_t, dynda_t, dyndb_t, delta_t, NULL)
     mpfr_inits2(seed_prec, abs_xn, abs_yn, tmp_xx, tmp_xy, tmp_yx, tmp_yy, NULL)
     # mpfr_inits2(seed_prec, a, b, c, d, NULL)
-    mpfr_inits2(seed_prec, rx_t, ry_t, NULL)
+    mpfr_inits2(seed_prec, rx_t, ry_t, pix_t, inv_pix_t, NULL)
     mpfr_init2(_tmp, seed_prec)
 
     # set value of a + i b = c
@@ -1499,18 +1503,18 @@ def perturbation_BS_ball_method(
     mpfr_set_si(xn_t, 0, MPFR_RNDN)
     mpfr_set_si(yn_t, 0, MPFR_RNDN)
 
-    # L0 = 1 (identity matrix)
-    mpfr_set_si(dxnda_t, 1, MPFR_RNDN)
+    # L0 = 0 (identity matrix)
+    mpfr_set_si(dxnda_t, 0, MPFR_RNDN)
     mpfr_set_si(dxndb_t, 0, MPFR_RNDN)
     mpfr_set_si(dynda_t, 0, MPFR_RNDN)
-    mpfr_set_si(dyndb_t, 1, MPFR_RNDN)
+    mpfr_set_si(dyndb_t, 0, MPFR_RNDN)
     
     
-    mpfr_set_str(xn_t, seed_x, 10, MPFR_RNDN)
-    mpfr_set_str(yn_t, seed_y, 10, MPFR_RNDN)
+#    mpfr_set_str(xn_t, seed_x, 10, MPFR_RNDN)
+#    mpfr_set_str(yn_t, seed_y, 10, MPFR_RNDN)
 
-#    mpfr_set_str(rx_t, seed_px, 10, MPFR_RNDN)
-#    mpfr_set_str(ry_t, seed_px, 10, MPFR_RNDN)
+    mpfr_set_str(pix_t, seed_px, 10, MPFR_RNDN)
+    mpfr_ui_div(inv_pix_t, ui_one, pix_t, MPFR_RNDN)
 
 #    # set z = 0 
 #    mpc_set_si_si(z_t, 0, 0, MPC_RNDNN)
@@ -1519,13 +1523,27 @@ def perturbation_BS_ball_method(
 #    mpc_abs(az_t, z_t, MPFR_RNDN)
     
     for i in range(1, maxiter + 1):
-        # print("i", i)
+#        print("i", i, "pix", mpfr_get_d(pix_t, MPFR_RNDN) )
+#        print("b_t", mpfr_get_d(a_t, MPFR_RNDN))
+#        print("a_t", mpfr_get_d(b_t, MPFR_RNDN))
+#        print("xn_t", mpfr_get_d(xn_t, MPFR_RNDN))
+#        print("yn_t", mpfr_get_d(yn_t, MPFR_RNDN))
+
         iter_J_BS(
             0,
             xn_t, yn_t, dxnda_t, dxndb_t, dynda_t, dyndb_t,
             abs_xn, abs_yn, tmp_xx, tmp_xy, tmp_yx, tmp_yy, _tmp
         )
+#        print("xn_t", mpfr_get_d(xn_t, MPFR_RNDN))
+#        print("yn_t", mpfr_get_d(yn_t, MPFR_RNDN))
         iter_BS(xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t)
+        
+#        print("xn_t", mpfr_get_d(xn_t, MPFR_RNDN))
+#        print("yn_t", mpfr_get_d(yn_t, MPFR_RNDN))
+#        print("dxnda_t", mpfr_get_d(dxnda_t, MPFR_RNDN))
+#        print("dxndb_t", mpfr_get_d(dxndb_t, MPFR_RNDN))
+#        print("dynda_t", mpfr_get_d(dynda_t, MPFR_RNDN))
+#        print("dyndb_t", mpfr_get_d(dyndb_t, MPFR_RNDN))
 
         # [rX] = J^-1 x [X] 
         # [rY]          [Y]
@@ -1535,12 +1553,17 @@ def perturbation_BS_ball_method(
             xn_t, yn_t,
             delta_t, _tmp
         )
+        mpfr_mul(rx_t, rx_t, inv_pix_t, MPFR_RNDN)
+        mpfr_mul(ry_t, ry_t, inv_pix_t, MPFR_RNDN)
+#        print("rx_t", mpfr_get_d(rx_t, MPFR_RNDN))
+#        print("ry_t", mpfr_get_d(ry_t, MPFR_RNDN))
 
         # if |xn + i yn| > M_divergence:
         x = mpfr_get_d(xn_t, MPFR_RNDN)
         y = mpfr_get_d(yn_t, MPFR_RNDN)
         # print("x y", x, y)
         if hypot(x, y) > M_divergence: # escaping
+#            print("escaping")
             ret = -1
             break
 
@@ -1551,7 +1574,7 @@ def perturbation_BS_ball_method(
         cmpy = mpfr_cmp_d(_tmp, 1.)
         # Return a positive value if op1 > op2, zero if op1 = op2, and a
         # negative value if op1 < op2.
-        if cmpx and cmpy:
+        if (cmpx < 0) and (cmpy < 0):
             rx = mpfr_get_d(rx_t, MPFR_RNDN)
             ry = mpfr_get_d(ry_t, MPFR_RNDN)
             if hypot(rx, ry) < 1.:
@@ -1562,7 +1585,7 @@ def perturbation_BS_ball_method(
     mpfr_clears(dxnda_t, dxndb_t, dynda_t, dyndb_t, delta_t, NULL)
     mpfr_clears(abs_xn, abs_yn, tmp_xx, tmp_xy, tmp_yx, tmp_yy, NULL)
     # mpfr_clears(a, b, c, d, NULL)
-    mpfr_clears(rx_t, ry_t, NULL)
+    mpfr_clears(rx_t, ry_t, pix_t, inv_pix_t, NULL)
     mpfr_clear(_tmp)
 
     return ret
@@ -1694,12 +1717,12 @@ def perturbation_BS_find_any_nucleus(
 
     for i_newton in range(max_newton):
         # zr = dzrdc = dh = 0 /  h = 1
-        mpfr_set_si(xn_t, 1, MPFR_RNDN)
+        mpfr_set_si(xn_t, 0, MPFR_RNDN)
         mpfr_set_si(yn_t, 0, MPFR_RNDN)
-        mpfr_set_si(dxnda_t, 1, MPFR_RNDN)
+        mpfr_set_si(dxnda_t, 0, MPFR_RNDN)
         mpfr_set_si(dxndb_t, 0, MPFR_RNDN)
         mpfr_set_si(dynda_t, 0, MPFR_RNDN)
-        mpfr_set_si(dyndb_t, 1, MPFR_RNDN)
+        mpfr_set_si(dyndb_t, 0, MPFR_RNDN)
 
         # Newton descent
         for i in range(1, order + 1):

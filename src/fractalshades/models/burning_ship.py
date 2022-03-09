@@ -356,7 +356,7 @@ class Perturbation_burning_ship(fs.PerturbationFractal):
             new_yn = (
                 2. * diffabs(
                     ref_xyn,
-                    Z[xn] * Z[yn] + Z[xn] * ref_xn + Z[yn] * ref_yn
+                    Z[xn] * Z[yn] + Z[xn] * ref_yn + Z[yn] * ref_xn  # ****
                 ) - b
             )
             Z[xn] = new_xn
@@ -368,6 +368,9 @@ class Perturbation_burning_ship(fs.PerturbationFractal):
             Z, ref_xn, ref_yn,            
             ref_dxnda, ref_dxndb, ref_dynda, ref_dyndb
         ):
+            """
+https://fractalforums.org/fractal-mathematics-and-new-theories/28/perturbation-theory/487/msg3226#msg3226
+            """
 #            print("in hessian",  Z, Z.shape, xn, yn, dxnda, dxndb, dynda, dyndb)
 #            print("ref",  ref_xn, ref_yn, ref_dxnda, ref_dxndb, ref_dynda, ref_dyndb)
             # Modifies in-place the Hessian matrix
@@ -377,19 +380,19 @@ class Perturbation_burning_ship(fs.PerturbationFractal):
             d_opX_da = ref_dxnda * ref_yn + ref_xn * ref_dynda
             d_opX_db = ref_dxndb * ref_yn + ref_xn * ref_dyndb
 
-            _opx = Z[xn] * Z[yn] + Z[xn] * ref_xn + Z[yn] * ref_yn
+            _opx = Z[xn] * Z[yn] + Z[xn] * ref_yn + Z[yn] * ref_xn
             d_opx_da = (
                 Z[dxnda] * Z[yn] + Z[xn] * Z[dynda]
-                + Z[dxnda] * ref_xn + Z[xn] * ref_dxnda
-                + Z[dynda] * ref_yn + Z[yn] * ref_dynda
+                + Z[dxnda] * ref_yn + Z[xn] * ref_dynda
+                + Z[dynda] * ref_xn + Z[yn] * ref_dxnda
             )
             d_opx_db = (
                 Z[dxndb] * Z[yn] + Z[xn] * Z[dyndb]
-                + Z[dxndb] * ref_xn + Z[xn] * ref_dxndb
-                + Z[dyndb] * ref_yn + Z[yn] * ref_dyndb
+                + Z[dxndb] * ref_yn + Z[xn] * ref_dyndb
+                + Z[dyndb] * ref_xn + Z[yn] * ref_dxndb
             )
             _ddiffabsdX = ddiffabsdX(_opX, _opx)
-            _ddiffabsdx = ddiffabsdX(_opX, _opx)
+            _ddiffabsdx = ddiffabsdx(_opX, _opx)
 
             new_dxnda = (
                 2. * ((ref_xn + Z[xn]) * Z[dxnda] + ref_dxnda * Z[xn])
@@ -535,12 +538,12 @@ https://fractalforums.org/fractal-mathematics-and-new-theories/28/miniset-and-em
         return super().coords(x, y, pix, dps)
 
     @fs.utils.interactive_options
-    def ball_method_order(self, x, y, pix, dps, maxiter: int=100000,
+    def ball_method_order(self, x, y, pix, dps, maxiter: int=100,
                           radius_pixels: int=25):
         return super().ball_method_order(x, y, pix, dps, maxiter,
                     radius_pixels)
 
     @fs.utils.interactive_options
-    def newton_search(self, x, y, pix, dps, maxiter: int=100000,
+    def newton_search(self, x, y, pix, dps, maxiter: int=100,
                       radius_pixels: int=3):
         return super().newton_search(x, y, pix, dps, maxiter, radius_pixels)

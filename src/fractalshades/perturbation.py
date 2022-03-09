@@ -465,6 +465,7 @@ directory : str
             
         # Initialize the derived ref path - with a scale coefficient self.dx
         # Note: only useful if the analytical derivatives are computed
+        calc_deriv = None
         dZndc_path = None
         dXnda_path = None
         dXndb_path = None
@@ -476,7 +477,7 @@ directory : str
         else:
             calc_deriv = self.calc_hessian
 
-        if calc_deriv:
+        if calc_deriv is not None:
             dx_xr = fsx.mpf_to_Xrange(self.dx, dtype=self.float_type).ravel()
             casted_ref_order = ref_order # 
             if ref_order is None:
@@ -653,30 +654,30 @@ directory : str
         else:
             # c_pix -> keep it
             # drift_xr -> driftx_xr, drifty_xr
-            print("c_pix", c_pix.shape, c_pix.dtype)
-            print("Z", Z.shape, Z.dtype)
-            print("U", U.shape, U.dtype)
-            print("stop_reason", stop_reason.shape, stop_reason.dtype)
-            print("stop_iter", stop_iter.shape, stop_iter.dtype)
-            print("initialize", initialize)
-            print("iterate", iterate)
-            print("Zn_path", Zn_path.shape)
-            print("dXnda_path", dXnda_path.shape)
-            print("dXndb_path", dXndb_path.shape)
-            print("dYnda_path", dYnda_path.shape)
-            print("dYndb_path", dYndb_path.shape)
-            print("has_xr", has_xr)
-            print("refx_xr", refx_xr.shape)
-            print("refy_xr", refy_xr.shape)
-            print("driftx_xr", driftx_xr.shape, driftx_xr.dtype)
-            print("drifty_xr", drifty_xr.shape, drifty_xr.dtype)
-            print("dx_xr", dx_xr.shape, dx_xr.dtype)
-            print("P", P)
-            print("kc", kc)
-            print("n_iter", n_iter)
-            print("M_bla", M_bla.shape, M_bla.dtype)
-            print("r_bla", r_bla.shape, r_bla.dtype)
-            print("bla_len", "stages_bla", bla_len, stages_bla)
+#            print("c_pix", c_pix.shape, c_pix.dtype)
+#            print("Z", Z.shape, Z.dtype)
+#            print("U", U.shape, U.dtype)
+#            print("stop_reason", stop_reason.shape, stop_reason.dtype)
+#            print("stop_iter", stop_iter.shape, stop_iter.dtype)
+#            print("initialize", initialize)
+#            print("iterate", iterate)
+#            print("Zn_path", Zn_path.shape)
+#            print("dXnda_path", dXnda_path.shape)
+#            print("dXndb_path", dXndb_path.shape)
+#            print("dYnda_path", dYnda_path.shape)
+#            print("dYndb_path", dYndb_path.shape)
+#            print("has_xr", has_xr)
+#            print("refx_xr", refx_xr.shape)
+#            print("refy_xr", refy_xr.shape)
+#            print("driftx_xr", driftx_xr.shape, driftx_xr.dtype)
+#            print("drifty_xr", drifty_xr.shape, drifty_xr.dtype)
+#            print("dx_xr", dx_xr.shape, dx_xr.dtype)
+#            print("P", P)
+#            print("kc", kc)
+#            print("n_iter", n_iter)
+#            print("M_bla", M_bla.shape, M_bla.dtype)
+#            print("r_bla", r_bla.shape, r_bla.dtype)
+#            print("bla_len", "stages_bla", bla_len, stages_bla)
 
             ret_code = numba_cycles_perturb_BS(
                 c_pix, Z, U, stop_reason, stop_iter,
@@ -835,9 +836,16 @@ directory : str
         print("Launch Newton", newton, " with order: ", order)
         print("max newton iter ", max_newton)
         eps_pixel = self.dx * (1. / self.nx)
-        newton_cv, nucleus = self.find_nucleus(
-            c0, order, eps_pixel, max_newton=max_newton
-        )
+        try:
+            newton_cv, nucleus = self.find_nucleus(
+                c0, order, eps_pixel, max_newton=max_newton
+            )
+        except NotImplementedError:
+            print("*** Default to find any")
+            newton_cv, nucleus = self.find_any_nucleus(
+                c0, order, eps_pixel, max_newton=max_newton
+            )
+            
         print("first", newton_cv, nucleus)
 
         # If Newton did not CV, we try to boost the dps / precision
@@ -853,12 +861,22 @@ directory : str
                 print(f"Newton failed, dps incr. {old_dps} -> {mpmath.mp.dps}")
                 eps_pixel = self.dx * (1. / self.nx)
 
-                newton_cv, nucleus = self.find_nucleus(
-                    c0, order, eps_pixel, max_newton=max_newton
-                )
+                try:
+                    no_div = True
+                    newton_cv, nucleus = self.find_nucleus(
+                        c0, order, eps_pixel, max_newton=max_newton
+                    )
+                except NotImplementedError:
+                    no_div = False
+                    print("*** Default to find any")
+                    newton_cv, nucleus = self.find_any_nucleus(
+                        c0, order, eps_pixel, max_newton=max_newton
+                    )
+                     
+                    
                 print("incr", newton_cv, nucleus)
 
-                if not(newton_cv) and (attempt == max_attempt):
+                if no_div and not(newton_cv) and (attempt == max_attempt):
                     # Last try, we just release constraint on the cycle order
                     # and consider also divisors.
                     newton_cv, nucleus = self.find_any_nucleus(
@@ -949,6 +967,7 @@ directory : str
         FP_params["partials"] = partial_dict
         FP_params["xr"] = xr_dict
         FP_params["div_iter"] = i
+        print()
 
         self.save_ref_point(FP_params, Zn_path)
 
@@ -965,7 +984,7 @@ directory : str
             return self._ball_method(c, px, max_iter, M_divergence)
         elif kind == 2:
             return self._ball_method2(c, px, max_iter, M_divergence)
-
+# -0.67487014+1.15006259j
 #==============================================================================
 # GUI : "interactive options"
 #==============================================================================
@@ -1027,8 +1046,14 @@ ball_order = {{
             dps = int(1.5 * dps)
             print("Newton, dps boost to: ", dps)
             with mpmath.workdps(dps):
-                newton_cv, c_newton = self.find_nucleus(
-                        c, order, pix, max_newton=None, eps_cv=None)
+                try:
+                    newton_cv, c_newton = self.find_nucleus(
+                        c, order, pix, max_newton=None, eps_cv=None
+                    )
+                except NotImplementedError:
+                    newton_cv, c_newton = self.find_any_nucleus(
+                        c, order, pix, max_newton=None, eps_cv=None
+                    )
                 if newton_cv:
                     xn_str = str(c_newton.real)
                     yn_str = str(c_newton.imag)
@@ -1622,7 +1647,7 @@ def numba_iterate_BS(
             #==================================================================
             # Glitch correction - reference point diverging
             if (w_iter >= ref_div_iter - 1):
-                assert False
+#                assert False
                 # print("reference point diverging rebase")
                 # Rebasing - we are already big no underflow risk
 #                print("diverging rebase", w_iter)
@@ -1639,7 +1664,7 @@ def numba_iterate_BS(
             #==================================================================
             # Glitch correction - "dynamic glitch"
             bool_dyn_rebase = (
-                (XX <= abs(Z[xn])) and (YY <= abs(Z[yn]))
+                (abs(XX) <= abs(Z[xn])) and (abs(YY) <= abs(Z[yn]))
             )
             if bool_dyn_rebase:
                 # print("bool_dyn_rebase")
