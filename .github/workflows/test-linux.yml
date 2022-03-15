@@ -39,10 +39,10 @@ jobs:
     - name: install Fractalshades
       run: |
         pwd
-        ls -lrt
-        python3 setup.py bdist_wheel
-        python3 -m pip install fractalshades --no-index --find-links dist
-        # python -m pip install git+git://github.com/${{ github.repository }}.git@${{ github.sha }}
+        # ls -lrt
+        # python3 setup.py bdist_wheel
+        # python3 -m pip install fractalshades --no-index --find-links dist
+        python -m pip install git+https://github.com/${{ github.repository }}.git@${{ github.sha }}
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
