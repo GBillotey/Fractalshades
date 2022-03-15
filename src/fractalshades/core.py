@@ -520,7 +520,8 @@ advanced users when subclassing.
              xy_ratio: float,
              theta_deg: float,
              projection: str="cartesian",
-             antialiasing: bool=False):
+             antialiasing: bool=False
+    ):
         """
         Define and stores as class-attributes the zoom parameters for the next
         calculation.
@@ -637,6 +638,12 @@ advanced users when subclassing.
         if not(hasattr(self, "_px")): # is None:
             self._px = self.dx / self.nx
         return self._px
+
+    @property
+    def skew(self):
+        if not(hasattr(self, "_skew")): # is None:
+            self._skew = None
+        return self._skew
 
     @property
     def multiprocess_dir(self):
@@ -852,7 +859,7 @@ advanced users when subclassing.
         dx_grid = np.linspace(-0.5, 0.5, num=nx, dtype=data_type)
         dy_grid = np.linspace(-0.5, 0.5, num=ny, dtype=data_type)
         dy_vec, dx_vec  = np.meshgrid(dy_grid[iy:iyy], dx_grid[ix:ixx])
-        
+
         if self.antialiasing:
             rg = np.random.default_rng(0)
             rand_x = rg.random(dx_vec.shape, dtype=data_type)
@@ -862,15 +869,15 @@ advanced users when subclassing.
 
         dy_vec /= self.xy_ratio
 
-        if self.projection == "expmap":
-            # Expmap, no rotation
-            res = dx_vec + 1j * dy_vec
-        else:
-            res = (
-                ((dx_vec * np.cos(theta)) - (dy_vec * np.sin(theta)))
-                + 1j * ((dx_vec * np.sin(theta)) + (dy_vec * np.cos(theta)))
-            )
+        # Apply the Linear part of the tranformation
+        if theta != 0 and self.projection != "expmap":
+            apply_rot_2d(theta, dx_vec, dy_vec)
 
+        if self.skew is not None:
+            apply_skew_2d(self.skew, dx_vec, dy_vec)
+        
+        res = dx_vec + 1j * dy_vec
+        
         return res
 
 
@@ -1561,6 +1568,43 @@ def numba_cycles(
 proj_cartesian = Fractal.PROJECTION_ENUM["cartesian"]
 proj_spherical = Fractal.PROJECTION_ENUM["spherical"]
 proj_expmap = Fractal.PROJECTION_ENUM["expmap"]
+
+
+@numba.njit
+def apply_skew_2d(skew, arrx, arry):
+    "Unskews the view"
+    nx = arrx.shape[0]
+    ny = arrx.shape[1]
+    for ix in range(nx):
+        for iy in range(ny):
+            tmpx = arrx[ix, iy]
+            tmpy = arry[ix, iy]
+            arrx[ix, iy] = skew[0, 0] * tmpx + skew[0, 1] * tmpy
+            arry[ix, iy] = skew[1, 0] * tmpx + skew[1, 1] * tmpy
+
+@numba.njit
+def apply_unskew_1d(skew, arrx, arry):
+    "Unskews the view for contravariante coordinates e.g. normal vec"
+    nx = arrx.shape[0]
+    for ix in range(nx):
+        tmpx = arrx[ix]
+        tmpy = arry[ix]
+        arrx[ix] = skew[1, 1] * tmpx - skew[0, 1] * tmpy
+        arry[ix] = - skew[1, 0] * tmpx + skew[0, 0] * tmpy
+
+@numba.njit
+def apply_rot_2d(theta, arrx, arry):
+    s = np.sin(theta)
+    c = np.cos(theta)
+    nx = arrx.shape[0]
+    ny = arrx.shape[1]
+    for ix in range(nx):
+        for iy in range(ny):
+            tmpx = arrx[ix, iy]
+            tmpy = arry[ix, iy]
+            arrx[ix, iy] = c * tmpx - s * tmpy
+            arry[ix, iy] = s * tmpx + c * tmpy
+
 
 @numba.njit
 def ref_path_c_from_pix(pix, dx, center, xy_ratio, theta, projection):

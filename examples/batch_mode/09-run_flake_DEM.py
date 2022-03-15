@@ -59,20 +59,19 @@ def plot(directory):
             y=y,
             dx=dx,
             nx=nx,
-            xy_ratio=1.0,
+            xy_ratio=1.,
             theta_deg=0., 
             projection="cartesian",
             antialiasing=False)
 
     f.calc_std_div(
-            datatype=np.complex128,
             calc_name="div",
             subset=None,
             max_iter=1000000,
             M_divergence=1.e3,
             epsilon_stationnary=1.e-3,
             SA_params=None,
-            BLA_params={"eps": 1.e-6},
+            BLA_params={"eps": 1.e-8},
             interior_detect=True)
 
     f.run()
@@ -86,7 +85,7 @@ def plot(directory):
     
     plotter = fs.Fractal_plotter(pp)   
     plotter.add_layer(Bool_layer("interior", output=False))
-    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=True))
+    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=False))
     plotter.add_layer(Virtual_layer("potential", func=None, output=False))
     plotter.add_layer(Color_layer(
             "DEM",

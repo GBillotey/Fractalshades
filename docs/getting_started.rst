@@ -66,15 +66,19 @@ A 5-minutes guide to fractalshades
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The best way to start is probably to have a look at the 
-:doc:`examples/index` section. Download one of the examples from the GUI
+:doc:`examples/index/` section. Download one of the examples from the GUI
 examples section, run it in an empty directory : good exploration !
+
+:doc:`/examples/interactive_deepzoom/D01_run_interactive`
+
+:doc:`/examples/interactive_deepzoom/D02_run_BS_interactive`.
 
 .. code-block:: console
 
     python3 run_interactive.py
 
-Fractalshades exposes 3 kinds of component each implementing a different
-functionality:
+For advanced used you can also rely on batch mode, Fractalshades exposes 3
+kinds of component each implementing a different functionality:
 
   - The core or calculation components runs under the hood all the
     calculations necessary for a plot and
@@ -94,9 +98,7 @@ functionality:
     Fractalshades comes with a small yey  flexible and user-configurable
     GUI based on PyQt5 framework.
 
-You can also directly start exploring with the interactive script provided
-in the example section
-:doc:`/examples/interactive_mode/run_interactive`.
+
 
 Graphical user interface
 ~~~~~~~~~~~~~~~~~~~~~~~~

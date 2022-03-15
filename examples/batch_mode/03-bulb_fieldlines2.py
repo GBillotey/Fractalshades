@@ -52,7 +52,7 @@ def plot(plot_dir):
         max_iter=5000,
         M_divergence=100.,
         epsilon_stationnary= 0.001,
-        datatype=np.complex128)
+    )
     # f.clean_up(calc_name)
     f.run()
 

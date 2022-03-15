@@ -2,7 +2,8 @@
 import numpy as np
 from numpy.lib.format import open_memmap
 
-import fractalshades.numpy_utils.xrange as fsx
+import fractalshades as fs
+#import fractalshades.numpy_utils.xrange as fsx
 import fractalshades.numpy_utils.expr_parser as fs_parser
 
 
@@ -171,21 +172,21 @@ class Postproc:
         else:
             return Z[complex_dic["xn"], :] + 1j * Z[complex_dic["yn"], :]
         
-    def get_dzndc(self, Z, complex_dic, abs_zn):
+    def get_dzndc(self, Z, complex_dic):
         if self.holomorphic:
             return Z[complex_dic["dzndc"], :]
         else:
             # Note : if there is some skew, we will need to take it into account
             # rotation ???
-            X = Z[complex_dic["xn"], :] / abs_zn
-            Y = Z[complex_dic["yn"], :] / abs_zn
+#            X = Z[complex_dic["xn"], :] / abs_zn
+#            Y = Z[complex_dic["yn"], :] / abs_zn
             dXdA = Z[complex_dic["dxnda"], :]
             dXdB = Z[complex_dic["dxndb"], :]
             dYdA = Z[complex_dic["dynda"], :]
             dYdB = Z[complex_dic["dyndb"], :]
-            U = X * dXdA + Y * dYdA
-            V = X * dXdB + Y * dYdB
-            return U + 1j * V
+#            U = X * dXdA + Y * dYdA
+#            V = X * dXdB + Y * dYdB
+            return dXdA, dXdB, dYdA, dYdB
 
 
 class Raw_pp(Postproc):
@@ -551,35 +552,53 @@ class DEM_normal_pp(Postproc):
         potential_dic = self.ensure_context("potential_dic")
         (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
             termination_dic) = self.raw_data # (chunk_slice)
-        zn = Z[complex_dic["zn"], :]
-        dzndc = Z[complex_dic["dzndc"], :]
-
+        zn = self.get_zn(Z, complex_dic) #["zn"], :]
+        
         if self.kind == "Milnor":   # use only for z -> z**2 + c
 # https://www.math.univ-toulouse.fr/~cheritat/wiki-draw/index.php/Mandelbrot_set
+            dzndc = Z[complex_dic["dzndc"], :]
             d2zndc2 = Z[complex_dic["d2zndc2"], :]
             abs_zn = np.abs(zn)
             lo = np.log(abs_zn)
             normal = zn * dzndc * ((1+lo)*np.conj(dzndc * dzndc)
                           -lo * np.conj(zn * d2zndc2))
-            normal = normal / np.abs(normal)
+            # normal = normal / np.abs(normal)
 
-        elif self.kind == "potential":# safer
+        elif self.kind == "potential":
             if potential_dic["kind"] == "infinity":
-            # pulls back the normal direction from an approximation of 
-            # potential: phi = log(zn) / 2**n 
-                normal = zn / dzndc# zn / dzndc
-                normal = normal / np.abs(normal)
-#                if type(normal) == fsx.Xrange_array:
-#                    normal = normal.to_standard()
+                # pulls back the normal direction from an approximation of 
+                # potential: phi = log(|zn|) / 2**n
+                if self.holomorphic:
+                    dzndc = self.get_dzndc(Z, complex_dic) #, :]
+                    normal = zn / dzndc
+                else:
+                    (dXdA, dXdB, dYdA, dYdB) = self.get_dzndc(Z, complex_dic)
+                    # J = [dXdA dXdB]    J.T = [dXdA dYdA]   n = J.T * zn
+                    #     [dYdA dYdB]          [dXdB dYdB]
+                    normal = (
+                        (dXdA * zn.real + dYdA * zn.imag)
+                        + 1j * (dXdB * zn.real + dYdB * zn.imag)
+                    )
+                #normal = normal / np.abs(normal)
 
             elif potential_dic["kind"] == "convergent":
             # pulls back the normal direction from an approximation of
             # potential (/!\ need to derivate zr w.r.t. c...)
-            # phi = 1. / (abs(zn - zr) * abs(alpha)) 
+            # phi = 1. / (abs(zn - zr) * abs(alpha))
+                dzndc = Z[complex_dic["dzndc"], :]
                 zr = Z[complex_dic["zr"], :]
                 dzrdc = Z[complex_dic["dzrdc"], :]
                 normal = - (zr - zn) / (dzrdc - dzndc)
-                normal = normal / np.abs(normal)
+                #normal = normal / np.abs(normal)
+
+        skew = self.fractal.skew
+        if skew is not None:
+            nx = normal.real
+            ny = normal.imag
+            print("/!\ normal skewed", skew, nx.shape)
+            fs.core.apply_unskew_1d(skew, nx, ny)
+
+        normal = normal / np.abs(normal)
 
         return normal, None
 
@@ -647,15 +666,45 @@ class DEM_pp(Postproc):
         zn = self.get_zn(Z, complex_dic) #Z[complex_dic["zn"], :]
 
         if potential_dic["kind"] == "infinity":
-#            print("--> pp, DEM, inf")
             abs_zn = np.abs(zn)
-            dzndc = self.get_dzndc(Z, complex_dic, abs_zn) #, :]
-#            print("abs_zn bounds", np.min(abs_zn), np.max(abs_zn))
-#            print("dzndc bounds", np.min(np.abs(dzndc)), np.max(np.abs(dzndc)))
-            val = abs_zn * np.log(abs_zn) / np.abs(dzndc)
-#            print("val bounds", np.min(val), np.max(val))
+#            print("--> pp, DEM, inf")
+            if self.holomorphic:
+                abs_dzndc = np.abs(self.get_dzndc(Z, complex_dic)) #, :]
+                val = abs_zn * np.log(abs_zn) / abs_dzndc
+            else:
+                (dXdA, dXdB, dYdA, dYdB) = self.get_dzndc(Z, complex_dic)
+                # In which direction ? Lets take the mean
+#                abs_dzndc = np.sqrt(
+#                    dXdA ** 2 + dXdB ** 2 + dYdA ** 2 + dYdB ** 2
+#                )
+                # Lets take the maximal singular value
+# https://scicomp.stackexchange.com/questions/8899/robust-algorithm-for-2-times-2-svd
+                # J = [dXdA dXdB] = [a b]
+                #     [dYdA dYdB]   [c d]
+                Q = np.hypot(dXdA + dYdB, dXdB - dYdA)
+                R = np.hypot(dXdA - dYdB, dXdB + dYdA)
+                abs_dzndc = 0.5 * (Q + R)
+#                S1 = dXdA ** 2 + dXdB ** 2 + dYdA ** 2 + dYdB ** 2
+#                S2 = np.sqrt(
+#                    dXdA ** 2 + dXdB ** 2 + dYdA ** 2 + dYdB ** 2
+#                    + 4 * (dXdA * + dYdB)
+#                )
+#                normal = (
+#                    (dXdA * zn.real + dYdA * zn.imag)
+#                    + 1j * (dXdB * zn.real + dYdB * zn.imag)
+#                )
+#                abs_dzndc = np.abs(normal)
+#                normal = normal / np.abs(normal)
+#                # abs_dzndc = dXdA
+#                u = (
+#                    (dXdA * normal.real + dXdB * normal.imag)
+#                    + 1j * (dYdA * normal.real + dYdB * normal.imag)
+#                )
+            val = abs_zn * np.log(abs_zn) / abs_dzndc
 
         elif potential_dic["kind"] == "convergent":
+            assert self.holomorphic
+            dzndc = self.get_dzndc(Z, complex_dic)
             zr = Z[complex_dic["zr"]]
             dzrdc = Z[complex_dic["dzrdc"], :]
             val = np.abs((zr - zn) / (dzrdc - dzndc))

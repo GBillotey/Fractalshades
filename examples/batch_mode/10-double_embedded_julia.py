@@ -83,7 +83,6 @@ def plot(plot_dir):
             antialiasing=False)
 
     f.calc_std_div(
-            datatype=np.complex128,
             calc_name=calc_name,
             subset=None,
             max_iter=100000,

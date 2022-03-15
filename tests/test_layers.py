@@ -63,7 +63,7 @@ class Test_layers(unittest.TestCase):
             max_iter=1000,
             M_divergence=100.,
             epsilon_stationnary= 0.001,
-            datatype=np.complex128)
+            )
         f.clean_up(cls.calc_name)
         f.run()
         
@@ -296,7 +296,7 @@ class Test_layers(unittest.TestCase):
             max_order=250,
             max_newton=20,
             eps_newton_cv=1.e-12,
-            datatype=np.complex128)
+        )
         f.clean_up(interior_calc_name)
         f.run()
 

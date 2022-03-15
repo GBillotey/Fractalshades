@@ -63,7 +63,7 @@ def plot(plot_dir):
         max_iter=25000,
         M_divergence=100.,
         epsilon_stationnary= 0.005,
-        datatype=np.complex128)
+    )
     # f.clean_up(calc_name) # keep this line if you want to force recalculation
     f.run()
 
