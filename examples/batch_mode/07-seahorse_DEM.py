@@ -52,7 +52,7 @@ def plot(plot_dir):
         max_iter=20000,
         M_divergence=100.,
         epsilon_stationnary= 0.005,
-        datatype=np.complex128)
+    )
     f.run()
 
     # Plot the image

@@ -1153,8 +1153,8 @@ cdef void iter_J_BS(
     mpfr_mul(_tmp, yn_t, dyndx_t, MPFR_RNDN)
     mpfr_sub(tmp_xx, tmp_xx, _tmp, MPFR_RNDN)
 #    print("before, tmp_xx", mpfr_get_d(tmp_xx, MPFR_RNDN), var_ab_xy)
-    if var_ab_xy == 0:
-        mpfr_add_si(tmp_xx, tmp_xx, 1, MPFR_RNDN)
+#    if var_ab_xy == 0:
+#        mpfr_add_si(tmp_xx, tmp_xx, 0.5, MPFR_RNDN)
 #        print("after, tmp_xx", mpfr_get_d(tmp_xx, MPFR_RNDN))
 
     # dxndy <- 2 * (xn * dxndy - yn * dyndy)
@@ -1175,14 +1175,19 @@ cdef void iter_J_BS(
     mpfr_mul(_tmp, abs_yn, dxndy_t, MPFR_RNDN)
     mpfr_mul_si(_tmp, _tmp, sgn_xn, MPFR_RNDN)
     mpfr_add(tmp_yy, tmp_yy, _tmp, MPFR_RNDN)
-    if var_ab_xy == 0:
-        mpfr_add_si(tmp_yy, tmp_yy, -1, MPFR_RNDN)
+#    if var_ab_xy == 0:
+#        mpfr_add_si(tmp_yy, tmp_yy, -1, MPFR_RNDN)
 
     # push the result
     mpfr_mul_si(dxndx_t, tmp_xx, 2, MPFR_RNDN)
     mpfr_mul_si(dxndy_t, tmp_xy, 2, MPFR_RNDN)
     mpfr_mul_si(dyndx_t, tmp_yx, 2, MPFR_RNDN)
     mpfr_mul_si(dyndy_t, tmp_yy, 2, MPFR_RNDN)
+
+    if var_ab_xy == 0:
+        mpfr_add_si(dxndx_t, dxndx_t, 1, MPFR_RNDN)
+        mpfr_add_si(dyndy_t, dyndy_t, -1, MPFR_RNDN)
+
     return
 
 
@@ -1293,7 +1298,7 @@ def perturbation_BS_nucleus_size_estimate(
     Note: 
     -----
     C-translation of the following python code for Mandelbrot
-    l becomes the jacobian matrix
+    l becomes the jacobian matrix for the Burning ship
 
         def nucleus_size_estimate(c, order):
             z = mpmath.mpc(0., 0.)
@@ -1366,8 +1371,8 @@ def perturbation_BS_nucleus_size_estimate(
         det(delta_t, dxndx_t, dxndy_t, dyndx_t, dyndy_t, _tmp)
         mpfr_ui_div(delta_t, ui_one, delta_t, MPFR_RNDN)
         # Now, by components
-        # Ln^-1 = delta * [ dyndy  -dxndy]
-        #                 [-dyndx   dxndx]
+        # Ln^-1 = 1/delta * [ dyndy  -dxndy]
+        #                   [-dyndx   dxndx]
         mpfr_mul(_tmp, delta_t, dyndy_t, MPFR_RNDN)
         mpfr_add(bn_xx_t, bn_xx_t, _tmp, MPFR_RNDN)
         
@@ -1393,15 +1398,19 @@ def perturbation_BS_nucleus_size_estimate(
     mpfr_rec_sqrt(delta_t, _tmp, MPFR_RNDN)
     size = mpfr_t_to_Xrange(delta_t)
     
-    # Skew : normalized(beta)^-1  TODO seems False, transpose COMATRICE 
-    mpfr_ui_div(tmp_xx, ui_one, tmp_xx, MPFR_RNDN)
-    mpfr_mul(bn_xx_t, bn_xx_t, tmp_xx, MPFR_RNDN)
-    mpfr_mul(bn_xy_t, bn_xy_t, tmp_xy, MPFR_RNDN)
-    mpfr_mul(bn_yx_t, bn_yx_t, tmp_yx, MPFR_RNDN)
-    mpfr_mul(bn_yy_t, bn_yy_t, tmp_yy, MPFR_RNDN)
+    # Skew : SKEW = normalized(beta)^-1
+    # However we ALSO need to change basis (because of the minus sign before b)
+    # so M -> P^-1 M P where :
+    #   P = [1  0]   M = SKEW  so in the end SKEW = [yy xy]
+    #       [0 -1]                                  [yx xx]
+    mpfr_rec_sqrt(_tmp, tmp_xx, MPFR_RNDN) # Here tmp_xx is det(beta)
+    mpfr_mul(bn_xx_t, bn_xx_t, _tmp, MPFR_RNDN)
+    mpfr_mul(bn_xy_t, bn_xy_t, _tmp, MPFR_RNDN)
+    mpfr_mul(bn_yx_t, bn_yx_t, _tmp, MPFR_RNDN)
+    mpfr_mul(bn_yy_t, bn_yy_t, _tmp, MPFR_RNDN)
     skew = np.array((
-            (mpfr_get_d(bn_yy_t, MPFR_RNDN), -mpfr_get_d(bn_yx_t, MPFR_RNDN)),
-            (-mpfr_get_d(bn_xy_t, MPFR_RNDN), mpfr_get_d(bn_xx_t, MPFR_RNDN))
+            (mpfr_get_d(bn_yy_t, MPFR_RNDN), mpfr_get_d(bn_xy_t, MPFR_RNDN)),
+            (mpfr_get_d(bn_yx_t, MPFR_RNDN), mpfr_get_d(bn_xx_t, MPFR_RNDN))
         ),
         dtype=np.float64
     )
@@ -1714,6 +1723,8 @@ def perturbation_BS_find_any_nucleus(
     # Value of epsilon
     # 64 = 2**4 * 4  - see the notes below on mpmath.almosteq
     mpfr_mul_si(eps_t, eps_t, 64, MPFR_RNDN) 
+    
+    # print("max_newton", max_newton, "order", order, mpfr_get_d(eps_t, MPFR_RNDN))
 
     for i_newton in range(max_newton):
         # zr = dzrdc = dh = 0 /  h = 1
@@ -1733,8 +1744,8 @@ def perturbation_BS_find_any_nucleus(
             )
             iter_BS(xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t)
 
-        # [da] = [a] - J-1 x [xn]
-        # [db]   [b]         [yn]
+        # [da] = -J^-1 x [xn]
+        # [db]           [yn]
         matsolve(
             da_t, db_t,
             dxnda_t, dxndb_t, dynda_t, dyndb_t,
@@ -1763,12 +1774,16 @@ def perturbation_BS_find_any_nucleus(
 
         mpfr_hypot(abs_diff, da_t, db_t, MPFR_RNDN)
         cmp = mpfr_greaterequal_p(eps_t, abs_diff)
+        # print(i, mpfr_get_d(abs_diff, MPFR_RNDN))
         if cmp != 0:
             # Sanity check that c_t is not a 'red herring' - zr_t shall be null
             # with 'enough' precision - depend on local pixel size
             mpfr_hypot(abs_diff, xn_t, yn_t, MPFR_RNDN)
             mpfr_set_str(eps_t, seed_eps_valid, 10, MPFR_RNDN)
             newton_cv  = (mpfr_greaterequal_p(eps_t, abs_diff) != 0)
+            print("Newton cv ?", i, newton_cv,
+                  mpfr_get_d(eps_t, MPFR_RNDN), mpfr_get_d(abs_diff, MPFR_RNDN)
+            )
             break
 
     mpc_set_fr_fr(c_t, a_t, b_t, MPC_RNDNN)

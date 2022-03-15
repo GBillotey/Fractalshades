@@ -63,7 +63,7 @@ def plot(plot_dir=None):
         max_iter=5000,
         M_divergence=100.,
         epsilon_stationnary= 0.001,
-        datatype=np.complex128)
+    )
     # f.clean_up("escaping") # keep this line if you want to force recalculate
     f.run()
     

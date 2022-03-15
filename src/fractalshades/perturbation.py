@@ -19,9 +19,10 @@ class PerturbationFractal(fs.Fractal):
         """
 Base class for escape-time fractals calculations implementing the 
 perturbation technique, with an iteration matching:
-    z_(n+1) = f(z_n) + c, critial point at 0
 
-Derived class should implement the actual function f
+z_(n+1) = f(z_n) + c, critial point at 0
+
+Derived classes should implement the actual function f
 
 Parameters
 ----------
@@ -42,7 +43,13 @@ directory : str
              xy_ratio: float,
              theta_deg: float,
              projection: str="cartesian",
-             antialiasing: bool=False):
+             antialiasing: bool=False,
+             has_skew: bool=False,
+             skew_00: float=1.,
+             skew_01: float=0.,
+             skew_10: float=0.,
+             skew_11: float=1.
+        ):
         """
         Define and stores as class-attributes the zoom parameters for the next
         calculation.
@@ -68,6 +75,8 @@ directory : str
             Kind of projection used (only "cartesian" supported)
         antialiasing : bool
             If True, some degree of randomization is applied
+        has_skew : bool
+            If True, unskew the view base on skew coefficients skew_ii
         """
         mpmath.mp.dps = precision # in base 10 digit 
         
@@ -75,6 +84,13 @@ directory : str
         self.x = mpmath.mpf(x)
         self.y = mpmath.mpf(y)
         self.dx = mpmath.mpf(dx)
+
+        # Stores the skew matrix
+        self._skew = None
+        if has_skew:
+            self._skew = np.array(
+                ((skew_00, skew_01), (skew_10, skew_11)), dtype=np.float64
+            )
 
     def new_status(self, wget):
         """ Return a dictionnary that can hold the current progress status """
@@ -458,7 +474,6 @@ directory : str
             (Zn_path, has_xr, ref_index_xr, refx_xr, refy_xr,
              ref_div_iter, ref_order, driftx_xr, drifty_xr,
              dx_xr) = self.get_path_data()
-            print("1. refx_xr", refx_xr.shape)
 
         if has_status_bar:
             self.set_status("Reference", "completed")
@@ -503,7 +518,6 @@ directory : str
                     self.dfxdx, self.dfxdy, self.dfydx, self.dfydy,
                     dx_xr, xr_detect_activated
                 )
-                print("2. refx_xr", refx_xr.shape)
                 if xr_detect_activated:
                     dXnda_path = dXnda_xr_path
                     dXndb_path = dXndb_xr_path
@@ -553,7 +567,6 @@ directory : str
 
         # Launch parallel computing of the inner-loop (Multi-threading with GIL
         # released)
-        print("3. refx_xr", refx_xr.shape)
         self.cycles(
             Zn_path, dZndc_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
             has_xr, ref_index_xr, ref_xr, refx_xr, refy_xr,
@@ -622,7 +635,6 @@ directory : str
             *stop_reason*   Byte codes -> reasons for termination [:]  np.int8
             *stop_iter*     Numbers of iterations when stopped [:]     np.int32
         """
-        print("3. refx_xr", refx_xr.shape)
 
         if self.is_interrupted():
             print("interrupted", chunk_slice)
@@ -630,6 +642,8 @@ directory : str
 
         if self.res_available(chunk_slice):
             print("res available: ", chunk_slice)
+            if hasattr(self, "_status_wget"):
+                self.incr_tiles_status()
             return
 
         (c_pix, Z, U, stop_reason, stop_iter
@@ -652,33 +666,6 @@ directory : str
                 self._interrupted
             )
         else:
-            # c_pix -> keep it
-            # drift_xr -> driftx_xr, drifty_xr
-#            print("c_pix", c_pix.shape, c_pix.dtype)
-#            print("Z", Z.shape, Z.dtype)
-#            print("U", U.shape, U.dtype)
-#            print("stop_reason", stop_reason.shape, stop_reason.dtype)
-#            print("stop_iter", stop_iter.shape, stop_iter.dtype)
-#            print("initialize", initialize)
-#            print("iterate", iterate)
-#            print("Zn_path", Zn_path.shape)
-#            print("dXnda_path", dXnda_path.shape)
-#            print("dXndb_path", dXndb_path.shape)
-#            print("dYnda_path", dYnda_path.shape)
-#            print("dYndb_path", dYndb_path.shape)
-#            print("has_xr", has_xr)
-#            print("refx_xr", refx_xr.shape)
-#            print("refy_xr", refy_xr.shape)
-#            print("driftx_xr", driftx_xr.shape, driftx_xr.dtype)
-#            print("drifty_xr", drifty_xr.shape, drifty_xr.dtype)
-#            print("dx_xr", dx_xr.shape, dx_xr.dtype)
-#            print("P", P)
-#            print("kc", kc)
-#            print("n_iter", n_iter)
-#            print("M_bla", M_bla.shape, M_bla.dtype)
-#            print("r_bla", r_bla.shape, r_bla.dtype)
-#            print("bla_len", "stages_bla", bla_len, stages_bla)
-
             ret_code = numba_cycles_perturb_BS(
                 c_pix, Z, U, stop_reason, stop_iter,
                 initialize, iterate,
@@ -772,6 +759,7 @@ directory : str
         M_bla, r_bla, stages_bla
         """
         kc = self.kc
+        print("mabe BLA tree")
 
         if self.holomorphic:
             dfdz = self.dfdz
@@ -1025,7 +1013,8 @@ ball_order = {{
 """
         return res_str
 
-    def newton_search(self, x, y, pix, dps,
+
+    def _newton_search(self, x, y, pix, dps,
                           maxiter: int=100000,
                           radius_pixels: int=3):
         """ x, y : coordinates of the event """
@@ -1059,17 +1048,37 @@ ball_order = {{
                     yn_str = str(c_newton.imag)
 
         if newton_cv:
-            nucleus_size, julia_size = self._nucleus_size_estimate(
+            size_estimates = self._nucleus_size_estimate(
                 c_newton, order
             )
         else:
-            nucleus_size = None
-            julia_size = None
+            size_estimates = None
             xn_str = ""
             yn_str = ""
 
         x_str = str(x)
         y_str = str(y)
+        
+        return (
+            x_str, y_str, maxiter, radius_pixels, radius_str, dps, order,
+            xn_str, yn_str, size_estimates
+        )
+
+
+    def newton_search(self, x, y, pix, dps, maxiter: int=100000,
+                      radius_pixels: int=3):
+        """ x, y : coordinates of the event """
+        (
+            x_str, y_str, maxiter, radius_pixels, radius_str, dps, order,
+            xn_str, yn_str, size_estimates
+        ) = self._newton_search(
+            x, y, pix, dps, maxiter, radius_pixels
+        )
+        if size_estimates is not None:
+            (nucleus_size, julia_size) = size_estimates
+        else:
+            nucleus_size = None
+            julia_size = None
 
         res_str = f"""
 newton_search = {{
@@ -1094,7 +1103,7 @@ newton_search = {{
 Xr_template = fsx.Xrange_array.zeros([1], dtype=np.complex128)
 Xr_float_template = fsx.Xrange_array.zeros([1], dtype=np.float64)
 USER_INTERRUPTED = 1
-STG_COMPRESSED = 3
+STG_COMPRESSED = fs.settings.BLA_compression
 STG_SKIP_MASK = (1 << STG_COMPRESSED) - 1
 
 @numba.njit(nogil=True)
@@ -1155,6 +1164,9 @@ def numba_cycles_perturb(
 
         if _interrupted[0]:
             return USER_INTERRUPTED
+        
+#        print("###############################################################")
+        
     return 0
 
 
@@ -1223,9 +1235,14 @@ def numba_iterate(
         #    ref_orbit_len = min(order, ref_orbit_len)
         ref_orbit_len = Zn_path.shape[0]
         first_invalid_index = min(ref_orbit_len, ref_div_iter, ref_order)
-        M_out = np.array((2,), dtype=np.complex128)
+        M_out = np.empty((2,), dtype=np.complex128)
+        
+#        print("star anew:\n", ref_index_xr, "\n", ref_xr)
 
         while True:
+#            if True: # debug
+#                print("n_iter", n_iter, w_iter,
+#                      fsxn.to_Xrange_scalar(Z_xr[zn]), Z_xr[zn], Z[zn])
             #==========================================================
             # Try a BLA_step
             if BLA_activated and (w_iter & STG_SKIP_MASK) == 0:
@@ -1246,6 +1263,7 @@ def numba_iterate(
                 if step != 0:
                     n_iter += step
                     w_iter = (w_iter + step) % ref_order
+#                    print("step", step, n_iter, w_iter, M_out[0], M_out[1])
                     if xr_detect_activated:
                         Z_xr[zn] = M_out[0] * Z_xr[zn] + M_out[1] * c_xr
                         # /!\ keep this, needed for next BLA step
@@ -1293,12 +1311,28 @@ def numba_iterate(
             #------------------------------------------------------------------
             # zn subblok
             if xr_detect_activated:
-                # Z_xr[zn] = p_iter_zn(Z_xr, ref_zn_xr, c_xr)# in place mod
-                p_iter_zn(Z_xr, ref_zn_xr, c_xr)# in place mod
+#                if w_iter == 0:
+##                    print("incoming", n_iter, fsxn.to_Xrange_scalar(Z_xr[zn]),
+##                          ref_zn_xr, c_xr)
+##                    print( 2. * ref_zn_xr) # OK
+##                    print((Z_xr[zn] + 2. * ref_zn_xr)) # ok
+#                    a = 2. * ref_zn_xr
+#                    b = Z_xr[zn] # problem, b is (3.29025725e-165+2.46664303e-165j, 0)
+#                    c = (Z_xr[zn] + 2. * ref_zn_xr)
+#                    d = a + b
+#                    print("a", a.mantissa, a.exp, a)
+#                    print("b", b.mantissa, b.exp, b)
+#                    print("c", c.mantissa, c.exp, c)
+#                    print("d", d.mantissa, d.exp, d)
+#
+#                    print(Z_xr[zn] * (Z_xr[zn] + 2. * ref_zn_xr))
+#                    print(Z_xr[zn] * (Z_xr[zn] + 2. * ref_zn_xr) + c_xr)
+                p_iter_zn(Z_xr, ref_zn_xr, c_xr)# in place mod // Z[zn] = Z[zn] * (Z[zn] + 2. * ref_zn) + c
                 # std is used for div condition 
                 Z[zn] = fsxn.to_standard(Z_xr[zn])
+#                if w_iter == 0:
+#                    print("out", fsxn.to_Xrange_scalar(Z_xr[zn]), Z[zn])
             else:
-                # Z[zn] = p_iter_zn(Z, ref_zn, c)
                 p_iter_zn(Z, ref_zn, c)
 
             #==================================================================
@@ -1328,7 +1362,7 @@ def numba_iterate(
                 ref_zn_next = fs.perturbation.ref_path_get(
                     Zn_path, w_iter,
                     has_xr, ref_index_xr, ref_xr, refpath_ptr,
-                    out_is_xr, out_xr, 1
+                    out_is_xr, out_xr, 0
                 )
             else:
                 ref_zn_next = Zn_path[w_iter]
@@ -1347,10 +1381,11 @@ def numba_iterate(
             # Glitch correction - reference point diverging
             if (w_iter >= ref_div_iter - 1):
                 # Rebasing - we are already big no underflow risk
-#                print("diverging rebase", w_iter)
+#                print("############# diverging rebase", w_iter)
                 Z[zn] = ZZ
                 if xr_detect_activated:
                     Z_xr[zn] = fsxn.to_Xrange_scalar(ZZ)
+
 #                if calc_dzndc:
 #                    Z[dzndc] = Z[dzndc] + dZndc_path[w_iter]
                 w_iter = 0
@@ -1368,19 +1403,26 @@ def numba_iterate(
                     # Note: if Z[zn] underflows we might miss a rebase
                     # So we cast everything to xr
                     Z_xrn = Z_xr[zn]
-                    if out_is_xr[1]:
+                    if out_is_xr[0]:
                         # Reference underflows, use available xr ref
-                        ZZ_xr = Z_xrn + out_xr[1]
+#                        print("******out_xr ", out_xr[0], fsxn.to_Xrange_scalar(out_xr[0]))
+                        ZZ_xr = Z_xrn + out_xr[0]
                     else:
                         ZZ_xr = Z_xrn + ref_zn_next
+#                        print("******ZZ_xr ", ZZ_xr, ZZ_xr.exp, ZZ_xr.mantissa, "----", Z_xrn, ref_zn_next)
 
                     bool_dyn_rebase_xr = (
                         fsxn.extended_abs2(ZZ_xr)
                         <= fsxn.extended_abs2(Z_xrn)   
                     )
                     if bool_dyn_rebase_xr:
+                        
+#                        print("bool_dyn_rebase_xr", w_iter, ZZ_xr,
+#                              fsxn.to_Xrange_scalar(Z_xr[zn]), out_is_xr[0], fsxn.to_Xrange_scalar(out_xr[0]), ref_zn_next,
+#                              )
                         Z_xr[zn] = ZZ_xr
-                        # Z[zn] = fsxn.to_standard(ZZ_xr)
+                        # /!\ keep this, needed for next BLA step - TODO: for BS
+                        Z[zn] = fsxn.to_standard(ZZ_xr)
                         if calc_dzndc:
                             Z_xr[dzndc] = Z_xr[dzndc] + dZndc_path[w_iter]
                         w_iter = 0
@@ -1466,7 +1508,8 @@ def numba_cycles_perturb_BS(
             has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
             refpath_ptr, out_is_xr, out_xr, M_bla, r_bla, bla_len, stages_bla
         )
-        stop_iter[0, ipt] = n_iter
+        # print('n_iter', n_iter)
+        stop_iter[0, ipt] = n_iter#n_iterv- debug
         stop_reason[0, ipt] = stop_pt[0]
         
         # print("after iterate", ipt, npts)
@@ -1524,22 +1567,21 @@ def numba_iterate_BS(
         #    ref_orbit_len = min(order, ref_orbit_len)
         ref_orbit_len = Zn_path.shape[0]
         first_invalid_index = min(ref_orbit_len, ref_div_iter, ref_order)
-        M_out = np.array((8,), dtype=np.float64)
+        M_out = np.empty((8,), dtype=np.float64)
 
         while True:
             #==========================================================
             # Try a BLA_step
-            if BLA_activated and (w_iter & STG_SKIP_MASK) == 0 and False:
+            if BLA_activated and (w_iter & STG_SKIP_MASK) == 0: # and False:
                 Zn = Z[xn] + 1j * Z[yn]
+#                assert len(M_out) == 8
                 step = ref_BLA_get(
                     M_bla, r_bla, bla_len, stages_bla, Zn, w_iter,
                     first_invalid_index, M_out, False
                 )
-#                ref_BLA_get(M_bla, r_bla, bla_len, stages_bla, zn, n_iter,
-#                first_invalid_index, M_out, holomorphic):
                 
-                if step != 0:
-                    # print("BLA skipping", step)
+                if step != 0:# and False:
+                    # print("BLA skipping", w_iter, step)
                     n_iter += step
                     w_iter = (w_iter + step) % ref_order
                     if xr_detect_activated:
@@ -1552,6 +1594,7 @@ def numba_iterate_BS(
                                                dxnda, dxndb, dynda, dyndb)
                     else:
                         # just the usual BLA step
+                        # if False:
                         apply_BLA_BS(M_out, Z, a, b, xn, yn)
                         if calc_hessian:
                             apply_BLA_deriv_BS(M_out, Z, a, b,
@@ -1573,7 +1616,6 @@ def numba_iterate_BS(
                     ref_zn, out_xr[0], out_xr[2], out_is_xr[0]
                 )
             else:
-                # print("no skip", w_iter, Zn_path.shape)
                 ref_zn = Zn_path[w_iter]
                 ref_xn = ref_zn.real
                 ref_yn = ref_zn.imag
@@ -1582,7 +1624,7 @@ def numba_iterate_BS(
             # Pertubation iter block
             #------------------------------------------------------------------
             # dzndc subblock
-            if calc_hessian:# and False:
+            if calc_hessian:
                 ref_dxnda = dXnda_path[w_iter] # Note this may be Xrange
                 ref_dxndb = dXndb_path[w_iter]
                 ref_dynda = dYnda_path[w_iter]
@@ -1647,10 +1689,8 @@ def numba_iterate_BS(
             #==================================================================
             # Glitch correction - reference point diverging
             if (w_iter >= ref_div_iter - 1):
-#                assert False
                 # print("reference point diverging rebase")
                 # Rebasing - we are already big no underflow risk
-#                print("diverging rebase", w_iter)
                 Z[xn] = XX
                 Z[yn] = YY
                 if xr_detect_activated:
@@ -1729,6 +1769,8 @@ def apply_BLA_BS(M, Z, a, b, xn, yn):
 
 @numba.njit
 def apply_BLA_deriv_BS(M, Z, a, b, dxnda, dxndb, dynda, dyndb):
+#    assert dxnda >= 0
+#    assert dxndb < len(Z)
     Z_dxnda = M[0] * Z[dxnda] + M[1] * Z[dynda]
     Z_dxndb = M[0] * Z[dxndb] + M[1] * Z[dyndb]
     Z_dynda = M[2] * Z[dxnda] + M[3] * Z[dynda]
@@ -1872,7 +1914,7 @@ def numba_make_BLA_BS(Zn_path, dfxdx, dfxdy, dfydx, dfydy, kc, eps):
     # number of needed "stages" is (ref_orbit_len).bit_length()
     kc_std = fsxn.to_standard(kc[0])
     ref_orbit_len = Zn_path.shape[0]
-    print("ref_orbit_len", ref_orbit_len)
+    print("ref_orbit_len in BLA", ref_orbit_len)
     bla_dim = 8
     M_bla = np.zeros((2 * ref_orbit_len, bla_dim), dtype=numba.float64)
     r_bla = np.zeros((2 * ref_orbit_len,), dtype=numba.float64)
@@ -1916,9 +1958,21 @@ def init_BLA(M_bla, r_bla, Zn_path, dfdz, kc_std, eps):
         # We could additionnally consider a criterian based on hessian
         # |z| < A e / h where h Hessian - not useful (redundant)
         # for Mandelbrot & al.
-        mZ = np.abs(Zn_path[i]) # for Burning ship & al use rather:
-                                # mZ = min(Zn_path[i].real, Zn_path[i].imag);
-        r_bla[i_0] = mZ * eps
+        mZ = np.abs(Zn_path[i])
+        ii = (i + 1) % ref_orbit_len
+        mZZ = np.abs(Zn_path[ii])
+        # mA = np.abs(M_bla[i_0, 0])
+
+        r_bla[i_0] = max(
+            0.,
+            min(
+                # error term is negligible
+                mZ * eps,  
+                # Avoid dyn glitch at next step
+                mZZ * eps
+                # ((0.5 * mZZ) - kc_std) / (1. + mA)
+            )
+        )
 
     # Now the combine step
     # number of needed "stages" (ref_orbit_len).bit_length()
@@ -1959,8 +2013,8 @@ def init_BLA_BS(M_bla, r_bla, Zn_path, dfxdx, dfxdy, dfydx, dfydy,
         #  M_1 = [M[0] M[1]]   M_1_init = [dfxdx dfxdy]
         #        [M[2] M[3]]              [dfydx dfydy]
         #
-        #  M_2 = [M[4] M[5]]   M_2_init = [1 0]
-        #        [M[6] M[7]]              [0 1]
+        #  M_2 = [M[4] M[5]]   M_2_init = [1  0]
+        #        [M[6] M[7]]              [0 -1]
         #
 
         Zn_i = Zn_path[i]
@@ -1975,9 +2029,12 @@ def init_BLA_BS(M_bla, r_bla, Zn_path, dfxdx, dfxdy, dfydx, dfydy,
         M_bla[i_0, 4] = 1.
         M_bla[i_0, 5] = 0.
         M_bla[i_0, 6] = 0.
-        M_bla[i_0, 7] = 1.
+        M_bla[i_0, 7] = -1.
 
         mZ = min(abs(Xn_i), abs(Yn_i))
+        # ii = (i + 1) % ref_orbit_len
+        
+        
         r_bla[i_0] =  mZ * eps
 
     # Now the combine step
@@ -2097,8 +2154,18 @@ def combine_BLA_BS(M, r, kc_std, stg, ref_orbit_len, eps):
         r2 = r[index2]
         # r1 is a direct criteria however for r2 we need to go 'backw the flow'
         # z0 -> z1 -> z2 with z1 = A1 z0 + B1 c, |z1| < r2
-        mA1 = np.abs(M[index1, 0])
-        mB1 = np.abs(M[index1, 1])
+        mA1 = max(
+            np.abs(M[index1, 0]), 
+            np.abs(M[index1, 1]),
+            np.abs(M[index1, 2]), 
+            np.abs(M[index1, 3]),
+        )
+        mB1 = max(
+            np.abs(M[index1, 4]), 
+            np.abs(M[index1, 5]),
+            np.abs(M[index1, 6]), 
+            np.abs(M[index1, 7]),
+        )
         r2_backw = max(0., (r2 - mB1 * kc_std) / (mA1 + 1.)) # might use eps ?
         r[index_res] = min(r1, r2_backw)
 
@@ -2121,10 +2188,10 @@ def compress_BLA(M_bla, r_bla, stages):
         step = (1 << stg)
         for i in range(0, ref_orbit_len - step, step):
             index = BLA_index(i, stg)
-            assert (i % k_comp) == 0 # debug
             new_index = BLA_index(i // k_comp, stg - STG_COMPRESSED)
             for d in range(bla_dim):
                 M_bla_new[new_index + d * new_len] = M_bla[index, d]
+
             r_bla_new[new_index] = r_bla[index]
     print("BLA tree compressed with coeff:", k_comp)
     return M_bla_new, r_bla_new, new_len
@@ -2175,10 +2242,10 @@ def ref_BLA_get(M_bla, r_bla, bla_len, stages_bla, zn, n_iter,
         if step >= invalid_step:
             continue
         index_bla = BLA_index(n_iter // k_comp, stg - STG_COMPRESSED)
-        # assert(index_bla < len(r_bla))
+
         r = r_bla[index_bla]
         # /!\ Use strict comparisons here: to rule out underflow
-        if ((abs(zn.real) < r) and (abs(zn.imag) < r)):
+        if (abs(zn) < r):
             if holomorphic:
                 M_out[0] = M_bla[index_bla]
                 M_out[1] = M_bla[index_bla + bla_len]
@@ -2264,10 +2331,6 @@ def ref_path_c_from_pix_BS(pix, dx, driftx_xr, drifty_xr):
     -------
     a, b, a_xr, b_xr : c value as complex and as Xrange
     """
-#    print("pix", pix)
-#    print("dx", dx[0])
-#    print("driftx_xr[0]", driftx_xr[0])
-#    print("drifty_xr[0]", drifty_xr[0])
     a_xr = (pix.real * dx[0]) + driftx_xr[0]
     b_xr = (pix.imag * dx[0]) + drifty_xr[0]
     return fsxn.to_standard(a_xr), fsxn.to_standard(b_xr), a_xr, b_xr
@@ -2350,7 +2413,7 @@ def numba_dZndc_path_BS(Zn_path, has_xr, ref_index_xr, refx_xr, refy_xr,
 
         refpath_ptr = np.zeros((2,), dtype=numba.int32)
         out_is_xr = np.zeros((1,), dtype=numba.bool_)
-        out_xr = Xr_float_template.repeat(1)
+        out_xr = Xr_float_template.repeat(2) # coord X, coord Y
 
         for i in range(1, valid_pts):
             from_i = i - 1
@@ -2535,7 +2598,7 @@ def ref_path_get_BS(ref_path, idx, has_xr, ref_index_xr, refx_xr, refy_xr, refpa
 
     idx :
         index requested
-    (prev_idx, curr_xr) :
+    refpath_ptr = (prev_idx, curr_xr) :
         couple returned from last call, last index requested + next xr target
         Contract : curr_xr the smallest integer that verify :
             prev_idx <= ref_index_xr[curr_xr]
@@ -2551,6 +2614,7 @@ def ref_path_get_BS(ref_path, idx, has_xr, ref_index_xr, refx_xr, refy_xr, refpa
         prev_idx == refpath_ptr[0] : int
         curr_xr == refpath_ptr[1] : int (index in path ref_xr)
     """
+
     if not(has_xr):
         return ref_path[idx]
 
@@ -2593,6 +2657,8 @@ def ref_path_get_BS(ref_path, idx, has_xr, ref_index_xr, refx_xr, refy_xr, refpa
         # Here idx == ref_index_xr[refpath_ptr[1]]
         refpath_ptr[0] = idx
         out_is_xr[outx_index] = True
+
+
         out_xr[outx_index] = refx_xr[refpath_ptr[1]]
         out_xr[outy_index] = refy_xr[refpath_ptr[1]]
 

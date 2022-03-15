@@ -32,7 +32,7 @@ class Mandelbrot(fs.Fractal):
             max_iter: int,
             M_divergence: float,
             epsilon_stationnary: float,
-            datatype):
+    ):
         """
     Basic iterations for Mandelbrot standard set (power 2).
 
@@ -54,8 +54,6 @@ class Mandelbrot(fs.Fractal):
         cumulated dzndz product). If reached, the loop is exited with exit
         code "stationnary" (Those points should belong to Mandelbrot set
         interior). A typical value is 1.e-3
-    datatype :
-        The dataype for operation on complex. Usually `np.complex128`
         
     Notes
     =====
@@ -67,7 +65,7 @@ class Mandelbrot(fs.Fractal):
         int_codes = []
         stop_codes = ["max_iter", "divergence", "stationnary"]
         self.codes = (complex_codes, int_codes, stop_codes)
-        self.init_data_types(datatype)
+        self.init_data_types(np.complex128)
 
         self.potential_M = M_divergence
 
@@ -122,7 +120,7 @@ class Mandelbrot(fs.Fractal):
             max_order,
             max_newton,
             eps_newton_cv,
-            datatype):
+    ):
         """
     Newton iterations for Mandelbrot standard set interior (power 2).
 
@@ -142,8 +140,6 @@ class Mandelbrot(fs.Fractal):
     eps_newton_cv : float
         A small float to qualify the convergence of the Newton iteration
         Usually a fraction of a view pixel.
-    datatype :
-        The dataype for operation on complex. Usually `np.complex128`
         
     Notes
     =====
@@ -180,7 +176,7 @@ class Mandelbrot(fs.Fractal):
         int_codes = ["order"]
         stop_codes = ["max_order", "order_confirmed"]
         self.codes = (complex_codes, int_codes, stop_codes)
-        self.init_data_types(datatype)
+        self.init_data_types(np.complex128)
 
         def initialize():
             @numba.njit
@@ -313,7 +309,6 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
     @fs.utils.calc_options
     def calc_std_div(self, *,
         calc_name: str,
-        # datatype,
         subset,
         max_iter: int,
         M_divergence: float,
@@ -360,17 +355,29 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
            * - SA_err
              - float: relative error criteria (default: 1.e-6)
 
-        if `None` SA is not activated.
+        if `None` SA is not activated. This option is kept f
+    BLA_params :
+        The dictionnary of parameters for Bilinear Approximation :
+
+        .. list-table:: 
+           :widths: 20 80
+           :header-rows: 1
+
+           * - keys
+             - values 
+           * - SA_err
+             - float: relative error criteria (default: 1.e-6)
+
+        if `None` BLA is not activated.
     interior_detect : bool
         EXPERIMENTAL for perturbation.
         If True activates interior point detection
-        
+
     References
     ==========
-    .. [1] <https://mathr.co.uk/blog/2021-05-14_deep_zoom_theory_and_practice.html>
+    .. [1] At the Helm of the Burning Ship - Claude Heiland-Allen, 2019
+           <http://dx.doi.org/10.14236/ewic/EVA2019.74>
 
-    .. [2] <http://www.fractalforums.com/announcements-and-news>
-        
         """
         self.init_data_types(np.complex128)
 
@@ -420,20 +427,10 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
             and (self.dx < fs.settings.newton_zoom_level)
         )
 
-#        @numba.njit
-#        def _f(z):
-#            return z * z
-#        self.f = _f
-
         @numba.njit
         def _dfdz(z):
             return 2. * z
         self.dfdz = _dfdz
-
-#        @numba.njit
-#        def _d2fdz2(z):
-#            return 2.
-#        self.d2fdz2 = _d2fdz2
 
         #----------------------------------------------------------------------
         # Defines SA_loop via a function factory - jitted implementation

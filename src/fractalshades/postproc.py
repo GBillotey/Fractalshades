@@ -2,7 +2,8 @@
 import numpy as np
 from numpy.lib.format import open_memmap
 
-import fractalshades.numpy_utils.xrange as fsx
+import fractalshades as fs
+#import fractalshades.numpy_utils.xrange as fsx
 import fractalshades.numpy_utils.expr_parser as fs_parser
 
 
@@ -561,7 +562,7 @@ class DEM_normal_pp(Postproc):
             lo = np.log(abs_zn)
             normal = zn * dzndc * ((1+lo)*np.conj(dzndc * dzndc)
                           -lo * np.conj(zn * d2zndc2))
-            normal = normal / np.abs(normal)
+            # normal = normal / np.abs(normal)
 
         elif self.kind == "potential":
             if potential_dic["kind"] == "infinity":
@@ -578,7 +579,7 @@ class DEM_normal_pp(Postproc):
                         (dXdA * zn.real + dYdA * zn.imag)
                         + 1j * (dXdB * zn.real + dYdB * zn.imag)
                     )
-                normal = normal / np.abs(normal)
+                #normal = normal / np.abs(normal)
 
             elif potential_dic["kind"] == "convergent":
             # pulls back the normal direction from an approximation of
@@ -588,7 +589,16 @@ class DEM_normal_pp(Postproc):
                 zr = Z[complex_dic["zr"], :]
                 dzrdc = Z[complex_dic["dzrdc"], :]
                 normal = - (zr - zn) / (dzrdc - dzndc)
-                normal = normal / np.abs(normal)
+                #normal = normal / np.abs(normal)
+
+        skew = self.fractal.skew
+        if skew is not None:
+            nx = normal.real
+            ny = normal.imag
+            print("/!\ normal skewed", skew, nx.shape)
+            fs.core.apply_unskew_1d(skew, nx, ny)
+
+        normal = normal / np.abs(normal)
 
         return normal, None
 

@@ -10,6 +10,10 @@ This section describes the concrete implementation of
    :maxdepth: 1
    :caption: Contents:
 
-   models/Mandelbrot
    models/Perturbation_mandelbrot
+   models/Perturbation_burning_ship
+   models/Mandelbrot
+   models/Burning_ship
+   models/Mandelbrot_N
+   models/Collatz
 

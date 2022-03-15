@@ -9,12 +9,12 @@ import fractalshades.utils as fsutils
 class Mandelbrot_N(fs.Fractal):
     def __init__(self, directory, exponent):
         """
-        A standard power-2 Mandelbrot Fractal. 
-        
-        Parameters
-        ==========
-        directory : str
-            Path for the working base directory
+A standard power-n Mandelbrot Fractal set implementation.
+
+Parameters
+==========
+directory : str
+    Path for the working base directory
         """
         super().__init__(directory)
         # default values used for postprocessing (potential)
@@ -29,42 +29,40 @@ class Mandelbrot_N(fs.Fractal):
             max_iter: int,
             M_divergence: float,
             epsilon_stationnary: float,
-            datatype):
+    ):
         """
-    Basic iterations for Mandelbrot standard set (power n).
+Basic iterations for the Mandelbrot standard set (power n).
 
-    Parameters
-    ==========
-    calc_name : str
-         The string identifier for this calculation
-    subset : `fractalshades.postproc.Fractal_array`
-        A boolean array-like, where False no calculation is performed
-        If `None`, all points are calculated. Defaults to `None`.
-    max_iter : int
-        the maximum iteration number. If reached, the loop is exited with
-        exit code "max_iter".
-    M_divergence : float
-        The diverging radius. If reached, the loop is exited with exit code
-        "divergence"
-    epsilon_stationnary : float
-        A small float to early exit non-divergent cycles (based on
-        cumulated dzndz product). If reached, the loop is exited with exit
-        code "stationnary" (Those points should belong to Mandelbrot set
-        interior). A typical value is 1.e-3
-    datatype :
-        The dataype for operation on complex. Usually `np.complex128`
+Parameters
+==========
+calc_name : str
+     The string identifier for this calculation
+subset : `fractalshades.postproc.Fractal_array`
+    A boolean array-like, where False no calculation is performed
+    If `None`, all points are calculated. Defaults to `None`.
+max_iter : int
+    the maximum iteration number. If reached, the loop is exited with
+    exit code "max_iter".
+M_divergence : float
+    The diverging radius. If reached, the loop is exited with exit code
+    "divergence"
+epsilon_stationnary : float
+    A small float to early exit non-divergent cycles (based on
+    cumulated dzndz product). If reached, the loop is exited with exit
+    code "stationnary" (Those points should belong to Mandelbrot set
+    interior). A typical value is 1.e-3
 
-    Notes
-    =====
-    The following complex fields will be calculated: *zn* and its
-    derivatives (*dzndz*, *dzndc*).
-    Exit codes are *max_iter*, *divergence*, *stationnary*.
+Notes
+=====
+The following complex fields will be calculated: *zn* and its
+derivatives (*dzndz*, *dzndc*).
+Exit codes are *max_iter*, *divergence*, *stationnary*.
         """
         complex_codes = ["zn", "dzndz", "dzndc"]
         int_codes = []
         stop_codes = ["max_iter", "divergence", "stationnary"]
         self.codes = (complex_codes, int_codes, stop_codes)
-        self.init_data_types(datatype)
+        self.init_data_types(np.complex128)
 
         self.potential_M = M_divergence
 

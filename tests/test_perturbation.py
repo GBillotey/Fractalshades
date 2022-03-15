@@ -70,7 +70,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 
                 layer_name = test_name + "_potential_" + calc_name
                 
-                m = self.calc(x, y, dx, precision, nx, complex_type, test_name,
+                m = self.calc(x, y, dx, precision, nx, test_name,
                          calc_name)
                 pp = Postproc_batch(m, calc_name)
                 pp.add_postproc(layer_name, Continuous_iter_pp())
@@ -127,7 +127,6 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         dx = "5e-12"
         precision = 16
         nx = 600
-        complex_type = np.complex128
 
         # DEBUG point :
         fs.settings.enable_multiprocessing = True
@@ -142,7 +141,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
                 layer_name = test_name + "_potential_" + calc_name
 
-                m = self.calc(x, y, dx, precision, nx, complex_type, test_name,
+                m = self.calc(x, y, dx, precision, nx, test_name,
                          calc_name, BLA_params=BLA_params)
                 pp = Postproc_batch(m, calc_name)
                 pp.add_postproc(layer_name, Continuous_iter_pp())
@@ -203,7 +202,6 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         precision = 224
         max_iter = 350000
         nx = 600 
-        complex_type = np.complex128
 #        SA_params = {"cutdeg": 64,
 #                     "err": 1.e-6}
         c0 = np.array([1, 122, 193]) / 255.
@@ -232,7 +230,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
 
         layer_name = test_name + "_potential_" + calc_name
-        m = self.calc(x, y, dx, precision, nx, complex_type, test_name,
+        m = self.calc(x, y, dx, precision, nx, test_name,
                  calc_name, glitch_max_attempt=10,
                  calc_fast=False, xy_ratio=1., max_iter=max_iter)
         pp = Postproc_batch(m, calc_name)
@@ -254,7 +252,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 layer_name,
                 func=lambda x: np.log(x),
                 colormap=colormap,
-                probes_z=[0., 0.3],
+                probes_z=[0., 0.30],
                 probes_kind="relative",
                 output=True))
         plotter[layer_name].set_mask(plotter["interior"],
@@ -300,7 +298,6 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         dx = '2.477633848347765e-8'
         precision = 18
         nx = 1000
-        complex_type = np.complex128
 
         black = np.array([0, 0, 0]) / 255.
         citrus2 = np.array([103, 189, 0]) / 255.
@@ -314,7 +311,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         
         
         layer_name = test_name + "_potential_" + calc_name
-        m = self.calc(x, y, dx, precision, nx, complex_type, test_name,
+        m = self.calc(x, y, dx, precision, nx, test_name,
                  calc_name, glitch_max_attempt=10)
         pp = Postproc_batch(m, calc_name)
         pp.add_postproc(layer_name, Continuous_iter_pp())
@@ -375,7 +372,6 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         dx = '4.688599337510725e-19'
         precision = 18
         nx = 1000
-        complex_type = np.complex128
 
         black = np.array([0, 0, 0]) / 255.
         citrus2 = np.array([103, 189, 0]) / 255.
@@ -389,7 +385,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         
         
         layer_name = test_name + "_potential_" + calc_name
-        m = self.calc(x, y, dx, precision, nx, complex_type, test_name,
+        m = self.calc(x, y, dx, precision, nx, test_name,
                  calc_name, glitch_max_attempt=10)
         pp = Postproc_batch(m, calc_name)
         pp.add_postproc(layer_name, Continuous_iter_pp())
@@ -455,7 +451,6 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         dx = "1.8e-157"
         precision = 200
         nx = 1600
-        complex_type = np.complex128
 #        SA_params = {"cutdeg": 32,
 #                     "err": 1.e-6}
         c0 = np.array([242, 248, 163]) / 255.
@@ -484,7 +479,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
 
         layer_name = test_name + "_potential_" + calc_name
-        m = self.calc(x, y, dx, precision, nx, complex_type, test_name,
+        m = self.calc(x, y, dx, precision, nx, test_name,
                  calc_name, glitch_max_attempt=10,# SA_params=SA_params,
                  calc_fast=True, xy_ratio=16/9.)
         pp = Postproc_batch(m, calc_name)
@@ -515,7 +510,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         self.check_current_layer()
 
 
-    def calc(self, x, y, dx, precision, nx, complex_type, test_name, calc_name,
+    def calc(self, x, y, dx, precision, nx, test_name, calc_name,
             interior_detect=False, antialiasing=False, xy_ratio=1.0,
             BLA_params={"eps": 1.e-6},
             glitch_max_attempt=1, calc_fast=False, max_iter=50000):
@@ -535,7 +530,6 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
         if calc_fast: 
             mandelbrot.calc_std_div(
-                datatype=complex_type,
                 calc_name=calc_name,
                 subset=None,
                 max_iter=max_iter,
@@ -543,10 +537,9 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 epsilon_stationnary=1.e-3,
                 interior_detect=False,
                 BLA_params=BLA_params,
-                calc_dzndc=False)
+                calc_dzndc=True)
         else:
             mandelbrot.calc_std_div(
-                datatype=complex_type,
                 calc_name=calc_name,
                 subset=None,
                 max_iter=max_iter,
@@ -570,6 +563,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 file_name + ".png")
         ref_file_path = os.path.join(self.dir_ref, file_name + ".REF.png")
         err = test_config.compare_png(ref_file_path, test_file_path)
+        print("err < err_max", err, err_max)
         self.assertTrue(err < err_max)
 
 if __name__ == "__main__":
@@ -579,5 +573,5 @@ if __name__ == "__main__":
         runner.run(test_config.suite([Test_Perturbation_mandelbrot]))
     else:
         suite = unittest.TestSuite()
-        suite.addTest(Test_Perturbation_mandelbrot("test_glitch_divref5"))
+        suite.addTest(Test_Perturbation_mandelbrot("test_glitch_dyn"))
         runner.run(suite)

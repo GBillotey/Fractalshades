@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-=============================================================
+===============================================================
 Burning ship explorer - Naïve algorithm with standard precision
-=============================================================
+===============================================================
 
-Resolution limited to approx 1.e-13 due to double (float64) precision
-Good exploration !
+This is a simple template to start exploring the Burning ship fractal
+Toy-implementation, resolution limited to approx 1.e-13: due to double
+(float64) precision. Good exploration !
 """
 import typing
 import os
@@ -40,8 +41,8 @@ def plot(plot_dir):
     """
     calc_name = 'test'
     x = -0.5
-    y = 0.0
-    dx = 5.
+    y = 0.5
+    dx = 6.
     xy_ratio = 1.
     theta_deg = 0.
 
@@ -51,8 +52,8 @@ def plot(plot_dir):
     interior_color = (0., 0., 0.)
     colormap = fs.colors.cmap_register["classic"]
     cmap_z_kind = 'relative'
-    zmin = 0.0
-    zmax = 1.0
+    zmin = 0.3
+    zmax = 0.6
   
 
     # Set to True to enable multi-processing
@@ -94,7 +95,6 @@ def plot(plot_dir):
             subset=None,
             max_iter=max_iter,
             M_divergence=M_divergence,
-#            epsilon_stationnary=1.e-4,
         )
 
         if fractal.res_available():
@@ -108,9 +108,7 @@ def plot(plot_dir):
 
         pp = Postproc_batch(fractal, calc_name)
         pp.add_postproc("continuous_iter", Continuous_iter_pp())
-        pp.add_postproc("DEM", DEM_pp())
         pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
-#        pp.add_postproc("n_iter", Raw_pp("stop_iter", func=None))
         pp.add_postproc("interior", Raw_pp("stop_reason",
                         func=lambda x: x != 1))
 
@@ -119,29 +117,29 @@ def plot(plot_dir):
         plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=True))
 
         plotter.add_layer(Color_layer(
-                "DEM",
-                func=lambda x: np.log(x + dx * 1.e-5),
+                "continuous_iter",
+                func=lambda x: np.log(x),
                 colormap=colormap,
                 probes_z=[zmin, zmax],
                 probes_kind=cmap_z_kind,
                 output=True))
-        plotter["DEM"].set_mask(plotter["interior"],
+        plotter["continuous_iter"].set_mask(plotter["interior"],
                                      mask_color=interior_color)
 
-        light = Blinn_lighting(0.2, np.array([1., 1., 1.]))
+        light = Blinn_lighting(0.3, np.array([1., 1., 1.]))
         light.add_light_source(
             k_diffuse=0.8,
-            k_specular=200.,
-            shininess=350.,
-            angles=(50., 20.),
+            k_specular=20.,
+            shininess=50.,
+            angles=(40., 20.),
             coords=None,
             color=np.array([1.0, 1.0, 0.9]))
-        plotter["DEM"].shade(plotter["DEM_map"], light)
+        plotter["continuous_iter"].shade(plotter["DEM_map"], light)
 
         plotter.plot()
         
         # Renaming output to match expected from the Fractal GUI
-        layer = plotter["DEM"]
+        layer = plotter["continuous_iter"]
         file_name = "{}_{}".format(type(layer).__name__, layer.postname)
         src_path = os.path.join(fractal.directory, file_name + ".png")
         dest_path = os.path.join(fractal.directory, calc_name + ".png")

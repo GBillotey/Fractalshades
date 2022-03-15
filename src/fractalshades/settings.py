@@ -47,9 +47,8 @@ inspect_calc = False
 chunk_size = 200
 """The size for the basic calculation tile is chunk_size x chunk_size"""
 
-bivar_SA_min_seed_exp = 10
-bivar_SA_min_seed = 2 ** bivar_SA_min_seed_exp
-# The minimum seed is 2 ** bivar_SA_min_seed_exp
+BLA_compression = 3
+""" number of BLA levels which are dropped (not stored) """
 
 
 # output_context: "doc" True if we are building the doc (Pillow output)

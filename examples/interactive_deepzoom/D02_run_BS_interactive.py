@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-=======================================
-Mandelbrot arbitrary-precision explorer
-=======================================
+=========================================
+Burning Ship arbitrary-precision explorer
+=========================================
 
 This is a template to start exploring the Mandelbrot set with
 arbitrary precision through a GUI.
@@ -54,11 +54,10 @@ def plot(plot_dir):
     
     xy_ratio = 1.0
     dps = 16
-    max_iter = 15000
+    max_iter = 1500
     nx = 600
     theta_deg = 0.
-#    interior_detect = True
-#    epsilon_stationnary = 0.0001
+    has_skew = False
     eps = 1.e-6
     
     colormap = fscolors.cmap_register["classic"]
@@ -86,6 +85,12 @@ def plot(plot_dir):
          theta_deg: float=theta_deg,
          dps: int=dps,
          nx: int=nx,
+         _1b: fsgui.separator="Skew parameters (not interactive)",
+         has_skew: bool=has_skew,
+         skew_00: float=1.,
+         skew_01: float=0.,
+         skew_10: float=0.,
+         skew_11: float=1.,
          _2: fsgui.separator="Calculation parameters",
          max_iter: int=max_iter,
          _3: fsgui.separator="Bilinear series parameters",
@@ -112,7 +117,10 @@ def plot(plot_dir):
 
 
         fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
-             theta_deg=theta_deg, projection="cartesian", antialiasing=False)
+             theta_deg=theta_deg, projection="cartesian", antialiasing=False,
+             has_skew=has_skew, skew_00=skew_00, skew_01=skew_01,
+             skew_10=skew_10, skew_11=skew_11
+        )
 
         fractal.calc_std_div(
             calc_name=calc_name,
@@ -249,7 +257,7 @@ if __name__ == "__main__":
     except NameError:
         import tempfile
         with tempfile.TemporaryDirectory() as plot_dir:
-            static_im_link = "Screenshot_from_2022-02-04.png"
+            static_im_link = "Screenshot_from_2022-03-15.png"
             if static_im_link is None:
                 plot(plot_dir)
             else:

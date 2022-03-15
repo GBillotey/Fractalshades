@@ -29,7 +29,7 @@ class Collatz(fs.Fractal):
             max_iter: int,
             M_divergence: float,
             epsilon_stationnary: float,
-            datatype):
+    ):
         """
     Basic iterations for Mandelbrot standard set (power 2).
 
@@ -51,8 +51,6 @@ class Collatz(fs.Fractal):
         cumulated dzndz product). If reached, the loop is exited with exit
         code "stationnary" (Those points should belong to Mandelbrot set
         interior). A typical value is 1.e-3
-    datatype :
-        The dataype for operation on complex. Usually `np.complex128`
         
     Notes
     =====
@@ -64,7 +62,7 @@ class Collatz(fs.Fractal):
         int_codes = []
         stop_codes = ["max_iter", "divergence", "stationnary"]
         self.codes = (complex_codes, int_codes, stop_codes)
-        self.init_data_types(datatype)
+        self.init_data_types(np.complex128)
 
         self.potential_M = M_divergence
 

@@ -58,12 +58,12 @@ def ddiffabsdx(X, x):
 class Burning_ship(fs.Fractal):
     def __init__(self, directory):
         """
-        A standard power-2 Mandelbrot Fractal. 
-        
-        Parameters
-        ==========
-        directory : str
-            Path for the working base directory
+A standard Burning Ship Fractal, power 2. 
+
+Parameters
+==========
+directory : str
+    Path for the working base directory
         """
         super().__init__(directory)
         # default values used for postprocessing (potential)
@@ -79,28 +79,28 @@ class Burning_ship(fs.Fractal):
             M_divergence: float,
 ):
         """
-    Basic iterations for Burning ship standard set (power 2).
+Basic iterations for Burning ship set.
 
-    Parameters
-    ==========
-    calc_name : str
-         The string identifier for this calculation
-    subset : `fractalshades.postproc.Fractal_array`
-        A boolean array-like, where False no calculation is performed
-        If `None`, all points are calculated. Defaults to `None`.
-    max_iter : int
-        the maximum iteration number. If reached, the loop is exited with
-        exit code "max_iter".
-    M_divergence : float
-        The diverging radius. If reached, the loop is exited with exit code
-        "divergence"
-        
-    Notes
-    =====
-    The following complex fields will be calculated: *zn* and its
-    derivatives (*dzndz*, *dzndc*, *d2zndc2*).
-    Exit codes are *max_iter*, *divergence*, *stationnary*.
-        """
+Parameters
+==========
+calc_name : str
+     The string identifier for this calculation
+subset : `fractalshades.postproc.Fractal_array`
+    A boolean array-like, where False no calculation is performed
+    If `None`, all points are calculated. Defaults to `None`.
+max_iter : int
+    the maximum iteration number. If reached, the loop is exited with
+    exit code "max_iter".
+M_divergence : float
+    The diverging radius. If reached, the loop is exited with exit code
+    "divergence"
+
+Notes
+=====
+The following complex fields will be calculated: *xn* *yn* and its
+derivatives (*dxnda*, *dxndb*, *dynda*, *dyndb*).
+Exit codes are *max_iter*, *divergence*.
+"""
         complex_codes = ["xn", "yn", "dxnda", "dxndb", "dynda", "dyndb"]
         int_codes = []
         stop_codes = ["max_iter", "divergence", "stationnary"]
@@ -165,13 +165,13 @@ class Perturbation_burning_ship(fs.PerturbationFractal):
     
     def __init__(self, directory):
         """
-        An arbitrary precision power-2 Mandelbrot Fractal. 
+An arbitrary-precision implementation for the Burning ship set (power-2).
 
-        Parameters
-        ----------
-        directory : str
-            Path for the working base directory
-        """
+Parameters
+----------
+directory : str
+    Path for the working base directory
+"""
         super().__init__(directory)
         # Sets default values used for postprocessing (potential)
         self.potential_kind = "infinity"
@@ -255,6 +255,10 @@ class Perturbation_burning_ship(fs.PerturbationFractal):
              - float: relative error criteria (default: 1.e-6)
 
         if `None`, BLA is not activated.
+
+    calc_hessian: bool
+        if True, the derivatives will be claculated allowing distance
+        estimation and shading.
 
     References
     ==========
@@ -528,7 +532,13 @@ https://fractalforums.org/fractal-mathematics-and-new-theories/28/miniset-and-em
         )
         print("raw nucleus_size", nucleus_size)
         print("raw skew", skew)
-        return nucleus_size, skew
+
+        # r_J = r_M ** 0.75 for power 2 Mandelbrot
+        sqrt = np.sqrt(nucleus_size)
+        sqrtsqrt = np.sqrt(sqrt)
+        julia_size = sqrtsqrt * sqrt
+
+        return nucleus_size, julia_size, skew
 
 #==============================================================================
 # GUI : "interactive options"
@@ -538,12 +548,44 @@ https://fractalforums.org/fractal-mathematics-and-new-theories/28/miniset-and-em
         return super().coords(x, y, pix, dps)
 
     @fs.utils.interactive_options
-    def ball_method_order(self, x, y, pix, dps, maxiter: int=100,
+    def ball_method_order(self, x, y, pix, dps, maxiter: int=100000,
                           radius_pixels: int=25):
         return super().ball_method_order(x, y, pix, dps, maxiter,
                     radius_pixels)
 
     @fs.utils.interactive_options
-    def newton_search(self, x, y, pix, dps, maxiter: int=100,
+    def newton_search(self, x, y, pix, dps, maxiter: int=100000,
                       radius_pixels: int=3):
-        return super().newton_search(x, y, pix, dps, maxiter, radius_pixels)
+        (
+            x_str, y_str, maxiter, radius_pixels, radius_str, dps, order,
+            xn_str, yn_str, size_estimates
+        ) = self._newton_search(
+            x, y, pix, dps, maxiter, radius_pixels
+        )
+        if size_estimates is not None:
+            (nucleus_size, julia_size, skew) = size_estimates
+        else:
+            nucleus_size = None
+            julia_size = None
+            skew = np.array(((np.nan, np.nan), (np.nan, np.nan)))
+
+        res_str = f"""
+newton_search = {{
+    "x_start": "{x_str}",
+    "y_start": "{y_str}",
+    "maxiter": {maxiter},
+    "radius_pixels": {radius_pixels},
+    "radius": "{radius_str}",
+    "calculation dps": {dps}
+    "order": {order}
+    "x_nucleus": "{xn_str}",
+    "y_nucleus": "{yn_str}",
+    "nucleus_size": "{nucleus_size}",
+    "julia_size": "{julia_size}",
+    "skew_00": "{skew[0, 0]}",
+    "skew_01": "{skew[0, 1]}",
+    "skew_10": "{skew[1, 0]}",
+    "skew_11": "{skew[1, 1]}",
+}}
+"""
+        return res_str
