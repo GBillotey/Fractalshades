@@ -38,6 +38,8 @@ jobs:
         python -m pip install flake8 pytest
     - name: install Fractalshades
       run: |
+        echo pwd
+        echo ls -lrt
         python3 -m build
         python3 -m pip install fractalshades --no-index --find-links dist
         # python -m pip install git+git://github.com/${{ github.repository }}.git@${{ github.sha }}
