@@ -38,9 +38,7 @@ jobs:
         echo "*** listing MVS folder"
         # https://devblogs.microsoft.com/setup/vswhere-available/
         # -products 
-        dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\"
-        & "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest
-        dir "C:\Program Files\Microsoft Visual Studio\"
+        & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest
         dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"
         dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.31.31103\bin\Hostx86\x64"
 
