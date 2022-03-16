@@ -34,13 +34,8 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install gmpy2
 
-        echo "*** listing MVS folder"
-        dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin"
-        dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX86\\x64"
-
         echo "**** Running python gmpy2 pathch script"
         python win_build\patch_gmpy2.py
-
 
     - name: Install dependencies
       run: |
