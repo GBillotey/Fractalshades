@@ -15,7 +15,7 @@ gmpy2_dir = os.path.dirname(gmpy2.__file__)
 # Find the directory for MS Visual studio cl.exe dumpbin.exe lib.exe
 # Note : should we automate this ?
 # https://stackoverflow.com/questions/54305638/how-to-find-vswhere-exe-path
-MVS_dir = r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE"
+MVS_dir = r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VC\bin"
 
 print("\n * Checking gmpy2 install")
 ctx = gmpy2.get_context()
