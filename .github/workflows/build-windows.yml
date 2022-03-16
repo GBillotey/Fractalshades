@@ -37,6 +37,8 @@ jobs:
 
         echo "*** listing MVS folder"
         dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\"
+        dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer"
+        dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared"
         dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin"
         dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX86\\x64"
 
