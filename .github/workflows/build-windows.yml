@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         # 05/02/2022: Numpy has not yet released a precompiled wheel for Python 3.10.
-        python-version: ['3.8', '3.9'] # '3.10']
+        python-version: ['3.8'] #, '3.9'] # '3.10']
 
     steps:
     - uses: actions/checkout@v2
