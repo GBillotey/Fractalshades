@@ -42,10 +42,9 @@ jobs:
         & "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest
         dir "C:\Program Files\Microsoft Visual Studio\2022\"
         dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC"
+        dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools"
+        dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"
         DUMPBIN
-        dir "C:\Program Files\Microsoft Visual Studio\2022\Community\"
-        dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE"
-        dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VC"
         dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VC\bin"
 
         echo "**** Running python gmpy2 pathch script"
