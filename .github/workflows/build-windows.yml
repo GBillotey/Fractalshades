@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         # 05/02/2022: Numpy has not yet released a precompiled wheel for Python 3.10.
-        python-version: ['3.8'] #, '3.9'] # '3.10']
+        python-version: ['3.8', '3.9'] # '3.10']
 
     steps:
     - uses: actions/checkout@v2
@@ -39,14 +39,8 @@ jobs:
         # https://devblogs.microsoft.com/setup/vswhere-available/
         # -products 
         dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\"
-        # dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer"
-        # dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared"
         & "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest
         dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE"
-        dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VC"
-        dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VC\Tools"
-        # dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin"
-        # dir "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Tools\\MSVC\\14.29.30133\\bin\\HostX86\\x64"
 
         echo "**** Running python gmpy2 pathch script"
         python win_build\patch_gmpy2.py
