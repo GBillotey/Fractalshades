@@ -42,6 +42,7 @@ jobs:
         & "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest
         dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE"
         dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VC"
+        dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VC\bin"
 
         echo "**** Running python gmpy2 pathch script"
         python win_build\patch_gmpy2.py
