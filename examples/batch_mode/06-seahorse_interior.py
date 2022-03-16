@@ -77,7 +77,7 @@ def plot(plot_dir=None):
         max_order=1500,
         max_newton=20,
         eps_newton_cv=1.e-12,
-        datatype=np.complex128)
+        )
     # f.clean_up("interior")
     f.run()
 

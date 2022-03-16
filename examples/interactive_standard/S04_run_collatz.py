@@ -91,7 +91,6 @@ def plot(plot_dir):
             max_iter=max_iter,
             M_divergence=M_divergence,
             epsilon_stationnary=1.e-4,
-            datatype=np.complex128
         )
 
         if fractal.res_available():
