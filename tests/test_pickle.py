@@ -63,7 +63,7 @@ class Test_pickle(unittest.TestCase):
             max_iter=1000,
             M_divergence=100.,
             epsilon_stationnary= 0.001,
-            datatype=np.complex128)
+        )
         f.clean_up(cls.calc_name)
         cls.f = f
         
