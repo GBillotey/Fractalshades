@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
-
-from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtWidgets import (
+from PyQt6 import QtWidgets, QtCore
+from PyQt6.QtWidgets import (
     QDialog,
     QApplication,
     QVBoxLayout,
@@ -30,8 +29,8 @@ class Fractal_code_editor(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setModal(False)
-        self.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                           QtWidgets.QSizePolicy.Preferred)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred,
+                           QtWidgets.QSizePolicy.Policy.Preferred)
 
         self.setStyleSheet(TEXT_EDIT_CSS.format("#1e1e27"))
         self.ce = Fractal_code_widget(self)
@@ -50,8 +49,8 @@ class Fractal_code_widget(QTextEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setStyleSheet(TEXT_EDIT_CSS.format("#1e1e27"))
-        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding,
-                           QtWidgets.QSizePolicy.Expanding)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
+                           QtWidgets.QSizePolicy.Policy.Expanding)
 
         self.lexer = get_lexer_by_name(
             "python3",

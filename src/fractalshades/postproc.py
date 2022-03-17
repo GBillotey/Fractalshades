@@ -595,7 +595,7 @@ class DEM_normal_pp(Postproc):
         if skew is not None:
             nx = normal.real
             ny = normal.imag
-            print("/!\ normal skewed", skew, nx.shape)
+            # These are contravariant coordinates -> we unskew
             fs.core.apply_unskew_1d(skew, nx, ny)
 
         normal = normal / np.abs(normal)

@@ -2,7 +2,7 @@ numba>=0.52.0
 mpmath>=1.1.0
 gmpy2
 Pillow
-PyQt5>=5.15.4
+PyQt6>=6.2.3
 pygments>=2.9.0
 wheel>=0.37.0
 Cython

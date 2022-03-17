@@ -24,19 +24,19 @@ import importlib.resources # import path
 
 import numpy as np
 
-from PyQt5 import QtCore
-from PyQt5.QtCore import Qt
+from PyQt6 import QtCore
+from PyQt6.QtCore import Qt
 #from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import pyqtSignal, pyqtSlot, QTimer
+from PyQt6.QtCore import pyqtSignal, pyqtSlot, QTimer
 
-from PyQt5 import QtWidgets, QtGui
-from PyQt5.QtWidgets import (
+from PyQt6 import QtWidgets, QtGui
+from PyQt6.QtGui import QAction
+from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
     QWidget,
     QDialog,
     QInputDialog,
-    QAction,
     QDockWidget,
     QPushButton,
     QMenu,
@@ -470,7 +470,7 @@ class Func_widget_separator(QLabel):
         """ Defines a graphical separator with label "name" """
         super().__init__(name)
         sep_Font = QtGui.QFont()
-        sep_Font.setWeight(QtGui.QFont.StyleItalic)
+        sep_Font.setStyle(QtGui.QFont.Style.StyleItalic)
         self.setFont(sep_Font)
         self.setStyleSheet(
             "border-bottom-width: 1px; "
@@ -501,8 +501,9 @@ class Func_widget(QFrame):
         self._model.model_event.connect(self.model_event_slot)
         
         self.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding, 
-            QtWidgets.QSizePolicy.Expanding)
+            QSizePolicy.Policy.Expanding, 
+            QSizePolicy.Policy.Expanding
+        )
 
     def layout(self):
         fd = self._submodel._dict
@@ -528,7 +529,7 @@ class Func_widget(QFrame):
         name = fd[(i_param, "name")]
         name_label = QLabel(name)
         myFont = QtGui.QFont()
-        myFont.setWeight(QtGui.QFont.ExtraBold)
+        myFont.setWeight(QtGui.QFont.Weight.ExtraBold)
         name_label.setFont(myFont)
         self._layout.addWidget(name_label, i_param, 0, 1, 1)
 
@@ -542,7 +543,10 @@ class Func_widget(QFrame):
 
         # Handles Union types
         qs = QStackedWidget()
-        qs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        qs.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Minimum
+        )
         n_uargs = fd[(i_param, "n_types")]
         if n_uargs == 0:
             utype = fd[(i_param, 0, "type")]
@@ -657,10 +661,13 @@ class Func_widget(QFrame):
             presenter_class(self._model, mapping, register_key)
             wget = wget_class(None, self._model._register[register_key])
             main_window = getmainwindow(self)
-            dock_widget = QDockWidget(register_key, None, Qt.Window)
+            dock_widget = QDockWidget(register_key, None, Qt.WindowType.Window)
             dock_widget.setWidget(wget)
             dock_widget.setStyleSheet(DOCK_WIDGET_CSS)
-            main_window.addDockWidget(Qt.RightDockWidgetArea, dock_widget)
+            main_window.addDockWidget(
+                Qt.DockWidgetArea.RightDockWidgetArea,
+                dock_widget
+            )
             self.presenters[register_key] = dock_widget
         else:
             # Docwidget of presenter exists, we only toggles visibility
@@ -716,7 +723,7 @@ class Atom_QCheckBox(QCheckBox, Atom_Edit_mixin):
 class NoWheel_mixin:
     def eventFilter(self, widget, evt):
         """ Prevent annoying wheel action for Combobox derived classes """
-        if evt.type() == QtCore.QEvent.Wheel:
+        if evt.type() == QtCore.QEvent.Type.Wheel:
             evt.ignore()
             return True
         return super(QComboBox, self).eventFilter(widget, evt)
@@ -781,8 +788,8 @@ class Atom_QColor(QPushButton, Atom_Edit_mixin):
                 gradient.setCoordinateMode(QtGui.QGradient.ObjectBoundingMode)
                 gradient.setColorAt(0.0, QtGui.QColor(0, 0, 0, color.alpha()))
                 gradient.setColorAt(0.1, QtGui.QColor(0, 0, 0, color.alpha()))
-                gradient.setColorAt(0.9, Qt.black)
-                gradient.setColorAt(1.0, Qt.black)
+                gradient.setColorAt(0.9, Qt.GlobalColor.black)
+                gradient.setColorAt(1.0, Qt.GlobalColor.black)
                 effect = QGraphicsOpacityEffect(self)
                 effect.setOpacity(1.)
                 effect.setOpacityMask(gradient)
@@ -801,9 +808,9 @@ class Atom_QColor(QPushButton, Atom_Edit_mixin):
 
     def on_user_event(self):
         colord = QColorDialog()
-        colord.setOption(QColorDialog.DontUseNativeDialog)
+        colord.setOption(QColorDialog.ColorDialogOption.DontUseNativeDialog)
         if self._kind == "rgba":
-            colord.setOption(QColorDialog.ShowAlphaChannel)
+            colord.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel)
         colord.setCurrentColor(self._color)
         colord.setCustomColor(0, self._color)
         colord.currentColorChanged.connect(self.update_color)
@@ -848,7 +855,7 @@ class Atom_QLineEdit(QLineEdit, Atom_Edit_mixin):
         validator = self.validator()
         if validator is not None:
             ret, _, _ = validator.validate(text, self.pos())
-            if ret == QtGui.QValidator.Acceptable:
+            if ret == QtGui.QValidator.State.Acceptable:
                 self.setStyleSheet(PARAM_LINE_EDIT_CSS.format(
                        acceptable_color))
             else:
@@ -864,8 +871,8 @@ class Atom_QPlainTextEdit(QPlainTextEdit, Atom_Edit_mixin):
         self._type = atom_type
         self.setStyleSheet("border: 1px solid  lightgrey")
         # Wrapping parameters
-        self.setLineWrapMode(QPlainTextEdit.WidgetWidth) 
-        self.setWordWrapMode(QtGui.QTextOption.WrapAnywhere)
+        self.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth) 
+        self.setWordWrapMode(QtGui.QTextOption.WrapMode.WrapAnywhere)
         self.setStyleSheet(PLAIN_TEXT_EDIT_CSS.format(
                        "#25272C"))
         
@@ -891,7 +898,7 @@ class Atom_QPlainTextEdit(QPlainTextEdit, Atom_Edit_mixin):
         validator = self._validator
         if validator is not None:
             ret, _, _ = validator.validate(text, self.pos())
-            if ret == QtGui.QValidator.Acceptable:
+            if ret == QtGui.QValidator.State.Acceptable:
                 self.setStyleSheet(PLAIN_TEXT_EDIT_CSS.format(
                        "#25272C"))
                 if from_user:
@@ -900,7 +907,7 @@ class Atom_QPlainTextEdit(QPlainTextEdit, Atom_Edit_mixin):
                 self.setStyleSheet(PLAIN_TEXT_EDIT_CSS.format(
                        "#dc4646"))
             cursor = QtGui.QTextCursor(self.document())
-            cursor.movePosition(QtGui.QTextCursor.End)
+            cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
 
     def paintEvent(self, event):
         """ Adjust widget size to its text content
@@ -976,8 +983,10 @@ class Qcmap_image(QWidget):
         self.setMinimumWidth(minwidth)
         self.setMinimumHeight(height)
         self.setMaximumHeight(height)
-        self.setSizePolicy(QtWidgets.QSizePolicy.Minimum,
-                           QtWidgets.QSizePolicy.Expanding)
+        self.setSizePolicy(
+                QSizePolicy.Policy.Minimum,
+                QSizePolicy.Policy.Expanding
+        )
 
     def paintEvent(self, evt):
         size = self.size()
@@ -1028,8 +1037,8 @@ class Atom_Text_Validator(QtGui.QValidator):
 
     def validate(self, val, pos):
 #        print("validate", val, pos, type(val), self._type)
-        valid = {True: QtGui.QValidator.Acceptable,
-                 False: QtGui.QValidator.Intermediate}
+        valid = {True: QtGui.QValidator.State.Acceptable,
+                 False: QtGui.QValidator.State.Intermediate}
         if self._type is type(None):
             return (valid[val == "None"], val, pos)
         try:
@@ -1053,23 +1062,23 @@ class ColorDelegate(QStyledItemDelegate):
 
     def createEditor(self, parent, option, index):
         dialog = QColorDialog(None) #
-        dialog.setOption(QColorDialog.DontUseNativeDialog)
-        dialog.setCurrentColor(index.data(Qt.BackgroundRole))
-        dialog.setCustomColor(0, index.data(Qt.BackgroundRole))
+        dialog.setOption(QColorDialog.ColorDialogOption.DontUseNativeDialog)
+        dialog.setCurrentColor(index.data(Qt.ItemDataRole.BackgroundRole))
+        dialog.setCustomColor(0, index.data(Qt.ItemDataRole.BackgroundRole))
         # QT doc: The returned editor widget should have Qt::StrongFocus
-        dialog.setFocusPolicy(Qt.StrongFocus)
+        dialog.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         dialog.setFocusProxy(parent)
         return dialog
 
     def setEditorData(self, editor, index):
-        color = index.data(Qt.BackgroundRole)
+        color = index.data(Qt.ItemDataRole.BackgroundRole)
         editor.setCurrentColor(color)
 
     def setModelData(self, editor, model, index):
         """ If modal QColorDialog result code is Accepted, save color"""
         if editor.result():
             color = editor.currentColor()
-            model.setData(index, color, Qt.BackgroundRole)
+            model.setData(index, color, Qt.ItemDataRole.BackgroundRole)
 
     def paint(self, painter, option, index):
         """ Fill with BackgroundRole color + red rectangle for selection."""
@@ -1077,12 +1086,13 @@ class ColorDelegate(QStyledItemDelegate):
         # returned to the state it was supplied in when this function was
         # called.
         painter.save()
-        selected = bool(option.state & QtWidgets.QStyle.State_Selected)
-        painter.fillRect(option.rect, index.data(Qt.BackgroundRole))
+        selected = bool(option.state 
+                        & QtWidgets.QStyle.StateFlag.State_Selected)
+        painter.fillRect(option.rect, index.data(Qt.ItemDataRole.BackgroundRole))
         if selected:
             rect = option.rect
             rect.adjust(1, 1, -1, -1)
-            pen = QtGui.QPen(Qt.red)
+            pen = QtGui.QPen(Qt.GlobalColor.red)
             pen.setWidth(2)
             painter.setPen(pen)
             painter.drawRect(rect)
@@ -1107,24 +1117,24 @@ class IntDelegate(QStyledItemDelegate):
         """
         index: PyQt5.QtCore.QModelIndex
         """
-        val = index.data(Qt.DisplayRole)
+        val = index.data(Qt.ItemDataRole.DisplayRole)
         editor.setText(val)
 
     def setModelData(self, editor, model, index):
         """ save int val to the model"""
         val = editor.text()
-        model.setData(index, val, Qt.DisplayRole)
+        model.setData(index, val, Qt.ItemDataRole.DisplayRole)
         if self.validate(index):
             color = QtGui.QColor("#646464")
         else:
             color = QtGui.QColor("red")
-        model.setData(index, color, Qt.BackgroundRole)
+        model.setData(index, color, Qt.ItemDataRole.BackgroundRole)
 
     def updateEditorGeometry(self, editor, option, index):
         editor.setGeometry(option.rect)
 
     def validate(self, index):
-        val = index.data(Qt.DisplayRole)
+        val = index.data(Qt.ItemDataRole.DisplayRole)
         try:
             val = int(val)
         except (TypeError, ValueError):
@@ -1148,18 +1158,18 @@ class ComboDelegate(QStyledItemDelegate):
         return editor
 
     def setEditorData(self, editor, index):
-        val = index.data(Qt.DisplayRole)
+        val = index.data(Qt.ItemDataRole.DisplayRole)
         editor.setCurrentText(val)
 
     def setModelData(self, editor, model, index):
         val = editor.currentText()
-        model.setData(index, val, Qt.DisplayRole)
+        model.setData(index, val, Qt.ItemDataRole.DisplayRole)
 
     def updateEditorGeometry(self, editor, option, index):
         editor.setGeometry(option.rect)
 
     def validate(self, index):
-        val = index.data(Qt.DisplayRole)
+        val = index.data(Qt.ItemDataRole.DisplayRole)
         return val in self.choices
 
 
@@ -1178,23 +1188,23 @@ class ExprDelegate(QStyledItemDelegate):
         return editor
 
     def setEditorData(self, editor, index):
-        val = index.data(Qt.DisplayRole)
+        val = index.data(Qt.ItemDataRole.DisplayRole)
         editor.setText(val)
 
     def setModelData(self, editor, model, index):
         val = editor.text()
-        model.setData(index, val, Qt.DisplayRole)
+        model.setData(index, val, Qt.ItemDataRole.DisplayRole)
         if self.validate(index):
             color = QtGui.QColor("#646464")
         else:
             color = QtGui.QColor("red")
-        model.setData(index, color, Qt.BackgroundRole)
+        model.setData(index, color, Qt.ItemDataRole.BackgroundRole)
 
     def updateEditorGeometry(self, editor, option, index):
         editor.setGeometry(option.rect)
 
     def validate(self, index):
-        val = self.modifier(index.data(Qt.DisplayRole))
+        val = self.modifier(index.data(Qt.ItemDataRole.DisplayRole))
         try:
             return fs_parser.acceptable_expr(ast.parse(val, mode="eval"),
                                              safe_vars=["x"])
@@ -1208,9 +1218,12 @@ class Qcmap_editor(QWidget):
     """
     cmap_user_modified = pyqtSignal(object, object)
     
-    std_flags = (Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsEditable)
-    unvalidated_flags = (Qt.ItemIsEnabled  | Qt.ItemIsEditable)
-    locked_flags = (Qt.ItemIsEnabled)
+    std_flags = (Qt.ItemFlag.ItemIsSelectable
+                 | Qt.ItemFlag.ItemIsEnabled
+                 | Qt.ItemFlag.ItemIsEditable)
+    unvalidated_flags = (Qt.ItemFlag.ItemIsEnabled
+                         | Qt.ItemFlag.ItemIsEditable)
+    locked_flags = (Qt.ItemFlag.ItemIsEnabled)
     
     cmap_table_attr = [ "colors","kinds", "grad_npts", "grad_funcs"]
 
@@ -1301,14 +1314,14 @@ class Qcmap_editor(QWidget):
                 "grad_func"))
         # Horizontal Headr: expand last column
         h_header = self._table.horizontalHeader()
-        h_header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
-        h_header.setSectionResizeMode(3, QtWidgets.QHeaderView.Stretch)
+        h_header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        h_header.setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.Stretch)
         # Vertical Header: ResizeToContents
         self._table.verticalHeader().setSectionResizeMode(
-                QtWidgets.QHeaderView.ResizeToContents)
+                QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
 
         # QAbstractItemView::SelectionMode QAbstractItemView::SingleSelection
-        self._table.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self._table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         
         table_layout = QHBoxLayout()
         table_box.setLayout(table_layout)
@@ -1326,7 +1339,7 @@ class Qcmap_editor(QWidget):
             self.populate_column(
                 col=0,
                 row_range=range(n_rows),
-                role=Qt.BackgroundRole,
+                role=Qt.ItemDataRole.BackgroundRole,
                 tab=self._cmap.colors,
                 val_func=lambda v: QtGui.QColor(*list(int(255 * f) for f in v))
             )
@@ -1334,7 +1347,7 @@ class Qcmap_editor(QWidget):
             self.populate_column(
                 col=1,
                 row_range=range(n_rows - 1),
-                role=Qt.DisplayRole,
+                role=Qt.ItemDataRole.DisplayRole,
                 tab=self._cmap.kinds,
                 val_func=lambda v: v, # <class 'numpy.str_'> to str
                 flags=self.std_flags
@@ -1343,7 +1356,7 @@ class Qcmap_editor(QWidget):
             self.populate_column(
                 col=2,
                 row_range=range(n_rows - 1),
-                role=Qt.DisplayRole,
+                role=Qt.ItemDataRole.DisplayRole,
                 tab=self._cmap.grad_npts,
                 val_func=lambda v: str(v),
                 flags=self.std_flags
@@ -1352,7 +1365,7 @@ class Qcmap_editor(QWidget):
             self.populate_column(
                 col=3,
                 row_range=range(n_rows - 1),
-                role=Qt.DisplayRole,
+                role=Qt.ItemDataRole.DisplayRole,
                 tab=self._cmap.grad_funcs,
                 val_func=lambda v: v, # <class 'numpy.str_'> to str
                 flags=self.std_flags
@@ -1463,8 +1476,9 @@ class QDict_viewer(QWidget):
         self.widgets_reset(qdict)
         
         self.setSizePolicy(
-            QtWidgets.QSizePolicy.Minimum, 
-            QtWidgets.QSizePolicy.Fixed)
+            QSizePolicy.Policy.Minimum, 
+            QSizePolicy.Policy.Fixed
+        )
 
     def widgets_reset(self, qdict):
         """
@@ -1516,7 +1530,7 @@ class Zoomable_Drawer_mixin:
         self._view = QGraphicsView()
         self._scene.addItem(self._group)
         self._view.setScene(self._scene)
-        self._view.setCursor(QtGui.QCursor(Qt.CrossCursor))
+        self._view.setCursor(QtGui.QCursor(Qt.CursorShape.CrossCursor))
         
         # Initialize the object drawn
         self._object_pos = tuple() # No coords
@@ -1525,9 +1539,11 @@ class Zoomable_Drawer_mixin:
         
         # zooms anchors for wheel events - note this is only active 
         # when the image fully occupies the widget
-        self._view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
-        self._view.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
-        self._view.setAlignment(Qt.AlignCenter)
+        self._view.setTransformationAnchor(
+                QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self._view.setResizeAnchor(
+                QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self._view.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # events filters
         self._view.viewport().installEventFilter(self)
@@ -1556,7 +1572,7 @@ class Zoomable_Drawer_mixin:
                 return self.on_viewport_mouse(event)
             elif type(event) is QtGui.QEnterEvent:
                 return self.on_enter(event)
-            elif (event.type() == QtCore.QEvent.Leave):
+            elif (event.type() == QtCore.QEvent.Type.Leave):
                 return self.on_leave(event)
 
         elif source is self._view.viewport():
@@ -1564,9 +1580,9 @@ class Zoomable_Drawer_mixin:
             if type(event) == QtGui.QContextMenuEvent:
                 # return self.on_context_menu(event)
                 return True
-            elif event.type() == QtCore.QEvent.Wheel:
+            elif event.type() == QtCore.QEvent.Type.Wheel:
                 return self.on_wheel(event)
-            elif event.type() == QtCore.QEvent.ToolTip:
+            elif event.type() == QtCore.QEvent.Type.ToolTip:
                 return True
 
         return False
@@ -1608,8 +1624,12 @@ class Zoomable_Drawer_mixin:
         rect = QtCore.QRectF(self._qim.pixmap().rect())
         if not rect.isNull():
             # always scrollbars off
-            self._view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            self._view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            self._view.setVerticalScrollBarPolicy(
+                    Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            self._view.setHorizontalScrollBarPolicy(
+                    Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
             
             view = self._view
             view.setSceneRect(rect)
@@ -1621,8 +1641,12 @@ class Zoomable_Drawer_mixin:
                          viewrect.height() / scenerect.height())
             view.scale(factor, factor)
             
-            self._view.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-            self._view.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self._view.setVerticalScrollBarPolicy(
+                    Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            )
+            self._view.setHorizontalScrollBarPolicy(
+                    Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            )
 
             if hasattr(self, "pos_tracker"):
                 self.pos_tracker(kind="zoom", val=self.zoom)
@@ -1630,22 +1654,22 @@ class Zoomable_Drawer_mixin:
 
     def on_viewport_mouse(self, event):
 
-        if event.type() == QtCore.QEvent.GraphicsSceneMouseMove:
+        if event.type() == QtCore.QEvent.Type.GraphicsSceneMouseMove:
             self.on_mouse_move(event)
             return True
 
-        elif (event.type() == QtCore.QEvent.GraphicsSceneMousePress
-              and event.button() == Qt.LeftButton):
+        elif (event.type() == QtCore.QEvent.Type.GraphicsSceneMousePress
+              and event.button() == Qt.MouseButton.LeftButton):
             self.on_mouse_left_press(event)
             return True
         
-        elif (event.type() == QtCore.QEvent.GraphicsSceneMousePress
-              and event.button() == Qt.RightButton):
+        elif (event.type() == QtCore.QEvent.Type.GraphicsSceneMousePress
+              and event.button() == Qt.MouseButton.RightButton):
             self.on_mouse_right_press(event)
             return True
 
-        elif (event.type() == QtCore.QEvent.GraphicsSceneMouseDoubleClick
-              and event.button() == Qt.LeftButton):
+        elif (event.type() == QtCore.QEvent.Type.GraphicsSceneMouseDoubleClick
+              and event.button() == Qt.MouseButton.LeftButton):
             self.on_mouse_double_left_click(event)
             return True
 
@@ -1714,8 +1738,9 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         self._parent = parent
 
         self.setSizePolicy(
-            QtWidgets.QSizePolicy.Preferred, 
-            QtWidgets.QSizePolicy.Expanding)
+            QSizePolicy.Policy.Preferred, 
+            QSizePolicy.Policy.Expanding
+        )
 
         self._model = view_presenter._model
         self._mapping = view_presenter._mapping
@@ -1732,11 +1757,13 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         # Sets property widget "image_doc_widget"
         self._labels = QDict_viewer(self,
             {"Image metadata": None, "px": None, "py": None, "zoom": None})
-        dock_widget = QDockWidget(None, Qt.Window)
+        dock_widget = QDockWidget(None, Qt.WindowType.Window)
         dock_widget.setWidget(self._labels)
         # Not closable :
-        dock_widget.setFeatures(QDockWidget.DockWidgetFloatable | 
-                                QDockWidget.DockWidgetMovable)
+        dock_widget.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetFloatable 
+            | QDockWidget.DockWidgetFeature.DockWidgetMovable
+        )
         dock_widget.setWindowTitle("Image")
         dock_widget.setStyleSheet(DOCK_WIDGET_CSS)
         self.image_doc_widget = dock_widget
@@ -1814,11 +1841,11 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
                 # thread Segmentation fault (core dumped)
                 self.on_fractal_result.emit(m_name, res)
 
-            self._view.setCursor(QtGui.QCursor(Qt.WaitCursor))
+            self._view.setCursor(QtGui.QCursor(Qt.CursorShape.WaitCursor))
 
             suppl_kwargs = self.method_kwargs(f, m_name)
             if suppl_kwargs is None:
-                self._view.setCursor(QtGui.QCursor(Qt.CrossCursor))
+                self._view.setCursor(QtGui.QCursor(Qt.CursorShape.CrossCursor))
             else:
                 threading.Thread(target=thread_job,
                                  kwargs=suppl_kwargs).start()
@@ -1857,7 +1884,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
 
 
     def fractal_result_slot(self, m_name, res):
-        self._view.setCursor(QtGui.QCursor(Qt.CrossCursor))
+        self._view.setCursor(QtGui.QCursor(Qt.CursorShape.CrossCursor))
         res_display = Fractal_code_editor(self)
         res_display.set_text(res)
         res_display.setWindowTitle(f"{m_name} results")
@@ -2141,11 +2168,11 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             self._rect_under.setRect(rectF)
         else:
             self._rect_under = QGraphicsRectItem(rectF)
-            self._rect_under.setPen(QtGui.QPen(QtGui.QColor("red"), 0, Qt.SolidLine))
+            self._rect_under.setPen(QtGui.QPen(QtGui.QColor("red"), 0, Qt.PenStyle.SolidLine))
             self._group.addToGroup(self._rect_under)
 
             self._rect = QGraphicsRectItem(rectF)
-            self._rect.setPen(QtGui.QPen(QtGui.QColor("black"), 0, Qt.DotLine))
+            self._rect.setPen(QtGui.QPen(QtGui.QColor("black"), 0, Qt.PenStyle.DotLine))
             self._group.addToGroup(self._rect)
 
         # Now apply the rotation
@@ -2443,11 +2470,11 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
             self._line_under.setLine(qlineF)
         else:
             self._line_under = QGraphicsLineItem(qlineF)
-            self._line_under.setPen(QtGui.QPen(QtGui.QColor("red"), 0, Qt.SolidLine))
+            self._line_under.setPen(QtGui.QPen(QtGui.QColor("red"), 0, Qt.PenStyle.SolidLine))
             self._group.addToGroup(self._line_under)
 
             self._line = QGraphicsLineItem(qlineF)
-            self._line.setPen(QtGui.QPen(QtGui.QColor("black"), 0, Qt.DotLine))
+            self._line.setPen(QtGui.QPen(QtGui.QColor("black"), 0, Qt.PenStyle.DotLine))
             self._group.addToGroup(self._line)
 
 
@@ -2683,7 +2710,7 @@ class Fractal_MainWindow(QMainWindow):
         return QtCore.QSize(1200, 800) 
     
     def add_image_status(self):
-        self.addDockWidget(Qt.LeftDockWidgetArea,
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea,
                            self.centralWidget().image_doc_widget)
 
     def add_func_wget(self):
@@ -2699,14 +2726,16 @@ class Fractal_MainWindow(QMainWindow):
             may_interrupt=True,
             locks_navigation=True
         )
-        dock_widget = QDockWidget(None, Qt.Window)
+        dock_widget = QDockWidget(None, Qt.WindowType.Window)
         dock_widget.setWidget(func_wget)
         # Not closable :
-        dock_widget.setFeatures(QDockWidget.DockWidgetFloatable | 
-                                QDockWidget.DockWidgetMovable)
+        dock_widget.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetFloatable
+            | QDockWidget.DockWidgetFeature.DockWidgetMovable
+        )
         dock_widget.setWindowTitle("Parameters")
         dock_widget.setStyleSheet(DOCK_WIDGET_CSS)
-        self.addDockWidget(Qt.LeftDockWidgetArea, dock_widget)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock_widget)
 
         self._func_wget = func_wget
         

@@ -58,7 +58,7 @@ def ddiffabsdx(X, x):
 class Burning_ship(fs.Fractal):
     def __init__(self, directory):
         """
-A standard Burning Ship Fractal, power 2. 
+A standard Burning Ship Fractal (power 2). 
 
 Parameters
 ==========
@@ -262,9 +262,9 @@ directory : str
 
     References
     ==========
-    .. [1] <https://mathr.co.uk/blog/2021-05-14_deep_zoom_theory_and_practice.html>
-    .. [2] <http://www.fractalforums.com/announcements-and-news>
-        
+        - https://en.wikipedia.org/wiki/Burning_Ship_fractal
+        - At the Helm of the Burning Ship - Claude Heiland-Allen, 2019
+          <http://dx.doi.org/10.14236/ewic/EVA2019.74>
         """
         self.init_data_types(np.float64)
 
