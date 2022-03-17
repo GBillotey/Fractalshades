@@ -10,13 +10,13 @@ last published version and its dependencies, you should run: [#f1]_
 
 .. code-block:: console
 
-    python3 -m pip install --user fractalshades
+    pip install fractalshades
 
 or, to install directly the latest version from Github master:
 
 .. code-block:: console
 
-    python3 -m pip install git+https://github.com/GBillotey/Fractalshades.git
+    pip install git+https://github.com/GBillotey/Fractalshades.git
 
 This package relies on the following dependencies:
 
@@ -25,7 +25,7 @@ This package relies on the following dependencies:
 - mpmath_
 - gmpy2_
 - Pillow_
-- PyQt5_
+- PyQt6_
 - pygments_
 
 .. _numpy: https://numpy.org/
@@ -33,7 +33,7 @@ This package relies on the following dependencies:
 .. _mpmath: https://mpmath.org/
 .. _gmpy2: https://gmpy2.readthedocs.io/en/latest/
 .. _Pillow: https://pillow.readthedocs.io/en/stable/
-.. _PyQt5: https://pypi.org/project/PyQt5/
+.. _PyQt6: https://pypi.org/project/PyQt6/
 .. _PyPI: https://pypi.org/
 .. _pygments: https://pygments.org/
 
@@ -52,7 +52,7 @@ to install them manually :
     sudo apt-get install libmpc-dev
 
 
-.. [#f1] These instructions describe installation to your Python home
+.. [#f1] These instructions describe installation to your Python
          directory. You could also consider the installation of
          `Fractalshades` in a virtual environment (a self-contained directory
          tree that contains a Python installation for a particular version of

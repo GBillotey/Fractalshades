@@ -8,17 +8,17 @@ Example plot of a deep-zoom in Burning ship power-2.
 
 The Burning Ship fractal, first described by Michael Michelitsch
 and Otto E. Rössler in 1992, is a variant of the mandelbrot fractal which 
-involve the absolute value function, making the formula non-analytic ([#f1]).
+involve the absolute value function, making the formula non-analytic ([#BS1]).
 
-For a more comprehensive introduction, we recommend the paper [#f2]_.
+For a more comprehensive introduction, we recommend the paper [#BS2]_.
 
 Like the Mandelbrot set, this set features "mini-ships", which are
 smaller copies of the whole. The zoom proposed here displays the inner
 decoration around a deep miniship (period 9622, size 3.40e-265).
 
 
-.. [#f1] https://en.wikipedia.org/wiki/Burning_Ship_fractal
-.. [#f2] At the Helm of the Burning Ship - Claude Heiland-Allen, 2019
+.. [#BS1] https://en.wikipedia.org/wiki/Burning_Ship_fractal
+.. [#BS2] At the Helm of the Burning Ship - Claude Heiland-Allen, 2019
          <http://dx.doi.org/10.14236/ewic/EVA2019.74>
 """
 

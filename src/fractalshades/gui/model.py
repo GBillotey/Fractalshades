@@ -11,9 +11,9 @@ from operator import getitem, setitem
 
 import numpy as np
 
-from PyQt5 import QtCore
-from PyQt5.QtCore import Qt
-from PyQt5.QtCore import pyqtSignal, pyqtSlot
+from PyQt6 import QtCore
+from PyQt6.QtCore import Qt
+from PyQt6.QtCore import pyqtSignal, pyqtSlot
 
 import fractalshades as fs
 
@@ -532,10 +532,10 @@ class Colormap_presenter(Presenter):
     
     
     cmap_arr_attr = ["colors", "kinds", "grad_npts", "grad_funcs"]
-    cmap_arr_roles = [Qt.BackgroundRole,
-                      Qt.DisplayRole,
-                      Qt.DisplayRole,
-                      Qt.DisplayRole] # TODO
+    cmap_arr_roles = [Qt.ItemDataRole.BackgroundRole,
+                      Qt.ItemDataRole.DisplayRole,
+                      Qt.ItemDataRole.DisplayRole,
+                      Qt.ItemDataRole.DisplayRole] # TODO
 
     cmap_attr =  cmap_arr_attr + ["extent"]
     extent_choices = ["mirror", "repeat", "clip"]

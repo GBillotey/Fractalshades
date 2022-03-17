@@ -1236,13 +1236,8 @@ def numba_iterate(
         ref_orbit_len = Zn_path.shape[0]
         first_invalid_index = min(ref_orbit_len, ref_div_iter, ref_order)
         M_out = np.empty((2,), dtype=np.complex128)
-        
-#        print("star anew:\n", ref_index_xr, "\n", ref_xr)
 
         while True:
-#            if True: # debug
-#                print("n_iter", n_iter, w_iter,
-#                      fsxn.to_Xrange_scalar(Z_xr[zn]), Z_xr[zn], Z[zn])
             #==========================================================
             # Try a BLA_step
             if BLA_activated and (w_iter & STG_SKIP_MASK) == 0:
@@ -1263,7 +1258,6 @@ def numba_iterate(
                 if step != 0:
                     n_iter += step
                     w_iter = (w_iter + step) % ref_order
-#                    print("step", step, n_iter, w_iter, M_out[0], M_out[1])
                     if xr_detect_activated:
                         Z_xr[zn] = M_out[0] * Z_xr[zn] + M_out[1] * c_xr
                         # /!\ keep this, needed for next BLA step
@@ -1311,27 +1305,9 @@ def numba_iterate(
             #------------------------------------------------------------------
             # zn subblok
             if xr_detect_activated:
-#                if w_iter == 0:
-##                    print("incoming", n_iter, fsxn.to_Xrange_scalar(Z_xr[zn]),
-##                          ref_zn_xr, c_xr)
-##                    print( 2. * ref_zn_xr) # OK
-##                    print((Z_xr[zn] + 2. * ref_zn_xr)) # ok
-#                    a = 2. * ref_zn_xr
-#                    b = Z_xr[zn] # problem, b is (3.29025725e-165+2.46664303e-165j, 0)
-#                    c = (Z_xr[zn] + 2. * ref_zn_xr)
-#                    d = a + b
-#                    print("a", a.mantissa, a.exp, a)
-#                    print("b", b.mantissa, b.exp, b)
-#                    print("c", c.mantissa, c.exp, c)
-#                    print("d", d.mantissa, d.exp, d)
-#
-#                    print(Z_xr[zn] * (Z_xr[zn] + 2. * ref_zn_xr))
-#                    print(Z_xr[zn] * (Z_xr[zn] + 2. * ref_zn_xr) + c_xr)
-                p_iter_zn(Z_xr, ref_zn_xr, c_xr)# in place mod // Z[zn] = Z[zn] * (Z[zn] + 2. * ref_zn) + c
+                p_iter_zn(Z_xr, ref_zn_xr, c_xr)# in place mod
                 # std is used for div condition 
                 Z[zn] = fsxn.to_standard(Z_xr[zn])
-#                if w_iter == 0:
-#                    print("out", fsxn.to_Xrange_scalar(Z_xr[zn]), Z[zn])
             else:
                 p_iter_zn(Z, ref_zn, c)
 
@@ -1381,7 +1357,6 @@ def numba_iterate(
             # Glitch correction - reference point diverging
             if (w_iter >= ref_div_iter - 1):
                 # Rebasing - we are already big no underflow risk
-#                print("############# diverging rebase", w_iter)
                 Z[zn] = ZZ
                 if xr_detect_activated:
                     Z_xr[zn] = fsxn.to_Xrange_scalar(ZZ)
@@ -1405,11 +1380,9 @@ def numba_iterate(
                     Z_xrn = Z_xr[zn]
                     if out_is_xr[0]:
                         # Reference underflows, use available xr ref
-#                        print("******out_xr ", out_xr[0], fsxn.to_Xrange_scalar(out_xr[0]))
                         ZZ_xr = Z_xrn + out_xr[0]
                     else:
                         ZZ_xr = Z_xrn + ref_zn_next
-#                        print("******ZZ_xr ", ZZ_xr, ZZ_xr.exp, ZZ_xr.mantissa, "----", Z_xrn, ref_zn_next)
 
                     bool_dyn_rebase_xr = (
                         fsxn.extended_abs2(ZZ_xr)
@@ -1417,9 +1390,6 @@ def numba_iterate(
                     )
                     if bool_dyn_rebase_xr:
                         
-#                        print("bool_dyn_rebase_xr", w_iter, ZZ_xr,
-#                              fsxn.to_Xrange_scalar(Z_xr[zn]), out_is_xr[0], fsxn.to_Xrange_scalar(out_xr[0]), ref_zn_next,
-#                              )
                         Z_xr[zn] = ZZ_xr
                         # /!\ keep this, needed for next BLA step - TODO: for BS
                         Z[zn] = fsxn.to_standard(ZZ_xr)
@@ -1459,20 +1429,6 @@ def numba_cycles_perturb_BS(
     P, kc, n_iter_init, M_bla, r_bla, bla_len, stages_bla,
     _interrupted
 ):
-#    """
-#    Run the perturbation cycles
-#
-#    Parameters:
-#    -----------
-#    Z, U, c, stop_reason, stop_iter
-#        result arrays
-#    iterate :
-#        numba jitted function
-#    Ref_path:
-#        Ref_path numba object
-#    n_iter:
-#        current iteration
-#    """
     print("in numba_cycles_perturb_BS")
 
 
@@ -1481,7 +1437,6 @@ def numba_cycles_perturb_BS(
     Z_xr_trigger = np.ones((nz,), dtype=np.bool_)
 
     for ipt in range(npts):
-#        print("iter", ipt)
 
         refpath_ptr = np.zeros((2,), dtype=np.int32)
         out_is_xr = np.zeros((2,), dtype=numba.bool_)
@@ -1492,14 +1447,9 @@ def numba_cycles_perturb_BS(
         apt, bpt, a_xr, b_xr = ref_path_c_from_pix_BS(
             c_pix[ipt], dx_xr, driftx_xr, drifty_xr
         )
-#        print("after ref_path_c_from_pix_BS")
-#        print("apt, bpt, a_xr, b_xr", apt, bpt, a_xr, b_xr, c_pix[ipt]) 
         stop_pt = stop_reason[:, ipt]
 
         initialize(Zpt, Z_xr)
-#        print("after initialize")
-#        if ipt > 0:
-#            return 0
 
         n_iter = iterate(
             apt, bpt, a_xr, b_xr, Zpt, Z_xr, Z_xr_trigger,
@@ -1574,14 +1524,12 @@ def numba_iterate_BS(
             # Try a BLA_step
             if BLA_activated and (w_iter & STG_SKIP_MASK) == 0: # and False:
                 Zn = Z[xn] + 1j * Z[yn]
-#                assert len(M_out) == 8
                 step = ref_BLA_get(
                     M_bla, r_bla, bla_len, stages_bla, Zn, w_iter,
                     first_invalid_index, M_out, False
                 )
                 
-                if step != 0:# and False:
-                    # print("BLA skipping", w_iter, step)
+                if step != 0:
                     n_iter += step
                     w_iter = (w_iter + step) % ref_order
                     if xr_detect_activated:
@@ -1594,7 +1542,6 @@ def numba_iterate_BS(
                                                dxnda, dxndb, dynda, dyndb)
                     else:
                         # just the usual BLA step
-                        # if False:
                         apply_BLA_BS(M_out, Z, a, b, xn, yn)
                         if calc_hessian:
                             apply_BLA_deriv_BS(M_out, Z, a, b,

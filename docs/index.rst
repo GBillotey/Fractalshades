@@ -8,9 +8,11 @@ Fractalshades |version| documentation
 Fractalshades is a Python package for creating static and interactive 
 visualisations of 2d fractals. It targets Windows and Unix operating
 systems and implements efficient algorithms for
-very-deep exploration of the Mandelbrot and the Burning Ship sets
+very-deep exploration of the Mandelbrot_ and the Burning_Ship_ sets
 (*1.e-2000* scale and beyong).
 
+.. _Mandelbrot: https://en.wikipedia.org/wiki/Mandelbrot_set
+.. _Burning_Ship: https://en.wikipedia.org/wiki/Burning_Ship_fractal
 
 .. toctree::
     :maxdepth: 2

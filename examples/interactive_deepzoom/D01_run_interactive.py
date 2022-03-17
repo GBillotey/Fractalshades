@@ -15,7 +15,7 @@ import typing
 import os
 
 import numpy as np
-from PyQt5 import QtGui
+from PyQt6 import QtGui
 
 import fractalshades as fs
 import fractalshades.models as fsm
