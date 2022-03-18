@@ -34,6 +34,7 @@ jobs:
       
       - name: Prepare GUI
         run: |
+          echo "GUI"
           # See
           # https://github.com/pytest-dev/pytest-qt/issues/396
           # https://github.com/pytest-dev/pytest-qt/pull/295/files
