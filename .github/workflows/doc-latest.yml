@@ -44,7 +44,7 @@ jobs:
           # https://github.com/pytest-dev/pytest-qt/pull/295/files
           # https://github.com/konserw/mre/blob/master/.github/workflows/linux.yml
           # sudo apt install -y xvfb x11-utils libxkbcommon-x11-0
-          sudo apt-get -qq install libxcb-xinerama0 pyqt6-dev-tools
+          sudo apt-get -qq install libxcb-xinerama0 # xvfb x11-utils libxkbcommon-x11-0
           # sudo apt install libxkbcommon-x11-0
           /sbin/start-stop-daemon --start --quiet --pidfile /tmp/custom_xvfb_99.pid --make-pidfile --background --exec /usr/bin/Xvfb -- :99 -screen 0 1920x1200x24 -ac +extension GLX
 
@@ -52,7 +52,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install flake8 pytest
-          pip install opencv-python-headless
+          pip install pyqt5-tools
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: install Fractalshades from current commit
