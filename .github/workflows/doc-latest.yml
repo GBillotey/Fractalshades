@@ -65,6 +65,7 @@ jobs:
 
       - name: Build documentation
         run: |
+          python3 docs/doc_util.py
           make -C docs clean
           make -C docs html
   
