@@ -373,11 +373,6 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         EXPERIMENTAL for perturbation.
         If True activates interior point detection
 
-    References
-    ==========
-    .. [1] At the Helm of the Burning Ship - Claude Heiland-Allen, 2019
-           <http://dx.doi.org/10.14236/ewic/EVA2019.74>
-
         """
         self.init_data_types(np.complex128)
 
