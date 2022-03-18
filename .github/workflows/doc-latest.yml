@@ -43,7 +43,8 @@ jobs:
           # https://github.com/pytest-dev/pytest-qt/issues/396
           # https://github.com/pytest-dev/pytest-qt/pull/295/files
           # https://github.com/konserw/mre/blob/master/.github/workflows/linux.yml
-          sudo apt install -y xvfb x11-utils libxkbcommon-x11-0
+          # sudo apt install -y xvfb x11-utils libxkbcommon-x11-0
+          sudo apt-get -qq install libxcb-xinerama0 pyqt6-dev-tools
           # sudo apt install libxkbcommon-x11-0
           /sbin/start-stop-daemon --start --quiet --pidfile /tmp/custom_xvfb_99.pid --make-pidfile --background --exec /usr/bin/Xvfb -- :99 -screen 0 1920x1200x24 -ac +extension GLX
 
