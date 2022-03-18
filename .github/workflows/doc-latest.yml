@@ -57,7 +57,8 @@ jobs:
           export DISPLAY=:99.0
           Xvfb :99 -screen 0 640x480x24 &
           
-          # sudo apt install libxkbcommon-x11-0
+          sudo apt-get install libxkbcommon-x11-0
+    
           # /sbin/start-stop-daemon --start --quiet --pidfile /tmp/custom_xvfb_99.pid --make-pidfile --background --exec /usr/bin/Xvfb -- :99 -screen 0 1920x1200x24 -ac +extension GLX
 
       - name: Install dependencies
