@@ -94,7 +94,6 @@ def plot(plot_dir):
             max_iter=max_iter,
             M_divergence=1.e3,
             epsilon_stationnary=epsilon_stationnary,
-            datatype=np.complex128
         )
 
         if fractal.res_available():
@@ -184,11 +183,10 @@ if __name__ == "__main__":
         plot_dir = os.path.splitext(realpath)[0]
         plot(plot_dir)
     except NameError:
-        pass # No output
-#        import tempfile
-#        with tempfile.TemporaryDirectory() as plot_dir:
-#            static_im_link="sphx_glr_run_interactive_001.png"
-#            if static_im_link is None:
-#                plot(plot_dir)
-#            else:
-#                _plot_from_data(plot_dir, static_im_link)
+        import tempfile
+        with tempfile.TemporaryDirectory() as plot_dir:
+            static_im_link=None
+            if static_im_link is None:
+                plot(plot_dir)
+            else:
+                _plot_from_data(plot_dir, static_im_link)
