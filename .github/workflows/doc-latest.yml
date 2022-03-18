@@ -48,8 +48,8 @@ jobs:
           # sudo apt-get -qq install libxcb-xinerama0 # xvfb x11-utils libxkbcommon-x11-0
           # sudo apt-get install libgl1
           # https://wiki.qt.io/Building_Qt_5_from_Git
-          sudo apt-get build-dep qt6-default
-          sudo apt-get install libxcb-xinerama0-dev 
+          sudo apt-get apt-get install libx11-xcb-dev libxcb-composite0-dev libxcb-cursor-dev libxcb-damage0-dev libxcb-dpms0-dev libxcb-dri2-0-dev libxcb-dri3-dev libxcb-glx0-dev libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-present-dev libxcb-randr0-dev libxcb-render-util0-dev libxcb-render0-dev libxcb-shape0-dev libxcb-shm0-dev libxcb-sync-dev libxcb-util-dev libxcb-xfixes0-dev libxcb-xinerama0-dev libxcb-xkb-dev libxcb-xtest0-dev libxcb1-dev
+          # sudo apt-get install libxcb-xinerama0-dev 
           
           # sudo apt install libxkbcommon-x11-0
           /sbin/start-stop-daemon --start --quiet --pidfile /tmp/custom_xvfb_99.pid --make-pidfile --background --exec /usr/bin/Xvfb -- :99 -screen 0 1920x1200x24 -ac +extension GLX
