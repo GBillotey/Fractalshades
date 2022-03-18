@@ -32,6 +32,7 @@ jobs:
 
       - name: Install GMP MPFR MPC needed for gmpy2
         run: |
+          sudo apt-get update
           sudo apt-get install libgmp-dev
           sudo apt-get install libmpfr-dev
           sudo apt-get install libmpc-dev
