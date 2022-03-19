@@ -68,16 +68,16 @@ jobs:
           dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6/Qt6/plugins/platforms
           echo "***********************##"
           ldd /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6/Qt6/plugins/platforms/libqxcb.so
-          # libxcb-icccm.so.4 => not found
-	  # libxcb-image.so.0 => not found
-	  # libxcb-keysyms.so.1 => not found
-	  # libxcb-randr.so.0 => not found
-	  # libxcb-render-util.so.0 => not found
-          # libxcb-icccm.so.4 => not found
-          # libxcb-image.so.0 => not found
-	  # libxcb-keysyms.so.1 => not found
-	  # libxcb-randr.so.0 => not found
-	  # libxcb-render-util.so.0 => not found
+          # libxcb-icccm.so.4
+	  # libxcb-image.so.0
+	  # libxcb-keysyms.so.1
+	  # libxcb-randr.so.0
+	  # libxcb-render-util.so.0
+          # libxcb-icccm.so.4
+          # libxcb-image.so.0
+	  # libxcb-keysyms.so.1
+	  # libxcb-randr.so.0
+	  # libxcb-render-util.so.0
           
           export DISPLAY=:99.0
           export QT_DEBUG_PLUGINS=1
