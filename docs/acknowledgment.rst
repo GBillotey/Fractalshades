@@ -2,19 +2,18 @@ Acknowledgment
 **************
 
 This project would not have been possible without the following online
-ressources
+resources :
 
- - This introduction to the Mandelbrot set which will pique your interest:
-   https://www.math.univ-toulouse.fr/~cheritat/wiki-draw/index.php/Mandelbrot_set
+ - https://www.math.univ-toulouse.fr/~cheritat/wiki-draw/index.php/Mandelbrot_set :
+   this introduction to the Mandelbrot set which will pique your interest
 
- - the *Mandelbrot Encyclopedy*, very valuable ressource, old-school with
-   hidden treasures
-   https://mrob.com/pub/muency.html
+ - https://mrob.com/pub/muency.html the *Mandelbrot Encyclopedy*, very valuable
+   resource, a bit old-school look with hidden treasures.
 
- - A great blog, both mathematics and programming oriented, which covers a
-   large set of topics in a highly instructive manner:
-   https://mathr.co.uk/blog/
+ - https://mathr.co.uk/blog/ : a great blog, both mathematics and programming
+   oriented, which covers a large set of topics in a highly instructive manner.
+   
 
- - The fractal forums site, on which you will find both artistic creations
-   and lively discussions on maths, computer science...
-   https://fractalforums.org/
+ - https://fractalforums.org/ : there you will find both artistic creations
+   and lively discussions on maths & computer science.
+   
