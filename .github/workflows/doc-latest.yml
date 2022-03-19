@@ -53,8 +53,10 @@ jobs:
           # https://moderngl.readthedocs.io/en/5.6.3/techniques/headless_ubuntu_18_server.html
           sudo apt-get install python3-pip mesa-utils libegl1-mesa xvfb
           sudo apt-get install libxkbcommon-x11-0
-          #dir /usr/lib/x86_64-linux-gnu
-          ldd libqxcb.so
+          dir /usr/lib/x86_64-linux-gnu
+          echo "***********************"
+          ldd /usr/lib/x86_64-linux-gnu/libqxcb.so
+          echo "***********************"
           
           export DISPLAY=:99.0
           export QT_DEBUG_PLUGINS=1
