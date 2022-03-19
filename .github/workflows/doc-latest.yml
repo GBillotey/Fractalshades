@@ -18,8 +18,6 @@ jobs:
       matrix:
         python-version: [3.8] # , 3.9]
 
-    env:
-      DISPLAY: :0
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -76,14 +74,14 @@ jobs:
           # libxcb-render-util.so.0
           
           export QT_DEBUG_PLUGINS=1
+          echo $QT_PLUGIN_PATH
           # export QT_PLUGIN_PATH=/usr/lib/qt/plugins
           # dir /usr/lib/qt/plugins
-          # Xvfb :99 -screen 0 640x480x24 &
           
-          # start xvfb on (default) display :0
-          sudo /usr/bin/Xvfb $DISPLAY -screen 0 1280x1024x24 &
+          # start xvfb on (default) display
+          export DISPLAY=:99.0
+          Xvfb :99 -screen 0 640x480x24 &
           
-
     
           # /sbin/start-stop-daemon --start --quiet --pidfile /tmp/custom_xvfb_99.pid --make-pidfile --background --exec /usr/bin/Xvfb -- :99 -screen 0 1920x1200x24 -ac +extension GLX
 
