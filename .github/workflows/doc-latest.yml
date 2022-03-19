@@ -29,12 +29,15 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: ${{ matrix.python-version }}
-      
+  
+      - name: Prepare install dependencies
+        run: |
+          sudo apt-get update
+          pip install --upgrade pip
+
       - name: Prepare GUI
         run: |
          echo "Prepare GUI for pyQt6"
-          sudo apt-get update
-          pip install --upgrade pip
           pip install pyQt6
 
           # See
@@ -60,6 +63,7 @@ jobs:
           dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6
           dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6/Qt
           dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6/Qt/plugins
+          dir /usr/lib/qt/plugins
           echo "***********************"
           dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6/Qt/plugins/platforms
           echo "***********************##"
