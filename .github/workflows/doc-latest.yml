@@ -126,7 +126,8 @@ jobs:
 
           python3 docs/doc_util.py
           make -C docs clean
-          QT_DEBUG_PLUGINS=1 make -C docs html
+          # QT_DEBUG_PLUGINS=1 make -C docs html
+          QT_QPA_PLATFORM=offscreen make -C docs html
   
       - name: Push documentation to github pages
         run: |
