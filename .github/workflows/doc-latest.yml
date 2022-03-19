@@ -60,8 +60,9 @@ jobs:
           
           echo "*** start xvfb on (default) display"
           export DISPLAY=:99.0
-          Xvfb :99 -screen 0 1280x1024x8 &
+          Xvfb :99 -screen 0 1920x1080x24 &
           # was: 640x480x24 &
+          # 1920x1080
           echo "***********************"
 
       - name: Install GMP MPFR MPC needed for gmpy2
