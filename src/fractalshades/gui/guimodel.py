@@ -2576,9 +2576,9 @@ class Fractal_MainWindow(QMainWindow):
         self.layout()
         self.set_menubar()
         self.setWindowTitle(f"Fractashades {fs.__version__}")
-        if fs.settings.output_context["doc"]:
+        if fs.settings.output_context["doc"] or True:
             # Needed for github build where QT_QPA_PLATFORM=offscreen
-            self.setMinimumSize(1200, 744)
+            self.setMinimumSize(1200, 744 - 24)
 
     def set_menubar(self) :
       bar = self.menuBar()
