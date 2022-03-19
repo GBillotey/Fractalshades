@@ -55,7 +55,7 @@ jobs:
           #dir /usr/lib/x86_64-linux-gnu
           
           export DISPLAY=:99.0
-          export QT_PLUGIN_PATH=/usr/lib/qt/plugins
+          # export QT_PLUGIN_PATH=/usr/lib/qt/plugins
           dir /usr/lib/qt/plugins
           Xvfb :99 -screen 0 640x480x24 &
           
@@ -82,7 +82,7 @@ jobs:
         run: |
           python3 docs/doc_util.py
           make -C docs clean
-          make -C docs html
+          xvfb-run make -C docs html
   
       - name: Push documentation to github pages
         run: |
