@@ -6,7 +6,7 @@ Burning ship explorer - Naïve algorithm with standard precision
 
 This is a simple template to start exploring the Burning ship fractal
 Toy-implementation, resolution limited to approx 1.e-13: due to double
-(float64) precision. Good exploration !
+(float64) precision.
 """
 import typing
 import os

@@ -342,7 +342,7 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         code "stationnary" (Those points should belong to Mandelbrot set)
         Used only if interior_detect is True
     SA_params :
-        The dictionnary of parameters for Series-Approximation :
+        The dictionnary of parameters for Series-Approximations :
 
         .. list-table:: 
            :widths: 20 80
@@ -355,9 +355,10 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
            * - SA_err
              - float: relative error criteria (default: 1.e-6)
 
-        if `None` SA is not activated. This option is kept f
+        if `None` SA is not activated. This option is kept for
+        backward-compatibility, use of Bilinear Approximations is recommended.
     BLA_params :
-        The dictionnary of parameters for Bilinear Approximation :
+        The dictionnary of parameters for Bilinear Approximations :
 
         .. list-table:: 
            :widths: 20 80
