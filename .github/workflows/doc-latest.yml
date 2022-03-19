@@ -94,7 +94,7 @@ jobs:
           # Build the doc
           # Note: Mandatory to run with QT_QPA_PLATFORM=offscreen on a headless runner
           make -C docs clean
-          QT_QPA_PLATFORM=EGLFS make -C docs html
+          QT_QPA_PLATFORM=eglfs make -C docs html
           #QT_QPA_PLATFORM=offscreen make -C docs html
   
       - name: Push documentation to github pages
