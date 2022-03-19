@@ -4,10 +4,10 @@
 Burning Ship arbitrary-precision explorer
 =========================================
 
-This is a template to start exploring the Mandelbrot set with
+This is a template to start exploring the Burning Ship set with
 arbitrary precision through a GUI.
 It features the main postprocessing options (continuous
-iteration, distance estimation based shading, field-lines)
+iteration, distance estimation based shading)
 
 Good exploration !
 """

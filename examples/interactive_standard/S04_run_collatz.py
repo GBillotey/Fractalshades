@@ -6,7 +6,6 @@ Collatz explorer - Naïve algorithm with standard precision
 
 This is a simple template to start exploring the Collatz set with
 a GUI. Resolution limited to approx 1.e-13 due to double (float64) precision
-Good exploration !
 """
 import typing
 import os

@@ -260,11 +260,13 @@ directory : str
         if True, the derivatives will be claculated allowing distance
         estimation and shading.
 
-    References
-    ==========
-        - https://en.wikipedia.org/wiki/Burning_Ship_fractal
-        - At the Helm of the Burning Ship - Claude Heiland-Allen, 2019
-          <http://dx.doi.org/10.14236/ewic/EVA2019.74>
+    Notes
+    -----
+        Implementation based on [1]_.
+
+        .. [1] At the Helm of the Burning Ship - Claude Heiland-Allen, 2019
+               Proceedings of EVA London 2019 (EVA 2019) 
+               <http://dx.doi.org/10.14236/ewic/EVA2019.74>
         """
         self.init_data_types(np.float64)
 
