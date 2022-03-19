@@ -55,6 +55,7 @@ jobs:
           echo "***********************"
           whereis python3
           # dir /usr/lib/python3.8/site-packages/
+          sudo dir /usr/lib/python3.8
           echo "***********************"
           
           export DISPLAY=:99.0
