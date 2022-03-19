@@ -56,7 +56,7 @@ jobs:
           
           export DISPLAY=:99.0
           # export QT_PLUGIN_PATH=/usr/lib/qt/plugins
-          dir /usr/lib/qt/plugins
+          # dir /usr/lib/qt/plugins
           Xvfb :99 -screen 0 640x480x24 &
           
           sudo apt-get install libxkbcommon-x11-0
