@@ -20,6 +20,7 @@ jobs:
 
     env:
       DISPLAY: ':99.0'
+      QT_PLUGIN_PATH: '/usr/lib/qt/plugins'
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -55,6 +56,8 @@ jobs:
           dir /usr/lib/x86_64-linux-gnu
           
           export DISPLAY=:99.0
+          export QT_PLUGIN_PATH=/usr/lib/qt/plugins
+          dir /usr/lib/qt/plugins
           Xvfb :99 -screen 0 640x480x24 &
           
           sudo apt-get install libxkbcommon-x11-0
