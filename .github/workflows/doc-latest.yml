@@ -80,6 +80,7 @@ jobs:
           # dir /usr/lib/qt/plugins
           # Xvfb :99 -screen 0 640x480x24 &
           
+          # start xvfb on (default) display :0
           sudo /usr/bin/Xvfb $DISPLAY -screen 0 1280x1024x24 &
           
 
