@@ -19,7 +19,7 @@ jobs:
         python-version: [3.8] # , 3.9]
 
     env:
-      DISPLAY: ':0'
+      DISPLAY: 0
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -54,6 +54,7 @@ jobs:
           sudo apt-get install xvfb mesa-utils libegl1-mesa
           sudo apt-get install libxkbcommon-x11-0
           sudo apt-get install --reinstall libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0
+          sudo apt-get install -y xvfb libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xinput0 libxcb-xfixes0
           dir /usr/lib/x86_64-linux-gnu
           echo "***********************"
           python3 -m site
@@ -74,7 +75,6 @@ jobs:
           # libxcb-randr.so.0
           # libxcb-render-util.so.0
           
-          export DISPLAY=:99.0
           export QT_DEBUG_PLUGINS=1
           # export QT_PLUGIN_PATH=/usr/lib/qt/plugins
           # dir /usr/lib/qt/plugins
@@ -113,6 +113,7 @@ jobs:
       - name: Build documentation
         run: |
           echo "patch CV2"
+          echo $PATH
           dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages
           echo "~~~"
           dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/cv2/qt/plugins
