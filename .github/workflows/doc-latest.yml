@@ -53,7 +53,7 @@ jobs:
           # https://moderngl.readthedocs.io/en/5.6.3/techniques/headless_ubuntu_18_server.html
           sudo apt-get install xvfb mesa-utils libegl1-mesa
           sudo apt-get install libxkbcommon-x11-0
-          sudo apt-get install --reinstall libxcb-xinerama0 libxcb-icccm libxcb-image libxcb-keysyms libxcb-randr libxcb-render-util
+          sudo apt-get install --reinstall libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0
           dir /usr/lib/x86_64-linux-gnu
           echo "***********************"
           python3 -m site
