@@ -113,12 +113,12 @@ jobs:
 
       - name: Build documentation
         run: |
-          echo "patch CV2"
+          echo "path"
           echo $PATH
+          echo "~~~"
           dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages
           echo "~~~"
-          dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/cv2/qt/plugins
-          rm -rf /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/cv2/qt/plugins
+
           python3 docs/doc_util.py
           make -C docs clean
           make -C docs html
