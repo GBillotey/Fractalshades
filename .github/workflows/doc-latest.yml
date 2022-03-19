@@ -54,6 +54,7 @@ jobs:
           sudo apt-get install python3-pip mesa-utils libegl1-mesa xvfb
           sudo apt-get install libxkbcommon-x11-0
           #dir /usr/lib/x86_64-linux-gnu
+          ldd libqxcb.so
           
           export DISPLAY=:99.0
           export QT_DEBUG_PLUGINS=1
