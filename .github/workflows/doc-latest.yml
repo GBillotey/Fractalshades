@@ -57,6 +57,9 @@ jobs:
           # dir /usr/lib/python3.8/site-packages/
           echo "***********************"
           dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages
+          dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6
+          dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6/Qt
+          dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6/Qt/plugins
           echo "***********************"
           dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6/Qt/plugins/platforms
           echo "***********************##"
