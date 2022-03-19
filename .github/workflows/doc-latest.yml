@@ -61,13 +61,13 @@ jobs:
           echo "***********************"
           dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages
           dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6
-          dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6/Qt
-          dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6/Qt/plugins
+          dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6/Qt6
+          dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6/Qt6/plugins
           dir /usr/lib/qt/plugins
           echo "***********************"
-          dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6/Qt/plugins/platforms
+          dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6/Qt6/plugins/platforms
           echo "***********************##"
-          ldd /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6/Qt/plugins/platforms/libqxcb.so
+          ldd /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6/Qt6/plugins/platforms/libqxcb.so
           
           export DISPLAY=:99.0
           export QT_DEBUG_PLUGINS=1
