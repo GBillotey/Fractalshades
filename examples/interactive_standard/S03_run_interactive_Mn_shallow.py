@@ -42,7 +42,7 @@ def plot(plot_dir):
     """
     calc_name = 'test'
     deg = 5
-    x = -1.0
+    x = -0.0
     y = -0.0
     dx = 5.0
     xy_ratio = 1.0
