@@ -29,13 +29,6 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: ${{ matrix.python-version }}
-
-      - name: Install GMP MPFR MPC needed for gmpy2
-        run: |
-          sudo apt-get update
-          sudo apt-get install libgmp-dev
-          sudo apt-get install libmpfr-dev
-          sudo apt-get install libmpc-dev
       
       - name: Prepare GUI
         run: |
@@ -72,6 +65,16 @@ jobs:
 
     
           # /sbin/start-stop-daemon --start --quiet --pidfile /tmp/custom_xvfb_99.pid --make-pidfile --background --exec /usr/bin/Xvfb -- :99 -screen 0 1920x1200x24 -ac +extension GLX
+
+
+      - name: Install GMP MPFR MPC needed for gmpy2
+        run: |
+          sudo apt-get update
+          sudo apt-get install libgmp-dev
+          sudo apt-get install libmpfr-dev
+          sudo apt-get install libmpc-dev
+
+
 
       - name: Install dependencies
         run: |
