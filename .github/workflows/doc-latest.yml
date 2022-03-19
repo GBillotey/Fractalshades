@@ -54,7 +54,7 @@ jobs:
           dir /usr/lib/x86_64-linux-gnu
           echo "***********************"
           whereis python3
-          dir /usr/lib/python3.8/site-packages/
+          # dir /usr/lib/python3.8/site-packages/
           echo "***********************"
           
           export DISPLAY=:99.0
