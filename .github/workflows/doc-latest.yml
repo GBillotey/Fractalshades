@@ -58,9 +58,9 @@ jobs:
           echo "***********************"
           dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages
           echo "***********************"
-          dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt5/Qt/plugins/platforms
+          dir /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6/Qt/plugins/platforms
           echo "***********************##"
-          ldd /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt5/Qt/plugins/platforms/libqxcb.so
+          ldd /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6/Qt/plugins/platforms/libqxcb.so
           
           export DISPLAY=:99.0
           export QT_DEBUG_PLUGINS=1
