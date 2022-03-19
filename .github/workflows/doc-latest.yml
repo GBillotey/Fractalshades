@@ -32,8 +32,11 @@ jobs:
       
       - name: Prepare GUI
         run: |
+         echo "Prepare GUI for pyQt6"
           sudo apt-get update
-          echo "GUI"
+          pip install --upgrade pip
+          pip install pyQt6
+
           # See
           # https://github.com/pytest-dev/pytest-qt/issues/396
           # https://github.com/pytest-dev/pytest-qt/pull/295/files
@@ -51,6 +54,7 @@ jobs:
           dir /usr/lib/x86_64-linux-gnu
           echo "***********************"
           whereis python3
+          dir /usr/lib/python3.7/site-packages/
           echo "***********************"
           
           export DISPLAY=:99.0
@@ -87,7 +91,7 @@ jobs:
 
       - name: install dependencies to build the documentation
         run: |
-          python -m pip install sphinx sphinx_rtd_theme sphinx-gallery numpydoc matplotlib
+          python -m pip install sphinx sphinx_rtd_theme sphinx-gallery numpydoc # matplotlib
 
       - name: Build documentation
         run: |
