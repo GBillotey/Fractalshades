@@ -49,8 +49,7 @@ jobs:
           # sudo apt-get install libx11-xcb-dev libxcb-composite0-dev libxcb-cursor-dev libxcb-damage0-dev libxcb-dpms0-dev libxcb-dri2-0-dev libxcb-dri3-dev libxcb-glx0-dev libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-present-dev libxcb-randr0-dev libxcb-render-util0-dev libxcb-render0-dev libxcb-shape0-dev libxcb-shm0-dev libxcb-sync-dev libxcb-util-dev libxcb-xfixes0-dev libxcb-xinerama0-dev libxcb-xkb-dev libxcb-xtest0-dev libxcb1-dev
           # sudo apt-get install libxcb-xinerama0-dev 
           # https://moderngl.readthedocs.io/en/5.6.3/techniques/headless_ubuntu_18_server.html
-          sudo apt-get install xvfb 
-          # mesa-utils libegl1-mesa
+          sudo apt-get install xvfb mesa-utils libegl1-mesa
           sudo apt-get install libxkbcommon-x11-0
           sudo apt-get install --reinstall libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0
           sudo apt-get install -y xvfb libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xinput0 libxcb-xfixes0
