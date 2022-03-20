@@ -1,25 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-======================
-Burning ship deep zoom
-======================
+================
+Burning ship DEM
+================
 
-Example plot of a deep-zoom inside the Burning Ship set (power-2).
-
-The Burning Ship fractal, first described by Michael Michelitsch
-and Otto E. Rössler in 1992, is a variant of the mandelbrot fractal which 
-involve the absolute value function, making the formula non-analytic ([#BS1]).
-
-For a more comprehensive introduction, we recommend the paper [#BS2]_.
-
-Like the Mandelbrot set, this set features "mini-ships", which are
-smaller copies of the whole. The zoom proposed here displays the inner
-decoration around a deep miniship (period 9622, size 3.40e-265).
+Plotting of a distance estimation for the Burning ship (power-2).
+This zoom is on the structure which gave the fractal its name. We use an
+arbitrary-precision model, even if this is obviously not needed here.
 
 
-.. [#BS1] https://en.wikipedia.org/wiki/Burning_Ship_fractal
-.. [#BS2] At the Helm of the Burning Ship - Claude Heiland-Allen, 2019
-         <http://dx.doi.org/10.14236/ewic/EVA2019.74>
 """
 
 import os
@@ -33,39 +22,45 @@ from fractalshades.postproc import (
     Postproc_batch,
     Continuous_iter_pp,
     DEM_normal_pp,
+    DEM_pp,
     Raw_pp,
 )
 from fractalshades.colors.layers import (
     Color_layer,
     Bool_layer,
     Normal_map_layer,
+    Virtual_layer,
     Blinn_lighting,
 )
 
 
 def plot(plot_dir):
-    fs.settings.enable_multithreading = True
+    fs.settings.enable_multithreading = False
     fs.settings.inspect_calc = True
 
     # A simple showcase using perturbation technique
-    x = "-1.996381122925929653294037828311253469966641852551354028279745849996384561656543300231734846372389200884473400326047402259215365299651000049307967220797174220920308250039037884064184875313550754352410343246674089430454249309097057276774162871180276065193880170743903875782"
-    y = "0.000004763303728392770746014692362029865866711691612095974571331721507794709607604050981467065736920676037481378828276642944072069756835182953451109905077881061139887661561617020726899218853890425452233104923366681895875677542245236396274857406762304353824848557938906613374564"
-    dx = "1.207782640899473e-261"
-    precision = 271
+    x = '-1.7579317963'
+    y = '0.052705991307'
+    dx = '0.181287312180757'
+    precision = 30
     nx = 2400
-    xy_ratio = 1.8
+    xy_ratio = 1.0
+    
+    sign = 1.0
+    DEM_min = 1.e-4
+    zmin = -0.1
+    zmax = 1.1
     
     # As this formula is non-analytic, we will 'unskew' based on the 
     # influencing miniship "size estimate" matrix.
-    has_skew = True
-    skew_00 = 0.659275816850581
-    skew_01 = -0.5484220094485625
-    skew_10 = 0.25710339801865756
-    skew_11 = 1.3029430412388974
+    has_skew = False
+    skew_00 = 1.0
+    skew_01 = 0.0
+    skew_10 = 0.0
+    skew_11 = 1.0
 
     calc_name="Burning_ship"
-    colormap = fscolors.cmap_register["peacock"]
-    colormap.clip = "repeat"
+    colormap = fscolors.cmap_register["classic"]
 
     # Run the calculation
     f = fsm.Perturbation_burning_ship(plot_dir)
@@ -91,32 +86,42 @@ def plot(plot_dir):
     f.calc_std_div(
         calc_name=calc_name,
         subset=None,
-        max_iter=150000,
+        max_iter=1500,
         M_divergence=1.e3,
         BLA_params={"eps": 1.e-6},
-        calc_hessian=True
     )
+
     f.run()
     print("has been run")
     # Plot the image
     pp = Postproc_batch(f, calc_name)
-    pp.add_postproc("cont_iter", Continuous_iter_pp())
+    pp.add_postproc("continuous_iter", Continuous_iter_pp())
+    pp.add_postproc("distance_estimation", DEM_pp())
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
     pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
 
     plotter = fs.Fractal_plotter(pp)   
     plotter.add_layer(Bool_layer("interior", output=False))
     plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=False))
+    plotter.add_layer(
+        Virtual_layer("continuous_iter", func=None, output=False)
+    )
+    
+    cmap_func = lambda x: sign * np.where(
+       np.isinf(x),
+       np.log(DEM_min),
+       np.log(np.clip(x, DEM_min, None))
+    )
     plotter.add_layer(Color_layer(
-            "cont_iter",
-            func=lambda x: np.log(x),
+            "distance_estimation",
+            func=cmap_func,
             colormap=colormap,
-            probes_z=[0.75, 0.90],
+            probes_z=[zmin, zmax],
             probes_kind="relative",
             output=True
     ))
 
-    plotter["cont_iter"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
+    plotter["distance_estimation"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
     plotter["DEM_map"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
 
     # This is where we define the lighting (here 2 ccolored light sources)
@@ -136,7 +141,7 @@ def plot(plot_dir):
         angles=(0., 20.),
         coords=None,
         color=np.array([1., 1., 1.]))
-    plotter["cont_iter"].shade(plotter["DEM_map"], light)
+    plotter["distance_estimation"].shade(plotter["DEM_map"], light)
 
     plotter.plot()
 
