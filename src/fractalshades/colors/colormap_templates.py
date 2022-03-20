@@ -2195,6 +2195,16 @@ cmap_peacock = fscolors.Fractal_colormap(
     extent='mirror'
 )
 
+cmap_dawn = colormap = fscolors.Fractal_colormap(
+    colors=[
+ [0.0627451 , 0.09019608, 0.20392157],
+ [0.79215688, 0.65490198, 0.98823529],
+ [0.99215686, 0.90980393, 0.36862746]],
+    kinds=['Lch', 'Lch', 'Lch'],
+    grad_npts=[32, 32,  3],
+    grad_funcs=['x', 'x', 'x'],
+    extent='mirror'
+)
 # To import a cmap one shall do:
 # import fractalshades.colors as fscolors
 # fscolors.cmap_register.keys()
@@ -2209,5 +2219,6 @@ cmap_register = {
     "stellar": cmap_stellar,
     "citrus": cmap_citrus,
     "argon": cmap_argon,
-    "peacock": cmap_peacock
+    "peacock": cmap_peacock,
+    "dawn": cmap_dawn
 }
