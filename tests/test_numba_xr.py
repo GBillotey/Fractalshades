@@ -325,10 +325,10 @@ class Test_numba_xr(unittest.TestCase):
                 _matching(res, expected)
                 _matching(res_np, expected)
                 
-                print("t_numba", t_numba)
-                print("t_numpy", t_np)
-                expr = (t_numba <=  t_np * 1.5)
-                self.assertTrue(expr, msg="Numba speed below numpy")
+#                print("t_numba", t_numba)
+#                print("t_numpy", t_np)
+#                expr = (t_numba <=  t_np * 1.5)
+#                self.assertTrue(expr, msg="Numba speed below numpy")
                 
                 # Test add a scalar
                 numba_test_add(xa, stdb, res)
@@ -359,10 +359,10 @@ class Test_numba_xr(unittest.TestCase):
                 _matching(res, expected)
                 _matching(res_np, expected)
                 
-                print("t_numba", t_numba)
-                print("t_numpy", t_np)
-                expr = (t_numba <=  t_np * 1.5)
-                self.assertTrue(expr, msg="Numba speed below numpy")
+#                print("t_numba", t_numba)
+#                print("t_numpy", t_np)
+#                expr = (t_numba <=  t_np * 1.5)
+#                self.assertTrue(expr, msg="Numba speed below numpy")
                 
                 # Test substract a scalar
                 numba_test_sub(xa, stdb, res)
@@ -400,9 +400,9 @@ class Test_numba_xr(unittest.TestCase):
                 _matching(res, expected)
                 _matching(res_np, expected)
 
-                print("t_numba, numpy", t_numba, t_np)
-                expr = (t_numba <=  t_np * 1.5)
-                self.assertTrue(expr, msg="Numba speed below numpy")
+#                print("t_numba, numpy", t_numba, t_np)
+#                expr = (t_numba <=  t_np * 1.5)
+#                self.assertTrue(expr, msg="Numba speed below numpy")
 
                 # Test multiply by a scalar
                 numba_test_mul(xa, stdb, res)
@@ -444,10 +444,10 @@ class Test_numba_xr(unittest.TestCase):
                 _matching(res_np, expected, almost=True, dtype=np.float64,
                           ktol=2.)
                 
-                print("t_numba", t_numba)
-                print("t_numpy", t_np)
-                expr = (t_numba <=  t_np * 1.5)
-                self.assertTrue(expr, msg="Numba speed below numpy")
+#                print("t_numba", t_numba)
+#                print("t_numpy", t_np)
+#                expr = (t_numba <=  t_np * 1.5)
+#                self.assertTrue(expr, msg="Numba speed below numpy")
                 
                 # Test divide by a scalar
                 numba_test_div(xa, stdb, res)
@@ -517,10 +517,10 @@ class Test_numba_xr(unittest.TestCase):
                     np.testing.assert_array_equal(res_np, expected)
                     np.testing.assert_array_equal(res, expected)
 
-                    print("t_numba *** test_compare", t_numba)
-                    print("t_numpy *** test_compare", t_np) # t_numba/t_np)
-                    expr = (t_numba <=  t_np * 1.5)
-                    self.assertTrue(expr, msg="Numba speed below numpy")
+#                    print("t_numba *** test_compare", t_numba)
+#                    print("t_numpy *** test_compare", t_np) # t_numba/t_np)
+#                    expr = (t_numba <=  t_np * 1.5)
+#                    self.assertTrue(expr, msg="Numba speed below numpy")
                     
                     # Test compare with a scalar
                     numba_cmp(xa, stdb, res)
@@ -562,10 +562,10 @@ class Test_numba_xr(unittest.TestCase):
                 _matching(res_np, expected, almost=True, dtype=np.float64,
                           ktol=2.)
                 
-                print("t_numba", t_numba)
-                print("t_numpy", t_np)
-                expr = (t_numba <=  t_np * 1.5)
-                self.assertTrue(expr, msg="Numba speed below numpy")
+#                print("t_numba", t_numba)
+#                print("t_numpy", t_np)
+#                expr = (t_numba <=  t_np * 1.5)
+#                self.assertTrue(expr, msg="Numba speed below numpy")
                 
     def test_abs(self):
         for dtype in (np.float64, np.complex128): # np.complex64 np.float32
@@ -597,12 +597,12 @@ class Test_numba_xr(unittest.TestCase):
                 _matching(res_np, expected, almost=True, dtype=np.float64,
                           ktol=4.)
 
-                print("t_numba", t_numba)
-                if t_np == 0.:
-                    return
-                print("t_numpy", t_np)
-                expr = (t_numba <=  t_np * 1.5)
-                self.assertTrue(expr, msg="Numba speed below numpy")
+#                print("t_numba", t_numba)
+#                if t_np == 0.:
+#                    return
+#                print("t_numpy", t_np)
+#                expr = (t_numba <=  t_np * 1.5)
+#                self.assertTrue(expr, msg="Numba speed below numpy")
 
     def test_abs2(self):
         for dtype in (np.float64, np.complex128): # np.complex64 np.float32
@@ -722,10 +722,10 @@ class Test_numba_xr(unittest.TestCase):
                     _matching(res_np, expected, almost=True, dtype=np.float64,
                               ktol=2.)
                     
-                    print("t_numba", t_numba)
-                    print("t_numpy", t_np)
-                    expr = (t_numba <=  t_np)
-                    self.assertTrue(expr, msg="Numba speed below numpy")
+#                    print("t_numba", t_numba)
+#                    print("t_numpy", t_np)
+#                    expr = (t_numba <=  t_np)
+#                    self.assertTrue(expr, msg="Numba speed below numpy")
 
     def test_constant(self):
         ok = numba_test_constant()
