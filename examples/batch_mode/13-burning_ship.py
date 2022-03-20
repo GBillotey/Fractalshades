@@ -48,16 +48,16 @@ def plot(plot_dir):
     
     sign = 1.0
     DEM_min = 1.e-4
-    zmin = -0.1
-    zmax = 1.1
+    zmin = -0.0
+    zmax = 1.0
     
     # As this formula is non-analytic, we will 'unskew' based on the 
     # influencing miniship "size estimate" matrix.
     has_skew = False
     skew_00 = 1.0
     skew_01 = 0.0
-    skew_10 = 0.0
-    skew_11 = 1.0
+    skew_10 = -0.1
+    skew_11 = 1.1
 
     calc_name="Burning_ship"
     colormap = fscolors.cmap_register["classic"]
@@ -131,14 +131,14 @@ def plot(plot_dir):
         k_diffuse=0.2,
         k_specular=300.,
         shininess=1400.,
-        angles=(0., 20.),
+        angles=(45., 20.),
         coords=None,
         color=np.array([1.0, 1.0, 0.98]))
     light.add_light_source(
         k_diffuse=0.8,
         k_specular=2.,
         shininess=400.,
-        angles=(0., 20.),
+        angles=(45., 20.),
         coords=None,
         color=np.array([1., 1., 1.]))
     plotter["distance_estimation"].shade(plotter["DEM_map"], light)
