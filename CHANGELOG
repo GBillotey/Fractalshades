@@ -1,8 +1,13 @@
+Rev 0.5.1
+- Added unskew option in interactive mode
 Rev 0.5.0
 - Added Burning ship deep explorer
+- Added unskew option in batch mode
 - Chained Bilinear interpolations for arbitrary precision zooms
-- Glitch correction after Zhuoran (https://fractalforums.org/fractal-mathematics-and-new-theories/28/another-solution-to-perturbation-glitches/4360)
-- Automatic rendering of GUI script for the documentation
+- Glitch correction after Zhuoran
+  (https://fractalforums.org/fractal-mathematics-and-new-theories/28/another-solution-to-perturbation-glitches/4360)
+- Documentation: GUI now runs & output figures from Github headless runner
+  for interactive script examples
 Rev 0.4.3
 - fixed typo in run_interactive.py
 Rev 0.4.2

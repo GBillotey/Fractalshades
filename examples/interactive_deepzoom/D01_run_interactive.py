@@ -27,6 +27,7 @@ from fractalshades.postproc import (
     Postproc_batch,
     Continuous_iter_pp,
     Fieldlines_pp,
+    DEM_pp,
     DEM_normal_pp,
     Raw_pp,
 )
@@ -55,12 +56,14 @@ def plot(plot_dir):
     xy_ratio = 1.0
     dps = 16
     max_iter = 15000
+    M_divergence = 1.e2
     nx = 600
     theta_deg = 0.
     interior_detect = True
     epsilon_stationnary = 0.0001
     eps = 1.e-6
     
+    base_layer = "continuous_iter"
     colormap = fscolors.cmap_register["classic"]
     cmap_z_kind = "relative"
     zmin = 0.00
@@ -71,6 +74,7 @@ def plot(plot_dir):
 
     # Set to True to enable multi-threading
     settings.enable_multithreading = True
+    settings.no_newton = False
 
     directory = plot_dir
     fractal = fsm.Perturbation_mandelbrot(directory)
@@ -78,6 +82,7 @@ def plot(plot_dir):
     def func(
         fractal: fsm.Perturbation_mandelbrot=fractal,
          calc_name: str=calc_name,
+
          _1: fsgui.separator="Zoom parameters",
          x: mpmath.mpf=x,
          y: mpmath.mpf=y,
@@ -86,24 +91,35 @@ def plot(plot_dir):
          theta_deg: float=theta_deg,
          dps: int=dps,
          nx: int=nx,
+
          _2: fsgui.separator="Calculation parameters",
          max_iter: int=max_iter,
+         M_divergence: float=M_divergence,
          interior_detect: bool=interior_detect,
          epsilon_stationnary: float=epsilon_stationnary,
+
          _3: fsgui.separator="Bilinear series parameters",
          eps: float=eps,
-         _4: fsgui.separator="Plotting parameters: continuous iteration",
+
+         _4: fsgui.separator="Plotting parameters: base field",
+         base_layer: typing.Literal[
+                 "continuous_iter",
+                 "distance_estimation"
+         ]=base_layer,
          interior_color: QtGui.QColor=(0.1, 0.1, 0.1),
          colormap: fscolors.Fractal_colormap=colormap,
+         invert_cmap: bool=False,
          cmap_z_kind: typing.Literal["relative", "absolute"]=cmap_z_kind,
          zmin: float=zmin,
          zmax: float=zmax,
+
          _5: fsgui.separator="Plotting parameters: shading",
          shade_kind: typing.Literal["None", "standard", "glossy"]=shade_kind,
          gloss_intensity: float=10.,
          light_angle_deg: float=65.,
          light_color: QtGui.QColor=(1.0, 1.0, 1.0),
          gloss_light_color: QtGui.QColor=(1.0, 1.0, 1.0),
+
          _6: fsgui.separator="Plotting parameters: field lines",
          field_kind: typing.Literal["None", "overlay", "twin"]=field_kind,
          n_iter: int=3,
@@ -120,7 +136,7 @@ def plot(plot_dir):
                 calc_name=calc_name,
                 subset=None,
                 max_iter=max_iter,
-                M_divergence=1.e3,
+                M_divergence=M_divergence,
                 epsilon_stationnary=1.e-3,
                 SA_params=None,
                 BLA_params={
@@ -137,10 +153,13 @@ def plot(plot_dir):
 
         fractal.run()
 
-        layer_name = "continuous_iter"
-
         pp = Postproc_batch(fractal, calc_name)
-        pp.add_postproc(layer_name, Continuous_iter_pp())
+        
+        if base_layer == "continuous_iter":
+            pp.add_postproc(base_layer, Continuous_iter_pp())
+        elif base_layer == "distance_estimation":
+            pp.add_postproc("continuous_iter", Continuous_iter_pp())
+            pp.add_postproc(base_layer, DEM_pp())
 
         if field_kind != "None":
             pp.add_postproc(
@@ -169,22 +188,28 @@ def plot(plot_dir):
                 "DEM_map", max_slope=60, output=True
             ))
 
+        if base_layer != 'continuous_iter':
+            plotter.add_layer(
+                Virtual_layer("continuous_iter", func=None, output=False)
+            )
+
+        sign = {False: 1., True: -1.}[invert_cmap]
         plotter.add_layer(Color_layer(
-                layer_name,
-                func=lambda x: np.log(x),
+                base_layer,
+                func=lambda x: sign * np.log(x),
                 colormap=colormap,
                 probes_z=[zmin, zmax],
                 probes_kind=cmap_z_kind,
                 output=True))
-        plotter[layer_name].set_mask(plotter["interior"],
-                                     mask_color=interior_color)
-
+        plotter[base_layer].set_mask(
+            plotter["interior"], mask_color=interior_color
+        )
         if field_kind == "twin":
-            plotter[layer_name].set_twin_field(plotter["fieldlines"],
+            plotter[base_layer].set_twin_field(plotter["fieldlines"],
                    twin_intensity)
         elif field_kind == "overlay":
             overlay_mode = Overlay_mode("tint_or_shade", pegtop=1.0)
-            plotter[layer_name].overlay(plotter["fieldlines"], overlay_mode)
+            plotter[base_layer].overlay(plotter["fieldlines"], overlay_mode)
 
         if shade_kind != "None":
             light = Blinn_lighting(0.4, np.array([1., 1., 1.]))
@@ -205,12 +230,12 @@ def plot(plot_dir):
                     coords=None,
                     color=np.array(gloss_light_color))
     
-            plotter[layer_name].shade(plotter["DEM_map"], light)
+            plotter[base_layer].shade(plotter["DEM_map"], light)
 
         plotter.plot()
         
         # Renaming output to match expected from the Fractal GUI
-        layer = plotter[layer_name]
+        layer = plotter[base_layer]
         file_name = "{}_{}".format(type(layer).__name__, layer.postname)
         src_path = os.path.join(fractal.directory, file_name + ".png")
         dest_path = os.path.join(fractal.directory, calc_name + ".png")

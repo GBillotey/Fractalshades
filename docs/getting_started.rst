@@ -13,8 +13,8 @@ last published version and its dependencies, you should run: [#f1]_
     pip install pip setuptools --upgrade
     pip install fractalshades
 
-(Note the first line is not strictly necessary but rather a good pratise, to
-ensure your install tools are up-to-date)
+(Note the first line is not strictly necessary but rather a good practise, to
+ensure your install tools stay up-to-date)
 
 To install directly the latest version from Github master:
 

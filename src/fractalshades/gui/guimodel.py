@@ -1813,6 +1813,9 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         dx = mpmath.mpf(ref_zoom["dx"])
         pix = dx / float(ref_zoom["nx"])
         theta = ref_zoom["theta_deg"] * (np.pi / 180.)
+        
+        # The skew matrice
+        skew_params = self.skew_from_ref_zoom(ref_zoom)
 
         with mpmath.workdps(6):
             # Sets the working dps to 10e-8 x pixel size
@@ -1826,14 +1829,12 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             pix = dx / float(ref_zoom["nx"])
             center_off_px = px - 0.5 * nx
             center_off_py = 0.5 * ny - py
-            x = x_center + (
-                np.cos(theta) * center_off_px * pix
-                - np.sin(theta) * center_off_py * pix #
+            
+            off_x, off_y = self.get_coord_offset(
+                center_off_px, center_off_py, pix, theta, *skew_params
             )
-            y = y_center + (
-                np.sin(theta) * center_off_px * pix #
-                + np.cos(theta) * center_off_py * pix
-            )
+            x = x_center + off_x
+            y = y_center + off_y
 
             def thread_job(**kwargs):
                 res = getattr(f, m_name)(x, y, pix, dps, **kwargs)
@@ -1851,6 +1852,74 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
                 threading.Thread(target=thread_job,
                                  kwargs=suppl_kwargs).start()
 
+    @staticmethod
+    def skew_from_ref_zoom(ref_zoom):
+        """ Return teh skew params or default value if no skew stored """
+        try:
+            has_skew = ref_zoom["has_skew"] 
+            skew_00 = ref_zoom["skew_00"] 
+            skew_01 = ref_zoom["skew_01"] 
+            skew_10 = ref_zoom["skew_10"] 
+            skew_11 = ref_zoom["skew_11"] 
+        except KeyError:
+            has_skew = False
+            skew_00 = skew_11 = 1.
+            skew_01 = skew_10 = 0.
+        print("SKEW params", has_skew, skew_00, skew_01, skew_10, skew_11)
+        return has_skew, skew_00, skew_01, skew_10, skew_11
+
+    @staticmethod
+    def get_coord_offset(
+        center_off_px, center_off_py, pix, theta,
+        has_skew, skew_00, skew_01, skew_10, skew_11
+    ):
+        """ Return the coords offset from the screen offset """
+        c = np.cos(theta)
+        s = np.sin(theta)
+        dx = c * center_off_px - s * center_off_py
+        dy = s * center_off_px + c * center_off_py
+
+        # The skew part
+        if has_skew:
+            tmpx = dx
+            tmpy = dy
+            dx = skew_00 * tmpx + skew_01 * tmpy
+            dy = skew_10 * tmpx + skew_11 * tmpy
+
+        return dx * pix, dy * pix
+
+
+#@numba.njit
+#def apply_rot_2d(theta, arrx, arry):
+#    s = np.sin(theta)
+#    c = np.cos(theta)
+#    nx = arrx.shape[0]
+#    ny = arrx.shape[1]
+#    for ix in range(nx):
+#        for iy in range(ny):
+#            tmpx = arrx[ix, iy]
+#            tmpy = arry[ix, iy]
+#            arrx[ix, iy] = c * tmpx - s * tmpy
+#            arry[ix, iy] = s * tmpx + c * tmpy
+
+#@numba.njit
+#def apply_skew_2d(skew, arrx, arry):
+#    "Unskews the view"
+#    nx = arrx.shape[0]
+#    ny = arrx.shape[1]
+#    for ix in range(nx):
+#        for iy in range(ny):
+#            tmpx = arrx[ix, iy]
+#            tmpy = arry[ix, iy]
+#            arrx[ix, iy] = skew[0, 0] * tmpx + skew[0, 1] * tmpy
+#            arry[ix, iy] = skew[1, 0] * tmpx + skew[1, 1] * tmpy
+
+#        # Apply the Linear part of the tranformation
+#        if theta != 0 and self.projection != "expmap":
+#            apply_rot_2d(theta, dx_vec, dy_vec)
+#
+#        if self.skew is not None:
+#            apply_skew_2d(self.skew, dx_vec, dy_vec)
 
     def method_kwargs(self, f, m_name):
         """ Collect the additionnal parameters that might be needed"""
@@ -1903,6 +1972,10 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
     def xy_ratio(self):
         return self._presenter["xy_ratio"]
 
+    @property
+    def other_parameters(self):
+        return tuple(self._parent._gui.other_parameters)
+
     def set_zoom_init(self, try_reload=False):
         """ Resets the zoom init, 
          - from the saved pickled files
@@ -1924,7 +1997,8 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         # Setting _fractal_zoom_init from script_params
         gui = self._parent._gui
         self._fractal_zoom_init = dict()
-        for key in self.full_zoom_keys:
+        print("other_parameters", self.other_parameters)
+        for key in (self.full_zoom_keys + self.other_parameters):
             # Mapping with func param as defined through `connect_mouse` method
             # of the gui object
             if key == "dps":
@@ -2084,6 +2158,9 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         ny = self._fractal_zoom_init["ny"]
         theta = self._fractal_zoom_init["theta_deg"] * (np.pi / 180.)
 
+        # The skew matrice
+        skew_params = self.skew_from_ref_zoom(self._fractal_zoom_init)
+
         # new center offet in pixel - independent of angle
         topleft, bottomRight = self.selection_corners(rect_pos0, rect_pos1)
         center_off_px = 0.5 * (topleft.x() + bottomRight.x() - nx)
@@ -2109,14 +2186,14 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
                 for k in ["x", "y"]:
                     if to_mpf[k]:
                         ref_zoom[k] = mpmath.mpf(ref_zoom[k])
-                ref_zoom["x"] += pix * (
-                    np.cos(theta) * center_off_px
-                    - np.sin(theta) * center_off_py
+                        
+                off_x, off_y = self.get_coord_offset(
+                    center_off_px, center_off_py, pix, theta, *skew_params
                 )
-                ref_zoom["y"] += pix * (
-                    np.sin(theta) * center_off_px
-                    + np.cos(theta) * center_off_py
-                )
+                ref_zoom["x"] += off_x
+                ref_zoom["y"] += off_y
+
+                # TODO: /!\ Do we have an issue with dx + skew ?
                 ref_zoom["dx"] = dx_pix * pix
 
                 #  mpf -> str (back)
@@ -2702,6 +2779,11 @@ class Fractal_MainWindow(QMainWindow):
             "theta_deg": ("func", gui._theta_deg),
             "dps": ("func", gui._dps)
         }
+        # mapping other parameters (skew, ...):
+        for param in gui.other_parameters:
+            attr = "_" + param
+            mapping[param] = ("func", getattr(gui, attr))
+
         Presenter(model, mapping, register_key="image")
 
     def layout(self):
@@ -2899,7 +2981,7 @@ image_param: str
 
     def connect_mouse(
         self, x="x", y="y", dx="dx", nx="nx", xy_ratio="xy_ratio",
-        theta_deg="theta_deg", dps="dps"
+        theta_deg="theta_deg", dps="dps", **kwargs
     ):
         """
 Binds some parameters of the ``func`` passed to the
@@ -2922,10 +3004,19 @@ dps: str | None
     precision). If not using arbitrary precision, it is NEEDED to pass None.
 theta_deg: str
     Name of the parameter for the image rotation angle in degree.
+other_parameters: dict
+    Pairs of (key, value) for additionnal parameters (skew, ...)
 """
         self._x, self._y, self._dx, self._nx = x, y, dx, nx
         self._xy_ratio, self._dps = xy_ratio, dps
         self._theta_deg = theta_deg
+
+        # Other parameters: skew, ...
+        for key, val in kwargs.items():
+            attr = "_" + key
+            setattr(self, attr, key)
+        self.other_parameters = kwargs.keys()
+
 
     def show(self):
         """

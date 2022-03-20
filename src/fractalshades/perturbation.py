@@ -111,41 +111,47 @@ directory : str
         """ Triggers use of special dataype to avoid underflow in double """
         return (self.dx < fs.settings.xrange_zoom_level)
 
-    def postproc_chunck(self, postproc_keys, chunk_slice, calc_name):
-        """
-        Postproc a stored array of data
-        reshape as a sub-image crop to feed fractalImage
-
-        called by :
-        if reshape
-            post_array[ix:ixx, iy:iyy, :]
-        else
-            post_array[:, npts], chunk_mask
-
-        """
-        params, codes, raw_data = self.reload_data_chunk(chunk_slice,
-                                                         calc_name)
-        chunk_mask, Z, U, stop_reason, stop_iter = raw_data
-        complex_dic, int_dic, termination_dic = self.codes_mapping(*codes)
-
-        full_Z = Z.copy()
-        for key, val in complex_dic.items():
-        # If this field is found in a full precision array, we add it :
-            if self.holomorphic:
-                if (key == self.FP_code):
-                    Zn_path = self.Zn_path
-                    full_Z[val, :] += Zn_path[U[0, :]]  # U[0] is ref_cycle_iter
-            else:
-                if key in self.FP_code:
-                    XnYn_path = self.Zn_path.view(dtype=np.float64)
-                    key_index = (self.FP_code).index(key)
-                    full_Z[val, :] += XnYn_path[U[0, :] * 2 + key_index]  # U[0] is ref_cycle_iter
-
-        full_raw_data = (chunk_mask, full_Z, U, stop_reason, stop_iter)
-
-        post_array, chunk_mask = self.postproc(postproc_keys, codes,
-            full_raw_data, chunk_slice)
-        return self.reshape2d(post_array, chunk_mask, chunk_slice)
+#    def postproc_chunck(self, postproc_keys, chunk_slice, calc_name):
+#        """
+#        Postproc a stored array of data
+#        reshape as a sub-image crop to feed fractalImage
+#
+#        called by :
+#        if reshape
+#            post_array[ix:ixx, iy:iyy, :]
+#        else
+#            post_array[:, npts], chunk_mask
+#
+#        """
+#        raise RuntimeError(postproc_keys, chunk_slice, calc_name)
+#        params, codes, raw_data = self.reload_data_chunk(chunk_slice,
+#                                                         calc_name)
+#        chunk_mask, Z, U, stop_reason, stop_iter = raw_data
+#        complex_dic, int_dic, termination_dic = self.codes_mapping(*codes)
+#
+#        full_Z = Z.copy()
+#        for key, val in complex_dic.items():
+#        # If this field is found in a full precision array, we add it :
+#            if self.holomorphic:
+#                raise RuntimeError(key)
+#                if key == "zn":
+#                    Zn_path = self.Zn_path
+#                    full_Z[val, :] += Zn_path[U[0, :]]  # U[0] is ref_cycle_iter
+#                elif key == "dzndc":
+#                    print("Adding dzndc ref path")
+#                    dZndc_path = self.dZndc_path
+#                    full_Z[val, :] += dZndc_path[U[0, :]]
+#            else:
+#                if key in self.FP_code:
+#                    XnYn_path = self.Zn_path.view(dtype=np.float64)
+#                    key_index = (self.FP_code).index(key)
+#                    full_Z[val, :] += XnYn_path[U[0, :] * 2 + key_index]  # U[0] is ref_cycle_iter
+#
+#        full_raw_data = (chunk_mask, full_Z, U, stop_reason, stop_iter)
+#
+#        post_array, chunk_mask = self.postproc(postproc_keys, codes,
+#            full_raw_data, chunk_slice)
+#        return self.reshape2d(post_array, chunk_mask, chunk_slice)
 
 
     def ref_point_file(self):
@@ -507,6 +513,8 @@ directory : str
                 )
                 if xr_detect_activated:
                     dZndc_path = dZndc_xr_path
+#                print("################ >>> computed dZndc_path ", dZndc_path)
+#                self.dZndc_path = dZndc_path
 
             else:
                 (
@@ -1361,8 +1369,9 @@ def numba_iterate(
                 if xr_detect_activated:
                     Z_xr[zn] = fsxn.to_Xrange_scalar(ZZ)
 
-#                if calc_dzndc:
-#                    Z[dzndc] = Z[dzndc] + dZndc_path[w_iter]
+                if calc_dzndc:
+                    # not a cycle, dZndc_path[0] == 0
+                    Z[dzndc] = Z[dzndc] + dZndc_path[w_iter]
                 w_iter = 0
                 continue
 
@@ -1372,7 +1381,7 @@ def numba_iterate(
                 (abs(ZZ.real) <= abs(Z[zn].real))
                 and (abs(ZZ.imag) <= abs(Z[zn].imag))
             )
-            if bool_dyn_rebase:
+            if bool_dyn_rebase: # and False:
                 if xr_detect_activated:
                     # Can we *really* rebase ??
                     # Note: if Z[zn] underflows we might miss a rebase
@@ -1394,22 +1403,32 @@ def numba_iterate(
                         # /!\ keep this, needed for next BLA step - TODO: for BS
                         Z[zn] = fsxn.to_standard(ZZ_xr)
                         if calc_dzndc:
-                            Z_xr[dzndc] = Z_xr[dzndc] + dZndc_path[w_iter]
+                            Z_xr[dzndc] = (
+                                Z_xr[dzndc] + dZndc_path[w_iter]
+                                - dZndc_path[0]
+                            )
                         w_iter = 0
                         continue
                 else:
                     # No risk of underflow - safe to rebase
                     Z[zn] = ZZ
                     if calc_dzndc:
-                        Z[dzndc] = Z[dzndc] + dZndc_path[w_iter]
+                        # Here we need to substract the first item (as it could 
+                        # possibly be a cycle)
+                        Z[dzndc] += dZndc_path[w_iter] - dZndc_path[0]
                     w_iter = 0
                     continue
 
         # End of iterations for this point
         U[0] = w_iter
+        
         if xr_detect_activated:
-            Z[zn] = fsxn.to_standard(Z_xr[zn])
-            Z[dzndc] = fsxn.to_standard(Z_xr[dzndc])
+            Z[zn] = fsxn.to_standard(Z_xr[zn]) + Zn_path[w_iter]
+            Z[dzndc] = fsxn.to_standard(Z_xr[dzndc] + dZndc_path[w_iter])
+        else:
+            Z[zn] += Zn_path[w_iter]
+            Z[dzndc] += dZndc_path[w_iter]
+
 #        print(n_iter, w_iter, "--> exit with zn dzndc", Z[zn], Z[dzndc])
         return n_iter
 
@@ -1429,8 +1448,6 @@ def numba_cycles_perturb_BS(
     P, kc, n_iter_init, M_bla, r_bla, bla_len, stages_bla,
     _interrupted
 ):
-    print("in numba_cycles_perturb_BS")
-
 
     nz, npts = Z.shape
     Z_xr = Xr_float_template.repeat(nz)
@@ -1640,9 +1657,22 @@ def numba_iterate_BS(
                 # Rebasing - we are already big no underflow risk
                 Z[xn] = XX
                 Z[yn] = YY
+                if calc_hessian:
+                    Z[dxnda] += dXnda_path[w_iter]
+                    Z[dxndb] += dXndb_path[w_iter]
+                    Z[dynda] += dYnda_path[w_iter]
+                    Z[dyndb] += dYndb_path[w_iter]
+
                 if xr_detect_activated:
                     Z_xr[xn] = fsxn.to_Xrange_scalar(XX)
                     Z_xr[yn] = fsxn.to_Xrange_scalar(YY)
+
+                    if calc_hessian:
+                        Z_xr[dxnda] = Z_xr[dxnda]  + dXnda_path[w_iter]
+                        Z_xr[dxndb] = Z_xr[dxndb] + dXndb_path[w_iter]
+                        Z_xr[dynda] = Z_xr[dynda] + dYnda_path[w_iter]
+                        Z_xr[dyndb] = Z_xr[dyndb] + dYndb_path[w_iter]
+                    
 #                if calc_dzndc:
 #                    Z[dzndc] = Z[dzndc] + dZndc_path[w_iter]
                 w_iter = 0
@@ -1677,10 +1707,22 @@ def numba_iterate_BS(
                         Z_xr[yn] = YY_xr
                         # Z[zn] = fsxn.to_standard(ZZ_xr)
                         if calc_hessian:
-                            Z_xr[dxnda] = Z_xr[dxnda] + dXnda_path[w_iter]
-                            Z_xr[dxndb] = Z_xr[dxndb] + dXndb_path[w_iter]
-                            Z_xr[dynda] = Z_xr[dynda] + dYnda_path[w_iter]
-                            Z_xr[dyndb] = Z_xr[dyndb] + dYndb_path[w_iter]
+                            Z_xr[dxnda] = (
+                                Z_xr[dxnda]
+                                + dXnda_path[w_iter] - dXnda_path[0]
+                            )
+                            Z_xr[dxndb] = (
+                                Z_xr[dxndb]
+                                + dXndb_path[w_iter] - dXndb_path[0]
+                            )
+                            Z_xr[dynda] = (
+                                Z_xr[dynda]
+                                + dYnda_path[w_iter] - dYnda_path[0]
+                            )
+                            Z_xr[dyndb] = (
+                                Z_xr[dyndb]
+                                + dYndb_path[w_iter] - dYndb_path[0]
+                            )
                         w_iter = 0
                         continue
                 else:
@@ -1688,21 +1730,41 @@ def numba_iterate_BS(
                     Z[xn] = XX
                     Z[yn] = YY
                     if calc_hessian:
-                        Z[dxnda] = Z[dxnda] + dXnda_path[w_iter]
-                        Z[dxndb] = Z[dxndb] + dXndb_path[w_iter]
-                        Z[dynda] = Z[dynda] + dYnda_path[w_iter]
-                        Z[dyndb] = Z[dyndb] + dYndb_path[w_iter]
+                        # Here we need to substract the first item (as it could 
+                        # possibly be a cycle)
+                        Z[dxnda] += dXnda_path[w_iter] - dXnda_path[0]
+                        Z[dxndb] += dXndb_path[w_iter] - dXndb_path[0]
+                        Z[dynda] += dYnda_path[w_iter] - dYnda_path[0]
+                        Z[dyndb] += dYndb_path[w_iter] - dYndb_path[0]
                     w_iter = 0
                     continue
 
         # End of iterations for this point
         U[0] = w_iter
+        
+        # Total zn = Zn + zn
+        ref_zn = Zn_path[w_iter]
         if xr_detect_activated:
-            Z[xn] = fsxn.to_standard(Z_xr[xn])
-            Z[yn] = fsxn.to_standard(Z_xr[yn])
-            for key in (dxnda, dxndb, dynda, dyndb):
-                Z[key] = fsxn.to_standard(Z_xr[key])
-        # print(n_iter, w_iter, "--> exit with zn dzndc", Z[xn], Z[yn])
+            Z[xn] = fsxn.to_standard(Z_xr[xn] + ref_zn.real)
+            Z[yn] = fsxn.to_standard(Z_xr[yn] + ref_zn.imag)
+            if calc_hessian:
+                Z[dxnda] = fsxn.to_standard(
+                        Z_xr[dxnda] + dXnda_path[w_iter])
+                Z[dxndb] = fsxn.to_standard(
+                        Z_xr[dxndb] + dXndb_path[w_iter])
+                Z[dynda] = fsxn.to_standard(
+                        Z_xr[dynda] + dYnda_path[w_iter])
+                Z[dyndb] = fsxn.to_standard(
+                        Z_xr[dyndb] + dYndb_path[w_iter])
+        else:
+            Z[xn] += ref_zn.real
+            Z[yn] += ref_zn.imag
+            if calc_hessian:
+                Z[dxnda] += dXnda_path[w_iter]
+                Z[dxndb] += dXndb_path[w_iter]
+                Z[dynda] += dYnda_path[w_iter]
+                Z[dyndb] += dYndb_path[w_iter]
+
         return n_iter
 
     return numba_impl

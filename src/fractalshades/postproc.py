@@ -176,16 +176,10 @@ class Postproc:
         if self.holomorphic:
             return Z[complex_dic["dzndc"], :]
         else:
-            # Note : if there is some skew, we will need to take it into account
-            # rotation ???
-#            X = Z[complex_dic["xn"], :] / abs_zn
-#            Y = Z[complex_dic["yn"], :] / abs_zn
             dXdA = Z[complex_dic["dxnda"], :]
             dXdB = Z[complex_dic["dxndb"], :]
             dYdA = Z[complex_dic["dynda"], :]
             dYdB = Z[complex_dic["dyndb"], :]
-#            U = X * dXdA + Y * dYdA
-#            V = X * dXdB + Y * dYdB
             return dXdA, dXdB, dYdA, dYdB
 
 
@@ -579,7 +573,6 @@ class DEM_normal_pp(Postproc):
                         (dXdA * zn.real + dYdA * zn.imag)
                         + 1j * (dXdB * zn.real + dYdB * zn.imag)
                     )
-                #normal = normal / np.abs(normal)
 
             elif potential_dic["kind"] == "convergent":
             # pulls back the normal direction from an approximation of
@@ -589,13 +582,12 @@ class DEM_normal_pp(Postproc):
                 zr = Z[complex_dic["zr"], :]
                 dzrdc = Z[complex_dic["dzrdc"], :]
                 normal = - (zr - zn) / (dzrdc - dzndc)
-                #normal = normal / np.abs(normal)
 
         skew = self.fractal.skew
         if skew is not None:
             nx = normal.real
             ny = normal.imag
-            # These are contravariant coordinates -> we unskew
+            # These are contravariant coordinates -> we UNskew
             fs.core.apply_unskew_1d(skew, nx, ny)
 
         normal = normal / np.abs(normal)
@@ -667,16 +659,13 @@ class DEM_pp(Postproc):
 
         if potential_dic["kind"] == "infinity":
             abs_zn = np.abs(zn)
-#            print("--> pp, DEM, inf")
+
             if self.holomorphic:
                 abs_dzndc = np.abs(self.get_dzndc(Z, complex_dic)) #, :]
-                val = abs_zn * np.log(abs_zn) / abs_dzndc
+                # val = abs_zn * np.log(abs_zn) / abs_dzndc
             else:
                 (dXdA, dXdB, dYdA, dYdB) = self.get_dzndc(Z, complex_dic)
-                # In which direction ? Lets take the mean
-#                abs_dzndc = np.sqrt(
-#                    dXdA ** 2 + dXdB ** 2 + dYdA ** 2 + dYdB ** 2
-#                )
+                # In which direction for an abs value ? 
                 # Lets take the maximal singular value
 # https://scicomp.stackexchange.com/questions/8899/robust-algorithm-for-2-times-2-svd
                 # J = [dXdA dXdB] = [a b]
@@ -684,22 +673,7 @@ class DEM_pp(Postproc):
                 Q = np.hypot(dXdA + dYdB, dXdB - dYdA)
                 R = np.hypot(dXdA - dYdB, dXdB + dYdA)
                 abs_dzndc = 0.5 * (Q + R)
-#                S1 = dXdA ** 2 + dXdB ** 2 + dYdA ** 2 + dYdB ** 2
-#                S2 = np.sqrt(
-#                    dXdA ** 2 + dXdB ** 2 + dYdA ** 2 + dYdB ** 2
-#                    + 4 * (dXdA * + dYdB)
-#                )
-#                normal = (
-#                    (dXdA * zn.real + dYdA * zn.imag)
-#                    + 1j * (dXdB * zn.real + dYdB * zn.imag)
-#                )
-#                abs_dzndc = np.abs(normal)
-#                normal = normal / np.abs(normal)
-#                # abs_dzndc = dXdA
-#                u = (
-#                    (dXdA * normal.real + dXdB * normal.imag)
-#                    + 1j * (dYdA * normal.real + dYdB * normal.imag)
-#                )
+
             val = abs_zn * np.log(abs_zn) / abs_dzndc
 
         elif potential_dic["kind"] == "convergent":
@@ -711,13 +685,6 @@ class DEM_pp(Postproc):
 
         else:
             raise ValueError(potential_dic["kind"])
-            
-#        print("val before\n", val)
-#        px = self.fractal.dx / float(self.fractal.nx)
-#        val = val / px
-#        print("dx nx ps", self.fractal.dx, float(self.fractal.nx), px)
-#        print("val after\n", val)
-#        raise ValueError()
 
         px_snap = self.px_snap
         if px_snap is not None:
