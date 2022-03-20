@@ -1584,13 +1584,13 @@ def apply_skew_2d(skew, arrx, arry):
 
 @numba.njit
 def apply_unskew_1d(skew, arrx, arry):
-    "Unskews the view for contravariante coordinates e.g. normal vec"
-    nx = arrx.shape[0]
-    for ix in range(nx):
-        tmpx = arrx[ix]
-        tmpy = arry[ix]
-        arrx[ix] = skew[1, 1] * tmpx - skew[0, 1] * tmpy
-        arry[ix] = - skew[1, 0] * tmpx + skew[0, 0] * tmpy
+    "Unskews the view for contravariant coordinates e.g. normal vec"
+    n = arrx.shape[0]
+    for i in range(n):
+        nx = arrx[i]
+        ny = arry[i]
+        arrx[i] = skew[0, 0] * nx + skew[1, 0] * ny
+        arry[i] = skew[0, 1] * nx + skew[1, 1] * ny
 
 @numba.njit
 def apply_rot_2d(theta, arrx, arry):

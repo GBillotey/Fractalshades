@@ -72,7 +72,7 @@ def plot(plot_dir):
         dx=dx,
         nx=nx,
         xy_ratio=xy_ratio,
-        theta_deg=0., 
+        theta_deg=-2., 
         projection="cartesian",
         antialiasing=False,
         has_skew=has_skew,
@@ -128,9 +128,9 @@ def plot(plot_dir):
     light = Blinn_lighting(0.4, np.array([1., 1., 1.]))
     light.add_light_source(
         k_diffuse=0.4,
-        k_specular=1.,
-        shininess=40.,
-        angles=(90., 40.),
+        k_specular=3.,
+        shininess=100.,
+        angles=(45., 40.),
         coords=None,
         color=np.array([1.0, 1.0, 0.98]))
 #    light.add_light_source(
