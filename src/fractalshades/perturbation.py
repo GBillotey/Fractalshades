@@ -984,17 +984,17 @@ directory : str
 #==============================================================================
 # GUI : "interactive options"
 #==============================================================================
-    def coords(self, x, y, pix, dps):
-        """ x, y : coordinates of the event """
-        x_str = str(x)
-        y_str = str(y)
-        res_str = f"""
-coords = {{
-    "x": "{x_str}"
-    "y": "{y_str}"
-}}
-"""
-        return res_str
+#    def coords(self, x, y, pix, dps):
+#        """ x, y : coordinates of the event """
+#        x_str = str(x)
+#        y_str = str(y)
+#        res_str = f"""
+#coords = {{
+#    "x": "{x_str}"
+#    "y": "{y_str}"
+#}}
+#"""
+#        return res_str
 
     def ball_method_order(self, x, y, pix, dps,
                           maxiter: int=100000,

@@ -424,9 +424,14 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
         )
 
         @numba.njit
-        def _dfdz(z):
+        def _dfdz(z): # TODO (z, c)
             return 2. * z
         self.dfdz = _dfdz
+
+        @numba.njit
+        def _dfdc(z): # TODO (z, c)
+            return 1.
+        self.dfdc = _dfdc
 
         #----------------------------------------------------------------------
         # Defines SA_loop via a function factory - jitted implementation

@@ -16,4 +16,5 @@ This section describes the concrete implementation of
    models/Burning_ship
    models/Mandelbrot_N
    models/Collatz
+   models/Power_tower
 

@@ -1531,6 +1531,21 @@ advanced users when subclassing.
 
         return post_array, chunk_mask
 
+#==============================================================================
+# GUI : "interactive options"
+#==============================================================================
+    def coords(self, x, y, pix, dps):
+        """ x, y : coordinates of the event """
+        x_str = str(x)
+        y_str = str(y)
+        res_str = f"""
+coords = {{
+    "x": "{x_str}"
+    "y": "{y_str}"
+}}
+"""
+        return res_str
+
 
 # Numba JIT functions =========================================================
 USER_INTERRUPTED = 1
