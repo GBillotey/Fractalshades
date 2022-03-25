@@ -180,6 +180,9 @@ class Perturbation_burning_ship(fs.PerturbationFractal):
     def __init__(self, directory):
         """
 An arbitrary-precision implementation for the Burning ship set (power-2).
+The Burning Ship fractal, first described by Michael Michelitsch
+and Otto E. Rössler in 1992, is a variant of the mandelbrot fractal which 
+involve the absolute value function, making the formula non-analytic:
 
 .. math::
 
@@ -195,14 +198,29 @@ where:
     z_n &= x_n + i y_n \\\\
     c &= a + i b
 
+For a more comprehensive introduction, we recommend the paper 
+`At the Helm of the Burning Ship`_.
+
 This class implements arbitrary precision for the reference orbit, ball method
 period search, newton search, perturbation method, chained billinear
 approximations.
+
+
 
 Parameters
 ----------
 directory : str
     Path for the working base directory
+
+Notes
+-----
+Implementation based on :
+
+.. _At the Helm of the Burning Ship:
+
+    **At the Helm of the Burning Ship** - Claude Heiland-Allen, 2019
+    Proceedings of EVA London 2019 (EVA 2019) 
+    <http://dx.doi.org/10.14236/ewic/EVA2019.74>
 """
         super().__init__(directory)
         # Sets default values used for postprocessing (potential)
@@ -289,16 +307,9 @@ directory : str
         if `None`, BLA is not activated.
 
     calc_hessian: bool
-        if True, the derivatives will be claculated allowing distance
+        if True, the derivatives will be caculated allowing distance
         estimation and shading.
 
-    Notes
-    -----
-        Implementation based on [1]_.
-
-        .. [1] At the Helm of the Burning Ship - Claude Heiland-Allen, 2019
-               Proceedings of EVA London 2019 (EVA 2019) 
-               <http://dx.doi.org/10.14236/ewic/EVA2019.74>
         """
         self.init_data_types(np.float64)
 

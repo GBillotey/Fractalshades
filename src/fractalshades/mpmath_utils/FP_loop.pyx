@@ -957,7 +957,7 @@ def perturbation_mandelbrot_find_any_nucleus(
 # The Burning ship ! Work in progress...
 # This code is largely inspired by the following paper:
 #
-# [1] At the Helm of the Burning Ship, Claude Heiland-Allen, 2019
+# At the Helm of the Burning Ship, Claude Heiland-Allen, 2019
 # Proceedings of EVA London 2019 (EVA 2019)
 # http://dx.doi.org/10.14236/ewic/EVA2019.74
 

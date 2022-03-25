@@ -7,8 +7,6 @@ Burning ship DEM
 Plotting of a distance estimation for the Burning ship (power-2).
 This zoom is on the structure which gave the fractal its name. We use an
 arbitrary-precision model, even if this is obviously not needed here.
-
-
 """
 
 import os

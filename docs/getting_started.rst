@@ -165,3 +165,64 @@ The following main components can be seen:
 
   - in orange, the **status bar**. It provides information on the calculation
     progress (full precision orbit, series approximation, current tile, ...)
+
+
+
+Finding areas of interest
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For the normal precision fractals, it is usually sufficient to navigate
+manually inside the fractal through the GUI:
+
+  - left click, draw the new zoom rectangle, left click again to validate ;
+    the coordinates in the parameters panel are updated automatically
+  - press "run". A new calculation will be run taking into account the updated
+    parameters
+
+For arbitrary precision exploration however, zooming repetively inside a
+deep minibrot can be tedious. For deep zooms in the Burning ship, it is even
+not always obvious to find a miniship. This is where the Newton search for the
+center of hyperbolic components comes handy :
+
+  - right click on the image close the the estimated location of the target
+    minibrot, select "Newton search"
+
+  - Some parameters are needed to estimate the period of the influencing
+    minibrot : 
+
+        - maximum iteration (this should be more than the period, you can pick
+          100000 as a starting point as calculation is fast)
+        - radius in pixel (this is the size of a small ball - or ellipse in the
+          case of the Burning ship) that will be iterated until it contains the
+          critical point : this is the computed period. Usually, just keep the
+          proposed value of 3 pixels.
+
+  - a result table should pop-up. If all went well (the period has been
+    estimated, a Newton calculation has been run and converged successfully)
+    you should be provided the following new information:
+
+        - **calculation dps** the precision used for the successful Newton
+          search. Copy paste it in the parameter panel to use it for the next
+          zoom
+        - **x_nucleus**, **y_nucleus** the coordinates of the hyperbolic
+          component center. Copy-paste also as the requested new center for the
+          next image
+        - **nucleus_size**, **julia_size** these are the estimation of the size
+          of the hyperbolic component, and of its area of influence (embedded
+          Julia). Usually the next zoom should be close to the embedded Julia
+          parameter, copy-paste it as the new `dx`
+
+   - for the non-holomorphic fractals (Burning-ship) you will get also 4
+     coordinate of the local skew transformation (**skew_00**, **skew_01**,
+     **skew_10**, **skew_11**). Copy-paste in the parameter panel and set
+     `has_skew` to `True`. (Each time the skew is modified the calculation need
+     to be re-run to validate the choice, otherwise the screen coordinates will
+     not match the view anymore). Not that this option is usuful also at low
+     zoom level, some areas of the Burning ship are very skewed at a standard
+     zoom level
+
+   - press "run"
+
+For those interested in the implementation details we shall recommend the paper
+quoted in `fractalshades.models.Perturbation_burning_ship`.
+

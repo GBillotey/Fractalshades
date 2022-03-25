@@ -13,7 +13,7 @@ The Collatz fracal:
 
 .. math::
 
-    z_0 &= 0 \\\\
+    z_0 &= c \\\\
     z_{n+1} &= 0.25 (2 + 7 z_n - (2+5z_n) \cos(\pi z_n))
         
 This fractal is linked to the Syracuse conjecture.
