@@ -9,15 +9,19 @@ import fractalshades.utils as fsutils
 class Collatz(fs.Fractal):
     def __init__(self, directory):
         """
-        The Collatz fracal for 
-        C(z) = 0.25 * (2 + 7z - (2+5z) cos(piz))
+The Collatz fracal:
+
+.. math::
+
+    z_0 &= 0 \\\\
+    z_{n+1} &= 0.25 (2 + 7 z_n - (2+5z_n) \cos(\pi z_n))
         
-        This fractal is linked to the Syracuse conjecture.
-        
-        Parameters
-        ==========
-        directory : str
-            Path for the working base directory
+This fractal is linked to the Syracuse conjecture.
+
+Parameters
+==========
+directory : str
+    Path for the working base directory
         """
         super().__init__(directory)
         self.potential_kind = "transcendent"
@@ -91,7 +95,7 @@ class Collatz(fs.Fractal):
     
                     cos0 = np.cos(np.pi * Z[0])
                     sin0 = np.sin(np.pi * Z[0])
-    
+
                     Z[1] = 0.25 * Z[1] * (
                           7. - 5. * cos0 + (2. + 5. * Z[0]) * np.pi * sin0
                     )

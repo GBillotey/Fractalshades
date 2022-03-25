@@ -80,7 +80,7 @@ def plot(plot_dir):
 
     pp = Postproc_batch(fractal, calc_name)
     pp.add_postproc(layer_name, Raw_pp("order"))
-    pp.add_postproc("attr", Raw_pp("dzrdc", func=lambda x: np.abs(x)))
+    pp.add_postproc("attr", Raw_pp("dzrdz", func=lambda x: np.abs(x)))
     pp.add_postproc("interior", Raw_pp("stop_reason",
                     func=lambda x: x != 1)
     )

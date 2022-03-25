@@ -50,7 +50,7 @@ jobs:
           # sudo apt-get install -y xvfb libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xinput0 libxcb-xfixes0
 
           echo "***********************"
-          echo "*** Debug: list missing libxcb package ##"
+          # echo "*** Debug: list missing libxcb package ##"
           # ldd /opt/hostedtoolcache/Python/3.8.12/x64/lib/python3.8/site-packages/PyQt6/Qt6/plugins/platforms/libqxcb.so
 
           # export QT_DEBUG_PLUGINS=1
@@ -59,8 +59,8 @@ jobs:
           # dir /usr/lib/qt/plugins
           
           # echo "*** start xvfb on (default) display"
-          export DISPLAY=:99.0
-          Xvfb :99 -screen 0 1920x1080x8 &
+          # export DISPLAY=:99.0
+          # Xvfb :99 -screen 0 1920x1080x8 &
           # was: 640x480x24 &
           # 1920x1080
           echo "***********************"
@@ -71,11 +71,16 @@ jobs:
           sudo apt-get install libmpfr-dev
           sudo apt-get install libmpc-dev
 
-      - name: Install dependencies
+      - name: Install Latex
+        run: |
+          sudo apt-get install dvipng
+          sudo apt-get install texlive
+          sudo apt-get install texlive-latex-extra
+
+      - name: Install python modules dependencies
         run: |
           pip install --upgrade pip
           pip install flake8 pytest
-          # pip install pyqt6-tools
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: install Fractalshades from current commit
@@ -94,7 +99,6 @@ jobs:
           # Build the doc
           # Note: Mandatory to run with QT_QPA_PLATFORM=offscreen on a headless runner
           make -C docs clean
-          # QT_QPA_PLATFORM=eglfs make -C docs html
           QT_QPA_PLATFORM=offscreen make -C docs html
   
       - name: Push documentation to github pages

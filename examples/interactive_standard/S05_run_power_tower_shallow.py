@@ -1,12 +1,19 @@
 # -*- coding: utf-8 -*-
 """
 ====================================================================
-Tetration fractal explorer - Naïve algorithm with standard precision
+Tetration fractal explorer - Standard precision (float64)
 ====================================================================
 
 A template to explore the tetration fractal set (aka power-tower) with
 the GUI.
-Resolution limited to approx 1.e-13 due to double (float64) precision
+Resolution limited to approx 1.e-13 due to double (float64) precision.
+
+Coloring is based on the limit cycle order and attractivity. The influence of
+attractivity can be tuned with the `attr_strength` parameter
+
+
+Reference:
+`fractalshades.models.Power_tower`
 """
 import typing
 import os
@@ -22,16 +29,12 @@ import fractalshades.gui as fsgui
 
 from fractalshades.postproc import (
     Postproc_batch,
-    Continuous_iter_pp,
-    DEM_normal_pp,
     Raw_pp,
 )
 from fractalshades.colors.layers import (
     Color_layer,
     Bool_layer,
-    Normal_map_layer,
     Virtual_layer,
-    Blinn_lighting
 )
 
 
@@ -41,7 +44,7 @@ def plot(plot_dir):
     """
     calc_name = 'test'
 
-    x = 1.0
+    x = 0.0
     y = -0.0
     dx = 10.0
     xy_ratio = 1.0
@@ -54,8 +57,9 @@ def plot(plot_dir):
     
     colormap = fscolors.cmap_register["classic"]
 
-    zmin = 0.10
-    zmax = 0.30
+    zmin = 0.00
+    zmax = 0.20
+    attr_strength = 0.15
 
     # Set to True to enable multi-processing
     settings.enable_multiprocessing = True
@@ -84,7 +88,9 @@ def plot(plot_dir):
          colormap: fscolors.Fractal_colormap=colormap,
          cmap_z_kind: typing.Literal["relative", "absolute"]="relative",
          zmin: float=zmin,
-         zmax: float=zmax
+         zmax: float=zmax,
+         attr_strength: float =attr_strength,
+         
     ):
 
         fractal.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
@@ -111,7 +117,7 @@ def plot(plot_dir):
 
         pp = Postproc_batch(fractal, calc_name)
         pp.add_postproc(layer_name, Raw_pp("order"))
-        pp.add_postproc("attr", Raw_pp("dzrdc", func=lambda x: np.abs(x)))
+        pp.add_postproc("attr", Raw_pp("dzrdz", func=lambda x: np.abs(x)))
         pp.add_postproc("interior", Raw_pp("stop_reason",
                         func=lambda x: x != 1)
         )
@@ -122,7 +128,7 @@ def plot(plot_dir):
 #        plotter.add_layer(Normal_map_layer("DEM_map", max_slope=45, output=True))
         plotter.add_layer(Color_layer(
                 layer_name,
-                func=lambda x: np.log(np.log(np.log(x + 1.) + 1.) + 1.),
+                func=lambda x: np.log(np.log(x + 1.) + 1.),
                 colormap=colormap,
                 probes_z=[zmin, zmax],
                 probes_kind="relative",
@@ -131,7 +137,7 @@ def plot(plot_dir):
                                      mask_color=interior_color)
         plotter.add_layer(Virtual_layer("attr", func=None, output=False))
         
-        plotter[layer_name].set_twin_field(plotter["attr"], 0.3)
+        plotter[layer_name].set_twin_field(plotter["attr"], attr_strength)
 
         plotter.plot()
         

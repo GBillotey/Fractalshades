@@ -12,12 +12,17 @@ import fractalshades.mpmath_utils.FP_loop as fsFP
 class Mandelbrot(fs.Fractal):
     def __init__(self, directory):
         """
-        A standard power-2 Mandelbrot Fractal. 
-        
-        Parameters
-        ==========
-        directory : str
-            Path for the working base directory
+A standard power-2 Mandelbrot Fractal. 
+
+.. math::
+
+    z_0 &= 0 \\\\
+    z_{n+1} &= z_{n}^2 + c
+
+Parameters
+==========
+directory : str
+    Path for the working base directory
         """
         super().__init__(directory)
         # default values used for postprocessing (potential)
@@ -264,12 +269,21 @@ class Perturbation_mandelbrot(fs.PerturbationFractal):
     
     def __init__(self, directory):
         """
-        An arbitrary precision power-2 Mandelbrot Fractal. 
+An arbitrary precision power-2 Mandelbrot Fractal. 
 
-        Parameters
-        ----------
-        directory : str
-            Path for the working base directory
+.. math::
+
+    z_0 &= 0 \\\\
+    z_{n+1} &= z_{n}^2 + c
+
+This class implements arbitrary precision for the reference orbit, ball method
+period search, newton search, perturbation method, chained billinear
+approximations.
+
+Parameters
+----------
+directory : str
+    Path for the working base directory
         """
         super().__init__(directory)
         # Sets default values used for postprocessing (potential)

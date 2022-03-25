@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 """
 ========================================================================
-Mandelbrot power n explorer - Naïve algorithm with standard precision
+Mandelbrot power n explorer - Standard precision (float64)
 ========================================================================
 
-This is a simple template to start exploring the power n > 2 Mandelbrot
+This is a simple template to explore the power n > 2 Mandelbrot
 set with the GUI.
 Resolution limited to approx 1.e-13 due to double (float64) precision
+
+Reference:
+`fractalshades.models.Mandelbrot_N`
 """
 import typing
 import os
@@ -47,7 +50,7 @@ def plot(plot_dir):
     theta_deg=0.
 
     max_iter = 15000
-    nx = 800
+    nx = 1600
     epsilon_stationnary = 0.0001
     
     colormap = fscolors.cmap_register["classic"]
@@ -124,12 +127,12 @@ def plot(plot_dir):
         plotter[layer_name].set_mask(plotter["interior"],
                                      mask_color=interior_color)
 
-        light = Blinn_lighting(0.2, np.array([1., 1., 1.]))
+        light = Blinn_lighting(0.4, np.array([1., 1., 1.]))
         light.add_light_source(
             k_diffuse=1.05,
-            k_specular=.0,
-            shininess=350.,
-            angles=(50., 50.),
+            k_specular=20.,
+            shininess=50.,
+            angles=(50., 20.),
             coords=None,
             color=np.array([1.0, 1.0, 0.9]))
 

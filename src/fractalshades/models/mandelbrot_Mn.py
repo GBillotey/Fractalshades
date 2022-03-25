@@ -9,7 +9,12 @@ import fractalshades.utils as fsutils
 class Mandelbrot_N(fs.Fractal):
     def __init__(self, directory, exponent):
         """
-A standard power-n Mandelbrot Fractal set implementation.
+A standard power-N Mandelbrot Fractal set implementation.
+
+.. math::
+
+    z_0 &= 0 \\\\
+    z_{n+1} &= {z_{n}}^N + c
 
 Parameters
 ==========
