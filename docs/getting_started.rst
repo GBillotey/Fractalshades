@@ -212,16 +212,16 @@ center of hyperbolic components comes handy :
           Julia). Usually the next zoom should be close to the embedded Julia
           parameter, copy-paste it as the new `dx`
 
-   - for the non-holomorphic fractals (Burning-ship) you will get also 4
-     coordinate of the local skew transformation (**skew_00**, **skew_01**,
-     **skew_10**, **skew_11**). Copy-paste in the parameter panel and set
-     `has_skew` to `True`. (Each time the skew is modified the calculation need
-     to be re-run to validate the choice, otherwise the screen coordinates will
-     not match the view anymore). Not that this option is usuful also at low
-     zoom level, some areas of the Burning ship are very skewed at a standard
-     zoom level
+  - for the non-holomorphic fractals (Burning-ship) you will get also 4
+    coordinate of the local skew transformation (**skew_00**, **skew_01**,
+    **skew_10**, **skew_11**). Copy-paste in the parameter panel and set
+    `has_skew` to `True`. (Each time the skew is modified the calculation need
+    to be re-run to validate the choice, otherwise the screen coordinates will
+    not match the view anymore). Not that this option is usuful also at low
+    zoom level, some areas of the Burning ship are very skewed at a standard
+    zoom level
 
-   - press "run"
+  - press "run"
 
 For those interested in the implementation details we shall recommend the paper
 quoted in `fractalshades.models.Perturbation_burning_ship`.
