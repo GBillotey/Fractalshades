@@ -10,12 +10,20 @@ import fractalshades as fs
 class Power_tower(fs.Fractal):
     def __init__(self, directory):
         """
-        The tetration fractal - standard precision implementation
-        
-        Parameters
-        ==========
-        directory : str
-            Path for the working base directory
+The tetration fractal - standard precision implementation
+
+.. math::
+
+    z_0 &= 1 \\\\
+    z_{n+1} &= c^{z_n} \\\\
+            &= \exp(z_n \log(c))
+
+This class implements limit cycle calculation through Newton search
+
+Parameters
+==========
+directory : str
+    Path for the working base directory
         """
         super().__init__(directory)
         # default values used for postprocessing (potential)
@@ -61,7 +69,8 @@ class Power_tower(fs.Fractal):
     
         *zr*
             A (any) point belonging to the attracting cycle
-        *attractivity*
+
+        *dzrdz*
             The cycle attractivity (for a convergent cycle it is a complex
             of norm < 1.)
 
@@ -74,13 +83,12 @@ class Power_tower(fs.Fractal):
 
 
         """
-        complex_codes = ["zr", "dzrdc", "_zn", "_dzndz", "_partial0", "_partial1"]
+        complex_codes = ["zr", "dzrdz", "_zn", "_dzndz", "_partial1"]
         zr = 0
         dzrdz = 1
         _zn = 2
         _dzndz = 3
-        _partial0 = 4
-        _partial1 = 5
+        _partial1 = 4
 
         int_codes = ["order"]
         stop_codes = ["max_order", "order_confirmed", "overflow"]
@@ -90,7 +98,6 @@ class Power_tower(fs.Fractal):
         def initialize():
             @numba.njit
             def numba_init_impl(Z, U, c):
-                Z[_partial0] = 1.e6 # bigger than any reasonnable np.abs(z0)
                 Z[_partial1] = 1.e6 # bigger than any reasonnable np.abs(z0)
                 Z[_zn] = 1.
                 Z[_dzndz] = 1.

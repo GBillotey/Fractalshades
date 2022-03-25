@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
 """
 =============================================================
-Collatz explorer - Naïve algorithm with standard precision
+Collatz explorer - Standard precision (float64)
 =============================================================
 
-This is a simple template to start exploring the Collatz set with
-a GUI. Resolution limited to approx 1.e-13 due to double (float64) precision
+This is a simple template to explore the Collatz set with
+a GUI.
+Resolution limited to approx 1.e-13 due to double (float64) precision
+
+Reference:
+`fractalshades.models.Collatz`
 """
 import typing
 import os
@@ -43,11 +47,11 @@ def plot(plot_dir):
     max_iter = 1000
     nx = 2000
     M_divergence = 1000.0
-    interior_color = (0.5, 0.5, 0.5)
+    interior_color = (0.0, 0.0, 1.0)
     colormap = fs.colors.cmap_register["classic"]
     cmap_z_kind = 'relative'
-    zmin = 0.0
-    zmax = 0.25
+    zmin = 0.05
+    zmax = 0.15
   
 
     # Set to True to enable multi-processing

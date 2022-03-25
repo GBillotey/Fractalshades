@@ -45,7 +45,8 @@ extensions = [
     'sphinx.ext.autosummary',
     # 'sphinx.ext.doctest',
     # 'sphinx.ext.inheritance_diagram',
-    'sphinx.ext.imgmath',
+    # 'sphinx.ext.imgmath',
+    'sphinx.ext.mathjax',
     'sphinx.ext.viewcode',
     # 'sphinx.ext.napoleon',  # for NumPy style docstrings
     'sphinx.ext.githubpages',
@@ -121,6 +122,8 @@ html_static_path = ['_static']
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'Fractalshadesdoc'
+mathjax3_config = {'chtml': {'displayAlign': 'left',
+                             'displayIndent': '2em'}}
 
 
 # -- Options for LaTeX output ------------------------------------------------

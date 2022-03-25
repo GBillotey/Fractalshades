@@ -4,12 +4,23 @@
 Burning Ship arbitrary-precision explorer
 =========================================
 
-This is a template to start exploring the Burning Ship set with
+This is a template to explore the Burning Ship set with
 arbitrary precision through a GUI.
 It features the main postprocessing options (continuous
 iteration, distance estimation based shading)
 
+As the Burning ship is a non-holomorphic fractal, some areas can exibit a heavy
+skew. This explorer allows you to use an unskewing matrice and continue
+the exploration.
+A suitable  unskew matrice is usually given by the influencing mini-ship, which
+you can get as part of a Newton search results : right click on the image and 
+select "Newton search".
+When the skew parameters are changed, hit rerun to continue the exploration.
+
 Good exploration !
+
+Reference:
+`fractalshades.models.Perturbation_burning_ship`
 """
 import typing
 import os

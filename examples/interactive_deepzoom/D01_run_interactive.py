@@ -4,12 +4,16 @@
 Mandelbrot arbitrary-precision explorer
 =======================================
 
-This is a template to start exploring the Mandelbrot set with
+This is a template to explore the Mandelbrot set with
 arbitrary precision through a GUI.
 It features the main postprocessing options (continuous
 iteration, distance estimation based shading, field-lines)
 
 Good exploration !
+
+
+Reference:
+`fractalshades.models.Perturbation_mandelbrot`
 """
 import typing
 import os

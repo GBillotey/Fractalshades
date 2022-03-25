@@ -60,6 +60,20 @@ class Burning_ship(fs.Fractal):
         """
 A standard Burning Ship Fractal (power 2). 
 
+.. math::
+
+    x_0 &= 0 \\\\
+    y_0 &= 0 \\\\
+    x_{n+1} &= x_n^2 - y_n^2 + a \\\\
+    y_{n+1} &= 2 |x_n y_n| - b
+
+where:
+
+.. math::
+
+    z_n &= x_n + i y_n \\\\
+    c &= a + i b
+
 Parameters
 ==========
 directory : str
@@ -166,6 +180,24 @@ class Perturbation_burning_ship(fs.PerturbationFractal):
     def __init__(self, directory):
         """
 An arbitrary-precision implementation for the Burning ship set (power-2).
+
+.. math::
+
+    x_0 &= 0 \\\\
+    y_0 &= 0 \\\\
+    x_{n+1} &= x_n^2 - y_n^2 + a \\\\
+    y_{n+1} &= 2 |x_n y_n| - b
+
+where:
+
+.. math::
+
+    z_n &= x_n + i y_n \\\\
+    c &= a + i b
+
+This class implements arbitrary precision for the reference orbit, ball method
+period search, newton search, perturbation method, chained billinear
+approximations.
 
 Parameters
 ----------

@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 """
 ===============================================================
-Burning ship explorer - Naïve algorithm with standard precision
+Burning ship explorer - Standard precision (float64)
 ===============================================================
 
-This is a simple template to start exploring the Burning ship fractal
+This is a simple template to explore the Burning ship fractal
 Toy-implementation, resolution limited to approx 1.e-13: due to double
 (float64) precision.
+
+Reference:
+`fractalshades.models.Burning_ship`
 """
 import typing
 import os
@@ -47,7 +50,7 @@ def plot(plot_dir):
     theta_deg = 0.
 
     max_iter = 1000
-    nx = 2000
+    nx = 1600
     M_divergence = 1000.0
     interior_color = (0., 0., 0.)
     colormap = fs.colors.cmap_register["classic"]
@@ -126,7 +129,7 @@ def plot(plot_dir):
         plotter["continuous_iter"].set_mask(plotter["interior"],
                                      mask_color=interior_color)
 
-        light = Blinn_lighting(0.3, np.array([1., 1., 1.]))
+        light = Blinn_lighting(0.4, np.array([1., 1., 1.]))
         light.add_light_source(
             k_diffuse=0.8,
             k_specular=20.,

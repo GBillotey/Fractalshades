@@ -153,7 +153,6 @@ https://www.deviantart.com/microfractal/art/Mandelbrot-Deep-Julia-Morphing-22-Go
         coords=None,
         color=np.array([1.0, 1.0, 1.0]))
     plotter["cont_iter"].shade(plotter["DEM_map"], light)
-    
 
     plotter.plot()
 
