@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-=================================================
-"Perpendicular" Burning Ship: hidden Glynn spiral
-=================================================
+================================================
+"Perpendicular" Burning Ship: hidden Koch curve 
+================================================
 
-There are a lot of hidden features to look for in this fractal.
-Here, a Glynn spiral in a very skewed area at a depthe of 4.e-40.
+Another hidden feature in this fractal: here, a reminiscence of Koch curve 
+in a very skewed area at a depth of 5.e-42.
 
 Reference:
 `fractalshades.models.Perturbation_perpendicular_burning_ship`
@@ -42,20 +42,20 @@ def plot(plot_dir):
     calc_name = 'test'
 
     # _1 = 'Zoom parameters'
-    x = '-1.6221172452279831275586824847368230989301274844265'
-    y = '-0.0043849065564689427951877101597546609652950526531633'
-    dx = '4.646303299697506e-40'
+    x = '-1.701694514129370633991199556392981353373480294378294'
+    y = '-0.0000127758408732701278495806991010523157399218726366029'
+    dx = '5.427776726359545e-42'
     xy_ratio = 1.8
-    theta_deg = -2
+    theta_deg = 45
     dps = 55
     nx = 2400
 
     # _1b = 'Skew parameters /!\\ Re-run when modified!'
     has_skew = True
-    skew_00 = 1.011753723519244
-    skew_01 = -1.157539989768796
-    skew_10 = -0.5299787188179303
-    skew_11 = 1.5947275737676074
+    skew_00 = 0.9588240701305322
+    skew_01 = 1.5690686189165641
+    skew_10 = -2.725909971344448
+    skew_11 = -3.417873931327341
 
     # _2 = 'Calculation parameters'
     max_iter = 20000
