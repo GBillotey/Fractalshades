@@ -9,6 +9,9 @@ distance estimation for Mandelbrot (power 2) fractal.
 
 The location, at 16.e-22, is below the reach of double, pertubation theory must
 be used.
+
+Reference:
+`fractalshades.models.Perturbation_mandelbrot`
 """
 
 import os

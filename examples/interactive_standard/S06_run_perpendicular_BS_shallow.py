@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-===============================================================
-Burning ship explorer - Standard precision (float64)
-===============================================================
+==================================================================
+Perpendicular Burning Ship explorer - Standard precision (float64)
+==================================================================
 
-This is a simple template to explore the Burning ship fractal
+This is a simple template to explore the perpendicular Burning ship fractal
 Resolution limited to approx 1.e-13: due to double
 (float64) precision.
 
 Reference:
-`fractalshades.models.Burning_ship`
+`fractalshades.models.Perpendicular_burning_ship`
 """
 import typing
 import os
@@ -66,10 +66,10 @@ def plot(plot_dir):
     settings.inspect_calc = True
 
     directory = plot_dir
-    fractal = fsm.Burning_ship(directory)
-    
+    fractal = fsm.Perpendicular_burning_ship(directory)
+
     def func(
-        fractal: fsm.Burning_ship=fractal,
+        fractal: fsm.Perpendicular_burning_ship=fractal,
         calc_name: str= calc_name,
          _1: fsgui.separator="Zoom parameters",
          x: float= x,
@@ -157,26 +157,6 @@ def plot(plot_dir):
     gui.show()
 
 
-def _plot_from_data(plot_dir, static_im_link):
-    # Private function only used when building fractalshades documentation
-    # Output from GUI might fail for the runner building the doc on github.
-    # -> Defaulting to a static image if one is provided
-    import PIL
-    import PIL.PngImagePlugin
-    data_path = fs.settings.output_context["doc_data_dir"]
-    im = PIL.Image.open(os.path.join(data_path, static_im_link))
-    rgb_im = im.convert('RGB')
-    tag_dict = {"Software": "fractalshades " + fs.__version__,
-                "GUI_plot": static_im_link}
-    pnginfo = PIL.PngImagePlugin.PngInfo()
-    for k, v in tag_dict.items():
-        pnginfo.add_text(k, str(v))
-    if fs.settings.output_context["doc"]:
-        fs.settings.add_figure(fs._Pillow_figure(rgb_im, pnginfo))
-    else:
-        # Should not happen
-        raise RuntimeError()
-
 
 if __name__ == "__main__":
     # Some magic to get the directory for plotting: with a name that matches
@@ -188,9 +168,5 @@ if __name__ == "__main__":
     except NameError:
         import tempfile
         with tempfile.TemporaryDirectory() as plot_dir:
-            static_im_link=None
-            if static_im_link is None:
-                plot(plot_dir)
-            else:
-                _plot_from_data(plot_dir, static_im_link)
+            plot(plot_dir)
 

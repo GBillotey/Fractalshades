@@ -7,7 +7,10 @@ Full Mandelbrot basic example
 This basic example shows how to create a color layer, displaying the 
 "continuous iteration number" for Mandelbrot (power 2) fractal.
 
-The full mandelbrot set is diplayed here
+The full Mandelbrot set is diplayed here.
+
+Reference:
+`fractalshades.models.Mandelbrot`
 """
 
 import os

@@ -17,6 +17,12 @@ perturbation technique and chained bilinear approximations).
    A quite deep Mandelbrot zoom, width 2.e-2608 (credit: see
    :doc:`examples/batch_mode/11-run_perturbdeep`)
 
+.. figure:: /_static/deep_julia_BS.jpg
+
+   Another very deep zoom, this time in the Burning Ship fractal, width
+   1.14e-2430
+   (see :doc:`examples/batch_mode/16-burning_ship-deepJulia_DEM`)
+
 Perturbation technique allows to render an image whith only one point 
 calculated at arbitrary precision. The other points are iterated as delta
 with a standard double precision (for very deep zooms, an extra integer is

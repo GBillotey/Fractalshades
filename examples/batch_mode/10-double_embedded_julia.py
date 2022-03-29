@@ -14,6 +14,8 @@ This example even if not too deep is beyong the separation power of double
 precision data type,
 [#f1]_, at *7e-22*. We will use a `Perturbation_mandelbrot` instance.
 
+Reference:
+`fractalshades.models.Perturbation_mandelbrot`
 
 .. [#f1] **Credit:** Coordinates from Robert P. Munafo website:
         <https://mrob.com/pub/muency/secondorderembeddedjuliase.html>

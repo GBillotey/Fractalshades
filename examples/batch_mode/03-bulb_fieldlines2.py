@@ -9,6 +9,9 @@ values are used to modify the original layer values before applying the
 colormap.
 
 The location is around the 1/3 main bulb.
+
+Reference:
+`fractalshades.models.Mandelbrot`
 """
 
 import os

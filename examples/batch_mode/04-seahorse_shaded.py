@@ -10,6 +10,9 @@ Here a fully grey background is used, and the normal map layer is based on
 "Milnor estimator".
 
 The location is a shallow one in the main Seahorse valley.
+
+Reference:
+`fractalshades.models.Mandelbrot`
 """
 
 import os

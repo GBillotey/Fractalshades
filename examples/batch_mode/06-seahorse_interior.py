@@ -8,6 +8,9 @@ This example shows how to use several layers to plot both the divergent and
 convergent part of a fractal, with fieldlines and scene lighting.
 
 The location is a shallow one in the main Seahorse valley.
+
+Reference:
+`fractalshades.models.Mandelbrot`
 """
 
 import os

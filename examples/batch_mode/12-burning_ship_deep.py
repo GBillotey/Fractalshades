@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 ======================
-Burning ship deep zoom
+Burning Ship deep zoom
 ======================
 
 Example plot of a deep-zoom inside the Burning Ship set (power-2).
@@ -10,6 +10,8 @@ Like the Mandelbrot set, this set features "mini-ships", which are
 smaller copies of the whole. The zoom proposed here displays the inner
 decoration around a deep miniship (period 9622, size 3.40e-265).
 
+Reference:
+`fractalshades.models.Perturbation_burning_ship`
 """
 
 import os

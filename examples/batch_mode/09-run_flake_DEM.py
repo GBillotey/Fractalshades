@@ -8,7 +8,11 @@ This example shows how to create a color layer which displays a
 distance estimation from the Mandelbrot (power 2) fractal.
 
 The location, at 1.8e-157, is well below the separation power of double,
-pertubation theory must be used.
+pertubation theory must be used. This location, "Dinkidau flake", is a
+common test for numerical reliability.
+
+Reference:
+`fractalshades.models.Perturbation_mandelbrot`
 """
 
 import os
