@@ -5,9 +5,10 @@ Burning ship deeper DEM
 =======================
 
 Plotting of a distance estimation for the Burning ship (power-2).
-This zoom is quite deeper, feature a miniship at 1.e-101
+This zoom is deeper, featuring a miniship at 1.e-101
 
-
+Reference:
+`fractalshades.models.Perturbation_burning_ship`
 """
 
 import os
@@ -34,7 +35,7 @@ from fractalshades.colors.layers import (
 
 
 def plot(plot_dir):
-    fs.settings.enable_multithreading = False
+    fs.settings.enable_multithreading = True
     fs.settings.inspect_calc = True
 
     # A simple showcase using perturbation technique

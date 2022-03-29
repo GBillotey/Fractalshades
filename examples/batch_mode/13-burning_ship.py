@@ -7,6 +7,9 @@ Burning ship DEM
 Plotting of a distance estimation for the Burning ship (power-2).
 This zoom is on the structure which gave the fractal its name. We use an
 arbitrary-precision model, even if this is obviously not needed here.
+
+Reference:
+`fractalshades.models.Perturbation_burning_ship`
 """
 
 import os
@@ -33,7 +36,7 @@ from fractalshades.colors.layers import (
 
 
 def plot(plot_dir):
-    fs.settings.enable_multithreading = False
+    fs.settings.enable_multithreading = True
     fs.settings.inspect_calc = True
 
     # A simple showcase using perturbation technique

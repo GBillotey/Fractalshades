@@ -13,6 +13,9 @@ Here a:
     - The normal map itself is also output (OpenGL normal map format)
 
 The location is a shallow one in the main Seahorse valley.
+
+Reference:
+`fractalshades.models.Mandelbrot`
 """
 
 import os

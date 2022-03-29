@@ -27,7 +27,6 @@ from numba.extending import (
     NativeValue
 )
 from numba.core.imputils import impl_ret_borrowed#, lower_setattr, lower_getattr
-from llvmlite import ir
 
 # from numba.core.typing.templates import (AttributeTemplate, infer_getattr)
 #                                         AbstractTemplate, 

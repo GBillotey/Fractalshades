@@ -8,6 +8,9 @@ This example shows how to create a color layer, displaying the
 distance estimation for Mandelbrot (power 2) fractal.
 
 The location is a shallow one in the main Seahorse valley.
+
+Reference:
+`fractalshades.models.Mandelbrot`
 """
 
 import os

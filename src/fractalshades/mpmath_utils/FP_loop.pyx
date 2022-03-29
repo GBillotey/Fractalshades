@@ -718,12 +718,6 @@ def perturbation_mandelbrot_find_nucleus(
         mpc_mul(tmp_t1, zr_t, dh_t, MPC_RNDNN)
         mpc_sub(tmp_t2, dzrdc_t, tmp_t1, MPC_RNDNN)
         mpc_div(df_t, tmp_t2, h_t, MPC_RNDNN)
-        # Note: was previously
-#        mpc_mul(tmp_t1, dzrdc_t, h_t, MPC_RNDNN)
-#        mpc_mul(tmp_t2, zr_t, dh_t, MPC_RNDNN)
-#        mpc_sub(tmp_t3, tmp_t1, tmp_t2, MPC_RNDNN)
-#        mpc_sqr(tmp_t1, h_t, MPC_RNDNN)
-#        mpc_div(df_t, tmp_t3, tmp_t1, MPC_RNDNN)
 
         # cc = c_loop - f / df
         mpc_div(tmp_t1, f_t, df_t, MPC_RNDNN)
@@ -954,12 +948,241 @@ def perturbation_mandelbrot_find_any_nucleus(
 
 #==============================================================================
 #==============================================================================
-# The Burning ship ! Work in progress...
-# This code is largely inspired by the following paper:
+# The Burning ship & al !
+# This implementation is largely following the following paper:
 #
 # At the Helm of the Burning Ship, Claude Heiland-Allen, 2019
 # Proceedings of EVA London 2019 (EVA 2019)
 # http://dx.doi.org/10.14236/ewic/EVA2019.74
+cdef int BURNING_SHIP = 0
+cdef int PERPENDICULAR_BURNING_SHIP = 1
+
+ctypedef void (*iter_func_t)(
+    mpfr_t, mpfr_t, mpfr_t, mpfr_t, mpfr_t, mpfr_t, mpfr_t
+)
+
+ctypedef void (*iter_hessian_t)(
+    int, mpfr_t, mpfr_t, mpfr_t, mpfr_t, mpfr_t, mpfr_t, mpfr_t, mpfr_t,
+    mpfr_t, mpfr_t, mpfr_t, mpfr_t, mpfr_t
+)
+
+cdef void iter_BS(
+    mpfr_t xn_t, mpfr_t yn_t, mpfr_t a_t, mpfr_t b_t,
+    mpfr_t xsq_t, mpfr_t ysq_t, mpfr_t xy_t, 
+):
+    # One standard burning ship iteration
+    # X <- X**2 - Y**2 + A
+    # Y <- 2 * abs(X * Y) - B
+    mpfr_sqr(xsq_t, xn_t, MPFR_RNDN)
+    mpfr_sqr(ysq_t, yn_t, MPFR_RNDN)
+    mpfr_mul(xy_t, xn_t, yn_t, MPFR_RNDN)
+
+    mpfr_sub(xn_t, xsq_t, ysq_t, MPFR_RNDN)
+    mpfr_add(xn_t, xn_t, a_t, MPFR_RNDN)
+
+    mpfr_abs(xy_t, xy_t, MPFR_RNDN)
+    mpfr_mul_si(xy_t, xy_t, 2, MPFR_RNDN)
+    mpfr_sub(yn_t, xy_t, b_t, MPFR_RNDN)
+    return
+
+cdef void iter_pBS(
+    mpfr_t xn_t, mpfr_t yn_t, mpfr_t a_t, mpfr_t b_t,
+    mpfr_t xsq_t, mpfr_t ysq_t, mpfr_t xy_t, 
+):
+    # One standard perpendicular burning ship iteration
+    # X <- X**2 - Y**2 + A
+    # Y <- 2 * X * abs(Y) - B   # 2 * abs(X * Y) - B
+    mpfr_sqr(xsq_t, xn_t, MPFR_RNDN)
+    mpfr_sqr(ysq_t, yn_t, MPFR_RNDN)
+
+    mpfr_abs(xy_t, yn_t, MPFR_RNDN)
+    mpfr_mul(xy_t, xn_t, xy_t, MPFR_RNDN)
+    mpfr_mul_si(xy_t, xy_t, 2, MPFR_RNDN)
+
+    mpfr_sub(xn_t, xsq_t, ysq_t, MPFR_RNDN)
+    mpfr_add(xn_t, xn_t, a_t, MPFR_RNDN)
+
+    mpfr_sub(yn_t, xy_t, b_t, MPFR_RNDN)
+    return
+
+cdef void iter_J_BS(
+    int var_ab_xy,
+    mpfr_t xn_t, mpfr_t yn_t,
+    mpfr_t dxndx_t, mpfr_t dxndy_t,mpfr_t dyndx_t, mpfr_t dyndy_t,
+    mpfr_t abs_xn, mpfr_t abs_yn, mpfr_t tmp_xx, mpfr_t tmp_xy, 
+    mpfr_t tmp_yx, mpfr_t tmp_yy, mpfr_t _tmp
+):
+    # if var_ab_xy == 0 : we compute the derivatives wrt a, b / c = a + i b
+    # if var_ab_xy == 1 : we compute the derivatives wrt x, y / z1 = x + i y
+    cdef int sgn_xn, sgn_yn
+    # One Jacobian burning ship iteration
+    # dxndx <- 2 * (xn * dxndx - yn * dyndx) [+ 1]
+    # dxndy <- 2 * (xn * dxndy - yn * dyndy)
+    # dyndx <- 2 * (abs_xn * sgn_yn * dyndx + sgn_xn * dxndx * abs_yn)
+    # dyndy <- 2 * (abs_xn * sgn_yn * dyndy + sgn_xn * dxndy * abs_yn) [- 1]
+    mpfr_abs(abs_xn, xn_t, MPFR_RNDN)
+    mpfr_abs(abs_yn, yn_t, MPFR_RNDN)
+    sgn_xn = sign(xn_t)
+    sgn_yn = sign(yn_t)
+
+    # dxndx <- 2 * (xn * dxndx - yn * dyndx) [+ 1]
+    mpfr_mul(tmp_xx, xn_t, dxndx_t, MPFR_RNDN)
+    mpfr_mul(_tmp, yn_t, dyndx_t, MPFR_RNDN)
+    mpfr_sub(tmp_xx, tmp_xx, _tmp, MPFR_RNDN)
+
+    # dxndy <- 2 * (xn * dxndy - yn * dyndy)
+    mpfr_mul(tmp_xy, xn_t, dxndy_t, MPFR_RNDN)
+    mpfr_mul(_tmp, yn_t, dyndy_t, MPFR_RNDN)
+    mpfr_sub(tmp_xy, tmp_xy, _tmp, MPFR_RNDN)
+
+    # dyndx <- 2 * (abs_xn * sgn_yn * dyndx + sgn_xn * dxndx * abs_yn)
+    mpfr_mul(tmp_yx, abs_xn, dyndx_t, MPFR_RNDN)
+    mpfr_mul_si(tmp_yx, tmp_yx, sgn_yn, MPFR_RNDN)
+    mpfr_mul(_tmp, abs_yn, dxndx_t, MPFR_RNDN)
+    mpfr_mul_si(_tmp, _tmp, sgn_xn, MPFR_RNDN)
+    mpfr_add(tmp_yx, tmp_yx, _tmp, MPFR_RNDN)
+
+    # dyndy <- 2 * (abs_xn * sgn_yn * dyndy + sgn_xn * dxndy * abs_yn) [-1]
+    mpfr_mul(tmp_yy, abs_xn, dyndy_t, MPFR_RNDN)
+    mpfr_mul_si(tmp_yy, tmp_yy, sgn_yn, MPFR_RNDN)
+    mpfr_mul(_tmp, abs_yn, dxndy_t, MPFR_RNDN)
+    mpfr_mul_si(_tmp, _tmp, sgn_xn, MPFR_RNDN)
+    mpfr_add(tmp_yy, tmp_yy, _tmp, MPFR_RNDN)
+
+    # push the result
+    mpfr_mul_si(dxndx_t, tmp_xx, 2, MPFR_RNDN)
+    mpfr_mul_si(dxndy_t, tmp_xy, 2, MPFR_RNDN)
+    mpfr_mul_si(dyndx_t, tmp_yx, 2, MPFR_RNDN)
+    mpfr_mul_si(dyndy_t, tmp_yy, 2, MPFR_RNDN)
+
+    if var_ab_xy == 0:
+        mpfr_add_si(dxndx_t, dxndx_t, 1, MPFR_RNDN)
+        mpfr_add_si(dyndy_t, dyndy_t, -1, MPFR_RNDN)
+
+    return
+
+cdef void iter_J_pBS(
+    int var_ab_xy,
+    mpfr_t xn_t, mpfr_t yn_t,
+    mpfr_t dxndx_t, mpfr_t dxndy_t,mpfr_t dyndx_t, mpfr_t dyndy_t,
+    mpfr_t abs_xn, mpfr_t abs_yn, mpfr_t tmp_xx, mpfr_t tmp_xy, 
+    mpfr_t tmp_yx, mpfr_t tmp_yy, mpfr_t _tmp
+):
+    # if var_ab_xy == 0 : we compute the derivatives wrt a, b / c = a + i b
+    # if var_ab_xy == 1 : we compute the derivatives wrt x, y / z1 = x + i y
+    cdef int sgn_xn, sgn_yn
+    # One Jacobian burning ship iteration
+    # dxndx <- 2 * (xn * dxndx - yn * dyndx) [+ 1]
+    # dxndy <- 2 * (xn * dxndy - yn * dyndy)
+    # dyndx <- 2 * (xn * sgn_yn * dyndx + dxndx * abs_yn)
+    # dyndy <- 2 * (xn * sgn_yn * dyndy + dxndy * abs_yn) [- 1]
+    # mpfr_abs(abs_xn, xn_t, MPFR_RNDN)
+    mpfr_abs(abs_yn, yn_t, MPFR_RNDN)
+    sgn_yn = sign(yn_t)
+
+    # dxndx <- 2 * (xn * dxndx - yn * dyndx) [+ 1]
+    mpfr_mul(tmp_xx, xn_t, dxndx_t, MPFR_RNDN)
+    mpfr_mul(_tmp, yn_t, dyndx_t, MPFR_RNDN)
+    mpfr_sub(tmp_xx, tmp_xx, _tmp, MPFR_RNDN)
+
+    # dxndy <- 2 * (xn * dxndy - yn * dyndy)
+    mpfr_mul(tmp_xy, xn_t, dxndy_t, MPFR_RNDN)
+    mpfr_mul(_tmp, yn_t, dyndy_t, MPFR_RNDN)
+    mpfr_sub(tmp_xy, tmp_xy, _tmp, MPFR_RNDN)
+
+    # dyndx <- 2 * (abs_xn * sgn_yn * dyndx +  dxndx * abs_yn)
+    mpfr_mul(tmp_yx, xn_t, dyndx_t, MPFR_RNDN)
+    mpfr_mul_si(tmp_yx, tmp_yx, sgn_yn, MPFR_RNDN)
+    mpfr_mul(_tmp, abs_yn, dxndx_t, MPFR_RNDN)
+    mpfr_add(tmp_yx, tmp_yx, _tmp, MPFR_RNDN)
+
+    # dyndy <- 2 * (xn * sgn_yn * dyndy + dxndy * abs_yn) [- 1]
+    mpfr_mul(tmp_yy, xn_t, dyndy_t, MPFR_RNDN)
+    mpfr_mul_si(tmp_yy, tmp_yy, sgn_yn, MPFR_RNDN)
+    mpfr_mul(_tmp, abs_yn, dxndy_t, MPFR_RNDN)
+    mpfr_add(tmp_yy, tmp_yy, _tmp, MPFR_RNDN)
+
+    # push the result
+    mpfr_mul_si(dxndx_t, tmp_xx, 2, MPFR_RNDN)
+    mpfr_mul_si(dxndy_t, tmp_xy, 2, MPFR_RNDN)
+    mpfr_mul_si(dyndx_t, tmp_yx, 2, MPFR_RNDN)
+    mpfr_mul_si(dyndy_t, tmp_yy, 2, MPFR_RNDN)
+
+    if var_ab_xy == 0:
+        mpfr_add_si(dxndx_t, dxndx_t, 1, MPFR_RNDN)
+        mpfr_add_si(dyndy_t, dyndy_t, -1, MPFR_RNDN)
+    return
+
+cdef iter_func_t select_func(const int kind):
+    cdef iter_func_t iter_func
+    if kind == BURNING_SHIP:
+        iter_func = &iter_BS
+    elif kind == PERPENDICULAR_BURNING_SHIP:
+        iter_func = &iter_pBS
+    else:
+        raise NotImplementedError(kind)
+    return iter_func
+
+cdef iter_hessian_t select_hessian(const int kind):
+    cdef iter_hessian_t iter_hessian
+    if kind == BURNING_SHIP:
+        iter_hessian = &iter_J_BS
+    elif kind == PERPENDICULAR_BURNING_SHIP:
+        iter_hessian = &iter_J_pBS
+    else:
+        raise NotImplementedError(kind)
+    return iter_hessian
+
+
+cdef inline int sign(mpfr_t op):
+    # sign function which returns always 1 or -1 to avoid singular cases 
+    ret = mpfr_sgn(op)
+    if ret >= 0:
+        return 1
+    return -1
+
+
+cdef inline void det(
+    mpfr_t delta, mpfr_t a, mpfr_t b, mpfr_t c, mpfr_t d, mpfr_t _tmp
+):
+    # return the determinant of the 2 x 2 matrix:
+    #  [a b]
+    #  [c d]
+    # delta = ad - cb
+    mpfr_mul(delta, a, d, MPFR_RNDN)
+    mpfr_mul(_tmp, c, b, MPFR_RNDN)
+    mpfr_sub(delta, delta, _tmp, MPFR_RNDN)
+    return
+
+
+cdef void matsolve(
+    mpfr_t x_res, mpfr_t y_res,
+    mpfr_t a, mpfr_t b, mpfr_t c, mpfr_t d,
+    mpfr_t e, mpfr_t f,
+    mpfr_t delta, mpfr_t _tmp
+):
+    # return the (x, y) solution of the 2 x 2 linear problem:
+    #  [a b] x [x] = [e] 
+    #  [c d]   [y]   [f]
+
+    cdef:
+        unsigned long int ui_one = 1
+
+    det(delta, a, b, c, d, _tmp)
+    mpfr_ui_div(delta, ui_one, delta, MPFR_RNDN)
+    #  [x] = delta x [ d -b] x [e]
+    #  [y]           [-c  a]   [f]
+    mpfr_mul(x_res, d, e, MPFR_RNDN)
+    mpfr_mul(_tmp, b, f, MPFR_RNDN)
+    mpfr_sub(x_res, x_res, _tmp, MPFR_RNDN)
+    mpfr_mul(x_res, x_res, delta, MPFR_RNDN)
+
+    mpfr_mul(y_res, a, f, MPFR_RNDN)
+    mpfr_mul(_tmp, c, e, MPFR_RNDN)
+    mpfr_sub(y_res, y_res, _tmp, MPFR_RNDN)
+    mpfr_mul(y_res, y_res, delta, MPFR_RNDN)
+    return
+
 
 def perturbation_BS_FP_loop(
         np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
@@ -999,6 +1222,47 @@ def perturbation_BS_FP_loop(
     orbit_partial_register
         dictionnary containing the partials
     """
+    return perturbation_nonholomorphic_FP_loop(
+        orbit,
+        need_Xrange,
+        max_iter,
+        M,
+        seed_x,
+        seed_y,
+        seed_prec,
+        kind=BURNING_SHIP
+    )
+
+def perturbation_perpendicular_BS_FP_loop(
+        np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
+        bint need_Xrange,
+        long max_iter,
+        double M,
+        char * seed_x,
+        char * seed_y,
+        long seed_prec
+):
+    return perturbation_nonholomorphic_FP_loop(
+        orbit,
+        need_Xrange,
+        max_iter,
+        M,
+        seed_x,
+        seed_y,
+        seed_prec,
+        kind=PERPENDICULAR_BURNING_SHIP
+    )
+
+def perturbation_nonholomorphic_FP_loop(
+        np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
+        bint need_Xrange,
+        long max_iter,
+        double M,
+        char * seed_x,
+        char * seed_y,
+        long seed_prec,
+        const int kind
+):
     cdef:
         long max_len = orbit.shape[0]
         long i = 0
@@ -1007,12 +1271,15 @@ def perturbation_BS_FP_loop(
         double x = 0.
         double y = 0.
         double abs_i = 0.
+        iter_func_t iter_func
 
         mpfr_t xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t
 
     assert orbit.dtype == DTYPE_FLOAT
     print(max_iter, max_len, max_iter * 2)
     assert (max_iter + 1) * 2 == max_len # (NP_orbit starts at critical point)
+    
+    iter_func = select_func(kind)
 
     orbit_Xrange_register = dict()
     orbit_partial_register = dict()
@@ -1041,7 +1308,7 @@ def perturbation_BS_FP_loop(
     for i in range(1, max_iter + 1):
         # X <- X**2 - Y**2 + A
         # Y <- 2 * abs(X * Y) - B
-        iter_BS(xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t)
+        iter_func(xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t)
 
         # Store in orbit as double
         x = mpfr_get_d(xn_t, MPFR_RNDN)
@@ -1108,165 +1375,6 @@ def perturbation_BS_FP_loop(
     return i, orbit_partial_register, orbit_Xrange_register
 
 
-cdef void iter_BS(
-    mpfr_t xn_t, mpfr_t yn_t, mpfr_t a_t, mpfr_t b_t,
-    mpfr_t xsq_t, mpfr_t ysq_t, mpfr_t xy_t, 
-):
-    # One standard burning ship iteration
-    # X <- X**2 - Y**2 + A
-    # Y <- 2 * abs(X * Y) - B
-    mpfr_sqr(xsq_t, xn_t, MPFR_RNDN)
-    mpfr_sqr(ysq_t, yn_t, MPFR_RNDN)
-    mpfr_mul(xy_t, xn_t, yn_t, MPFR_RNDN)
-
-    mpfr_sub(xn_t, xsq_t, ysq_t, MPFR_RNDN)
-    mpfr_add(xn_t, xn_t, a_t, MPFR_RNDN)
-
-    mpfr_abs(xy_t, xy_t, MPFR_RNDN)
-    mpfr_mul_si(xy_t, xy_t, 2, MPFR_RNDN)
-    mpfr_sub(yn_t, xy_t, b_t, MPFR_RNDN)
-    return
-
-
-cdef void iter_J_BS(
-    int var_ab_xy,
-    mpfr_t xn_t, mpfr_t yn_t,
-    mpfr_t dxndx_t, mpfr_t dxndy_t,mpfr_t dyndx_t, mpfr_t dyndy_t,
-    mpfr_t abs_xn, mpfr_t abs_yn, mpfr_t tmp_xx, mpfr_t tmp_xy, 
-    mpfr_t tmp_yx, mpfr_t tmp_yy, mpfr_t _tmp
-):
-    # if var_ab_xy == 0 : we compute the derivatives wrt a, b / c = a + i b
-    # if var_ab_xy == 1 : we compute the derivatives wrt x, y / z1 = x + i y
-    cdef int sgn_xn, sgn_yn
-    # One Jacobian burning ship iteration
-    # dxndx <- 2 * (xn * dxndx - yn * dyndx) [+ 1]
-    # dxndy <- 2 * (xn * dxndy - yn * dyndy)
-    # dyndx <- 2 * (abs_xn * sgn_yn * dyndx + sgn_xn * dxndx * abs_yn)
-    # dyndy <- 2 * (abs_xn * sgn_yn * dyndy + sgn_xn * dxndy * abs_yn) [- 1]
-    mpfr_abs(abs_xn, xn_t, MPFR_RNDN)
-    mpfr_abs(abs_yn, yn_t, MPFR_RNDN)
-    sgn_xn = sign(xn_t)
-    sgn_yn = sign(yn_t)
-
-    # dxndx <- 2 * (xn * dxndx - yn * dyndx) [+ 1]
-    mpfr_mul(tmp_xx, xn_t, dxndx_t, MPFR_RNDN)
-    mpfr_mul(_tmp, yn_t, dyndx_t, MPFR_RNDN)
-    mpfr_sub(tmp_xx, tmp_xx, _tmp, MPFR_RNDN)
-#    print("before, tmp_xx", mpfr_get_d(tmp_xx, MPFR_RNDN), var_ab_xy)
-#    if var_ab_xy == 0:
-#        mpfr_add_si(tmp_xx, tmp_xx, 0.5, MPFR_RNDN)
-#        print("after, tmp_xx", mpfr_get_d(tmp_xx, MPFR_RNDN))
-
-    # dxndy <- 2 * (xn * dxndy - yn * dyndy)
-    mpfr_mul(tmp_xy, xn_t, dxndy_t, MPFR_RNDN)
-    mpfr_mul(_tmp, yn_t, dyndy_t, MPFR_RNDN)
-    mpfr_sub(tmp_xy, tmp_xy, _tmp, MPFR_RNDN)
-
-    # dyndx <- 2 * (abs_xn * sgn_yn * dyndx + sgn_xn * dxndx * abs_yn)
-    mpfr_mul(tmp_yx, abs_xn, dyndx_t, MPFR_RNDN)
-    mpfr_mul_si(tmp_yx, tmp_yx, sgn_yn, MPFR_RNDN)
-    mpfr_mul(_tmp, abs_yn, dxndx_t, MPFR_RNDN)
-    mpfr_mul_si(_tmp, _tmp, sgn_xn, MPFR_RNDN)
-    mpfr_add(tmp_yx, tmp_yx, _tmp, MPFR_RNDN)
-
-    # dyndy <- 2 * (abs_xn * sgn_yn * dyndy + sgn_xn * dxndy * abs_yn) [-1]
-    mpfr_mul(tmp_yy, abs_xn, dyndy_t, MPFR_RNDN)
-    mpfr_mul_si(tmp_yy, tmp_yy, sgn_yn, MPFR_RNDN)
-    mpfr_mul(_tmp, abs_yn, dxndy_t, MPFR_RNDN)
-    mpfr_mul_si(_tmp, _tmp, sgn_xn, MPFR_RNDN)
-    mpfr_add(tmp_yy, tmp_yy, _tmp, MPFR_RNDN)
-#    if var_ab_xy == 0:
-#        mpfr_add_si(tmp_yy, tmp_yy, -1, MPFR_RNDN)
-
-    # push the result
-    mpfr_mul_si(dxndx_t, tmp_xx, 2, MPFR_RNDN)
-    mpfr_mul_si(dxndy_t, tmp_xy, 2, MPFR_RNDN)
-    mpfr_mul_si(dyndx_t, tmp_yx, 2, MPFR_RNDN)
-    mpfr_mul_si(dyndy_t, tmp_yy, 2, MPFR_RNDN)
-
-    if var_ab_xy == 0:
-        mpfr_add_si(dxndx_t, dxndx_t, 1, MPFR_RNDN)
-        mpfr_add_si(dyndy_t, dyndy_t, -1, MPFR_RNDN)
-
-    return
-
-
-cdef inline int sign(mpfr_t op):
-    # sign function which returns always 1 or -1 to avoid singular cases 
-    ret = mpfr_sgn(op)
-    if ret >= 0:
-        return 1
-    return -1
-
-
-cdef inline void det(
-    mpfr_t delta, mpfr_t a, mpfr_t b, mpfr_t c, mpfr_t d, mpfr_t _tmp
-):
-    # return the determinant of the 2 x 2 matrix:
-    #  [a b]
-    #  [c d]
-    # delta = ad - cb
-    mpfr_mul(delta, a, d, MPFR_RNDN)
-    mpfr_mul(_tmp, c, b, MPFR_RNDN)
-    mpfr_sub(delta, delta, _tmp, MPFR_RNDN)
-    return
-
-cdef void matmul(
-    mpfr_t a_res, mpfr_t b_res, mpfr_t c_res, mpfr_t d_res,
-    mpfr_t a1, mpfr_t b1, mpfr_t c1, mpfr_t d1,
-    mpfr_t a2, mpfr_t b2, mpfr_t c2, mpfr_t d2,
-    mpfr_t _tmp
-):
-    # return the product of the 2 x 2 matrix:
-    #  [a1 b1] x [a2 b2] 
-    #  [c1 d1]   [c2 d2] 
-    #  a_res = a1a2 + b1c2
-    mpfr_mul(a_res, a1, a2, MPFR_RNDN)
-    mpfr_mul(_tmp, b1, c2, MPFR_RNDN)
-    mpfr_add(a_res, a_res, _tmp, MPFR_RNDN)
-    #  b_res = a1b2 + b1d2
-    mpfr_mul(b_res, a1, b2, MPFR_RNDN)
-    mpfr_mul(_tmp, b1, d2, MPFR_RNDN)
-    mpfr_add(b_res, b_res, _tmp, MPFR_RNDN)
-    #  c_res = c1a2 + d1c2
-    mpfr_mul(c_res, c1, a2, MPFR_RNDN)
-    mpfr_mul(_tmp, d1, c2, MPFR_RNDN)
-    mpfr_add(c_res, c_res, _tmp, MPFR_RNDN)
-    #  d_res = c1b2 + d1d2
-    mpfr_mul(d_res, c1, b2, MPFR_RNDN)
-    mpfr_mul(_tmp, d1, d2, MPFR_RNDN)
-    mpfr_add(d_res, d_res, _tmp, MPFR_RNDN)
-    return
-
-cdef void matsolve(
-    mpfr_t x_res, mpfr_t y_res,
-    mpfr_t a, mpfr_t b, mpfr_t c, mpfr_t d,
-    mpfr_t e, mpfr_t f,
-    mpfr_t delta, mpfr_t _tmp
-):
-    # return the (x, y) solution of the 2 x 2 linear problem:
-    #  [a b] x [x] = [e] 
-    #  [c d]   [y]   [f]
-
-    cdef:
-        unsigned long int ui_one = 1
-
-    det(delta, a, b, c, d, _tmp)
-    mpfr_ui_div(delta, ui_one, delta, MPFR_RNDN)
-    #  [x] = delta x [ d -b] x [e]
-    #  [y]           [-c  a]   [f]
-    mpfr_mul(x_res, d, e, MPFR_RNDN)
-    mpfr_mul(_tmp, b, f, MPFR_RNDN)
-    mpfr_sub(x_res, x_res, _tmp, MPFR_RNDN)
-    mpfr_mul(x_res, x_res, delta, MPFR_RNDN)
-
-    mpfr_mul(y_res, a, f, MPFR_RNDN)
-    mpfr_mul(_tmp, c, e, MPFR_RNDN)
-    mpfr_sub(y_res, y_res, _tmp, MPFR_RNDN)
-    mpfr_mul(y_res, y_res, delta, MPFR_RNDN)
-    return
-
-
 def perturbation_BS_nucleus_size_estimate(
         char * seed_x,
         char * seed_y,
@@ -1310,15 +1418,49 @@ def perturbation_BS_nucleus_size_estimate(
                 b = b + 1. / l
             return 1. / (b * l * l)
     """
+    return perturbation_nonholomorphic_nucleus_size_estimate(
+        seed_x,
+        seed_y,
+        seed_prec,
+        order,
+        kind=BURNING_SHIP
+    )
+
+def perturbation_perpendicular_BS_nucleus_size_estimate(
+        char * seed_x,
+        char * seed_y,
+        long seed_prec,
+        long order
+):
+    return perturbation_nonholomorphic_nucleus_size_estimate(
+        seed_x,
+        seed_y,
+        seed_prec,
+        order,
+        kind=PERPENDICULAR_BURNING_SHIP
+    )
+
+def perturbation_nonholomorphic_nucleus_size_estimate(
+        char * seed_x,
+        char * seed_y,
+        long seed_prec,
+        long order,
+        const int kind
+):
     cdef:
         unsigned long int ui_one = 1
         long i = 0
+        iter_func_t iter_func
+        iter_hessian_t iter_hessian
 
         mpfr_t xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t
         mpfr_t dxndx_t, dxndy_t, dyndx_t, dyndy_t, delta_t
         mpfr_t abs_xn, abs_yn, tmp_xx, tmp_xy, tmp_yx, tmp_yy
         mpfr_t bn_xx_t, bn_xy_t, bn_yx_t, bn_yy_t
         mpfr_t _tmp
+
+    iter_func = select_func(kind)
+    iter_hessian = select_hessian(kind)
 
     # initialisation
     mpfr_inits2(seed_prec, xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t, NULL)
@@ -1351,7 +1493,7 @@ def perturbation_BS_nucleus_size_estimate(
     for i in range(1, order):
         # X <- X**2 - Y**2 + A
         # Y <- 2 * abs(X * Y) - B
-        iter_BS(xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t)
+        iter_func(xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t)
 
         # Ln is the Jacobian
         # Ln = [dxndx  dxndy]
@@ -1360,7 +1502,7 @@ def perturbation_BS_nucleus_size_estimate(
         # dxndy <- 2 * (xn * dxndy - yn * dyndy)
         # dyndx <- 2 * abs_xn * sgn_yn * dyndx + 2 * sgn_xn * dxndx * abs_yn
         # dyndy <- 2 * abs_xn * sgn_yn * dyndy + 2 * sgn_xn * dxndy * abs_yn
-        iter_J_BS(
+        iter_hessian(
             1,
             xn_t, yn_t, dxndx_t, dxndy_t, dyndx_t, dyndy_t,
             abs_xn, abs_yn, tmp_xx, tmp_xy, tmp_yx, tmp_yy, _tmp
@@ -1482,12 +1624,52 @@ def perturbation_BS_ball_method(
                 print("Ball method 1 found period:", i)
                 return i
     """
+    return perturbation_nonholomorphic_ball_method(
+        seed_x,
+        seed_y,
+        seed_prec,
+        seed_px,
+        maxiter,
+        M_divergence,
+        kind=BURNING_SHIP
+    )
+
+def perturbation_perpendicular_BS_ball_method(
+        char * seed_x,
+        char * seed_y,
+        long seed_prec,
+        char * seed_px,
+        long maxiter,
+        double M_divergence
+):
+    return perturbation_nonholomorphic_ball_method(
+        seed_x,
+        seed_y,
+        seed_prec,
+        seed_px,
+        maxiter,
+        M_divergence,
+        kind=PERPENDICULAR_BURNING_SHIP
+    )
+
+
+def perturbation_nonholomorphic_ball_method(
+        char * seed_x,
+        char * seed_y,
+        long seed_prec,
+        char * seed_px,
+        long maxiter,
+        double M_divergence,
+        const int kind
+):
     cdef:
         int cmp = 0
         unsigned long int ui_one = 1
         long ret = -1
         long i = 0
         double x, y, rx, ry
+        iter_func_t iter_func
+        iter_hessian_t iter_hessian
 
         mpfr_t xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t
         mpfr_t dxnda_t, dxndb_t, dynda_t, dyndb_t, delta_t
@@ -1495,6 +1677,9 @@ def perturbation_BS_ball_method(
         mpfr_t a, b, c, d
         mpfr_t rx_t, ry_t, pix_t, inv_pix_t
         mpfr_t _tmp
+
+    iter_func = select_func(kind)
+    iter_hessian = select_hessian(kind)
 
     # initialisation
     mpfr_inits2(seed_prec, xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t, NULL)
@@ -1517,42 +1702,20 @@ def perturbation_BS_ball_method(
     mpfr_set_si(dxndb_t, 0, MPFR_RNDN)
     mpfr_set_si(dynda_t, 0, MPFR_RNDN)
     mpfr_set_si(dyndb_t, 0, MPFR_RNDN)
-    
-    
-#    mpfr_set_str(xn_t, seed_x, 10, MPFR_RNDN)
-#    mpfr_set_str(yn_t, seed_y, 10, MPFR_RNDN)
 
     mpfr_set_str(pix_t, seed_px, 10, MPFR_RNDN)
     mpfr_ui_div(inv_pix_t, ui_one, pix_t, MPFR_RNDN)
 
-#    # set z = 0 
-#    mpc_set_si_si(z_t, 0, 0, MPC_RNDNN)
-#
-#    # set az = abs(z)
-#    mpc_abs(az_t, z_t, MPFR_RNDN)
     
     for i in range(1, maxiter + 1):
-#        print("i", i, "pix", mpfr_get_d(pix_t, MPFR_RNDN) )
-#        print("b_t", mpfr_get_d(a_t, MPFR_RNDN))
-#        print("a_t", mpfr_get_d(b_t, MPFR_RNDN))
-#        print("xn_t", mpfr_get_d(xn_t, MPFR_RNDN))
-#        print("yn_t", mpfr_get_d(yn_t, MPFR_RNDN))
 
-        iter_J_BS(
+        iter_hessian(
             0,
             xn_t, yn_t, dxnda_t, dxndb_t, dynda_t, dyndb_t,
             abs_xn, abs_yn, tmp_xx, tmp_xy, tmp_yx, tmp_yy, _tmp
         )
-#        print("xn_t", mpfr_get_d(xn_t, MPFR_RNDN))
-#        print("yn_t", mpfr_get_d(yn_t, MPFR_RNDN))
-        iter_BS(xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t)
+        iter_func(xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t)
         
-#        print("xn_t", mpfr_get_d(xn_t, MPFR_RNDN))
-#        print("yn_t", mpfr_get_d(yn_t, MPFR_RNDN))
-#        print("dxnda_t", mpfr_get_d(dxnda_t, MPFR_RNDN))
-#        print("dxndb_t", mpfr_get_d(dxndb_t, MPFR_RNDN))
-#        print("dynda_t", mpfr_get_d(dynda_t, MPFR_RNDN))
-#        print("dyndb_t", mpfr_get_d(dyndb_t, MPFR_RNDN))
 
         # [rX] = J^-1 x [X] 
         # [rY]          [Y]
@@ -1564,8 +1727,6 @@ def perturbation_BS_ball_method(
         )
         mpfr_mul(rx_t, rx_t, inv_pix_t, MPFR_RNDN)
         mpfr_mul(ry_t, ry_t, inv_pix_t, MPFR_RNDN)
-#        print("rx_t", mpfr_get_d(rx_t, MPFR_RNDN))
-#        print("ry_t", mpfr_get_d(ry_t, MPFR_RNDN))
 
         # if |xn + i yn| > M_divergence:
         x = mpfr_get_d(xn_t, MPFR_RNDN)
@@ -1598,7 +1759,6 @@ def perturbation_BS_ball_method(
     mpfr_clear(_tmp)
 
     return ret
-
 
 def perturbation_BS_find_any_nucleus(
     char *seed_x,
@@ -1668,6 +1828,47 @@ def perturbation_BS_find_any_nucleus(
     ---------
     https://mathr.co.uk/blog/2018-11-17_newtons_method_for_periodic_points.html
     """
+    return perturbation_nonholomorphic_find_any_nucleus(
+        seed_x,
+        seed_y,
+        seed_prec,
+        order,
+        max_newton,
+        seed_eps_cv,
+        seed_eps_valid,
+        kind=BURNING_SHIP
+    )
+
+def perturbation_perpendicular_BS_find_any_nucleus(
+    char *seed_x,
+    char *seed_y,
+    long seed_prec,
+    long order,
+    long max_newton,
+    char *seed_eps_cv,
+    char *seed_eps_valid
+):
+    return perturbation_nonholomorphic_find_any_nucleus(
+        seed_x,
+        seed_y,
+        seed_prec,
+        order,
+        max_newton,
+        seed_eps_cv,
+        seed_eps_valid,
+        kind=PERPENDICULAR_BURNING_SHIP
+    )
+
+def perturbation_nonholomorphic_find_any_nucleus(
+    char *seed_x,
+    char *seed_y,
+    long seed_prec,
+    long order,
+    long max_newton,
+    char *seed_eps_cv,
+    char *seed_eps_valid,
+    const int kind
+):
     cdef:
         # unsigned long int ui_one = 1
         bint newton_cv = False
@@ -1676,6 +1877,8 @@ def perturbation_BS_find_any_nucleus(
         long i_newton = 0
         long i = 0
         object gmpy_mpc
+        iter_func_t iter_func
+        iter_hessian_t iter_hessian
 
         mpfr_t xn_t, yn_t, a_t, b_t, da_t, db_t, xsq_t, ysq_t, xy_t
         mpfr_t dxnda_t, dxndb_t, dynda_t, dyndb_t, delta_t
@@ -1685,6 +1888,9 @@ def perturbation_BS_find_any_nucleus(
 
         mpc_t c_t
 
+    iter_func = select_func(kind)
+    iter_hessian = select_hessian(kind)
+
     # initialisation
     mpfr_inits2(seed_prec, xn_t, yn_t, a_t, b_t, da_t, db_t, xsq_t, ysq_t, xy_t, NULL)
     mpfr_inits2(seed_prec, dxnda_t, dxndb_t, dynda_t, dyndb_t, delta_t, NULL)
@@ -1693,27 +1899,6 @@ def perturbation_BS_find_any_nucleus(
     mpfr_init2(_tmp, seed_prec)
 
     mpc_init2(c_t, seed_prec)
-#        mpc_t c_t
-#        mpc_t zr_t
-#        mpc_t dzrdc_t
-#        mpc_t tmp_t1
-#        mpc_t tmp_t2
-#
-#        mpfr_t x_t
-#        mpfr_t y_t
-#        mpfr_t abs_diff
-#        mpfr_t eps_t
-#
-
-#    mpc_init2(zr_t, seed_prec)
-#    mpc_init2(dzrdc_t, seed_prec)
-#    mpc_init2(tmp_t1, seed_prec)
-#    mpc_init2(tmp_t2, seed_prec)
-#
-#    mpfr_init2(x_t, seed_prec)
-#    mpfr_init2(y_t, seed_prec)
-#    mpfr_init2(abs_diff, seed_prec)
-#    mpfr_init2(eps_t, seed_prec)
     
     # from char: set value of c - and of r0 = r = px
     mpfr_set_str(a_t, seed_x, 10, MPFR_RNDN)
@@ -1737,12 +1922,12 @@ def perturbation_BS_find_any_nucleus(
 
         # Newton descent
         for i in range(1, order + 1):
-            iter_J_BS(
+            iter_hessian(
                 0,
                 xn_t, yn_t, dxnda_t, dxndb_t, dynda_t, dyndb_t,
                 abs_xn, abs_yn, tmp_xx, tmp_xy, tmp_yx, tmp_yy, _tmp
             )
-            iter_BS(xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t)
+            iter_func(xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t)
 
         # [da] = -J^-1 x [xn]
         # [db]           [yn]
@@ -1800,7 +1985,6 @@ def perturbation_BS_find_any_nucleus(
     if newton_cv:
         return newton_cv, gmpy_to_mpmath_mpc(gmpy_mpc, seed_prec)
     return False, mpmath.mpc("nan", "nan")
-
 
 #==============================================================================
 #==============================================================================

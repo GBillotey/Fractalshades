@@ -9,6 +9,9 @@ This zoom is quite shallow however already features complex structures
 
 Note: due to the long running time and high antialising needed, this image
 has been precomputed.
+
+Reference:
+`fractalshades.models.Power_tower`
 """
 
 import os
