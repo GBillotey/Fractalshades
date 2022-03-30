@@ -7,7 +7,7 @@
 # Fractalshades
 The pupose of this python package is to implement efficient algorithms for static and interactive deep-zoom exploration (1.e-2000 and beyong) of a few fractals.
 
-![Alt text](https://github.com/GBillotey/Fractalshades/blob/master/docs/_static/Screenshot_from_2022-02-04.png)
+![Graphical user interface developped with PyQt6](https://github.com/GBillotey/Fractalshades/blob/master/docs/_static/Screenshot_from_2022-02-04.png)
 
 ## Documentation
 https://gbillotey.github.io/Fractalshades/
