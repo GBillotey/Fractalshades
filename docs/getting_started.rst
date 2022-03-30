@@ -70,11 +70,14 @@ A 5-minutes guide to fractalshades
 
 The best way to start is probably to have a look at the 
 :doc:`examples/index/` section. Download one of the examples from the GUI
-examples section, run it in an empty directory : good exploration !
+examples section (links below), run it in an empty directory :
+good exploration !
 
-:doc:`/examples/interactive_deepzoom/D01_run_interactive`
+  - :doc:`/examples/interactive_deepzoom/D01_run_interactive`
 
-:doc:`/examples/interactive_deepzoom/D02_run_BS_interactive`.
+  - :doc:`/examples/interactive_deepzoom/D02_run_BS_interactive`.
+
+  - :doc:`/examples/interactive_deepzoom/D03_run_perpendicular_BS_interactive`.
 
 .. code-block:: console
 

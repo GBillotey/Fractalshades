@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 =============================================================
-Collatz explorer - Standard precision (float64)
+S04 - Collatz explorer - Standard precision (float64)
 =============================================================
 
 This is a simple template to explore the Collatz set with

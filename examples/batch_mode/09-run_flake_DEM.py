@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-====================
-A deeper DEM example
-====================
+=========================
+09 - A deeper DEM example
+=========================
 
 This example shows how to create a color layer which displays a 
 distance estimation from the Mandelbrot (power 2) fractal.

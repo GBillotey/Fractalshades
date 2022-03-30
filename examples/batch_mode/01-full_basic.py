@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-=============================
-Full Mandelbrot basic example
-=============================
+==================================
+01 - Full Mandelbrot basic example
+==================================
 
 This basic example shows how to create a color layer, displaying the 
 "continuous iteration number" for Mandelbrot (power 2) fractal.
@@ -90,5 +90,6 @@ if __name__ == "__main__":
         plot(plot_dir)
     except NameError:
         import tempfile
+        from fractalshades.utils import no_stdout 
         with tempfile.TemporaryDirectory() as plot_dir:
-            plot(plot_dir)
+            no_stdout(plot(plot_dir))

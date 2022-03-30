@@ -220,6 +220,7 @@ numpydoc_show_class_members = False
 
 # Automatic build of the gallery
 import sphinx_gallery
+from sphinx_gallery.sorting import FileNameSortKey
 # We will not write to disk but feed fractalshades_scraper
 fractalshades.settings.output_context["doc"] = True 
 fractalshades.settings.output_context["doc_max_width"] = 800 
@@ -255,6 +256,30 @@ def fractalshades_scraper(block, block_vars, gallery_conf):
 sphinx_gallery_conf = {
      'examples_dirs': '../examples',   # path to your example scripts
      'gallery_dirs': 'examples',       # path to where to save gallery generated output
+     'within_subsection_order': FileNameSortKey,
+#     'subsection_order': ExplicitOrder([
+#            '../examples/batch_mode/01-full_basic',
+#            '../examples/batch_mode/02-bulb_fieldlines1',
+#            '../examples/batch_mode/03-bulb_fieldlines2',
+#            '../examples/batch_mode/04-seahorse_shaded',
+#            '../examples/batch_mode/05-seahorse_shaded_colored',
+#            '../examples/batch_mode/06-seahorse_interior',
+#            '../examples/batch_mode/07-seahorse_DEM',
+#            '../examples/batch_mode/08-run_perturb_DEM',
+#            '../examples/batch_mode/09-run_flake_DEM',
+#            '../examples/batch_mode/10-double_embedded_julia',
+#            '../examples/batch_mode/11-run_perturbdeep',
+#            '../examples/colormaps/plot_cmaps',
+#            '../examples/interactive_deepzoom/D01_run_interactive',
+#            '../examples/interactive_deepzoom/D02_run_BS_interactive',
+#            '../examples/interactive_deepzoom/D03_run_perpendicular_BS_interactive',
+#            '../examples/interactive_standard/S01_run_interactive_shallow',
+#            '../examples/interactive_standard/S02_run_BS_shallow',
+#            '../examples/interactive_standard/S03_run_interactive_Mn_shallow',
+#            '../examples/interactive_standard/S04_run_collatz',
+#            '../examples/interactive_standard/S05_run_power_tower_shallow',
+#            '../examples/interactive_standard/S06_run_perpendicular_BS_shallow',
+#      ]),
      'filename_pattern': r'\.py',     # all python files r'\.py',
      'ignore_pattern': r'sgskip\.py', # except those ending with sgskip
      'image_scrapers': (fractalshades_scraper),

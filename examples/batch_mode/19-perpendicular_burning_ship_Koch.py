@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-================================================
-"Perpendicular" Burning Ship: hidden Koch curve 
-================================================
+====================================================
+19 - "Perpendicular" Burning Ship: hidden Koch curve
+====================================================
 
 Another hidden feature in this fractal: here, a reminiscence of Koch curve 
 in a very skewed area at a depth of 5.e-42.

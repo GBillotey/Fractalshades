@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-===================================
-Bulb fieldlines example "twinfield"
-===================================
+========================================
+03 - Bulb fieldlines example "twinfield"
+========================================
 
 This example shows one of the ways to plot fieldlines: here the fieldlines 
 values are used to modify the original layer values before applying the

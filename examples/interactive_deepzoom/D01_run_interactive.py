@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-=======================================
-Mandelbrot arbitrary-precision explorer
-=======================================
+=============================================
+D01 - Mandelbrot arbitrary-precision explorer
+=============================================
 
 This is a template to explore the Mandelbrot set with
 arbitrary precision through a GUI.
