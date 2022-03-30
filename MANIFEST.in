@@ -6,7 +6,7 @@ prune src/fractalshades/colors/_local_test
 # Tests
 graft tests
 prune tests/_temporary_data
-prune tests/known_fails/_data
+prune tests/known_fails
 # Examples
 recursive-include examples* *.py
 # Global exclusions
