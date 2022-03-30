@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 import os
-import sys
 import errno
 import functools
 import copy
 import inspect
-from contextlib import contextmanager
+
 
 def mkdir_p(path):
     """ Creates directory ; if exists does nothing """
@@ -16,32 +15,6 @@ def mkdir_p(path):
             pass
         else:
             raise exc
-
-def no_stdout(func):
-    """ Decorator, suppress output of the decorated function"""
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        with suppress_stdout():
-            return func(*args, **kwargs)
-    return wrapper
-
-@contextmanager 
-def suppress_stdout():
-    """ Temporarly suppress print statement during tests or documentation
-    """
-    # Note: Only deals with Python level streams ; if need a more involving
-    # version dealing also with C-level streams:
-    # https://eli.thegreenplace.net/2015/redirecting-all-kinds-of-stdout-in-python/
-    with open(os.devnull, "w") as devnull:
-        old_stdout = sys.stdout
-        sys.stdout = devnull
-        old_stderr = sys.stderr
-        sys.stderr = devnull
-        try:  
-            yield
-        finally:
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
 
 def _store_kwargs(dic_name):
     """ Decorator for an instance method, 
