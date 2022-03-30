@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-=======================================
-Bulb fieldlines example "tint_or_shade"
-=======================================
+============================================
+02 - Bulb fieldlines example "tint_or_shade"
+============================================
 
 This example shows one of the ways to plot fieldlines: here the fieldlines 
 values are used to modify the original layer colors : they are tinted or
@@ -96,5 +96,6 @@ if __name__ == "__main__":
         plot(plot_dir)
     except NameError:
         import tempfile
+        from fractalshades.utils import no_stdout 
         with tempfile.TemporaryDirectory() as plot_dir:
-            plot(plot_dir)
+            no_stdout(plot(plot_dir))

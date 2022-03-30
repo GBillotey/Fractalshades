@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-=========================
-Double embedded Julia set
-=========================
+==============================
+10 - Double embedded Julia set
+==============================
+
 Example plot a double-embedded Julia set in mandelbrot power-2
 
 Embedded Julia sets are structures that occur around certain minibrots.

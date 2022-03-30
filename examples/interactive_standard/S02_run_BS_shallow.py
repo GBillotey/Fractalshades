@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-===============================================================
-Burning ship explorer - Standard precision (float64)
-===============================================================
+===========================================================
+S02 - Burning ship explorer - Standard precision (float64)
+===========================================================
 
 This is a simple template to explore the Burning ship fractal
 Resolution limited to approx 1.e-13: due to double

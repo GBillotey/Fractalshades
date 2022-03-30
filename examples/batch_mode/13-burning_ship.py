@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-================
-Burning ship DEM
-================
+=====================
+13 - Burning ship DEM
+=====================
 
 Plotting of a distance estimation for the Burning ship (power-2).
 This zoom is on the structure which gave the fractal its name. We use an

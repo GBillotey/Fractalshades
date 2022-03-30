@@ -21,7 +21,7 @@ perturbation technique and chained bilinear approximations).
 
    Another very deep zoom, this time in the Burning Ship fractal, width
    1.14e-2430
-   (see :doc:`examples/batch_mode/16-burning_ship-deepJulia_DEM`)
+   (see :doc:`examples/batch_mode/15-burning_ship-deepJulia_DEM`)
 
 Perturbation technique allows to render an image whith only one point 
 calculated at arbitrary precision. The other points are iterated as delta

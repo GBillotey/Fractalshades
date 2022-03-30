@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-======================================
-Tetration (power tower) zoom: "Spring"
-======================================
+===========================================
+16 - Tetration (power tower) zoom: "Spring"
+===========================================
 
 Coloring based on attracting cycle order and attractivity.
 This zoom is quite shallow however already features complex structures

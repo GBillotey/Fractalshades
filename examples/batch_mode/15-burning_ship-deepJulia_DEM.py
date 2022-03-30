@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-==========================================
-Burning Ship ultra-deep embedded Julia set
-==========================================
+===============================================
+15 - Burning Ship ultra-deep embedded Julia set
+===============================================
 
 A quite deep structure (embedded Julia set) in the Burning Ship fractal,
 the total width of this image is 1.144e-2430

@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-=================================================
-"Perpendicular" Burning Ship: hidden Glynn spiral
-=================================================
+======================================================
+18 - "Perpendicular" Burning Ship: hidden Glynn spiral
+======================================================
 
-There are a lot of hidden features to look for in this fractal.
-Here, a Glynn spiral in a very skewed area at a depth of 4.e-40.
+An example of hidden feature in this fractal:
+a Glynn spiral in a very skewed area at a depth of 4.e-40.
 
 Reference:
 `fractalshades.models.Perturbation_perpendicular_burning_ship`

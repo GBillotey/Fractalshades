@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-=============================================================
-Mandelbrot explorer - Standard precision (float64)
-=============================================================
+========================================================
+S01 - Mandelbrot explorer - Standard precision (float64)
+========================================================
 
 This is a simple "toy" template to start exploring the Mandelbrot set with
 the GUI. Resolution limited to approx 1.e-13 due to double (float64) precision

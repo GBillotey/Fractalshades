@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-=======================================================
-"Perpendicular" Burning Ship: hidden Sierpinski carpets
-=======================================================
+============================================================
+20 - "Perpendicular" Burning Ship: hidden Sierpinski carpets
+============================================================
 
 Another hidden feature in this fractal: here, Sierpinski triangular carpets
 at a depth of 7.e-55. This area is not too skeewed but well hidden close to a

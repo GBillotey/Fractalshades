@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 ====================================================================
-Tetration fractal explorer - Standard precision (float64)
+S05 - Tetration fractal explorer - Standard precision (float64)
 ====================================================================
 
 A template to explore the tetration fractal set (aka power-tower) with

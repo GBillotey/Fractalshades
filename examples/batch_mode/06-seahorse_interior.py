@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-=========================
-Seahorse interior example
-=========================
+==============================
+06 - Seahorse interior example
+==============================
 
 This example shows how to use several layers to plot both the divergent and
 convergent part of a fractal, with fieldlines and scene lighting.

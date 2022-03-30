@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-=======================
-Seahorse shaded example
-=======================
+============================
+04 - Seahorse shaded example
+============================
 
 This example shows how to create a normal map layer, and link it to a base
 color layer to enable scene lighting.

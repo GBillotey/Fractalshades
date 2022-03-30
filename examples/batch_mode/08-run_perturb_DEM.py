@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-=============================
-DEM example with perturbation
-=============================
+==================================
+08 - DEM example with perturbation
+==================================
 
 This example shows how to create a color layer, displaying the 
 distance estimation for Mandelbrot (power 2) fractal.
@@ -15,7 +15,6 @@ Reference:
 """
 
 import os
-import numpy as np
 
 import fractalshades as fs
 import fractalshades.models as fsm

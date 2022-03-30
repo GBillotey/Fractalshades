@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-=========================================
-Burning Ship arbitrary-precision explorer
-=========================================
+===============================================
+D02 - Burning Ship arbitrary-precision explorer
+===============================================
 
 This is a template to explore the Burning Ship set with
 arbitrary precision through a GUI.

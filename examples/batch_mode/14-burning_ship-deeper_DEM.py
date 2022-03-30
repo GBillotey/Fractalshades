@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-=======================
-Burning ship deeper DEM
-=======================
+============================
+14 - Burning ship deeper DEM
+============================
 
 Plotting of a distance estimation for the Burning ship (power-2).
 This zoom is deeper, featuring a miniship at 1.e-101

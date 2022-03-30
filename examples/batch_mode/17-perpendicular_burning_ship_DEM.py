@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-============================
-"Perpendicular" Burning Ship 
-============================
+=================================
+17 - "Perpendicular" Burning Ship 
+=================================
 
-This variant of the Burning Ship is interesting for the variety of the shapes.
-Here some decoration arounf a deep mini, at a depth of 1.8e-128
+This variant of the Burning Ship is interesting for the variety of its shapes.
+Here some decoration around a deep mini, at a depth of 1.8e-128
 
 Reference:
 `fractalshades.models.Perturbation_perpendicular_burning_ship`

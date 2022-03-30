@@ -1,13 +1,22 @@
 # -*- coding: utf-8 -*-
 """
-=======================================================
-Perpendicular Burning Ship arbitrary-precision explorer
-=======================================================
+=============================================================
+D03 - Perpendicular Burning Ship arbitrary-precision explorer
+=============================================================
 
 This is a template to explore the "Perpendicular" Burning Ship set with
 arbitrary precision through a GUI.
 It features the main postprocessing options (continuous
 iteration, distance estimation based shading)
+
+This variant of the Burning Ship is interesting for the variety of its shapes.
+There are also a lot of hidden features to discover in this fractal. Have a
+look at the batch mode gallery (links below), a few examples are given with
+their coordinates. Will you find more easter eggs ?
+
+    - :doc:`../batch_mode/18-perpendicular_burning_ship_glynn`
+    - :doc:`../batch_mode/19-perpendicular_burning_ship_Koch`
+    - :doc:`../batch_mode/20-perpendicular_burning_ship_Sierpinski`
 
 As it is a non-holomorphic fractal, some areas can exibit a heavy
 skew. This explorer allows you to use an unskewing matrice and continue

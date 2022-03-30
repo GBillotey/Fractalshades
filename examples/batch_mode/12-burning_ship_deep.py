@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-======================
-Burning Ship deep zoom
-======================
+===========================
+12 - Burning Ship deep zoom
+===========================
 
 Example plot of a deep-zoom inside the Burning Ship set (power-2).
 

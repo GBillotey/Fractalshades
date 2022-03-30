@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-===========================================
-Ultra-deep embedded Julia set
-===========================================
+=================================
+11- Ultra-deep embedded Julia set
+=================================
 
 This example shows the kind of structure that occur very deep in the Mandelbrot
 set [#f2]_. The width of this image is only *2.e-2608*.

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-====================
-Seahorse DEM example
-====================
+=========================
+07 - Seahorse DEM example
+=========================
 
 This example shows how to create a color layer, displaying the 
 distance estimation for Mandelbrot (power 2) fractal.
