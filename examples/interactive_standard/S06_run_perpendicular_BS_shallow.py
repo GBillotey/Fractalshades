@@ -44,7 +44,7 @@ def plot(plot_dir):
     """
     calc_name = 'test'
     x = -0.5
-    y = 0.5
+    y = 0.0
     dx = 6.
     xy_ratio = 1.
     theta_deg = 0.

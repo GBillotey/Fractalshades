@@ -18,7 +18,8 @@ def diffabs(X, x):
     # Evaluates |X + x| - |X|
     if X >= 0.:
         if (X + x) >= 0.:
-            return x
+            # /!\ Record types need to be unified: hence the * 1.
+            return 1. * x
         else:
             return -(2. * X + x)
     else:
@@ -967,7 +968,6 @@ Implementation adapted from the standard Burning ship.
         @numba.njit
         def p_iter_zn(Z, ref_xn, ref_yn, a, b):
             # Modifies in-place xn, yn
-            # print("in p_iter_zn", Z, ref_xn, ref_yn, a, b)
             new_xn = (
                 Z[xn] * (Z[xn] + 2. * ref_xn) - Z[yn] * (Z[yn] + 2. * ref_yn)
                 + a
@@ -994,11 +994,11 @@ Implementation adapted from the standard Burning ship.
             _abs = np.abs(Y_y)
             _sgn = sgn(Y_y)
 
-            new_dxnda = 2 * (
+            new_dxnda = 2. * (
                 ((ref_xn + Z[xn]) * Z[dxnda] + ref_dxnda * Z[xn])
                 -((ref_yn + Z[yn]) * Z[dynda] + ref_dynda * Z[yn])
             )
-            new_dxndb = 2 * (
+            new_dxndb = 2. * (
                 ((ref_xn + Z[xn]) * Z[dxndb] + ref_dxndb * Z[xn])
                 -((ref_yn + Z[yn]) * Z[dyndb] + ref_dyndb * Z[yn])
             )

@@ -45,7 +45,6 @@ from fractalshades.colors.layers import (
     Color_layer,
     Bool_layer,
     Normal_map_layer,
-    Grey_layer,
     Virtual_layer,
     Blinn_lighting
 )
@@ -57,15 +56,15 @@ def plot(plot_dir):
     """
     import mpmath
 
-    x = '-1.0'
-    y = '-0.0'
+    x = '-0.5'
+    y = '0.5'
     dx = '5.0'
     calc_name = 'test'
     
     xy_ratio = 1.0
     dps = 16
     max_iter = 1500
-    nx = 600
+    nx = 800
     theta_deg = 0.
     has_skew = False
     eps = 1.e-6
@@ -73,11 +72,10 @@ def plot(plot_dir):
     base_layer = "continuous_iter"
     colormap = fscolors.cmap_register["classic"]
     cmap_z_kind = "relative"
-    zmin = 0.00
-    zmax = 0.50
+    zmin = 0.30
+    zmax = 0.60
     
     shade_kind="glossy"
-    field_kind="None"
 
     # Set to True to enable multi-threading
     settings.enable_multithreading = True
@@ -171,15 +169,6 @@ def plot(plot_dir):
         plotter = fs.Fractal_plotter(pp)   
         plotter.add_layer(Bool_layer("interior", output=False))
 
-        if field_kind == "twin":
-            plotter.add_layer(Virtual_layer(
-                    "fieldlines", func=None, output=False
-            ))
-        elif field_kind == "overlay":
-            plotter.add_layer(Grey_layer(
-                    "fieldlines", func=None, output=False
-            ))
-
         if shade_kind != "None":
             plotter.add_layer(Normal_map_layer(
                 "DEM_map", max_slope=60, output=True
@@ -253,27 +242,6 @@ def plot(plot_dir):
     gui.show()
 
 
-def _plot_from_data(plot_dir, static_im_link):
-    # Private function only used when building fractalshades documentation
-    # Output from GUI might fail for the runner building the doc on github.
-    # -> Defaulting to a static image if one is provided
-    import PIL
-    import PIL.PngImagePlugin
-    data_path = fs.settings.output_context["doc_data_dir"]
-    im = PIL.Image.open(os.path.join(data_path, static_im_link))
-    rgb_im = im.convert('RGB')
-    tag_dict = {"Software": "fractalshades " + fs.__version__,
-                "GUI_plot": static_im_link}
-    pnginfo = PIL.PngImagePlugin.PngInfo()
-    for k, v in tag_dict.items():
-        pnginfo.add_text(k, str(v))
-    if fs.settings.output_context["doc"]:
-        fs.settings.add_figure(fs._Pillow_figure(rgb_im, pnginfo))
-    else:
-        # Should not happen
-        raise RuntimeError()
-
-
 if __name__ == "__main__":
     # Some magic to get the directory for plotting: with a name that matches
     # the file or a temporary dir if we are building the documentation
@@ -284,8 +252,5 @@ if __name__ == "__main__":
     except NameError:
         import tempfile
         with tempfile.TemporaryDirectory() as plot_dir:
-            static_im_link = "Screenshot_from_2022-03-15.png"
-            if static_im_link is None:
-                plot(plot_dir)
-            else:
-                _plot_from_data(plot_dir, static_im_link)
+            plot(plot_dir)
+

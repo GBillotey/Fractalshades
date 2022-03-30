@@ -61,7 +61,7 @@ def plot(plot_dir):
     dps = 16
     max_iter = 15000
     M_divergence = 1.e2
-    nx = 600
+    nx = 800
     theta_deg = 0.
     interior_detect = True
     epsilon_stationnary = 0.0001
@@ -254,27 +254,6 @@ def plot(plot_dir):
     gui.show()
 
 
-def _plot_from_data(plot_dir, static_im_link):
-    # Private function only used when building fractalshades documentation
-    # Output from GUI might fail for the runner building the doc on github.
-    # -> Defaulting to a static image if one is provided
-    import PIL
-    import PIL.PngImagePlugin
-    data_path = fs.settings.output_context["doc_data_dir"]
-    im = PIL.Image.open(os.path.join(data_path, static_im_link))
-    rgb_im = im.convert('RGB')
-    tag_dict = {"Software": "fractalshades " + fs.__version__,
-                "GUI_plot": static_im_link}
-    pnginfo = PIL.PngImagePlugin.PngInfo()
-    for k, v in tag_dict.items():
-        pnginfo.add_text(k, str(v))
-    if fs.settings.output_context["doc"]:
-        fs.settings.add_figure(fs._Pillow_figure(rgb_im, pnginfo))
-    else:
-        # Should not happen
-        raise RuntimeError()
-
-
 if __name__ == "__main__":
     # Some magic to get the directory for plotting: with a name that matches
     # the file or a temporary dir if we are building the documentation
@@ -285,8 +264,4 @@ if __name__ == "__main__":
     except NameError:
         import tempfile
         with tempfile.TemporaryDirectory() as plot_dir:
-            static_im_link = "Screenshot_from_2022-02-04.png"
-            if static_im_link is None:
-                plot(plot_dir)
-            else:
-                _plot_from_data(plot_dir, static_im_link)
+            plot(plot_dir)

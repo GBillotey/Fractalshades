@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-=================================================
-"Perpendicular" Burning Ship: hidden Glynn spiral
-=================================================
+=======================================================
+"Perpendicular" Burning Ship: hidden Sierpinski carpets
+=======================================================
 
-There are a lot of hidden features to look for in this fractal.
-Here, a Glynn spiral in a very skewed area at a depth of 4.e-40.
+Another hidden feature in this fractal: here, Sierpinski triangular carpets
+at a depth of 7.e-55. This area is not too skeewed but well hidden close to a
+minibrot from the needle.
 
 Reference:
 `fractalshades.models.Perturbation_perpendicular_burning_ship`
@@ -42,20 +43,20 @@ def plot(plot_dir):
     calc_name = 'test'
 
     # _1 = 'Zoom parameters'
-    x = '-1.6221172452279831275586824847368230989301274844265'
-    y = '-0.0043849065564689427951877101597546609652950526531633'
-    dx = '4.646303299697506e-40'
-    xy_ratio = 1.8
-    theta_deg = -2
-    dps = 55
+    x = '-1.929319698524937920226708049698305350754670432084006734339806946'
+    y = '-0.0000000000000000007592779387989739090287550144163328879329853232537252481600401185'
+    dx = '7.032184999234219e-55'
+    xy_ratio = 1.6
+    theta_deg = -26.0
+    dps = 64
     nx = 2400
 
     # _1b = 'Skew parameters /!\\ Re-run when modified!'
     has_skew = True
-    skew_00 = 1.011753723519244
-    skew_01 = -1.157539989768796
-    skew_10 = -0.5299787188179303
-    skew_11 = 1.5947275737676074
+    skew_00 = 1.05
+    skew_01 = 0.0
+    skew_10 = -0.1
+    skew_11 = 0.9523809
 
     # _2 = 'Calculation parameters'
     max_iter = 20000
@@ -64,29 +65,28 @@ def plot(plot_dir):
     eps = 1e-06
 
     # _4 = 'Plotting parameters: base field'
-    base_layer = 'distance_estimation'
+    base_layer = 'continuous_iter'
     interior_color = (0.6627451181411743, 0.4313725531101227, 0.0)
     colormap = fscolors.Fractal_colormap(
-        colors=[
-            [1.        , 1.        , 0.        ],
-            [0.05098039, 0.03921569, 0.3137255 ],
-            [0.10588235, 0.78039217, 0.78039217],
-            [0.33333334, 1.        , 1.        ]
-        ],
-        kinds=['Lch', 'Lch', 'Lch', 'Lch'],
-        grad_npts=[ 3,  3, 32, 32],
-        grad_funcs=['x', 'x**2', 'x', 'x'],
-        extent='mirror'
+    colors=[
+        [1.        , 1.        , 0.49803922],
+        [0.1254902 , 0.05098039, 0.36862746],
+        [0.1254902 , 0.05098039, 0.36862746]
+    ],
+    kinds=['Lch', 'Lch', 'Lch'],
+    grad_npts=[32, 32, 32],
+    grad_funcs=['1-(1-x)**3', 'x', 'x'],
+    extent='mirror'
     )
-    invert_cmap = True
-    DEM_min = 1e-08
+    invert_cmap = False
+    DEM_min = 1e-04
     cmap_z_kind = 'relative'
     zmin = 0.0
-    zmax = 1.10
+    zmax = 1.0
 
     # _5 = 'Plotting parameters: shading'
     shade_kind = 'glossy'
-    gloss_intensity = 100.0
+    gloss_intensity = 30.0
     light_angle_deg = 35.0
     light_color = (1.0, 1.0, 1.0)
     gloss_light_color = (1.0, 1.0, 1.0)

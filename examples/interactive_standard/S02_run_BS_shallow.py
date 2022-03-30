@@ -50,7 +50,7 @@ def plot(plot_dir):
     theta_deg = 0.
 
     max_iter = 1000
-    nx = 1600
+    nx = 800
     M_divergence = 1000.0
     interior_color = (0., 0., 0.)
     colormap = fs.colors.cmap_register["classic"]
