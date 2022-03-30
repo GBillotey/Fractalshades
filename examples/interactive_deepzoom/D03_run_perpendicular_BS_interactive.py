@@ -45,7 +45,6 @@ from fractalshades.colors.layers import (
     Color_layer,
     Bool_layer,
     Normal_map_layer,
-    Grey_layer,
     Virtual_layer,
     Blinn_lighting
 )
@@ -57,15 +56,15 @@ def plot(plot_dir):
     """
     import mpmath
 
-    x = '-1.0'
-    y = '-0.0'
+    x = '-0.5'
+    y = '0.0'
     dx = '5.0'
     calc_name = 'test'
     
     xy_ratio = 1.0
     dps = 16
     max_iter = 1500
-    nx = 600
+    nx = 800
     theta_deg = 0.
     has_skew = False
     eps = 1.e-6
@@ -73,11 +72,10 @@ def plot(plot_dir):
     base_layer = "continuous_iter"
     colormap = fscolors.cmap_register["classic"]
     cmap_z_kind = "relative"
-    zmin = 0.00
-    zmax = 0.50
+    zmin = 0.3
+    zmax = 0.6
     
     shade_kind="glossy"
-    field_kind="None"
 
     # Set to True to enable multi-threading
     settings.enable_multithreading = True
@@ -171,15 +169,6 @@ def plot(plot_dir):
         plotter = fs.Fractal_plotter(pp)   
         plotter.add_layer(Bool_layer("interior", output=False))
 
-        if field_kind == "twin":
-            plotter.add_layer(Virtual_layer(
-                    "fieldlines", func=None, output=False
-            ))
-        elif field_kind == "overlay":
-            plotter.add_layer(Grey_layer(
-                    "fieldlines", func=None, output=False
-            ))
-
         if shade_kind != "None":
             plotter.add_layer(Normal_map_layer(
                 "DEM_map", max_slope=60, output=True
@@ -211,7 +200,7 @@ def plot(plot_dir):
             plotter["interior"], mask_color=interior_color
         )
         if shade_kind != "None":
-            light = Blinn_lighting(0.4, np.array([1., 1., 1.]))
+            light = Blinn_lighting(0.6, np.array([1., 1., 1.]))
             light.add_light_source(
                 k_diffuse=0.8,
                 k_specular=.0,

@@ -42,7 +42,7 @@ def plot(plot_dir):
     Example interactive
     """
     calc_name = 'test'
-    deg = 5
+    deg = 6
     x = -0.0
     y = -0.0
     dx = 5.0
@@ -50,13 +50,13 @@ def plot(plot_dir):
     theta_deg=0.
 
     max_iter = 15000
-    nx = 1600
+    nx = 800
     epsilon_stationnary = 0.0001
     
     colormap = fscolors.cmap_register["classic"]
 
-    zmin = 0.00
-    zmax = 0.15
+    zmin = 0.15
+    zmax = 0.30
 
     # Set to True to enable multi-processing
     settings.enable_multiprocessing = True

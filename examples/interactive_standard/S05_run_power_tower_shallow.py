@@ -52,7 +52,7 @@ def plot(plot_dir):
 
     compute_order = True
     max_order = 100
-    nx = 1600
+    nx = 800
     eps_newton_cv = 1e-12
     
     colormap = fscolors.cmap_register["classic"]

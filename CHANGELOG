@@ -1,3 +1,5 @@
+- Added more examples in the documentation
+- Fixed bug in Perpendicular Burning Ship
 Rev 0.5.2
 - Added Perpendicular Burning Ship in arbitrary precision
 Rev 0.5.1
@@ -25,7 +27,7 @@ Rev 0.4.1
 - use multi-threading + NOGIL compilation to improve portability under Windows
 - build under windows
 - added progress status bar
-- cleaner deparation of parameters by themes in GUI
+- cleaner separation of parameters by themes in GUI
 - rotation in GUI
 - Newton search in GUI
 - When one quit and relaunch the GUI, all previous parameters are reloaded

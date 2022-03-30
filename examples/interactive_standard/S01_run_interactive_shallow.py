@@ -49,13 +49,13 @@ def plot(plot_dir):
     theta_deg=0.
 
     max_iter = 15000
-    nx = 1600
+    nx = 800
     epsilon_stationnary = 0.0001
     
     colormap = fscolors.cmap_register["classic"]
 
-    zmin = 0.00
-    zmax = 0.20
+    zmin = 0.3
+    zmax = 0.6
 
     # Set to True to enable multi-processing
     settings.enable_multiprocessing = True
