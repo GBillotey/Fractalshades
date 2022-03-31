@@ -78,5 +78,5 @@ if __name__ == "__main__":
     except NameError:
         import tempfile
         with tempfile.TemporaryDirectory() as plot_dir:
-            plot_cmaps(plot_dir)
+            fs.utils.exec_no_output(plot_cmaps, plot_dir)
 
