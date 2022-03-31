@@ -1566,6 +1566,124 @@ def perturbation_nonholomorphic_nucleus_size_estimate(
     return size, skew
 
 
+def perturbation_BS_skew_estimate(
+        char * seed_x,
+        char * seed_y,
+        long seed_prec,
+        long max_iter,
+        double M,
+):
+    """
+    Quick estimation of skew for areas without minis
+    """
+    return perturbation_nonholomorphic_skew_estimate(
+        seed_x,
+        seed_y,
+        seed_prec,
+        max_iter,
+        M,
+        kind=BURNING_SHIP
+    )
+
+def perturbation_perpendicular_BS_skew_estimate(
+        char * seed_x,
+        char * seed_y,
+        long seed_prec,
+        long max_iter,
+        double M,
+):
+    return perturbation_nonholomorphic_skew_estimate(
+        seed_x,
+        seed_y,
+        seed_prec,
+        max_iter,
+        M,
+        kind=PERPENDICULAR_BURNING_SHIP
+    )
+
+def perturbation_nonholomorphic_skew_estimate(
+        char * seed_x,
+        char * seed_y,
+        long seed_prec,
+        long max_iter,
+        double M,
+        const int kind
+):
+    cdef:
+        unsigned long int ui_one = 1
+        long i = 0
+        iter_func_t iter_func
+        iter_hessian_t iter_hessian
+
+        mpfr_t xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t
+        mpfr_t dxnda_t, dxndb_t, dynda_t, dyndb_t, delta_t
+        mpfr_t abs_xn, abs_yn, tmp_xx, tmp_xy, tmp_yx, tmp_yy
+        mpfr_t _tmp
+
+    iter_func = select_func(kind)
+    iter_hessian = select_hessian(kind)
+
+    # initialisation
+    mpfr_inits2(seed_prec, xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t, NULL)
+    mpfr_inits2(seed_prec, dxnda_t, dxndb_t, dynda_t, dyndb_t, delta_t, NULL)
+    mpfr_inits2(seed_prec, abs_xn, abs_yn, tmp_xx, tmp_xy, tmp_yx, tmp_yy, NULL)
+    mpfr_init2(_tmp, seed_prec)
+
+    # set value of a + i b = c
+    mpfr_set_str(a_t, seed_x, 10, MPFR_RNDN)
+    mpfr_set_str(b_t, seed_y, 10, MPFR_RNDN)
+
+    # x0 = y0 = J0 = 0
+    mpfr_set_si(xn_t, 0, MPFR_RNDN)
+    mpfr_set_si(yn_t, 0, MPFR_RNDN)
+    mpfr_set_si(dxnda_t, 0, MPFR_RNDN)
+    mpfr_set_si(dxndb_t, 0, MPFR_RNDN)
+    mpfr_set_si(dynda_t, 0, MPFR_RNDN)
+    mpfr_set_si(dyndb_t, 0, MPFR_RNDN)
+
+    for i in range(max_iter):
+        iter_hessian(
+            0,
+            xn_t, yn_t, dxnda_t, dxndb_t, dynda_t, dyndb_t,
+            abs_xn, abs_yn, tmp_xx, tmp_xy, tmp_yx, tmp_yy, _tmp
+        )
+        iter_func(xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t)        
+        
+        # Store in orbit as double
+        x = mpfr_get_d(xn_t, MPFR_RNDN)
+        y = mpfr_get_d(yn_t, MPFR_RNDN)
+        abs_i = hypot(x, y)
+
+        if abs_i > M: # escaping
+            break
+
+    print("escaped at iteration:", i)
+
+    det(delta_t, dxnda_t, dxndb_t, dynda_t, dyndb_t, _tmp)
+
+    # size = 1 / sqrt(abs(det(S)))
+    mpfr_abs(delta_t, delta_t, MPFR_RNDN)
+    mpfr_rec_sqrt(delta_t, delta_t, MPFR_RNDN)
+
+    mpfr_mul(dxnda_t, dxnda_t, delta_t, MPFR_RNDN)
+    mpfr_mul(dxndb_t, dxndb_t, delta_t, MPFR_RNDN)
+    mpfr_mul(dynda_t, dynda_t, delta_t, MPFR_RNDN)
+    mpfr_mul(dyndb_t, dyndb_t, delta_t, MPFR_RNDN)
+    skew = np.array((
+            (mpfr_get_d(dyndb_t, MPFR_RNDN), -mpfr_get_d(dxndb_t, MPFR_RNDN)),
+            (-mpfr_get_d(dynda_t, MPFR_RNDN), mpfr_get_d(dxnda_t, MPFR_RNDN))
+        ),
+        dtype=np.float64
+    )
+
+    mpfr_clears(xn_t, yn_t, a_t, b_t, xsq_t, ysq_t, xy_t, NULL)
+    mpfr_clears(dxnda_t, dxndb_t, dynda_t, dyndb_t, delta_t, NULL)
+    mpfr_clears(abs_xn, abs_yn, tmp_xx, tmp_xy, tmp_yx, tmp_yy, NULL)
+    mpfr_clear(_tmp)
+
+    return skew
+
+
 def perturbation_BS_ball_method(
         char * seed_x,
         char * seed_y,
