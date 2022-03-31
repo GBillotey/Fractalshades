@@ -636,7 +636,28 @@ newton_search = {{
 """
         return res_str
 
+    @fs.utils.interactive_options
+    def quick_skew_estimate(self, x, y, pix, dps, maxiter: int=100000):
+        print("in quick_skew_estimate", x, type(x), y, type(y))
 
+        seed_prec = mpmath.mp.prec
+        skew = fsFP.perturbation_BS_skew_estimate(
+                str(x).encode('utf8'),
+                str(y).encode('utf8'),
+                seed_prec,
+                maxiter,
+                100000.
+        )
+
+        res_str = f"""
+quick_skew_estimate = {{
+    "skew_00": "{skew[0, 0]}",
+    "skew_01": "{skew[0, 1]}",
+    "skew_10": "{skew[1, 0]}",
+    "skew_11": "{skew[1, 1]}",
+}}
+"""
+        return res_str
 
 #==============================================================================
 #==============================================================================
@@ -1191,6 +1212,29 @@ newton_search = {{
     "y_nucleus": "{yn_str}",
     "nucleus_size": "{nucleus_size}",
     "julia_size": "{julia_size}",
+    "skew_00": "{skew[0, 0]}",
+    "skew_01": "{skew[0, 1]}",
+    "skew_10": "{skew[1, 0]}",
+    "skew_11": "{skew[1, 1]}",
+}}
+"""
+        return res_str
+
+    @fs.utils.interactive_options
+    def quick_skew_estimate(self, x, y, pix, dps, maxiter: int=100000):
+        print("in quick_skew_estimate", x, type(x), y, type(y))
+
+        seed_prec = mpmath.mp.prec
+        skew = fsFP.perturbation_perpendicular_BS_skew_estimate(
+                str(x).encode('utf8'),
+                str(y).encode('utf8'),
+                seed_prec,
+                maxiter,
+                100000.
+        )
+
+        res_str = f"""
+quick_skew_estimate = {{
     "skew_00": "{skew[0, 0]}",
     "skew_01": "{skew[0, 1]}",
     "skew_10": "{skew[1, 0]}",

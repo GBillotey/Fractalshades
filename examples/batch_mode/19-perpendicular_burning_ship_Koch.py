@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-====================================================
-19 - "Perpendicular" Burning Ship: hidden Koch curve
-====================================================
+=========================================================
+19 - "Perpendicular" Burning Ship: hidden Koch snowflakes
+=========================================================
 
-Another hidden feature in this fractal: here, a reminiscence of Koch curve 
-in a very skewed area at a depth of 5.e-42.
+Another hidden feature in this fractal: here, a reminiscence of Koch snowflakes
+close to a mini at a depth of 1.e-53.
 
 Reference:
 `fractalshades.models.Perturbation_perpendicular_burning_ship`
@@ -42,20 +42,20 @@ def plot(plot_dir):
     calc_name = 'test'
 
     # _1 = 'Zoom parameters'
-    x = '-1.701694514129370633991199556392981353373480294378294'
-    y = '-0.0000127758408732701278495806991010523157399218726366029'
-    dx = '5.427776726359545e-42'
+    x = '-1.47214775731981401403314210855688086942157169819838263666455234'
+    y = '-0.000000821699995458791163928571540134217349033686644929036252293894057'
+    dx = '1.00371044925664e-53'
+    theta_deg = 90.0
     xy_ratio = 1.8
-    theta_deg = 45
-    dps = 55
+    dps = 60
     nx = 2400
 
     # _1b = 'Skew parameters /!\\ Re-run when modified!'
     has_skew = True
-    skew_00 = 0.9588240701305322
-    skew_01 = 1.5690686189165641
-    skew_10 = -2.725909971344448
-    skew_11 = -3.417873931327341
+    skew_00 = 0.13539222675927937
+    skew_01 = 0.8700072011411545
+    skew_10 = -1.153798854345238
+    skew_11 = -0.028164925269682
 
     # _2 = 'Calculation parameters'
     max_iter = 20000
@@ -68,21 +68,19 @@ def plot(plot_dir):
     interior_color = (0.6627451181411743, 0.4313725531101227, 0.0)
     colormap = fscolors.Fractal_colormap(
         colors=[
-            [1.        , 1.        , 0.        ],
-            [0.05098039, 0.03921569, 0.3137255 ],
-            [0.10588235, 0.78039217, 0.78039217],
-            [0.33333334, 1.        , 1.        ]
+            [0.        , 0.02745098, 0.39215686],
+            [1.        , 1.        , 0.37254903]
         ],
-        kinds=['Lch', 'Lch', 'Lch', 'Lch'],
-        grad_npts=[ 3,  3, 32, 32],
-        grad_funcs=['x', 'x**2', 'x', 'x'],
-        extent='mirror'
+        kinds=['Lch'],
+        grad_npts=[40],
+        grad_funcs=['1-(1-x)**2'],
+        extent='repeat'
     )
-    invert_cmap = True
-    DEM_min = 1e-08
+    invert_cmap = False
+    DEM_min = 1e-07
     cmap_z_kind = 'relative'
-    zmin = 0.0
-    zmax = 1.10
+    zmin = 0.
+    zmax = 1.
 
     # _5 = 'Plotting parameters: shading'
     shade_kind = 'glossy'

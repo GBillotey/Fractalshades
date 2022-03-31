@@ -1,3 +1,6 @@
+Rev 0.5.5
+- Quick estimation of skew when no mini (based on a diverging point)
+- Improved documentation
 Rev 0.5.4
 - Dark mode for html doc
 - Remove debugging test file ("knwon fails") from source distribution
