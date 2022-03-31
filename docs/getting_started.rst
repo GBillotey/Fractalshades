@@ -40,7 +40,7 @@ This package relies on the following dependencies:
 .. _PyPI: https://pypi.org/
 .. _pygments: https://pygments.org/
 
-They should install automatically through `pip`. A special case is gmpy2 as it
+They should install automatically with pip_. A special case is gmpy2 as it
 needs the most recent versions of GMP, MPFR and MPC multi-precision
 arithmetic libraries. Under Windows, the recent wheels of gmpy2 (rev >= 2.1.2)
 already ship the latest GMP / MPFR / MPC dll.
@@ -62,6 +62,7 @@ to install them manually :
          Python), through venv_.
 
 .. _venv: https://docs.python.org/3/tutorial/venv.html
+.. _pip: https://pypi.org/project/pip/
 
 
 
@@ -174,7 +175,7 @@ The following main components can be seen:
 Finding areas of interest
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For the normal precision fractals, it is usually sufficient to navigate
+For the **standard precision** fractals, it is usually sufficient to navigate
 manually inside the fractal through the GUI:
 
   - left click, draw the new zoom rectangle, left click again to validate ;
@@ -182,12 +183,12 @@ manually inside the fractal through the GUI:
   - press "run". A new calculation will be run taking into account the updated
     parameters
 
-For arbitrary precision exploration however, zooming repetively inside a
+For **arbitrary precision** exploration however, zooming repetively inside a
 deep minibrot can be tedious. For deep zooms in the Burning ship, it is even
 not always obvious to find a miniship. This is where the Newton search for the
 center of hyperbolic components comes handy :
 
-  - right click on the image close the the estimated location of the target
+  - right click on the image close the the estimated location of a target
     minibrot, select "Newton search"
 
   - Some parameters are needed to estimate the period of the influencing

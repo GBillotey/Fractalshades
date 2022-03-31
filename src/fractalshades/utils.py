@@ -16,6 +16,22 @@ def mkdir_p(path):
         else:
             raise exc
 
+
+def exec_no_output(func, *args, **kwargs):
+    """ Building the doc figures without stdout, stderr"""
+    import sys
+    with open(os.devnull, "w") as devnull:
+        old_stdout = sys.stdout
+        sys.stdout = devnull
+        old_stderr = sys.stderr
+        sys.stderr = devnull
+        try:
+            func(*args, **kwargs)
+        finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+
+
 def _store_kwargs(dic_name):
     """ Decorator for an instance method, 
     - stores the individual kwargs as instance attributes 

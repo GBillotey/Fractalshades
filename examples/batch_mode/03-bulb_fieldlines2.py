@@ -43,7 +43,7 @@ def plot(plot_dir):
     dx = 0.6947111395902539
     nx = 2400
     calc_name="mandelbrot"
-    colormap = fscolors.cmap_register["argon"]
+    colormap = fscolors.cmap_register["classic"]
 
     # Run the calculation
     f = fsm.Mandelbrot(plot_dir)
@@ -64,7 +64,7 @@ def plot(plot_dir):
     pp.add_postproc("cont_iter", Continuous_iter_pp())
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
     pp.add_postproc("fieldlines",
-                Fieldlines_pp(n_iter=4, swirl=0., damping_ratio=1.0))
+                Fieldlines_pp(n_iter=3, swirl=0., damping_ratio=0.2))
 
     plotter = fs.Fractal_plotter(pp)   
     plotter.add_layer(Bool_layer("interior", output=False))
@@ -72,7 +72,7 @@ def plot(plot_dir):
             "cont_iter",
             func="np.log(x)",
             colormap=colormap,
-            probes_z=[-1.5, 1.5],
+            probes_z=[0.4, 2.4],
             probes_kind="absolute",
             output=True
     ))
@@ -81,7 +81,7 @@ def plot(plot_dir):
 
     # This is the line where we indicate that coloring is a combination of
     # "Continuous iteration" and "fieldines values"
-    plotter["cont_iter"].set_twin_field(plotter["fieldlines"], 0.2)
+    plotter["cont_iter"].set_twin_field(plotter["fieldlines"], -0.08)
     plotter.plot()
 
 
@@ -95,4 +95,4 @@ if __name__ == "__main__":
     except NameError:
         import tempfile
         with tempfile.TemporaryDirectory() as plot_dir:
-            plot(plot_dir)
+            fs.utils.exec_no_output(plot, plot_dir)

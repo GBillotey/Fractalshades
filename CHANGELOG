@@ -1,3 +1,6 @@
+Rev 0.5.4
+- Dark mode for html doc
+- Remove debugging test file ("knwon fails") from source distribution
 Rev 0.5.3
 - Added more examples and reorganised the documentation
 - Fixed bug in Perpendicular Burning Ship

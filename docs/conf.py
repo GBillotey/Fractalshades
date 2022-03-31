@@ -88,7 +88,12 @@ pygments_style = 'sphinx' #None
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = 'sphinx_rtd_theme' # 'alabaster'
+html_theme = 'sphinx_rtd_theme' # 'sphinx_rtd_theme' # 'alabaster' # 'groundwork'
+# extensions = ["sphinx_rtd_dark_mode"]
+
+# https://github.com/python-pillow/Pillow/pull/4968/files
+def setup(app):
+    app.add_css_file("rtd_dark.css")
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
@@ -266,3 +271,4 @@ sphinx_gallery_conf = {
 ####
 # GitHub extension
 github_project_url = "https://github.com/matplotlib/matplotlib/"
+
