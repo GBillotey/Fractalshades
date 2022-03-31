@@ -90,6 +90,5 @@ if __name__ == "__main__":
         plot(plot_dir)
     except NameError:
         import tempfile
-        from fractalshades.utils import no_stdout 
         with tempfile.TemporaryDirectory() as plot_dir:
-            no_stdout(plot(plot_dir))
+            fs.utils.exec_no_output(plot, plot_dir)

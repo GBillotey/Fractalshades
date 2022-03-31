@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 ========================================================================
-S06 - Perpendicular Burning Ship explorer - Standard precision (float64)
+S06 - Perpendicular Burning Ship explorer - Standard precision
 ========================================================================
 
 This is a simple template to explore the perpendicular Burning ship fractal
@@ -50,7 +50,7 @@ def plot(plot_dir):
     theta_deg = 0.
 
     max_iter = 1000
-    nx = 1600
+    nx = 800
     M_divergence = 1000.0
     interior_color = (0., 0., 0.)
     colormap = fs.colors.cmap_register["classic"]
@@ -168,5 +168,5 @@ if __name__ == "__main__":
     except NameError:
         import tempfile
         with tempfile.TemporaryDirectory() as plot_dir:
-            plot(plot_dir)
+            fs.utils.exec_no_output(plot, plot_dir)
 

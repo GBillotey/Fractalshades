@@ -251,27 +251,6 @@ def plot(plot_dir):
     gui.show()
 
 
-def _plot_from_data(plot_dir, static_im_link):
-    # Private function only used when building fractalshades documentation
-    # Output from GUI might fail for the runner building the doc on github.
-    # -> Defaulting to a static image if one is provided
-    import PIL
-    import PIL.PngImagePlugin
-    data_path = fs.settings.output_context["doc_data_dir"]
-    im = PIL.Image.open(os.path.join(data_path, static_im_link))
-    rgb_im = im.convert('RGB')
-    tag_dict = {"Software": "fractalshades " + fs.__version__,
-                "GUI_plot": static_im_link}
-    pnginfo = PIL.PngImagePlugin.PngInfo()
-    for k, v in tag_dict.items():
-        pnginfo.add_text(k, str(v))
-    if fs.settings.output_context["doc"]:
-        fs.settings.add_figure(fs._Pillow_figure(rgb_im, pnginfo))
-    else:
-        # Should not happen
-        raise RuntimeError()
-
-
 if __name__ == "__main__":
     # Some magic to get the directory for plotting: with a name that matches
     # the file or a temporary dir if we are building the documentation
@@ -282,4 +261,4 @@ if __name__ == "__main__":
     except NameError:
         import tempfile
         with tempfile.TemporaryDirectory() as plot_dir:
-            plot(plot_dir)
+            fs.utils.exec_no_output(plot, plot_dir)

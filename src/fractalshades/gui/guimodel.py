@@ -2909,10 +2909,8 @@ parameter
         - `QtGui.QColor=(0., 0., 1.)` (RGB color)
         - `QtGui.QColor=(0., 0., 1., 0)` (RGBA color)
         - `fs.colors.Fractal_colormap`
-        - `fs.gui.separator` (Not really a parameter, this special type is used
-                              to  insert a titled for a group of parameters in
-                              the GUI)
-    
+        - `fs.gui.separator` (used to group a set of parameters under a title)
+
     A parameter that the user will choose among a list of discrete values can
     be represented by a `typing.Literal` :
     

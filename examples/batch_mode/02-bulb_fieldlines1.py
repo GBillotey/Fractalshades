@@ -45,7 +45,7 @@ def plot(plot_dir):
     dx = 0.6947111395902539
     nx = 2400
     calc_name="mandelbrot"
-    colormap = fscolors.cmap_register["sunset"]
+    colormap = fscolors.cmap_register["dawn"]
 
     # Run the calculation
     f = fsm.Mandelbrot(plot_dir)
@@ -74,7 +74,7 @@ def plot(plot_dir):
             "cont_iter",
             func="np.log(x)",
             colormap=colormap,
-            probes_z=[7.1181349, 12.71208],
+            probes_z=[-.5, 1.5],
             probes_kind="absolute",
             output=True
     ))
@@ -96,6 +96,5 @@ if __name__ == "__main__":
         plot(plot_dir)
     except NameError:
         import tempfile
-        from fractalshades.utils import no_stdout 
         with tempfile.TemporaryDirectory() as plot_dir:
-            no_stdout(plot(plot_dir))
+            fs.utils.exec_no_output(plot, plot_dir)

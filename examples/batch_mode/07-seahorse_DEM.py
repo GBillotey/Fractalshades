@@ -95,4 +95,4 @@ if __name__ == "__main__":
     except NameError:
         import tempfile
         with tempfile.TemporaryDirectory() as plot_dir:
-            plot(plot_dir)
+            fs.utils.exec_no_output(plot, plot_dir)
