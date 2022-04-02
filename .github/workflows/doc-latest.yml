@@ -16,7 +16,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.9] # , 3.9]
+        python-version: [3.8] # , 3.9] 
+        # Note : form 3.9 need fix for :
+        # https://importlib-resources.readthedocs.io/en/latest/using.html#migrating-from-legacy
 
 
     # Steps represent a sequence of tasks that will be executed as part of the job

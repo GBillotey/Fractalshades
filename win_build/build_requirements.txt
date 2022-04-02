@@ -2,4 +2,3 @@ setuptools >= 42
 wheel
 Cython
 oldest-supported-numpy
-
