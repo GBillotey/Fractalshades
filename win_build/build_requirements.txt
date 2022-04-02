@@ -1,5 +1,5 @@
 setuptools >= 42
 wheel
 Cython
-numpy < 1.20
+oldest-supported-numpy
 
