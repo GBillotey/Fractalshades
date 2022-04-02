@@ -16,11 +16,16 @@ import gmpy2
 # of the package. Because the NumPy ABI is only forward compatible, you must
 # build your own binaries (wheels or other package formats) against the lowest
 # NumPy version that you support (or an even older version).
+# For that purpose fractalshades uses the package oldest-supported-numpy
+# https://pypi.org/project/oldest-supported-numpy/
+# see: pyproject.toml
 
-# A "Using deprecated NumPy API" deprecation warning will appear when 
+# Note: A "Using deprecated NumPy API" deprecation warning will appear when 
 # compiling C extensions with Cython
 # https://github.com/numpy/numpy/issues/11653
 # https://stackoverflow.com/questions/52749662/using-deprecated-numpy-api
+
+
 
 extra_link_args = []
 

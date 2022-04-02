@@ -17,6 +17,7 @@ their coordinates. Will you find more easter eggs ?
     - :doc:`../batch_mode/18-perpendicular_burning_ship_glynn`
     - :doc:`../batch_mode/19-perpendicular_burning_ship_Koch`
     - :doc:`../batch_mode/20-perpendicular_burning_ship_Sierpinski`
+    - :doc:`../batch_mode/21-perpendicular_burning_ship_trees`
 
 As it is a non-holomorphic fractal, some areas can exibit a heavy
 skew. This explorer allows you to use an unskewing matrice and continue
