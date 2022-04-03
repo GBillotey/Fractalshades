@@ -1911,7 +1911,6 @@ cmap_citrus = fscolors.Fractal_colormap(
     extent='repeat'
 )
 
-
 cmap_argon = fscolors.Fractal_colormap(
     colors=[
      [0.01568627, 0.        , 0.12156863],
@@ -2201,11 +2200,10 @@ cmap_dawn = fscolors.Fractal_colormap(
  [0.79215688, 0.65490198, 0.98823529],
  [0.99215686, 0.90980393, 0.36862746]],
     kinds=['Lch', 'Lch', 'Lch'],
-    grad_npts=[32, 32,  3],
+    grad_npts=[32, 32,  32],
     grad_funcs=['x', 'x', 'x'],
     extent='mirror'
 )
-
 
 cmap_lily = fscolors.Fractal_colormap(
     colors=[[1.        , 0.64313725, 0.34901961],
@@ -2459,22 +2457,9 @@ cmap_lily = fscolors.Fractal_colormap(
  [0.02745098, 0.16862745, 0.03529412],
  [0.03137255, 0.16862745, 0.04313725],
  [0.34509805, 0.64705884, 0.31764707]],
-    kinds=['Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch', 'Lch'],
-    grad_npts=[32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
- 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
- 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
- 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
- 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
- 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
- 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
- 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
- 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
- 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
- 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
- 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
- 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
- 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32],
-    grad_funcs=['x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x'],
+    kinds='Lch',
+    grad_npts=3,
+    grad_funcs='x',
     extent='mirror'
 )
 

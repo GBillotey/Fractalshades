@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 import inspect
 import typing
 import dataclasses
@@ -21,7 +20,13 @@ import functools
 import mpmath
 import threading
 import ast
-import importlib.resources # import path
+
+if sys.version_info < (3, 9):
+# See :
+# https://discuss.python.org/t/deprecating-importlib-resources-legacy-api/11386/24
+    import importlib_resources
+else:
+    import importlib.resources as importlib_resources 
 
 import numpy as np
 
@@ -2688,10 +2693,13 @@ class Fractal_MainWindow(QMainWindow):
         """
         Displays the program license
         """
-        with importlib.resources.path('fractalshades', 'data') as data_path:
-            license_file = os.path.join(data_path, "LICENSE.txt")
-            with open(license_file) as f:
+        fs_resources = importlib_resources.files("fractalshades")
+        with importlib_resources.as_file(
+            fs_resources / "data" / "LICENSE.txt"
+        ) as license_file:
+            with open(str(license_file.resolve())) as f:
                 license_str = f.read()
+
         msg = Fractal_MessageBox()
         msg.setWindowTitle("Fractalshades " + fs.__version__)
         msg.setText(license_str.splitlines()[0])
