@@ -25,7 +25,6 @@ jobs:
 
     - name: Install gmpy2 and adds the headers - creates the .lib files
       run: |
-        dir
         python -m pip install --upgrade pip
         python -m pip install gmpy2
 
