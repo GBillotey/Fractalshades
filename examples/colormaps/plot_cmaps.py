@@ -26,7 +26,14 @@ To access one by its name ::
 Attached are the auto-generated images of the colormap templates available.
 """
 import os
-import importlib.resources
+import sys
+
+if sys.version_info < (3, 9):
+# See :
+# https://discuss.python.org/t/deprecating-importlib-resources-legacy-api/11386/24
+    import importlib_resources
+else:
+    import importlib.resources as importlib_resources 
 
 import PIL
 from PIL import ImageDraw, ImageFont, PngImagePlugin
@@ -43,24 +50,25 @@ def plot_cmap(cmap_identifier, plot_dir, nx=600, ny=80):
     im = PIL.Image.fromarray(B)
     draw = ImageDraw.Draw(im)
 
-    with importlib.resources.path('fractalshades', 'data') as data_path:
-        font = ImageFont.truetype(
-            os.path.join(data_path, "GidoleFont", "Gidole-Regular.ttf"),
-            size=26
-        )
-        draw.text((0,0), cmap_identifier, (0, 0, 0), font=font)
-        fs.utils.mkdir_p(plot_dir)
+    fs_resources = importlib_resources.files("fractalshades")
+    with importlib_resources.as_file(
+        fs_resources / "data" / "GidoleFont" / "Gidole-Regular.ttf"
+    ) as font_file:
+        font = ImageFont.truetype(str(font_file.resolve()), size=26)
 
-        if fs.settings.output_context["doc"]:
-            tag_dict = {"Software": "fractalshades " + fs.__version__,
-                        "colormap template": cmap_identifier}
-            pnginfo = PngImagePlugin.PngInfo()
-            for k, v in tag_dict.items():
-                pnginfo.add_text(k, str(v))
-            fs.settings.add_figure(fs._Pillow_figure(im, pnginfo))
+    draw.text((0,0), cmap_identifier, (0, 0, 0), font=font)
+    fs.utils.mkdir_p(plot_dir)
 
-        else:
-            im.save(os.path.join(plot_dir, cmap_identifier + ".png"))
+    if fs.settings.output_context["doc"]:
+        tag_dict = {"Software": "fractalshades " + fs.__version__,
+                    "colormap template": cmap_identifier}
+        pnginfo = PngImagePlugin.PngInfo()
+        for k, v in tag_dict.items():
+            pnginfo.add_text(k, str(v))
+        fs.settings.add_figure(fs._Pillow_figure(im, pnginfo))
+
+    else:
+        im.save(os.path.join(plot_dir, cmap_identifier + ".png"))
 
 def plot_cmaps(plot_dir):
     cmap_register = fscolors.cmap_register
