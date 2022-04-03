@@ -4,7 +4,7 @@ Overview
 Fractalshades is a library for creating static and interactive visualizations 
 of fractals in Python. It targets primarily the Mandelbrot_ and Burning_Ship_
 sets, for which it allows arbitrary precision exploration (*1.e-2000* scale and
-beyong).
+beyond).
 
 Rendering speed is optimised thanks to state-of-the-art algorithm (based on
 perturbation technique and chained bilinear approximations).

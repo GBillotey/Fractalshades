@@ -14,8 +14,8 @@ to hold the exponent.
 The period of the central minibrot is 2703248 ; the use of chained bivariate
 approximations allows to skip several millions of iterations.
 
-As the running time for this script is more than 15 minutes (10 minutes for the
-reference, 5 minutes for the iterations) this image has been pre-computed.
+As the running time for this script is close to 15 minutes (10 minutes for the
+reference, 5 minutes for the iterations) it has been pre-computed.
 
 Reference:
 `fractalshades.models.Perturbation_mandelbrot`
