@@ -11,7 +11,7 @@ When zooming deeper in the fractal, these structures stacks and become
 more and more complex.
 
 
-This example even if not too deep is beyong the separation power of double
+This example even if not too deep is beyond the separation power of double
 precision data type,
 [#f1]_, at *7e-22*. We will use a `Perturbation_mandelbrot` instance.
 

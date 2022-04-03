@@ -45,7 +45,7 @@ needs the most recent versions of GMP, MPFR and MPC multi-precision
 arithmetic libraries. Under Windows, the recent wheels of gmpy2 (rev >= 2.1.2)
 already ship the latest GMP / MPFR / MPC dll.
 Under Unix / Linux, if your distribution does not include them you will have
-to install them manually :
+to install them manually:
 
 .. code-block:: console
 
@@ -71,7 +71,7 @@ A 5-minutes guide to fractalshades
 
 The best way to start is probably to have a look at the 
 :doc:`examples/index/` section. Download one of the examples from the GUI
-examples section (links below), run it in an empty directory :
+examples section (links below), run it in an empty directory:
 good exploration !
 
   - :doc:`/examples/interactive_deepzoom/D01_run_interactive`
@@ -171,7 +171,6 @@ The following main components can be seen:
     progress (full precision orbit, series approximation, current tile, ...)
 
 
-
 Finding areas of interest
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -192,7 +191,7 @@ center of hyperbolic components comes handy :
     minibrot, select "Newton search"
 
   - Some parameters are needed to estimate the period of the influencing
-    minibrot : 
+    minibrot: 
 
         - maximum iteration (this should be more than the period, you can pick
           100000 as a starting point as calculation is fast)
@@ -229,4 +228,37 @@ center of hyperbolic components comes handy :
 
 For those interested in the implementation details we shall recommend the paper
 quoted in `fractalshades.models.Perturbation_burning_ship`.
+
+Unskewing streched areas
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+For the Burning ship and other non-holomorphic fractals, some areas are very
+skewed and it is desirable to apply an "unskewing matrice" (a linear 2x2
+transformation that keep the areas constant but changes the angles). These 4
+coefficients (**skew_00**, **skew_01**, **skew_10**, **skew_11**) can be
+provided in the GUI - for the arbitrary precision explorer, of passed to the
+relevant zooming method in batch mode, e.g.,
+`fractalshades.models.Perturbation_burning_ship.zoom`
+
+Rather than a tedious manual iteration to define the 4 coefficients of this
+matrix, fractalshades provides 2 way to computationaly define a local
+skew transformation:
+
+  - When computing the center of an hyperbolic component (right-click,
+    "Newton search", this matrice is one of the calculation results - if this
+    center is found 
+
+  - For areas where the "Newton search" fails, a skew matrice can still be
+    defined from an escaping pixel: right click on the screen close to the area
+    of interest and select "quick skew estimate". A window will pop-up with the
+    4 coordinates of the skew transformation (algorithm based on the iteration
+    of an infinitesimal ellipse until escape).
+
+Once a new local skew is entered, remember to set `has_skew` to `True` and
+re-run the calculation.
+The navigation can continue from here, the unskewing transformation will be
+applied to both image rendering and mouse events.
+
+
+
 
