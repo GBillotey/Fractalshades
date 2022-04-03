@@ -74,7 +74,7 @@ def plot(plot_dir):
             "cont_iter",
             func="np.log(x)",
             colormap=colormap,
-            probes_z=[-.5, 1.5],
+            probes_z=[6.25, 11.25],
             probes_kind="absolute",
             output=True
     ))
