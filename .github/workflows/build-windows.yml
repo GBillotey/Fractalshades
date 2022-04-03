@@ -1,14 +1,9 @@
-# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# This workflow will build fractalshades wheels unders windows and store these wheels as github artifacts
 # For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
 
 name: build-windows
 
 on:
-#   push:
-#    branches: [ master ]
-#  pull_request:
-#    branches: [ master ]
-
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
@@ -19,7 +14,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 05/02/2022: Numpy has not yet released a precompiled wheel for Python 3.10.
         python-version: ['3.8', '3.9', '3.10']
 
     steps:
@@ -36,9 +30,6 @@ jobs:
         python -m pip install gmpy2
 
         echo "*** listing MVS folder"
-        # https://devblogs.microsoft.com/setup/vswhere-available/
-        # -products 
-        & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest
         dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"
         dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.31.31103\bin\Hostx86\x64"
 
@@ -48,9 +39,6 @@ jobs:
 
     - name: Install dependencies
       run: |
-        echo "install libraries needed for the test"
-        python -m pip install pytest
-
         echo "install build dependencies /"
         python -m pip install -r win_build/build_requirements.txt
         dir
@@ -67,4 +55,3 @@ jobs:
         path: |
             dist
         retention-days: 5
-
