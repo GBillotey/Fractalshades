@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 # Fractalshades
-The pupose of this python package is to implement efficient algorithms for static and interactive deep-zoom exploration (1.e-2000 and beyong) of a few fractals.
+The pupose of this python package is to implement efficient algorithms for static and interactive deep-zoom exploration (1.e-2000 and beyond) of a few fractals.
 
 ![Graphical user interface developped with PyQt6](https://github.com/GBillotey/Fractalshades/blob/master/docs/_static/Screenshot_from_2022-02-04.png)
 
