@@ -1324,9 +1324,9 @@ if __name__ == "__main__":
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_Xrange_array]))
-#        runner.run(test_config.suite([Test_Xrange_timing]))
-#        runner.run(test_config.suite([Test_Xrange_polynomial]))
-#        runner.run(test_config.suite([Test_Xrange_SA, Test_Xrange_bivar_SA]))
+        runner.run(test_config.suite([Test_Xrange_timing]))
+        runner.run(test_config.suite([Test_Xrange_polynomial]))
+        runner.run(test_config.suite([Test_Xrange_SA, Test_Xrange_bivar_SA]))
     else:
         suite = unittest.TestSuite()
         # suite.addTest(Test_Xrange_polynomial("test_deriv"))
