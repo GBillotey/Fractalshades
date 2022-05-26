@@ -1,4 +1,4 @@
-""""
+"""
 Source code for a Cython extension modules which calls directly the
 MPFR and MPC libraries.
 
@@ -956,6 +956,7 @@ def perturbation_mandelbrot_find_any_nucleus(
 # http://dx.doi.org/10.14236/ewic/EVA2019.74
 cdef int BURNING_SHIP = 0
 cdef int PERPENDICULAR_BURNING_SHIP = 1
+cdef int SHARK_FIN = 2
 
 ctypedef void (*iter_func_t)(
     mpfr_t, mpfr_t, mpfr_t, mpfr_t, mpfr_t, mpfr_t, mpfr_t
@@ -997,6 +998,26 @@ cdef void iter_pBS(
 
     mpfr_abs(xy_t, yn_t, MPFR_RNDN)
     mpfr_mul(xy_t, xn_t, xy_t, MPFR_RNDN)
+    mpfr_mul_si(xy_t, xy_t, 2, MPFR_RNDN)
+
+    mpfr_sub(xn_t, xsq_t, ysq_t, MPFR_RNDN)
+    mpfr_add(xn_t, xn_t, a_t, MPFR_RNDN)
+
+    mpfr_sub(yn_t, xy_t, b_t, MPFR_RNDN)
+    return
+
+cdef void iter_sharkfin(
+    mpfr_t xn_t, mpfr_t yn_t, mpfr_t a_t, mpfr_t b_t,
+    mpfr_t xsq_t, mpfr_t ysq_t, mpfr_t xy_t, 
+):
+    # One standard shark fin iteration
+    # X <- X**2 - Y |Y| + A
+    # Y <- 2 * X * Y - B
+    mpfr_sqr(xsq_t, xn_t, MPFR_RNDN)
+    mpfr_abs(ysq_t, yn_t, MPFR_RNDN)
+    mpfr_mul(ysq_t, ysq_t, yn_t, MPFR_RNDN)
+
+    mpfr_mul(xy_t, xn_t, yn_t, MPFR_RNDN)
     mpfr_mul_si(xy_t, xy_t, 2, MPFR_RNDN)
 
     mpfr_sub(xn_t, xsq_t, ysq_t, MPFR_RNDN)
@@ -1113,12 +1134,67 @@ cdef void iter_J_pBS(
         mpfr_add_si(dyndy_t, dyndy_t, -1, MPFR_RNDN)
     return
 
+cdef void iter_J_sharkfin(
+    int var_ab_xy,
+    mpfr_t xn_t, mpfr_t yn_t,
+    mpfr_t dxndx_t, mpfr_t dxndy_t,mpfr_t dyndx_t, mpfr_t dyndy_t,
+    mpfr_t abs_xn, mpfr_t abs_yn, mpfr_t tmp_xx, mpfr_t tmp_xy, 
+    mpfr_t tmp_yx, mpfr_t tmp_yy, mpfr_t _tmp
+):
+    # if var_ab_xy == 0 : we compute the derivatives wrt a, b / c = a + i b
+    # if var_ab_xy == 1 : we compute the derivatives wrt x, y / z1 = x + i y
+    
+    # X <- X**2 - Y |Y| + A
+    # Y <- 2 * X * Y - B
+
+    # One Jacobian burning ship iteration
+    # dxndx <- 2 * (xn * dxndx - |yn| * dyndx) [+ 1]
+    # dxndy <- 2 * (xn * dxndy - |yn| * dyndy)
+    # dyndx <- 2 * (xn * dyndx + dxndx * yn)
+    # dyndy <- 2 * (xn * dyndy + dxndy * yn) [- 1]
+    mpfr_abs(abs_yn, yn_t, MPFR_RNDN)
+
+    # dxndx <- 2 * (xn * dxndx - |yn| * dyndx) [+ 1]
+    mpfr_mul(tmp_xx, xn_t, dxndx_t, MPFR_RNDN)
+    mpfr_mul(_tmp, abs_yn, dyndx_t, MPFR_RNDN)
+    mpfr_sub(tmp_xx, tmp_xx, _tmp, MPFR_RNDN)
+
+    # dxndy <- 2 * (xn * dxndy - |yn| * dyndy)
+    mpfr_mul(tmp_xy, xn_t, dxndy_t, MPFR_RNDN)
+    mpfr_mul(_tmp, abs_yn, dyndy_t, MPFR_RNDN)
+    mpfr_sub(tmp_xy, tmp_xy, _tmp, MPFR_RNDN)
+
+    # dyndx <- 2 * (xn * dyndx +  dxndx * yn)
+    mpfr_mul(tmp_yx, xn_t, dyndx_t, MPFR_RNDN)
+    mpfr_mul(_tmp, yn_t, dxndx_t, MPFR_RNDN)
+    mpfr_add(tmp_yx, tmp_yx, _tmp, MPFR_RNDN)
+
+    # dyndy <- 2 * (xn * dyndy + dxndy * yn) [-1]
+    mpfr_mul(tmp_yy, xn_t, dyndy_t, MPFR_RNDN)
+    mpfr_mul(_tmp, yn_t, dxndy_t, MPFR_RNDN)
+    mpfr_add(tmp_yy, tmp_yy, _tmp, MPFR_RNDN)
+
+    # push the result
+    mpfr_mul_si(dxndx_t, tmp_xx, 2, MPFR_RNDN)
+    mpfr_mul_si(dxndy_t, tmp_xy, 2, MPFR_RNDN)
+    mpfr_mul_si(dyndx_t, tmp_yx, 2, MPFR_RNDN)
+    mpfr_mul_si(dyndy_t, tmp_yy, 2, MPFR_RNDN)
+
+    if var_ab_xy == 0:
+        mpfr_add_si(dxndx_t, dxndx_t, 1, MPFR_RNDN)
+        mpfr_add_si(dyndy_t, dyndy_t, -1, MPFR_RNDN)
+
+    return
+
+
 cdef iter_func_t select_func(const int kind):
     cdef iter_func_t iter_func
     if kind == BURNING_SHIP:
         iter_func = &iter_BS
     elif kind == PERPENDICULAR_BURNING_SHIP:
         iter_func = &iter_pBS
+    elif kind == SHARK_FIN:
+        iter_func = &iter_sharkfin
     else:
         raise NotImplementedError(kind)
     return iter_func
@@ -1129,6 +1205,8 @@ cdef iter_hessian_t select_hessian(const int kind):
         iter_hessian = &iter_J_BS
     elif kind == PERPENDICULAR_BURNING_SHIP:
         iter_hessian = &iter_J_pBS
+    elif kind == SHARK_FIN:
+        iter_hessian = &iter_J_sharkfin
     else:
         raise NotImplementedError(kind)
     return iter_hessian
@@ -1251,6 +1329,26 @@ def perturbation_perpendicular_BS_FP_loop(
         seed_y,
         seed_prec,
         kind=PERPENDICULAR_BURNING_SHIP
+    )
+
+def perturbation_shark_fin_FP_loop(
+        np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
+        bint need_Xrange,
+        long max_iter,
+        double M,
+        char * seed_x,
+        char * seed_y,
+        long seed_prec
+):
+    return perturbation_nonholomorphic_FP_loop(
+        orbit,
+        need_Xrange,
+        max_iter,
+        M,
+        seed_x,
+        seed_y,
+        seed_prec,
+        kind=SHARK_FIN
     )
 
 def perturbation_nonholomorphic_FP_loop(
@@ -1440,6 +1538,20 @@ def perturbation_perpendicular_BS_nucleus_size_estimate(
         kind=PERPENDICULAR_BURNING_SHIP
     )
 
+def perturbation_shark_fin_nucleus_size_estimate(
+        char * seed_x,
+        char * seed_y,
+        long seed_prec,
+        long order
+):
+    return perturbation_nonholomorphic_nucleus_size_estimate(
+        seed_x,
+        seed_y,
+        seed_prec,
+        order,
+        kind=SHARK_FIN
+    )
+
 def perturbation_nonholomorphic_nucleus_size_estimate(
         char * seed_x,
         char * seed_y,
@@ -1599,6 +1711,22 @@ def perturbation_perpendicular_BS_skew_estimate(
         max_iter,
         M,
         kind=PERPENDICULAR_BURNING_SHIP
+    )
+
+def perturbation_shark_fin_skew_estimate(
+        char * seed_x,
+        char * seed_y,
+        long seed_prec,
+        long max_iter,
+        double M,
+):
+    return perturbation_nonholomorphic_skew_estimate(
+        seed_x,
+        seed_y,
+        seed_prec,
+        max_iter,
+        M,
+        kind=SHARK_FIN
     )
 
 def perturbation_nonholomorphic_skew_estimate(
@@ -1770,6 +1898,23 @@ def perturbation_perpendicular_BS_ball_method(
         kind=PERPENDICULAR_BURNING_SHIP
     )
 
+def perturbation_shark_fin_ball_method(
+        char * seed_x,
+        char * seed_y,
+        long seed_prec,
+        char * seed_px,
+        long maxiter,
+        double M_divergence
+):
+    return perturbation_nonholomorphic_ball_method(
+        seed_x,
+        seed_y,
+        seed_prec,
+        seed_px,
+        maxiter,
+        M_divergence,
+        kind=SHARK_FIN
+    )
 
 def perturbation_nonholomorphic_ball_method(
         char * seed_x,
@@ -1977,6 +2122,26 @@ def perturbation_perpendicular_BS_find_any_nucleus(
         kind=PERPENDICULAR_BURNING_SHIP
     )
 
+def perturbation_shark_fin_find_any_nucleus(
+    char *seed_x,
+    char *seed_y,
+    long seed_prec,
+    long order,
+    long max_newton,
+    char *seed_eps_cv,
+    char *seed_eps_valid
+):
+    return perturbation_nonholomorphic_find_any_nucleus(
+        seed_x,
+        seed_y,
+        seed_prec,
+        order,
+        max_newton,
+        seed_eps_cv,
+        seed_eps_valid,
+        kind=SHARK_FIN
+    )
+
 def perturbation_nonholomorphic_find_any_nucleus(
     char *seed_x,
     char *seed_y,
@@ -2102,6 +2267,7 @@ def perturbation_nonholomorphic_find_any_nucleus(
 
     if newton_cv:
         return newton_cv, gmpy_to_mpmath_mpc(gmpy_mpc, seed_prec)
+    print("DEBUG: Failed in perturbation_nonholomorphic_find_any_nucleus")
     return False, mpmath.mpc("nan", "nan")
 
 #==============================================================================

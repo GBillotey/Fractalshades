@@ -4,7 +4,6 @@ import fnmatch
 import copy
 import datetime
 import pickle
-import pathlib
 
 import numpy as np
 from numpy.lib.format import open_memmap
@@ -510,6 +509,14 @@ advanced users when subclassing.
         self.float_postproc_type = np.float32
         self.termination_type = np.int8
         self.int_type = np.int32
+
+    def _repr(self):
+        # String used to generate a new instance in GUI-generated scripts
+        return (
+            "fsm."
+            + self.__class__.__name__
+            + "(plot_dir)"
+        )
 
     @fsutils.zoom_options
     def zoom(self, *,

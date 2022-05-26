@@ -598,6 +598,9 @@ class Colormap_presenter(Presenter):
             cmap = self.update_table(val)
         else:
             raise ValueError(key)
+        
+        print("############### REMOVE TEMPLATE TAG")
+        cmap._template = None
 
         self.model_changerequest.emit(self._mapping["Colormap_presenter"],
                                       cmap)

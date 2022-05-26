@@ -423,19 +423,23 @@ class Fractal_colormap:
             self._probes[i_grad] = i_col
             i_col += (grad_npts[i_grad] - 1)
         self._probes[n_grads] = i_col # last piquet
+        
+        # Is is it a known template ?
+        self._template = None
 
 
-
-    def __repr__(self):
-        """ Return a string that can be evaluated to restaure the colormap
+    def _repr(self):
+        """ Return a string that can be used to restore the colormap
         """
+        if hasattr(self, "_template") and self._template is not None:
+            return f"fs.colors.cmap_register[\"{self._template}\"]"
         colors_str = np.array2string(self.colors, separator=', ')
         kinds_str = repr(self.kinds)# np.array2string(self.kinds, separator=', ')
         grad_npts_str = np.array2string(self.grad_npts, separator=', ')
         grad_funcs_str = repr(self.grad_funcs)# np.array2string(self.grad_funcs, separator=', ')
         extent_str = self.extent
         return (
-            "fractalshades.colors.Fractal_colormap(\n"
+            "fs.colors.Fractal_colormap(\n"
             "    colors={},\n"
             "    kinds={},\n"
             "    grad_npts={},\n"
@@ -443,7 +447,6 @@ class Fractal_colormap:
             "    extent=\'{}\'\n)"
         ).format(colors_str, kinds_str, grad_npts_str, grad_funcs_str,
                  extent_str)
-
 
 
     def _output(self, nx, ny):

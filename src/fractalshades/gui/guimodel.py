@@ -83,7 +83,6 @@ from PyQt6.QtWidgets import (
 #
 
 import fractalshades as fs
-import fractalshades.colors as fscolors
 from fractalshades.gui.model import (
     Model,
     Func_submodel,
@@ -199,12 +198,6 @@ QTableView::item::selected {
   border: 2px solid red;
 }
 """
-#
-#TABLE_WIDGET_CSS_INVALID = """
-#QTableView::item::selected {
-#  border: 2px solid red;
-#}
-#"""
 
 STATUS_BAR_CSS = """
 QStatusBar {
@@ -219,6 +212,66 @@ border: 0;
 background: #646464;
 }
 """
+
+
+script_header = """# -*- coding: utf-8 -*-
+\"""============================================================================
+Auto-generated from fractalshades GUI.
+Save to `<file>.py` and run as a python script:
+    > python <file>.py
+============================================================================\"""
+import os
+import typing
+
+import numpy as np
+import mpmath
+from PyQt6 import QtGui
+
+import fractalshades as fs
+import fractalshades.models as fsm
+import fractalshades.gui as fsgui
+import fractalshades.colors as fscolors
+
+from fractalshades.postproc import (
+    Postproc_batch,
+    Continuous_iter_pp,
+    DEM_normal_pp,
+    DEM_pp,
+    Raw_pp,
+)
+from fractalshades.colors.layers import (
+    Color_layer,
+    Bool_layer,
+    Normal_map_layer,
+    Virtual_layer,
+    Blinn_lighting,
+)
+
+def plot(plot_dir):"""
+
+def script_title_sep(title, indent=0):
+    sep_line = " " * 4 * indent + "#" + ">" * (78 - 4 * indent) + "\n"
+    return (
+        "\n\n"
+        + sep_line
+        + " " * 4 * indent + "# " + title + "\n"
+        + sep_line
+    )
+
+script_footer = """
+if __name__ == "__main__":
+    # Some magic to get the directory for plotting: with a name that matches
+    # the file 
+    realpath = os.path.realpath(__file__)
+    plot_dir = os.path.splitext(realpath)[0]
+    plot(plot_dir)
+"""
+
+def script_repr(obj):
+    if isinstance(obj, (fs.Fractal, fs.colors.Fractal_colormap)):
+        return obj._repr()
+    return repr(obj)
+
 
 def getapp():
     app = QtCore.QCoreApplication.instance()
@@ -345,7 +398,7 @@ class Action_func_widget(QFrame):
         self.setLayout(layout)
             
         # Connect events
-        self._source.clicked.connect(self.show_func_source)
+        self._script.clicked.connect(self.show_script)
         self._params.clicked.connect(self.show_func_params)
         if may_interrupt:
             self._interrupt.clicked.connect(self.raise_interruption)
@@ -391,8 +444,8 @@ class Action_func_widget(QFrame):
 
     def add_action_box(self):
         action_layout = QHBoxLayout()
-        self._source = QPushButton("Show source")
-        action_layout.addWidget(self._source)
+        self._script = QPushButton("Show script")
+        action_layout.addWidget(self._script)
         self._params = QPushButton("Show params")
         action_layout.addWidget(self._params)
         if self.may_interrupt:
@@ -458,19 +511,54 @@ class Action_func_widget(QFrame):
     def show_func_params(self):
         sm = self._submodel
         ce = Fractal_code_editor(self)
-        str_args = "\n".join([(k + " = " + repr(v)) for (k, v)
-                              in sm.getkwargs().items()])
+        str_args = "\n".join(
+            [(k + " = " + script_repr(v)) for (k, v) in sm.getkwargs().items()]
+        )
         ce.set_text(str_args)
         ce.setWindowTitle("Parameters")
         ce.show() # exec()
 
-    def show_func_source(self):
+#    def show_func_source(self):
+#        sm = self._submodel
+#        ce = Fractal_code_editor()
+#        ce.set_text(sm.getsource())
+#        ce.setWindowTitle("Source code")
+#        ce.exec()
+
+    def show_script(self):
         sm = self._submodel
+        func_params_str = "\n".join(
+            [(k + " = " + script_repr(v)) for (k, v) in sm.getkwargs().items()]
+        )
+        # Indent once
+        func_params_str = "    " + "\n    ".join(
+            l for l in func_params_str.splitlines()
+        )
+        func_source_str = sm.getsource()
+        call_str = ",\n        ".join(
+            k for k in sm.getkwargs().keys()
+        )
+        call_str = "    func(" + call_str + "\n    )\n"
+
+        script = (
+            script_header
+            + script_title_sep("Parameters", 1)
+            + func_params_str
+            + script_title_sep("Plotting function", 1)
+            + func_source_str
+            + script_title_sep("Plotting call", 1)
+            + call_str
+            + script_title_sep("Footer", 0)
+            + script_footer
+            + "\n"
+        )
+        print("debug, script:\n", script)
         ce = Fractal_code_editor()
-        ce.set_text(sm.getsource())
-        ce.setWindowTitle("Source code")
+        ce.set_text(script)
+        ce.setWindowTitle("Script")
         ce.exec()
-        
+
+
 class Func_widget_separator(QLabel):
     def __init__(self, name):
         """ Defines a graphical separator with label "name" """
@@ -694,7 +782,7 @@ def atom_wget_factory(atom_type):
                     bool: Atom_QBoolComboBox,# Atom_QCheckBox,
                     mpmath.mpf: Atom_QPlainTextEdit, #Atom_QLineEdit,
                     QtGui.QColor: Atom_QColor,
-                    fscolors.Fractal_colormap: Atom_cmap_button,
+                    fs.colors.Fractal_colormap: Atom_cmap_button,
                     type(None): Atom_QLineEdit}
         return wget_dic[atom_type]
     
@@ -1010,7 +1098,7 @@ class Atom_cmap_button(Qcmap_image, Atom_Edit_mixin, Atom_Presenter_mixin):
         self.update_cmap(val)
 
     def update_cmap(self, cmap):
-        """ cmap: fscolor.Fractal_colormap """
+        """ cmap: fs.color.Fractal_colormap """
         if cmap != self._cmap:
             self._cmap = cmap
             self.repaint()
@@ -1258,8 +1346,7 @@ class Qcmap_editor(QWidget):
         # Machinery for efficient table update
         self.cmap_update_lock = False
         self.cmap_need_update = 0
-        self.old_cmap = copy.copy(self._presenter.cmap)
-
+        self.old_cmap = copy.deepcopy(self._presenter.cmap)
 
 
     @property
@@ -1378,13 +1465,13 @@ class Qcmap_editor(QWidget):
             )
 
             self.freeze_row(n_rows - 1, range(1, 4))
-        self.old_cmap = copy.copy(self._presenter.cmap)
+        self.old_cmap = copy.deepcopy(self._presenter.cmap)
 
     def match_old_val(self, val, irow, old_col_vals):
         """ Return True if the value has not been modifed """
         if old_col_vals is None:
             return False
-        if irow == (len(old_col_vals) - 1):
+        if irow >= (len(old_col_vals) - 1):
             # always update the last row
             return False
         try:
@@ -1894,38 +1981,6 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         return dx * pix, dy * pix
 
 
-#@numba.njit
-#def apply_rot_2d(theta, arrx, arry):
-#    s = np.sin(theta)
-#    c = np.cos(theta)
-#    nx = arrx.shape[0]
-#    ny = arrx.shape[1]
-#    for ix in range(nx):
-#        for iy in range(ny):
-#            tmpx = arrx[ix, iy]
-#            tmpy = arry[ix, iy]
-#            arrx[ix, iy] = c * tmpx - s * tmpy
-#            arry[ix, iy] = s * tmpx + c * tmpy
-
-#@numba.njit
-#def apply_skew_2d(skew, arrx, arry):
-#    "Unskews the view"
-#    nx = arrx.shape[0]
-#    ny = arrx.shape[1]
-#    for ix in range(nx):
-#        for iy in range(ny):
-#            tmpx = arrx[ix, iy]
-#            tmpy = arry[ix, iy]
-#            arrx[ix, iy] = skew[0, 0] * tmpx + skew[0, 1] * tmpy
-#            arry[ix, iy] = skew[1, 0] * tmpx + skew[1, 1] * tmpy
-
-#        # Apply the Linear part of the tranformation
-#        if theta != 0 and self.projection != "expmap":
-#            apply_rot_2d(theta, dx_vec, dy_vec)
-#
-#        if self.skew is not None:
-#            apply_skew_2d(self.skew, dx_vec, dy_vec)
-
     def method_kwargs(self, f, m_name):
         """ Collect the additionnal parameters that might be needed"""
         f = getattr(f, m_name)
@@ -1943,10 +1998,10 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
                 if default is inspect.Parameter.empty:
                     default = 0
                 int_param, ok = QInputDialog.getInt(
-                None,
-                "Integer input for ball method",
-                f"Enter {name}",
-                value=default,
+                    None,
+                    "Integer input for ball method",
+                    f"Enter {name}",
+                    value=default,
                 )
                 if ok:
                     add_params[name] = int_param
@@ -2315,7 +2370,7 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
 
         # Sets Image
         self.set_im()
-        self._cmap = fscolors.Fractal_colormap(
+        self._cmap = fs.colors.Fractal_colormap(
             colors=[[0., 0., 0.],
                     [1., 1., 1.]],
             kinds=['Lch'],
@@ -2356,7 +2411,7 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
         self._group.addToGroup(self._qim)
         self.fit_image()
         # interpolator object
-        self.im_interpolator = fscolors.Image_interpolator(
+        self.im_interpolator = fs.colors.Image_interpolator(
                 PIL.Image.open(self.file_path))
 
     def add_param_box(self):
@@ -2524,7 +2579,7 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
         colors = self.interpolate(x, y) / 255.
 
         # Creates the new cmap widget, replace the old one (in-place)
-        self._cmap = fscolors.Fractal_colormap(
+        self._cmap = fs.colors.Fractal_colormap(
             colors=colors,
             kinds=kinds,
             grad_npts=npts,
@@ -2584,7 +2639,7 @@ class Fractal_cmap_choser(QDialog):
         self.setWindowTitle("Chose a colormap ...")
 
         self.setStyleSheet("QLabel{min-width: 700px;}")
-        self.cmap_list = list(fscolors.cmap_register.keys())
+        self.cmap_list = list(fs.colors.cmap_register.keys())
         
         cmap_combo = QComboBox(self)
         cmap_combo.addItems(self.cmap_list)
@@ -2595,7 +2650,7 @@ class Fractal_cmap_choser(QDialog):
         self.cmap_name = cmap_name = self.cmap_list[0]
         cmap0 = fs.colors.cmap_register[cmap_name]
         self.cmap = cmap = Qcmap_image(self, cmap0, minwidth=400, height=20)
-        
+
         push = QPushButton("Push to parameter")
         push.clicked.connect(self.push_to_param)
 
@@ -2607,7 +2662,8 @@ class Fractal_cmap_choser(QDialog):
         
         # Signal / slot
         self.model_changerequest.connect(
-                parent._model.model_changerequest_slot)
+                parent._model.model_changerequest_slot
+        )
 
     @property
     def cmap_parameter(self):
@@ -2636,8 +2692,10 @@ class Fractal_cmap_choser(QDialog):
             else:
                 return
 
-        self.model_changerequest.emit(("func", (i_param, 0, "val")),
-                                      self.cmap_parameter)
+        self.model_changerequest.emit(
+            ("func", (i_param, 0, "val")),
+            copy.deepcopy(self.cmap_parameter) # We copy to make it editable
+        )
         self.close()
 
     def on_combo_event(self, event):
@@ -2964,7 +3022,7 @@ parameter
             transparent_color: QtGui.QColor=(0., 0., 1., 0.),
             probes_zmax: float=probes_zmax,
             epsilon_stationnary: float=epsilon_stationnary,
-            colormap: fscolors.Fractal_colormap=colormap
+            colormap: fs.colors.Fractal_colormap=colormap
         ):
 
 """
