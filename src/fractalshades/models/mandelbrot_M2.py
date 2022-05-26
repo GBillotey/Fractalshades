@@ -262,6 +262,10 @@ directory : str
             return numba_impl
         self.iterate = iterate
 
+    @fs.utils.interactive_options
+    def coords(self, x, y, pix, dps):
+        return super().coords(x, y, pix, dps)
+
 #==============================================================================
 #==============================================================================
 

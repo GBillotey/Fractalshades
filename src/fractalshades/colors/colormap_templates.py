@@ -2481,3 +2481,6 @@ cmap_register = {
     "dawn": cmap_dawn,
     "lily": cmap_lily
 }
+
+for k, v in cmap_register.items():
+    v._template = k
