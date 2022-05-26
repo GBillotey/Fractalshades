@@ -308,7 +308,7 @@ class Test_Xrange_array(unittest.TestCase):
     
             expected = np.cumprod(op2 * 2.**exp_shift_array)
             res = np.cumprod(Xrange_array(op2, exp_shift_array))
-            _matching(res, expected, almost, dtype, cmp_op, ktol=2.)
+            _matching(res, expected, almost, dtype, cmp_op, ktol=4.)
             
             
             _op3 = Xrange_array(op2, exp_shift_array).reshape(*resh)
@@ -320,7 +320,7 @@ class Test_Xrange_array(unittest.TestCase):
                 
             expected = np.cumprod(op1 * 2.**exp_shift_array)
             res = np.cumprod(Xrange_array(op1, exp_shift_array))
-            _matching(res, expected, almost, dtype, cmp_op, ktol=8)
+            _matching(res, expected, almost, dtype, cmp_op, ktol=8.)
 
             _op4 = Xrange_array(op1, exp_shift_array).reshape(*resh)
             op4 = (op1 * 2.**exp_shift_array).reshape(*resh)
