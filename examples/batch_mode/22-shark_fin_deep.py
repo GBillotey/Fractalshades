@@ -6,7 +6,7 @@
 
 Shark Fin is yet another `abs` variant, which features characteristic swirly
 structures.
-Here, an embeded Julia set at a depth of 4.73-709
+Here, an embeded Julia set at a depth of 4.73e-709
 
 Reference:
 `fractalshades.models.Perturbation_shark_fin`
