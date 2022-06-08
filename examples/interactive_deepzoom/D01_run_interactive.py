@@ -78,7 +78,7 @@ def plot(plot_dir):
 
     # Set to True to enable multi-threading
     settings.enable_multithreading = True
-    settings.no_newton = False
+    settings.no_newton =  False # debug
 
     directory = plot_dir
     fractal = fsm.Perturbation_mandelbrot(directory)
@@ -143,9 +143,9 @@ def plot(plot_dir):
                 M_divergence=M_divergence,
                 epsilon_stationnary=1.e-3,
                 SA_params=None,
-                BLA_params={
-                    "eps": eps
-                },
+                BLA_params=None, #{ debug
+                #    "eps": eps
+                #},
                 interior_detect=interior_detect,
             )
 
@@ -171,7 +171,7 @@ def plot(plot_dir):
                 Fieldlines_pp(n_iter, swirl, damping_ratio)
             )
         pp.add_postproc("interior", Raw_pp("stop_reason",
-                        func=lambda x: x != 1))
+                        func=lambda x: x == 0))#!= 1)) debug
         if shade_kind != "None":
             pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
 

@@ -12,3 +12,4 @@ from .burning_ship import (
 )
 from .collatz import Collatz
 from .Power_tower import Power_tower
+from .bell import Bellbrot, Perturbation_bellbrot

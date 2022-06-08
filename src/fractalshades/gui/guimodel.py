@@ -2984,7 +2984,7 @@ parameter
 
         listed: typing.Literal["a", "b", "c", 1, None]="c"
     
-    Also, `typing.Union` or `typing.Optional` derived of supported  base types
+    Also, `typing.Union` or `typing.Optional` derived of supported base types
     are supported (in this case a combo box to chose one type among
     those authorized be available):
     
@@ -3033,7 +3033,7 @@ parameter
 
     def connect_image(self, image_param="calc_name"):
         """
-Associate a image file with the GUI main diplay
+Link an image file with the GUI main diplay
 
 Parameters
 ---------- 

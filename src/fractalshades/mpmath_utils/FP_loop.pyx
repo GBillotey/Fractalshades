@@ -89,7 +89,8 @@ cdef extern from "mpc.h":
     mpfr_t mpc_realref(mpc_t op)
     mpfr_t mpc_imagref(mpc_t op)
 
-    void mpc_swap(mpc_t op1, mpc_t op2)
+    int mpc_cmp_si(mpc_t op1, long int op2)
+    int mpc_neg(mpc_t rop, const mpc_t op, mpc_rnd_t rnd)
 
     int mpc_add(mpc_t rop, const mpc_t op1, const mpc_t op2, mpc_rnd_t rnd)
     int mpc_add_ui(mpc_t rop, const mpc_t op1, unsigned long int op2,
@@ -107,6 +108,8 @@ cdef extern from "mpc.h":
                    mpc_rnd_t rnd)
 
     int mpc_sqr(mpc_t rop, const mpc_t op, mpc_rnd_t rnd)
+    int mpc_exp(mpc_t rop, const mpc_t op, mpc_rnd_t rnd)
+
     # Fused multiply-add of three complex numbers - suboptimal here
     int mpc_fma(mpc_ptr rop, mpc_srcptr a, mpc_srcptr b, mpc_srcptr c,
                  mpc_rnd_t rnd)
@@ -114,6 +117,7 @@ cdef extern from "mpc.h":
     int mpc_abs(mpfr_t rop, const mpc_t op, mpfr_rnd_t rnd)
     
     char *mpc_get_str(int b , size_t n , const mpc_t op , mpc_rnd_t rnd)
+
 
 
 cdef extern from "Python.h":
@@ -2269,6 +2273,184 @@ def perturbation_nonholomorphic_find_any_nucleus(
         return newton_cv, gmpy_to_mpmath_mpc(gmpy_mpc, seed_prec)
     print("DEBUG: Failed in perturbation_nonholomorphic_find_any_nucleus")
     return False, mpmath.mpc("nan", "nan")
+
+#==============================================================================
+    
+def perturbation_bellbrot_FP_loop(
+        np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
+        bint need_Xrange,
+        long max_iter,
+        double M,
+        char * seed_x,
+        char * seed_y,
+        long seed_prec
+):
+    """
+    Full precision orbit for Bell brot
+    
+    Parameters
+    ----------
+    orbit arr
+        low prec (np.complex 128 viewed as 2 np.float64 components)
+        array which will be filled with the orbit pts
+    need_Xrange bool
+        bool - wether we shall worry about ultra low values (Xrange needed)
+    max_iter : maximal iteration.
+    M : radius
+    seed_x : C char array representing screen pixel abscissa
+        Note: use str(x).encode('utf8') if x is a python str
+    seed_y : C char array representing screen pixel abscissa
+        Note: use str(y).encode('utf8') if y is a python str
+    int seed_prec
+        Precision used for the full precision calculation (in bits)
+        Usually one should just use `mpmath.mp.prec`
+
+    Return
+    ------
+    i int
+        index of exit
+    orbit_Xrange_register
+        dictionnary containing the special iterations thats need Xrange
+    orbit_partial_register
+        dictionnary containing the partials
+    """
+    cdef:
+        unsigned long int ui_one = 1
+        long max_len = orbit.shape[0]
+        long i = 0
+        long print_freq = 0
+        double curr_partial = PARTIAL_TSHOLD
+        double x = 0.
+        double y = 0.
+        double abs_i = 0.
+
+        mpc_t z_t
+        mpc_t c_t
+        mpc_t tmp_t
+        mpfr_t x_t, y_t
+
+    assert orbit.dtype == DTYPE_FLOAT
+    print(max_iter, max_len, max_iter * 2)
+    assert (max_iter + 1) * 2 == max_len # (NP_orbit starts at critical point)
+
+    orbit_Xrange_register = dict()
+    orbit_partial_register = dict()
+
+    mpc_init2(z_t, seed_prec)
+    mpc_init2(c_t, seed_prec)
+    mpc_init2(tmp_t, seed_prec)
+
+    mpfr_init2(x_t, seed_prec)
+    mpfr_init2(y_t, seed_prec)
+
+    mpfr_set_str(x_t, seed_x, 10, MPFR_RNDN)
+    mpfr_set_str(y_t, seed_y, 10, MPFR_RNDN)
+    mpc_set_fr_fr(c_t, x_t, y_t, MPC_RNDNN)
+    
+    # For standard Mandelbrot the critical point is 0. - initializing
+    # the FP z and the NP_orbit
+    mpc_set_si_si(z_t, 0, 0, MPC_RNDNN)
+    # Complex 0. :
+    orbit[0] = 0.
+    orbit[1] = 0.
+
+    print_freq = max(10000, (int(max_iter / 100.) // 10000 + 1) * 10000)
+    print_freq = 1
+    print("============================================")
+    print("Bellbrot iterations, full precision: ", seed_prec)
+    print("Output every: ", print_freq, flush=True)
+
+    for i in range(1, max_iter + 1):
+
+        # tmp_t = f(z_t)
+        if mpc_cmp_si(z_t, 0) == 0:
+            print("null at", i)
+            mpc_swap(tmp_t, z_t)
+        else:
+            mpc_sqr(tmp_t, z_t, MPC_RNDNN)
+            x = mpfr_get_d(mpc_realref(tmp_t), MPFR_RNDN)
+            y = mpfr_get_d(mpc_imagref(tmp_t), MPFR_RNDN)
+            print("sqr", x, y)
+            
+            mpc_ui_div(tmp_t, ui_one, tmp_t, MPC_RNDNN)
+            mpc_neg(tmp_t, tmp_t, MPC_RNDNN)
+            x = mpfr_get_d(mpc_realref(tmp_t), MPFR_RNDN)
+            y = mpfr_get_d(mpc_imagref(tmp_t), MPFR_RNDN)
+            print("sqr inv", x, y)
+            
+            mpc_exp(tmp_t, tmp_t, MPC_RNDNN)
+            x = mpfr_get_d(mpc_realref(tmp_t), MPFR_RNDN)
+            y = mpfr_get_d(mpc_imagref(tmp_t), MPFR_RNDN)
+            print("f", x, y)
+        
+        mpc_add(z_t, tmp_t, c_t, MPC_RNDNN)
+        
+        # Debug
+        print("iteration", i)
+        x = mpfr_get_d(mpc_realref(c_t), MPFR_RNDN)
+        y = mpfr_get_d(mpc_imagref(c_t), MPFR_RNDN)
+        print("c: ", x, y)
+        x = mpfr_get_d(mpc_realref(z_t), MPFR_RNDN)
+        y = mpfr_get_d(mpc_imagref(z_t), MPFR_RNDN)
+        print("new z: ", x, y)
+        
+
+        # C _Complex type assignment to numpy complex128 array is not
+        # straightforward, using 2 float64 components
+        x = mpfr_get_d(mpc_realref(z_t), MPFR_RNDN)
+        y = mpfr_get_d(mpc_imagref(z_t), MPFR_RNDN)
+        orbit[2 * i] = x
+        orbit[2 * i + 1] = y
+        
+        # take the norm 
+        abs_i = hypot(x, y)
+
+        if abs_i > M: # escaping
+            break
+
+        # Handles the special case where the orbit goes closer to the critical
+        # point than a standard double can handle.
+        if need_Xrange and (abs_i < XR_TSHOLD):
+            orbit_Xrange_register[i] = mpc_t_to_Xrange(z_t)
+
+        # Hanldes the successive partials
+        if abs_i <= curr_partial:
+            # We need to check more precisely (due to the 'Xrange' cases)
+            try:
+                curr_index= next(reversed(orbit_partial_register.keys()))
+                curr_partial_Xrange = orbit_partial_register[curr_index]
+            except StopIteration:
+                curr_partial_Xrange = fsx.Xrange_array([curr_partial])
+            candidate_partial = mpc_t_to_Xrange(z_t)
+
+            if candidate_partial.abs2() < curr_partial_Xrange.abs2():
+                orbit_partial_register[i] = candidate_partial
+                curr_partial = abs(candidate_partial.to_standard())
+
+        # Outputs every print_freq
+        if i % print_freq == 0:
+            print("FP loop", i, flush=True)
+    
+    # If we did not escape from the last loop, first invalid iteration is i + 1
+    div = True
+    if (i == max_iter) and (abs_i <= M):
+        div = False
+        i += 1
+
+    print("FP loop completed at iteration: ", i)
+    print("Divergence ? : ", div)
+    print("============================================", flush=True)
+
+    mpc_clear(z_t)
+    mpc_clear(c_t)
+    mpc_clear(tmp_t)
+
+    mpfr_clear(x_t)
+    mpfr_clear(y_t)
+
+    return i, orbit_partial_register, orbit_Xrange_register
+
+
 
 #==============================================================================
 #==============================================================================

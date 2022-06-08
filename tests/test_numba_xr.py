@@ -140,6 +140,12 @@ def numba_test_sqrt(xa, out):
         out[i] = np.sqrt(xa[i])
 
 @numba.njit
+def numba_test_exp(xa, out):
+    n, = xa.shape
+    for i in range(n):
+        out[i] = np.exp(xa[i])
+
+@numba.njit
 def numba_test_abs(xa, out):
     n, = xa.shape
     for i in range(n):
@@ -527,6 +533,32 @@ class Test_numba_xr(unittest.TestCase):
                     np.testing.assert_array_equal(res, expected)
                     numba_cmp(stda, xb, res)
                     np.testing.assert_array_equal(res, expected)
+
+    def test_exp(self):
+        
+        mantissa = [0., 1., 10., 100., 1000., 10000.]
+        exp = [0, 0, 0, 0, 0, 0]
+        xr = Xrange_array(mantissa, exp=exp)
+        res = Xrange_array.empty(xr.shape, dtype=np.float64)
+        numba_test_exp(xr, res)
+#        print(xr)
+#        print(res)
+        mantissa = [0., -1., -10., -100., -1000., -10000.]
+        exp = [0, 0, 0, 0, 0, 0]
+        xr = Xrange_array(mantissa, exp=exp)
+        res = Xrange_array.empty(xr.shape, dtype=np.float64)
+        numba_test_exp(xr, res)
+#        print(xr)
+#        print(res)
+        mantissa = [0., np.pi*0.25j, np.pi*1j, 0.1j, 10.j, -np.pi/6. * (1. + 1j)]
+        exp = [0, 0, 0, 0, 0, 0]
+        xr = Xrange_array(mantissa, exp=exp)
+        res = Xrange_array.empty(xr.shape, dtype=np.complex128)
+        numba_test_exp(xr, res)
+#        print(xr.dtype, type(xr))
+#        print(xr)
+#        print(res)
+        
 
     def test_sqrt(self):
         for dtype in (np.float64, np.complex128): # np.complex64 np.float32
@@ -1513,7 +1545,7 @@ class Test_SA_xr(unittest.TestCase):
 
 if __name__ == "__main__":
     import test_config
-    full_test = True
+    full_test = False
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([
@@ -1527,7 +1559,7 @@ if __name__ == "__main__":
     else:
         suite = unittest.TestSuite()
 #        suite.addTest(Test_poly_xr("test_call"))
-        suite.addTest(Test_numba_xr("test_adding_smallstd"))
+        # suite.addTest(Test_numba_xr("test_adding_smallstd"))
         # suite.addTest(Test_numba_xr("test_to_standard"))
         # suite.addTest(Test_poly_xr("test_expr"))
         # suite.addTest(Test_SA_xr("test_expr"))
@@ -1543,6 +1575,7 @@ if __name__ == "__main__":
 #        suite.addTest(Test_Xrange_monome("test_box_unbox"))
 #        suite.addTest(Test_Xrange_monome("test_neg"))
 #        suite.addTest(Test_Xrange_monome("test_add"))
+        suite.addTest(Test_numba_xr("test_exp"))
 
         runner.run(suite)
 

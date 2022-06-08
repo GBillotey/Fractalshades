@@ -522,8 +522,66 @@ for compare_operator in (
         operator.ne,
         operator.ge,
         operator.gt
-        ):
+):
     extended_overload(compare_operator)
+
+
+#@nomba.njit
+#def int_frac_parts(man, exp):
+#    # (float64, int32) -> int64, float64
+#    # Does not handle overflow
+#    return np.divmod(np.ldexp(man, exp), 1)
+
+
+@overload(np.exp)
+def extended_exp(op0):
+    """ exp of a Record fields
+    implementation based on exp(z) = exp2(x / ln(2))
+    """
+    inv_log2 = 1.4426950408889634
+    _2pi = 6.283185307179586
+#    _2pij = 6.283185307179586j
+    max_int32 = numba.int32(2147483647) # 2**31 - 1
+    if op0 in real_xr_types:
+        def impl(op0):
+            # Lets get the frac_part and integer part
+            # Max int 32 is 2**31-1
+            man, exp = _normalize(op0.mantissa, op0.exp)
+#            print("man, exp nomalized", man, exp)
+            if exp > 30:
+                return Xrange_scalar(1., max_int32)
+            man = man * inv_log2
+            intp, fracp = np.divmod(np.ldexp(man, exp), 1)
+#            print("intp, exp fracp", intp, fracp)
+            return Xrange_scalar(*_normalize(
+                np.exp2(fracp), intp
+            ))
+        return impl
+    elif op0 in xr_types:
+        def impl(op0):
+            # Same but for complex
+#            print("cplx exp", op0)
+#            print("-->", op0.mantissa)
+#            print("-->", op0.exp)
+            man_r, exp_r = _normalize(op0.mantissa.real, op0.exp)
+            if exp_r > 30:
+                return Xrange_scalar(numba.complex128(1.), max_int32)
+            man_r = man_r * inv_log2
+            intp_r, fracp_r = np.divmod(np.ldexp(man_r, exp_r), 1)
+#            print("REAL: intp, exp fracp", intp_r, fracp_r)
+            
+            man_i, exp_i = _normalize(op0.mantissa.imag, op0.exp)
+            intp_i, fracp_i = np.divmod(np.ldexp(man_i, exp_i), _2pi)
+#            print("IMAG: intp, exp fracp", intp_i, fracp_i)
+    
+            return Xrange_scalar(*_normalize(
+                np.exp2(fracp_r) * np.exp(1j * fracp_i),
+                intp_r
+            ))
+        return impl
+    else:
+        raise TypingError("xr_exp: Datatype not accepted ({})".format(
+            op0))
 
 @overload(np.sqrt)
 def extended_sqrt(op0):
