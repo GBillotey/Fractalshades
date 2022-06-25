@@ -55,11 +55,10 @@ directory : str
         The diverging radius. If reached, the loop is exited with exit code
         "divergence"
     epsilon_stationnary : float
-        A small float to early exit non-divergent cycles (based on
-        cumulated dzndz product). If reached, the loop is exited with exit
-        code "stationnary" (Those points should belong to Mandelbrot set
-        interior). A typical value is 1.e-3
-        
+        A small criteria (typical range 0.01 to 0.001) used to detect earlier
+        points belonging to a minibrot, based on dzndz1 value.
+        If reached, the loop is exited with exit code "stationnary"
+
     Notes
     =====
     The following complex fields will be calculated: *zn* and its
@@ -141,7 +140,7 @@ directory : str
         candidates for the cycle order, the other rwill be disregarded.
         If `None` all order between 1 and `max_order` will be considered.
     max_order : int
-        The maximum value for ccyle 
+        The maximum value tested for cycle order
     eps_newton_cv : float
         A small float to qualify the convergence of the Newton iteration
         Usually a fraction of a view pixel.
@@ -335,64 +334,65 @@ directory : str
         BLA_params={"eps": 1e-6},
         interior_detect: bool=False,
         calc_dzndc: bool=True
-):
+    ):
         """
-    Perturbation iterations (arbitrary precision) for Mandelbrot standard set
-    (power 2).
+Perturbation iterations (arbitrary precision) for Mandelbrot standard set
+(power 2).
 
-    Parameters
-    ==========
-    calc_name : str
-         The string identifier for this calculation
-    subset : 
-        A boolean array-like, where False no calculation is performed
-        If `None`, all points are calculated. Defaults to `None`.
-    max_iter : int
-        the maximum iteration number. If reached, the loop is exited with
-        exit code "max_iter".
-    M_divergence : float
-        The diverging radius. If reached, the loop is exited with exit code
-        "divergence"
-    epsilon_stationnary : float
-        EXPERIMENTAL for perturbation.
-        A small float to early exit non-divergent cycles (based on
-        cumulated dzndz product). If reached, the loop is exited with exit
-        code "stationnary" (Those points should belong to Mandelbrot set)
-        Used only if interior_detect is True
-    SA_params :
-        The dictionnary of parameters for Series-Approximations :
+Parameters
+==========
+calc_name : str
+     The string identifier for this calculation
+subset : 
+    A boolean array-like, where False no calculation is performed
+    If `None`, all points are calculated. Defaults to `None`.
+max_iter : int
+    the maximum iteration number. If reached, the loop is exited with
+    exit code "max_iter".
+M_divergence : float
+    The diverging radius. If reached, the loop is exited with exit code
+    "divergence"
+epsilon_stationnary : float
+    Used only if `interior_detect` parameter is set to True
+    A small criteria (typical range 0.01 to 0.001) used to detect earlier
+    points belonging to a minibrot, based on dzndz1 value.
+    If reached, the loop is exited with exit code "stationnary"
+SA_params :
+    Obsolete.
+    The dictionnary of parameters for Series-Approximations :
 
-        .. list-table:: 
-           :widths: 20 80
-           :header-rows: 1
+    .. list-table:: 
+       :widths: 20 80
+       :header-rows: 1
 
-           * - keys
-             - values 
-           * - cutdeg
-             - int: polynomial degree used for approximation (default: 32)
-           * - SA_err
-             - float: relative error criteria (default: 1.e-6)
+       * - keys
+         - values 
+       * - cutdeg
+         - int: polynomial degree used for approximation (default: 32)
+       * - SA_err
+         - float: relative error criteria (default: 1.e-6)
 
-        if `None` SA is not activated. This option is kept for
-        backward-compatibility, use of Bilinear Approximations is recommended.
-    BLA_params :
-        The dictionnary of parameters for Bilinear Approximations :
+    if `None` (default) SA is not activated. This option is kept for
+    backward-compatibility, use of Bilinear Approximations is recommended
+    instead.
+BLA_params :
+    The dictionnary of parameters for Bilinear Approximations :
 
-        .. list-table:: 
-           :widths: 20 80
-           :header-rows: 1
+    .. list-table:: 
+       :widths: 20 80
+       :header-rows: 1
 
-           * - keys
-             - values 
-           * - SA_err
-             - float: relative error criteria (default: 1.e-6)
+       * - keys
+         - values
+       * - SA_err
+         - float: relative error criteria (default: 1.e-6)
 
-        if `None` BLA is not activated.
-    interior_detect : bool
-        EXPERIMENTAL for perturbation.
-        If True activates interior point detection
-
-        """
+    if `None` BLA is not activated.
+interior_detect : bool
+    If True, activates interior point early detection.
+    This will trigger the computation of additionnal quantities, so only
+    use when a mini fills a significant part of the view.
+"""
         self.init_data_types(np.complex128)
 
         # used for potential post-processing

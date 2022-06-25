@@ -372,8 +372,7 @@ directory : str
         return (valid_FP_params and valid_SA_params and valid_kc)
 
 #==============================================================================
-# Printing functions
-
+# Printing - export functions
     @staticmethod
     def print_FP(FP_params, Zn_path):
         """
@@ -390,6 +389,16 @@ directory : str
         print("ref_path, shape: ", Zn_path.shape, Zn_path.dtype) 
         print(Zn_path)
         print("--------------------------------------------------------------")
+
+    @staticmethod
+    def write_FP(path, out_file):
+        """
+        Export to csv format a complex path, for debugging purposes
+        """
+        path_real = np.empty((path.shape[0], 2), dtype = np.float64)
+        path_real[:, 0] = path.real
+        path_real[:, 1] = path.imag
+        np.savetxt(out_file, path_real, delimiter=",") 
 
 #==============================================================================
 # Calculation functions
@@ -505,19 +514,19 @@ directory : str
             )
             if xr_detect_activated:
                 dZndz_path = dZndz_xr_path
-        
-        print("Zn_path:\n", Zn_path)
-        print("dZndc_path:\n", dZndc_path)
-        print("dZndz_path:\n", dZndz_path)
-        # Debug - export to txt
-        out_file = os.path.join(
-            "/home/geoffroy/Pictures/math/github_fractal_rep/",
-            "Z0.txt"
-        )
-        dZndz_path_real = np.empty((dZndz_path.shape[0], 2), dtype = np.float64)
-        dZndz_path_real[:, 0] = dZndz_path.real
-        dZndz_path_real[:, 1] = dZndz_path.imag
-        np.savetxt(out_file, dZndz_path_real, delimiter=",")        
+
+            # Debug - export to txt
+            print_path = False
+            if print_path:
+                out_file = os.path.join(
+                    "/home/geoffroy/Pictures/math/github_fractal_rep/",
+                    "Z0.txt"
+                )
+                self.write_FP(dZndz_path, out_file)
+
+#        print("Zn_path:\n", Zn_path)
+#        print("dZndc_path:\n", dZndc_path)
+#        print("dZndz_path:\n", dZndz_path)
 
         self.kc = kc = self.ref_point_kc().ravel()  # Make it 1d for numba use
         if kc == 0.:
@@ -1306,7 +1315,7 @@ def numba_iterate(
                     ref_dzndz = dZndz_path[w_iter]
 
                 if xr_detect_activated:
-                    p_iter_dzndz(Z, ref_zn, ref_dzndz)
+                    p_iter_dzndz(Z_xr, ref_zn_xr, ref_dzndz)
                 else:
                     p_iter_dzndz(Z, ref_zn, ref_dzndz)
 
@@ -1340,10 +1349,18 @@ def numba_iterate(
                     if n_iter == ref_order:
                         ref_dzndz_next = dZndz_path[w_wraped]
 
-                ZdZ = Z[dzndz] + ref_dzndz_next
-                bool_stationnary = (
-                    ZdZ.real ** 2 + ZdZ.imag ** 2 < epsilon_stationnary_sq
-                )
+                if xr_detect_activated:
+                    ZdZ = Z_xr[dzndz] + ref_dzndz_next
+                    bool_stationnary = (
+                        fsxn.extended_abs2(ZdZ)
+                        < epsilon_stationnary_sq
+                    )
+                else:
+                    ZdZ = Z[dzndz] + ref_dzndz_next
+                    bool_stationnary = (
+                        ZdZ.real ** 2 + ZdZ.imag ** 2
+                        < epsilon_stationnary_sq
+                    )
                 if bool_stationnary:
                     stop[0] = reason_stationnary
                     break
@@ -1381,7 +1398,14 @@ def numba_iterate(
                     if calc_dzndc:
                         Z_xr[dzndc] = Z_xr[dzndc] + dZndc_path[w_iter]
                     if calc_dzndz:
-                        pass # TODO
+                        if not(nullify_dZndz):
+                            added_index = w_iter
+                            if n_iter == ref_order:
+                                added_index = w_wraped
+                            Z_xr[dzndz] = (
+                                Z_xr[dzndz] + dZndz_path[added_index]
+                            )
+                        nullify_dZndz = True
 
                 else:
                     if calc_dzndc:
@@ -1431,7 +1455,14 @@ def numba_iterate(
                                 - dZndc_path[0]
                             )
                         if calc_dzndz:
-                            pass # TODO complete this
+                            if not(nullify_dZndz):
+                                added_index = w_iter
+                                if n_iter == ref_order:
+                                    added_index = w_wraped
+                                Z_xr[dzndz] = (
+                                    Z_xr[dzndz] + dZndz_path[added_index]
+                                )
+                            nullify_dZndz = True
 
                         w_iter = 0
                         continue
