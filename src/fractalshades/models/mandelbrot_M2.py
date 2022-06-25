@@ -124,7 +124,7 @@ directory : str
             known_orders=None,
             max_order,
             max_newton,
-            eps_newton_cv,
+            eps_newton_cv
     ):
         """
     Newton iterations for Mandelbrot standard set interior (power 2).
@@ -403,11 +403,8 @@ directory : str
         zn = 0
         code_int = 0
 
-        interior_detect_activated = (
-            interior_detect 
-            and (self.dx > fs.settings.newton_zoom_level)
-        )
-        if interior_detect_activated:
+        calc_dzndz = interior_detect
+        if calc_dzndz:
             code_int += 1
             complex_codes += ["dzndz"]
             dzndz = code_int
@@ -437,17 +434,19 @@ directory : str
         # Define the functions used for BLA approximation
         # BLA triggered ?
         BLA_activated = (
-            (BLA_params is not None) 
+            (BLA_params is not None)
             and (self.dx < fs.settings.newton_zoom_level)
         )
+        self.calc_dZndz = interior_detect
+        self.calc_dZndc = calc_dzndc or BLA_activated
 
         @numba.njit
-        def _dfdz(z): # TODO (z, c)
+        def _dfdz(z):
             return 2. * z
         self.dfdz = _dfdz
 
         @numba.njit
-        def _dfdc(z): # TODO (z, c)
+        def _dfdc(z):
             return 1.
         self.dfdc = _dfdc
 
@@ -470,7 +469,7 @@ directory : str
         #----------------------------------------------------------------------
         # Defines initialize - jitted implementation
         def initialize():
-            return fs.perturbation.numba_initialize(zn, dzndz, dzndc)
+            return fs.perturbation.numba_initialize(zn, dzndc, dzndz)
         self.initialize = initialize
 
         #----------------------------------------------------------------------
@@ -485,9 +484,8 @@ directory : str
             Z[zn] = Z[zn] * (Z[zn] + 2. * ref_zn) + c
 
         @numba.njit
-        def p_iter_dzndz(Z):
-            # Only used at low zoom - assumes dZndz == 0 
-            Z[dzndz] = 2. * (Z[zn] * Z[dzndz])
+        def p_iter_dzndz(Z, ref_zn, ref_dzndz):
+            Z[dzndz] = 2. * ((ref_zn + Z[zn]) * Z[dzndz] + ref_dzndz * Z[zn])
 
         @numba.njit
         def p_iter_dzndc(Z, ref_zn, ref_dzndc):
@@ -495,12 +493,12 @@ directory : str
 
         def iterate():
             return fs.perturbation.numba_iterate(
-                M_divergence_sq, max_iter, reason_max_iter, reason_M_divergence,
-                epsilon_stationnary_sq, interior_detect_activated, reason_stationnary,
-                SA_activated, xr_detect_activated, BLA_activated,
-                calc_dzndc,
-                zn, dzndz, dzndc,
-                p_iter_zn, p_iter_dzndz, p_iter_dzndc
+                max_iter, M_divergence_sq, epsilon_stationnary_sq,
+                reason_max_iter, reason_M_divergence, reason_stationnary,
+                xr_detect_activated, BLA_activated, SA_activated,
+                zn, dzndc, dzndz,
+                p_iter_zn, p_iter_dzndz, p_iter_dzndc,
+                calc_dzndc, calc_dzndz,
             )
         self.iterate = iterate
 
