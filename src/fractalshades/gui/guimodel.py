@@ -236,6 +236,7 @@ from fractalshades.postproc import (
     Postproc_batch,
     Continuous_iter_pp,
     DEM_normal_pp,
+    Fieldlines_pp,
     DEM_pp,
     Raw_pp,
 )
@@ -243,8 +244,10 @@ from fractalshades.colors.layers import (
     Color_layer,
     Bool_layer,
     Normal_map_layer,
+    Grey_layer,
     Virtual_layer,
     Blinn_lighting,
+    Overlay_mode
 )
 
 def plot(plot_dir):"""

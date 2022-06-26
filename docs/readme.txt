@@ -4,6 +4,7 @@ To build the docs you will need to install sphinx, sphinx_rtd_theme etc...
 > python3 -m pip install --user sphinx_rtd_theme
 > python3 -m pip install --user sphinx-gallery
 > python3 -m pip install groundwork-sphinx-theme
+> python3 -m pip install sphinxcontrib-bibtex
 
 > sudo apt-get install dvipng
 > sudo apt-get install texlive

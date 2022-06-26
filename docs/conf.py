@@ -52,6 +52,7 @@ extensions = [
     'sphinx.ext.githubpages',
     'numpydoc',  # Needs to be loaded *after* autodoc.
     'sphinx_gallery.gen_gallery',
+    'sphinxcontrib.bibtex'
     #'sphinxext.github',
 ]
 
@@ -82,6 +83,8 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = 'sphinx' #None
 
+# used by sphinxcontrib.bibtex
+bibtex_bibfiles = ['refs.bib']
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -94,6 +97,7 @@ html_theme = 'sphinx_rtd_theme' # 'sphinx_rtd_theme' # 'alabaster' # 'groundwork
 # https://github.com/python-pillow/Pillow/pull/4968/files
 def setup(app):
     app.add_css_file("rtd_dark.css")
+    app.add_css_file("math.css")
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the

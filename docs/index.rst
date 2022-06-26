@@ -20,6 +20,7 @@ very-deep exploration of the Mandelbrot_ and the Burning_Ship_ sets
 
     overview.rst
     getting_started.rst
+    math.rst
     examples/index.rst
     API.rst
     acknowledgment.rst

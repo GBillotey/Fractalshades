@@ -595,13 +595,6 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         precision = 550
         nx = 600
 
-#        # DEBUG point :
-#        fs.settings.enable_multiprocessing = True
-#        fs.settings.inspect_calc = True
-#
-#        for BLA_params in [{"eps": 1.e-6}, None]:
-#            with self.subTest(BLA_params=BLA_params):
-#                if BLA_params is None:
         calc_name = "ultradeep_interior"
         layer_name = test_name + "_potential_" + calc_name
         

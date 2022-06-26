@@ -95,6 +95,7 @@ def plot(plot_dir):
          theta_deg: float=theta_deg,
          dps: int=dps,
          nx: int=nx,
+         antialiasing: bool=False,
 
          _2: fsgui.separator="Calculation parameters",
          max_iter: int=max_iter,
@@ -138,9 +139,17 @@ def plot(plot_dir):
          twin_intensity: float=0.1
     ):
 
-
-        fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
-             theta_deg=theta_deg, projection="cartesian", antialiasing=False)
+        fractal.zoom(
+            precision=dps,
+            x=x,
+            y=y,
+            dx=dx,
+            nx=nx,
+            xy_ratio=xy_ratio,
+            theta_deg=theta_deg,
+            projection="cartesian",
+            antialiasing=antialiasing
+        )
 
         if use_BLA:
             BLA_params={"eps": eps}

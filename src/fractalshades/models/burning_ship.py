@@ -210,7 +210,6 @@ period search, newton search, perturbation method, chained billinear
 approximations.
 
 
-
 Parameters
 ----------
 directory : str

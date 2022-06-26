@@ -16,3 +16,10 @@ resources :
  - https://fractalforums.org/ : there, you will find both artistic creations
    and lively discussions on maths & computer science.
 
+
+If you are interested in arbitrary precision exploration of fractals,
+you might also want to check the following projects:
+
+  - Kalles Fraktaler 2 + https://mathr.co.uk/kf/kf.html
+
+  - Nanobrot https://github.com/flutomax/nanobrot
