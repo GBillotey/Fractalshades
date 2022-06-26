@@ -58,7 +58,7 @@ def plot(plot_dir):
     xy_ratio = 1.0
     theta_deg = 0.0
     dps = 550
-    nx = 320
+    nx = 3200
     antialiasing = True
     _2 = 'Calculation parameters'
     max_iter = 400000000
