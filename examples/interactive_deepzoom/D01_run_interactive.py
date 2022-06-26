@@ -64,7 +64,7 @@ def plot(plot_dir):
     nx = 800
     theta_deg = 0.
     interior_detect = True
-    epsilon_stationnary = 0.0001
+    epsilon_stationnary = 0.001
     eps = 1.e-6
     
     base_layer = "continuous_iter"
@@ -78,7 +78,7 @@ def plot(plot_dir):
 
     # Set to True to enable multi-threading
     settings.enable_multithreading = True
-    settings.no_newton = False
+    settings.no_newton =  False # False # debug
 
     directory = plot_dir
     fractal = fsm.Perturbation_mandelbrot(directory)
@@ -95,6 +95,7 @@ def plot(plot_dir):
          theta_deg: float=theta_deg,
          dps: int=dps,
          nx: int=nx,
+         antialiasing: bool=False,
 
          _2: fsgui.separator="Calculation parameters",
          max_iter: int=max_iter,
@@ -103,6 +104,7 @@ def plot(plot_dir):
          epsilon_stationnary: float=epsilon_stationnary,
 
          _3: fsgui.separator="Bilinear series parameters",
+         use_BLA: bool=True,
          eps: float=eps,
 
          _4: fsgui.separator="Plotting parameters: base field",
@@ -110,6 +112,11 @@ def plot(plot_dir):
                  "continuous_iter",
                  "distance_estimation"
          ]=base_layer,
+         interior_mask: typing.Literal[
+                 "all",
+                 "not_diverging",
+                 "dzndz_detection",
+         ]="all",
          interior_color: QtGui.QColor=(0.1, 0.1, 0.1),
          colormap: fscolors.Fractal_colormap=colormap,
          invert_cmap: bool=False,
@@ -132,20 +139,31 @@ def plot(plot_dir):
          twin_intensity: float=0.1
     ):
 
+        fractal.zoom(
+            precision=dps,
+            x=x,
+            y=y,
+            dx=dx,
+            nx=nx,
+            xy_ratio=xy_ratio,
+            theta_deg=theta_deg,
+            projection="cartesian",
+            antialiasing=antialiasing
+        )
 
-        fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
-             theta_deg=theta_deg, projection="cartesian", antialiasing=False)
-
+        if use_BLA:
+            BLA_params={"eps": eps}
+        else:
+            BLA_params = None
+            
         fractal.calc_std_div(
                 calc_name=calc_name,
                 subset=None,
                 max_iter=max_iter,
                 M_divergence=M_divergence,
-                epsilon_stationnary=1.e-3,
+                epsilon_stationnary=epsilon_stationnary,
                 SA_params=None,
-                BLA_params={
-                    "eps": eps
-                },
+                BLA_params=BLA_params,
                 interior_detect=interior_detect,
             )
 
@@ -170,12 +188,19 @@ def plot(plot_dir):
                 "fieldlines",
                 Fieldlines_pp(n_iter, swirl, damping_ratio)
             )
-        pp.add_postproc("interior", Raw_pp("stop_reason",
-                        func=lambda x: x != 1))
+
+        interior_func = {
+            "all": lambda x: x != 1,
+            "not_diverging": lambda x: x == 0,
+            "dzndz_detection": lambda x: x == 2,
+        }[interior_mask]
+        pp.add_postproc("interior", Raw_pp("stop_reason", func=interior_func))
+
         if shade_kind != "None":
             pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
 
-        plotter = fs.Fractal_plotter(pp)   
+        plotter = fs.Fractal_plotter(pp)
+
         plotter.add_layer(Bool_layer("interior", output=False))
 
         if field_kind == "twin":
@@ -208,6 +233,7 @@ def plot(plot_dir):
         plotter[base_layer].set_mask(
             plotter["interior"], mask_color=interior_color
         )
+
         if field_kind == "twin":
             plotter[base_layer].set_twin_field(plotter["fieldlines"],
                    twin_intensity)

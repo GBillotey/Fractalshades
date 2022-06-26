@@ -55,11 +55,10 @@ directory : str
         The diverging radius. If reached, the loop is exited with exit code
         "divergence"
     epsilon_stationnary : float
-        A small float to early exit non-divergent cycles (based on
-        cumulated dzndz product). If reached, the loop is exited with exit
-        code "stationnary" (Those points should belong to Mandelbrot set
-        interior). A typical value is 1.e-3
-        
+        A small criteria (typical range 0.01 to 0.001) used to detect earlier
+        points belonging to a minibrot, based on dzndz1 value.
+        If reached, the loop is exited with exit code "stationnary"
+
     Notes
     =====
     The following complex fields will be calculated: *zn* and its
@@ -124,7 +123,7 @@ directory : str
             known_orders=None,
             max_order,
             max_newton,
-            eps_newton_cv,
+            eps_newton_cv
     ):
         """
     Newton iterations for Mandelbrot standard set interior (power 2).
@@ -141,7 +140,7 @@ directory : str
         candidates for the cycle order, the other rwill be disregarded.
         If `None` all order between 1 and `max_order` will be considered.
     max_order : int
-        The maximum value for ccyle 
+        The maximum value tested for cycle order
     eps_newton_cv : float
         A small float to qualify the convergence of the Newton iteration
         Usually a fraction of a view pixel.
@@ -335,64 +334,65 @@ directory : str
         BLA_params={"eps": 1e-6},
         interior_detect: bool=False,
         calc_dzndc: bool=True
-):
+    ):
         """
-    Perturbation iterations (arbitrary precision) for Mandelbrot standard set
-    (power 2).
+Perturbation iterations (arbitrary precision) for Mandelbrot standard set
+(power 2).
 
-    Parameters
-    ==========
-    calc_name : str
-         The string identifier for this calculation
-    subset : 
-        A boolean array-like, where False no calculation is performed
-        If `None`, all points are calculated. Defaults to `None`.
-    max_iter : int
-        the maximum iteration number. If reached, the loop is exited with
-        exit code "max_iter".
-    M_divergence : float
-        The diverging radius. If reached, the loop is exited with exit code
-        "divergence"
-    epsilon_stationnary : float
-        EXPERIMENTAL for perturbation.
-        A small float to early exit non-divergent cycles (based on
-        cumulated dzndz product). If reached, the loop is exited with exit
-        code "stationnary" (Those points should belong to Mandelbrot set)
-        Used only if interior_detect is True
-    SA_params :
-        The dictionnary of parameters for Series-Approximations :
+Parameters
+==========
+calc_name : str
+     The string identifier for this calculation
+subset : 
+    A boolean array-like, where False no calculation is performed
+    If `None`, all points are calculated. Defaults to `None`.
+max_iter : int
+    the maximum iteration number. If reached, the loop is exited with
+    exit code "max_iter".
+M_divergence : float
+    The diverging radius. If reached, the loop is exited with exit code
+    "divergence"
+epsilon_stationnary : float
+    Used only if `interior_detect` parameter is set to True
+    A small criteria (typical range 0.01 to 0.001) used to detect earlier
+    points belonging to a minibrot, based on dzndz1 value.
+    If reached, the loop is exited with exit code "stationnary"
+SA_params :
+    Obsolete.
+    The dictionnary of parameters for Series-Approximations :
 
-        .. list-table:: 
-           :widths: 20 80
-           :header-rows: 1
+    .. list-table:: 
+       :widths: 20 80
+       :header-rows: 1
 
-           * - keys
-             - values 
-           * - cutdeg
-             - int: polynomial degree used for approximation (default: 32)
-           * - SA_err
-             - float: relative error criteria (default: 1.e-6)
+       * - keys
+         - values 
+       * - cutdeg
+         - int: polynomial degree used for approximation (default: 32)
+       * - SA_err
+         - float: relative error criteria (default: 1.e-6)
 
-        if `None` SA is not activated. This option is kept for
-        backward-compatibility, use of Bilinear Approximations is recommended.
-    BLA_params :
-        The dictionnary of parameters for Bilinear Approximations :
+    if `None` (default) SA is not activated. This option is kept for
+    backward-compatibility, use of Bilinear Approximations is recommended
+    instead.
+BLA_params :
+    The dictionnary of parameters for Bilinear Approximations :
 
-        .. list-table:: 
-           :widths: 20 80
-           :header-rows: 1
+    .. list-table:: 
+       :widths: 20 80
+       :header-rows: 1
 
-           * - keys
-             - values 
-           * - SA_err
-             - float: relative error criteria (default: 1.e-6)
+       * - keys
+         - values
+       * - SA_err
+         - float: relative error criteria (default: 1.e-6)
 
-        if `None` BLA is not activated.
-    interior_detect : bool
-        EXPERIMENTAL for perturbation.
-        If True activates interior point detection
-
-        """
+    if `None` BLA is not activated.
+interior_detect : bool
+    If True, activates interior point early detection.
+    This will trigger the computation of additionnal quantities, so only
+    use when a mini fills a significant part of the view.
+"""
         self.init_data_types(np.complex128)
 
         # used for potential post-processing
@@ -403,11 +403,8 @@ directory : str
         zn = 0
         code_int = 0
 
-        interior_detect_activated = (
-            interior_detect 
-            and (self.dx > fs.settings.newton_zoom_level)
-        )
-        if interior_detect_activated:
+        calc_dzndz = interior_detect
+        if calc_dzndz:
             code_int += 1
             complex_codes += ["dzndz"]
             dzndz = code_int
@@ -437,17 +434,19 @@ directory : str
         # Define the functions used for BLA approximation
         # BLA triggered ?
         BLA_activated = (
-            (BLA_params is not None) 
+            (BLA_params is not None)
             and (self.dx < fs.settings.newton_zoom_level)
         )
+        self.calc_dZndz = interior_detect
+        self.calc_dZndc = calc_dzndc or BLA_activated
 
         @numba.njit
-        def _dfdz(z): # TODO (z, c)
+        def _dfdz(z):
             return 2. * z
         self.dfdz = _dfdz
 
         @numba.njit
-        def _dfdc(z): # TODO (z, c)
+        def _dfdc(z):
             return 1.
         self.dfdc = _dfdc
 
@@ -470,7 +469,7 @@ directory : str
         #----------------------------------------------------------------------
         # Defines initialize - jitted implementation
         def initialize():
-            return fs.perturbation.numba_initialize(zn, dzndz, dzndc)
+            return fs.perturbation.numba_initialize(zn, dzndc, dzndz)
         self.initialize = initialize
 
         #----------------------------------------------------------------------
@@ -485,9 +484,8 @@ directory : str
             Z[zn] = Z[zn] * (Z[zn] + 2. * ref_zn) + c
 
         @numba.njit
-        def p_iter_dzndz(Z):
-            # Only used at low zoom - assumes dZndz == 0 
-            Z[dzndz] = 2. * (Z[zn] * Z[dzndz])
+        def p_iter_dzndz(Z, ref_zn, ref_dzndz):
+            Z[dzndz] = 2. * ((ref_zn + Z[zn]) * Z[dzndz] + ref_dzndz * Z[zn])
 
         @numba.njit
         def p_iter_dzndc(Z, ref_zn, ref_dzndc):
@@ -495,12 +493,12 @@ directory : str
 
         def iterate():
             return fs.perturbation.numba_iterate(
-                M_divergence_sq, max_iter, reason_max_iter, reason_M_divergence,
-                epsilon_stationnary_sq, interior_detect_activated, reason_stationnary,
-                SA_activated, xr_detect_activated, BLA_activated,
-                calc_dzndc,
-                zn, dzndz, dzndc,
-                p_iter_zn, p_iter_dzndz, p_iter_dzndc
+                max_iter, M_divergence_sq, epsilon_stationnary_sq,
+                reason_max_iter, reason_M_divergence, reason_stationnary,
+                xr_detect_activated, BLA_activated, SA_activated,
+                zn, dzndc, dzndz,
+                p_iter_zn, p_iter_dzndz, p_iter_dzndc,
+                calc_dzndc, calc_dzndz,
             )
         self.iterate = iterate
 

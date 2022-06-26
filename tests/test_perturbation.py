@@ -119,7 +119,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
     @test_config.no_stdout
     def test_M2_int_E11(self):
         """
-        Testing interior detection, 5e-12 test case.
+        Testing min without interior detection, 5e-12 test case.
         """
         test_name = self.test_M2_int_E11.__name__
 
@@ -509,6 +509,147 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         self.test_name = test_name
         self.check_current_layer()
 
+    def test_deep_interior_detect(self):
+        """
+        Testing the interior early detection algo with perturbation & BLA on
+        """
+        test_name = self.test_deep_interior_detect.__name__
+
+        x = "-1.9072475829123560219806014933444037282313"
+        y = '7.54605431570315771754553123674989535657416e-16'
+        dx = '3.660343578223062e-32'
+        precision = 43
+        nx = 600
+
+#        # DEBUG point :
+#        fs.settings.enable_multiprocessing = True
+#        fs.settings.inspect_calc = True
+#
+#        for BLA_params in [{"eps": 1.e-6}, None]:
+#            with self.subTest(BLA_params=BLA_params):
+#                if BLA_params is None:
+        calc_name = "deep_interior"
+        layer_name = test_name + "_potential_" + calc_name
+        
+        white = np.array([255, 255, 255]) / 255.
+        grey = np.array([0, 0, 0]) / 255.
+        colors = np.vstack((white[np.newaxis, :], grey[np.newaxis, :]))
+        colormap = fscolors.Fractal_colormap(kinds="Lch", colors=colors,
+             grad_npts=200, grad_funcs="x**2", extent="mirror")
+
+        m = self.calc(x, y, dx, precision, nx, test_name,
+                 calc_name, interior_detect=True, max_iter=1000000)
+        pp = Postproc_batch(m, calc_name)
+        pp.add_postproc(layer_name, Continuous_iter_pp())
+        pp.add_postproc("interior", Raw_pp("stop_reason",
+                               func=lambda x: np.isin(x, [2])))
+        pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
+
+        plotter = fs.Fractal_plotter(pp)   
+        plotter.add_layer(Bool_layer("interior", output=False))
+        plotter.add_layer(Normal_map_layer("DEM_map", max_slope=45,
+                                           output=False))
+        plotter.add_layer(Color_layer(
+                layer_name,
+                func=lambda x: np.log(x),
+                colormap=colormap,
+                probes_z=[10, 13.815954208374023],
+                probes_kind="absolute",
+                output=True))
+        plotter[layer_name].set_mask(plotter["interior"],
+                                      mask_color=(0., 0., 1.))
+
+        light = Blinn_lighting(0.2, np.array([1., 1., 1.]))
+        light.add_light_source(
+            k_diffuse=1.05,
+            k_specular=.0,
+            shininess=350.,
+            angles=(50., 50.),
+            coords=None,
+            color=np.array([1.0, 1.0, 0.9]))
+        light.add_light_source(
+            k_diffuse=0.,
+            k_specular=1.5,
+            shininess=350.,
+            angles=(50., 40.),
+            coords=None,
+            color=np.array([1.0, 1.0, 0.9]),
+            material_specular_color=np.array([1.0, 1.0, 1.0])
+            )
+        plotter[layer_name].shade(plotter["DEM_map"], light)
+        plotter.plot()
+
+        self.layer = plotter[layer_name]
+        self.test_name = test_name
+        self.check_current_layer(0.01)
+
+    def test_ultradeep_interior_detect(self):
+        """
+        Testing the interior early detection algo with perturbation & BLA on
+        """
+        test_name = self.test_ultradeep_interior_detect.__name__
+
+        x = '-1.999966194450370304184346885063505796755312415407248515117619229448015842423426843813761297788689138122870464065609498643538105757447721664856724960928039200970806596464697897247034380275662515774719795646696735873798312804539648952681115225456179242935106837745884878805854902169393836872097394050590046057699087967010196239765406551942511353248935870676912381954206583589473663772650104637785419392949872755058895530738089740079985776336454731048155381424443368009147832298545439060874543314328347318610344753331544040936498231198149727109'
+        y = '0.0000000000000000000000000000000003001382436790938324072497303977592498734683119077333527017425728012047497561482358118564729928841407551922418650497818162547584808406226419681319987510966551024915920858367060072851094384239104512934585936736294083320495556911255641034741860247735534144716575799510702390797404223208558592193988956228128312647425358021104123150623316403610610181133505002078608735365638116235012859863602970282687765675758728641685358330772131661136113532338021950485899263595349420350880557330865130440135716258565997502285180701052571648187007997490077027'
+        dx = '5.06722630e-433'
+        precision = 550
+        nx = 600
+
+        calc_name = "ultradeep_interior"
+        layer_name = test_name + "_potential_" + calc_name
+        
+        white = np.array([255, 255, 255]) / 255.
+        grey = np.array([0, 0, 0]) / 255.
+        colors = np.vstack((white[np.newaxis, :], grey[np.newaxis, :]))
+        colormap = fscolors.Fractal_colormap(kinds="Lch", colors=colors,
+             grad_npts=200, grad_funcs="x**2", extent="mirror")
+
+        m = self.calc(x, y, dx, precision, nx, test_name,
+                 calc_name, interior_detect=True, max_iter=100000000)
+        pp = Postproc_batch(m, calc_name)
+        pp.add_postproc(layer_name, Continuous_iter_pp())
+        pp.add_postproc("interior", Raw_pp("stop_reason",
+                               func=lambda x: np.isin(x, [2])))
+        pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
+
+        plotter = fs.Fractal_plotter(pp)   
+        plotter.add_layer(Bool_layer("interior", output=False))
+        plotter.add_layer(Normal_map_layer("DEM_map", max_slope=45,
+                                           output=False))
+        plotter.add_layer(Color_layer(
+                layer_name,
+                func=lambda x: np.log(x),
+                colormap=colormap,
+                probes_z=[13.19380, 18.420959],
+                probes_kind="absolute",
+                output=True))
+        plotter[layer_name].set_mask(plotter["interior"],
+                                      mask_color=(0., 0., 1.))
+
+        light = Blinn_lighting(0.2, np.array([1., 1., 1.]))
+        light.add_light_source(
+            k_diffuse=1.05,
+            k_specular=.0,
+            shininess=350.,
+            angles=(50., 50.),
+            coords=None,
+            color=np.array([1.0, 1.0, 0.9]))
+        light.add_light_source(
+            k_diffuse=0.,
+            k_specular=1.5,
+            shininess=350.,
+            angles=(50., 40.),
+            coords=None,
+            color=np.array([1.0, 1.0, 0.9]),
+            material_specular_color=np.array([1.0, 1.0, 1.0])
+            )
+        plotter[layer_name].shade(plotter["DEM_map"], light)
+        plotter.plot()
+
+        self.layer = plotter[layer_name]
+        self.test_name = test_name
+        self.check_current_layer(0.01)
+
 
     def calc(self, x, y, dx, precision, nx, test_name, calc_name,
             interior_detect=False, antialiasing=False, xy_ratio=1.0,
@@ -537,7 +678,8 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 epsilon_stationnary=1.e-3,
                 interior_detect=False,
                 BLA_params=BLA_params,
-                calc_dzndc=True)
+                calc_dzndc=False
+            )
         else:
             mandelbrot.calc_std_div(
                 calc_name=calc_name,
@@ -567,11 +709,12 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         self.assertTrue(err < err_max)
 
 if __name__ == "__main__":
-    full_test = True
+    full_test = False
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_Perturbation_mandelbrot]))
     else:
         suite = unittest.TestSuite()
-        suite.addTest(Test_Perturbation_mandelbrot("test_glitch_dyn"))
+        # suite.addTest(Test_Perturbation_mandelbrot("test_glitch_dyn"))
+        suite.addTest(Test_Perturbation_mandelbrot("test_ultradeep_interior_detect"))
         runner.run(suite)
