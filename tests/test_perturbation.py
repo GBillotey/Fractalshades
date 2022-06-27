@@ -583,7 +583,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         self.test_name = test_name
         self.check_current_layer(0.01)
 
-    def test_ultradeep_interior_detect(self):
+    def skip_test_ultradeep_interior_detect(self):
         """
         Testing the interior early detection algo with perturbation & BLA on
         """
