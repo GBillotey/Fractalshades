@@ -64,7 +64,13 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       - name: install Fractalshades from current commit
         run: |
-          python -m pip install git+https://github.com/${{ github.repository }}.git@${{ github.sha }}
+          echo "pwd :"
+          pwd
+          ls -lrt
+          python3 -m pip install fractalshades --user --force-reinstall --no-deps --no-index --find-links dist
+          pwd
+          ls -lrt
+          # python -m pip install git+https://github.com/${{ github.repository }}.git@${{ github.sha }}
       - name: install dependencies to build the documentation
         run: |
           python -m pip install sphinx sphinx_rtd_theme sphinx-gallery numpydoc matplotlib sphinxcontrib-bibtex
@@ -72,21 +78,21 @@ jobs:
         run: |
           # Build the doc
           # Note: /!\ run with QT_QPA_PLATFORM=offscreen on a headless runner
-          make -C docs clean
-          # QT_QPA_PLATFORM=offscreen make -C docs html
+          #make -C docs clean
+          #QT_QPA_PLATFORM=offscreen make -C docs html
   
-      - name: Push documentation to github pages
-        run: |
-          git config --global user.email "geoffroy.billotey@gmail.com"
-          git config --global user.name "GBillotey"
-          docroot=`mktemp -d`
-          rsync -av "docs/_build/html/" "${docroot}/"
-          pushd "${docroot}"
-          # don't bother maintaining history; just generate fresh
-          git init
-          git remote add deploy "https://token:${{ github.token }}@github.com/${{ github.repository }}.git"
-          git checkout -b doc-latest
-          git add .
-          git commit -am "automatic triggered doc build"
-          git push deploy doc-latest --force
-          popd
+      #- name: Push documentation to github pages
+        #run: |
+          #git config --global user.email "geoffroy.billotey@gmail.com"
+          #git config --global user.name "GBillotey"
+          #docroot=`mktemp -d`
+          #rsync -av "docs/_build/html/" "${docroot}/"
+          #pushd "${docroot}"
+          ## don't bother maintaining history; just generate fresh
+          #git init
+          #git remote add deploy "https://token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          #git checkout -b doc-latest
+          #git add .
+          #git commit -am "automatic triggered doc build"
+          #git push deploy doc-latest --force
+          #popd
