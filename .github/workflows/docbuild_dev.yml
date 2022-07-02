@@ -52,11 +52,11 @@ jobs:
           sudo apt-get install libgmp-dev
           sudo apt-get install libmpfr-dev
           sudo apt-get install libmpc-dev
-      - name: Install Latex
-        run: |
-          sudo apt-get install dvipng
-          sudo apt-get install texlive
-          sudo apt-get install texlive-latex-extra
+      #- name: Install Latex
+        #run: |
+          #sudo apt-get install dvipng
+          #sudo apt-get install texlive
+          #sudo apt-get install texlive-latex-extra
       - name: Install python modules dependencies
         run: |
           pip install --upgrade pip
@@ -67,6 +67,7 @@ jobs:
           echo "pwd :"
           pwd
           ls -lrt
+          python3 -m build
           python3 -m pip install fractalshades --user --force-reinstall --no-deps --no-index --find-links dist
           pwd
           ls -lrt
@@ -75,7 +76,7 @@ jobs:
         run: |
           python -m pip install sphinx sphinx_rtd_theme sphinx-gallery numpydoc matplotlib sphinxcontrib-bibtex
       - name: Build documentation
-        run: |
+        #run: |
           # Build the doc
           # Note: /!\ run with QT_QPA_PLATFORM=offscreen on a headless runner
           #make -C docs clean
