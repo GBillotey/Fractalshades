@@ -76,11 +76,12 @@ jobs:
         run: |
           python -m pip install sphinx sphinx_rtd_theme sphinx-gallery numpydoc matplotlib sphinxcontrib-bibtex
       - name: Build documentation
-        #run: |
+        run: |
           # Build the doc
           # Note: /!\ run with QT_QPA_PLATFORM=offscreen on a headless runner
-          #make -C docs clean
-          #QT_QPA_PLATFORM=offscreen make -C docs html
+          make -C docs clean
+          QT_QPA_PLATFORM=offscreen make -C docs html
+          echo {{ github.repository }}
   
       #- name: Push documentation to github pages
         #run: |
