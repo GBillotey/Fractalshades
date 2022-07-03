@@ -2,6 +2,7 @@
 
 name: doc-latest
 
+
 # Controls when the workflow will run
 on:
   # Triggers the workflow manually from the Actions tab
@@ -9,8 +10,8 @@ on:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
-  build:
+  # This workflow contains a single job called "deploy_doc"
+  deploy_doc:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
     strategy:
@@ -34,12 +35,10 @@ jobs:
         run: |
           sudo apt-get update
           pip install --upgrade pip
-
       - name: Prepare GUI
         run: |
          echo "Prepare GUI for pyQt6"
           pip install pyQt6
-
           # See
           # https://github.com/pytest-dev/pytest-qt/issues/396
           # https://github.com/pytest-dev/pytest-qt/pull/295/files
@@ -49,52 +48,81 @@ jobs:
           sudo apt-get install xvfb mesa-utils libegl1-mesa
           sudo apt-get install libxkbcommon-x11-0
           sudo apt-get install --reinstall libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0
-
+          
       - name: Install GMP MPFR MPC needed for gmpy2
         run: |
           sudo apt-get install libgmp-dev
           sudo apt-get install libmpfr-dev
           sudo apt-get install libmpc-dev
-
+          
       - name: Install Latex
         run: |
           sudo apt-get install dvipng
           sudo apt-get install texlive
           sudo apt-get install texlive-latex-extra
-
+          
       - name: Install python modules dependencies
         run: |
           pip install --upgrade pip
           pip install flake8 pytest
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-
+          
       - name: install Fractalshades from current commit
         run: |
-          python -m pip install git+https://github.com/${{ github.repository }}.git@${{ github.sha }}
-
+          python3 setup.py bdist_wheel
+          python3 -m pip install fractalshades --user --force-reinstall --no-deps --no-index --find-links dist
+          
       - name: install dependencies to build the documentation
         run: |
           python -m pip install sphinx sphinx_rtd_theme sphinx-gallery numpydoc matplotlib sphinxcontrib-bibtex
-
-      - name: Build documentation
+          
+      - name: Build the doc and publish it
         run: |
-          # Build the doc
+          echo "###################################"
+          echo "Download previous status of examples from repo fractalshades-doc"
+          build_dir=`pwd`
+          deploy_dir=`mktemp -d`
+          pushd "${deploy_dir}"
+          git config --global user.email "geoffroy.billotey@gmail.com"
+          git config --global user.name "GBillotey"
+          git clone "https://token:${{ secrets.DOC_PUSH_TOKEN }}@github.com/${{ github.repository }}-doc.git" .
+          # Here we check that doc-latest branch exists, and if yes, copy the files before building
+          # https://stackoverflow.com/questions/8223906/how-to-check-if-remote-branch-exists-on-a-given-remote-repository
+          if git ls-remote --heads origin doc-latest-data; then
+              echo 'Branch doc-latest-data exists in remote, copying files'
+              git checkout doc-latest-data
+              rsync -av . "${build_dir}"/docs/examples/
+          else
+              echo 'Branch doc-latest-data does not exists in remote, create empty dir'
+              mkdir "${build_dir}"/docs/examples/
+          fi
+          popd
+          echo "###################################"
+          echo "Build the doc in build repo"
           # Note: /!\ run with QT_QPA_PLATFORM=offscreen on a headless runner
           make -C docs clean
           QT_QPA_PLATFORM=offscreen make -C docs html
-  
-      - name: Push documentation to github pages
-        run: |
-          git config --global user.email "geoffroy.billotey@gmail.com"
-          git config --global user.name "GBillotey"
-          docroot=`mktemp -d`
-          rsync -av "docs/_build/html/" "${docroot}/"
-          pushd "${docroot}"
-          # don't bother maintaining history; just generate fresh
-          git init
-          git remote add deploy "https://token:${{ github.token }}@github.com/${{ github.repository }}.git"
-          git checkout -b doc-latest
-          git add .
-          git commit -am "automatic triggered doc build"
-          git push deploy doc-latest --force
+          echo "###################################"
+          echo "Push the html doc to doc repository, branch doc-latest"
+          pushd "${deploy_dir}"
+          # don't bother maintaining history; just generate fresh in an
+          # Orphan branch
+          git checkout --orphan temp_branch
+          git rm -rf .
+          rsync -av "${build_dir}/docs/_build/html/" .
+          git add -A
+          git commit -m "Automatic triggered doc build - ${{ github.workflow }}"
+          git branch -m doc-latest
+          git push origin doc-latest --force
+          
+          echo "###################################"
+          echo "Push the examples data to doc repository, branch doc-latest-data"
+          git checkout --orphan temp_data_branch
+          git rm -rf .
+          rsync -av "${build_dir}/docs/examples/" .
+          git add -A
+          git commit -m "Automatic triggered doc build - ${{ github.workflow }}"
+          git branch -m doc-latest-data
+          git push origin doc-latest-data --force
+          
           popd
