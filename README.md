@@ -10,7 +10,7 @@ The purpose of this python package is to provide efficient algorithms for static
 ![Graphical user interface developped with PyQt6](https://github.com/GBillotey/Fractalshades/blob/master/docs/_static/Screenshot_from_2022-02-04.png)
 
 ## Documentation
-https://gbillotey.github.io/Fractalshades/
+https://gbillotey.github.io/Fractalshades-doc/
 
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
