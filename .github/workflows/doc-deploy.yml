@@ -115,13 +115,23 @@ jobs:
           
           echo "###################################"
           echo "Push the examples data to doc repository, branch doc-latest-data"
+          echo "branch 1"
+          git branch -a
           git checkout --orphan temp_data_branch
+          echo "branch 2"
+          git branch -a
           git rm -rf .
+          echo "branch 3"
+          git branch -a
           rsync -av "${build_dir}/docs/examples/" .
           git add -A
           git commit -m "Automatic triggered doc build - ${{ github.workflow }}"
+          echo "branch 4"
+          git branch -a
           if git ls-remote --heads origin doc-latest-data; then
             # list all branches - including remote-tracking branches
+            
+            echo "branch 4"
             git branch -a 
             git branch -D -r doc-latest-data
           fi
