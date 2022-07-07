@@ -115,6 +115,8 @@ jobs:
           
           echo "###################################"
           echo "Push the examples data to doc repository, branch doc-latest-data"
+          git fetch
+          git pull
           echo "branch 1"
           git branch -a
           # git checkout --orphan temp_data_branch
