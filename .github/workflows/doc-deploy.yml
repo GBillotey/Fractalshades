@@ -137,7 +137,7 @@ jobs:
             
             echo "branch 4"
             git branch -a 
-            git branch -D -r doc-latest-data
+            git branch -D doc-latest-data
           fi
           git branch -m doc-latest-data
           git push --force origin doc-latest-data
