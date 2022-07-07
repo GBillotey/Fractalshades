@@ -97,16 +97,17 @@ jobs:
               mkdir "${build_dir}"/docs/examples/
           fi
           popd
+          
           echo "###################################"
           echo "Build the doc in build repo"
           # Note: /!\ run with QT_QPA_PLATFORM=offscreen on a headless runner
           make -C docs clean
           QT_QPA_PLATFORM=offscreen make -C docs html
+          
           echo "###################################"
           echo "Push the html doc to doc repository, branch doc-latest"
           pushd "${deploy_dir}"
-          # don't bother maintaining history; just generate fresh in an
-          # Orphan branch
+          # don't bother maintaining history; just generate fresh in an orphan branch
           git checkout --orphan temp_branch
           git rm -rf .
           rsync -av "${build_dir}/docs/_build/html/" .
@@ -122,7 +123,9 @@ jobs:
           rsync -av "${build_dir}/docs/examples/" .
           git add -A
           git commit -m "Automatic triggered doc build - ${{ github.workflow }}"
+          if git ls-remote --heads origin doc-latest-data; then
+              git branch -D doc-latest-data
+          fi
           git branch -m doc-latest-data
           git push origin doc-latest-data --force
-          
           popd
