@@ -122,6 +122,8 @@ jobs:
           git commit -m "Automatic triggered doc build - ${{ github.workflow }}"
           git branch -m doc-latest-data
           if git ls-remote --heads origin doc-latest-data; then
+            # list all branches - including remote-tracking branches
+            git branch -a 
             git branch -D -r doc-latest-data
           fi
           git push --force origin doc-latest-data
