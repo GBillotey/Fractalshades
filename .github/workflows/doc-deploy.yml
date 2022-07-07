@@ -86,12 +86,12 @@ jobs:
           # Here we check that doc-latest branch exists, and if yes, copy the files before building
           # https://stackoverflow.com/questions/8223906/how-to-check-if-remote-branch-exists-on-a-given-remote-repository
           if git ls-remote --heads origin doc-latest-data; then
-              echo 'Branch doc-latest-data exists in remote, copying files'
-              git checkout doc-latest-data
-              rsync -av . "${build_dir}"/docs/examples/
+            echo 'Branch doc-latest-data exists in remote, copying files'
+            git checkout doc-latest-data
+            rsync -av . "${build_dir}"/docs/examples/
           else
-              echo 'Branch doc-latest-data does not exists in remote, create empty dir'
-              mkdir "${build_dir}"/docs/examples/
+            echo 'Branch doc-latest-data does not exists in remote, create empty dir'
+            mkdir "${build_dir}"/docs/examples/
           fi
           popd
           
@@ -111,7 +111,7 @@ jobs:
           git add -A
           git commit -m "Automatic triggered doc build - ${{ github.workflow }}"
           git branch -m doc-latest
-          git push origin doc-latest --force
+          git push --force origin doc-latest
           
           echo "###################################"
           echo "Push the examples data to doc repository, branch doc-latest-data"
@@ -121,5 +121,8 @@ jobs:
           git add -A
           git commit -m "Automatic triggered doc build - ${{ github.workflow }}"
           git branch -m doc-latest-data
-          git push --set-upstream --force origin doc-latest-data
+          if git ls-remote --heads origin doc-latest-data; then
+            git branch -D -r doc-latest-data
+          fi
+          git push --force origin doc-latest-data
           popd
