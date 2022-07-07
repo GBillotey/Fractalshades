@@ -121,9 +121,9 @@ jobs:
           git switch --orphan temp_data_branch
           echo "branch 2"
           git branch -a
-          git rm -rf .
-          echo "branch 3"
-          git branch -a
+          # git rm -rf .
+          # echo "branch 3"
+          # git branch -a
           rsync -av "${build_dir}/docs/examples/" .
           git add -A
           git commit -m "Automatic triggered doc build - ${{ github.workflow }}"
