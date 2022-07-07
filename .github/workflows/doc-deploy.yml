@@ -120,9 +120,6 @@ jobs:
           rsync -av "${build_dir}/docs/examples/" .
           git add -A
           git commit -m "Automatic triggered doc build - ${{ github.workflow }}"
-          if git ls-remote --heads origin doc-latest-data; then
-              git branch -D doc-latest-data
-          fi
           git branch -m doc-latest-data
-          git push origin doc-latest-data --force
+          git push --set-upstream --force origin doc-latest-data
           popd
