@@ -117,7 +117,8 @@ jobs:
           echo "Push the examples data to doc repository, branch doc-latest-data"
           echo "branch 1"
           git branch -a
-          git checkout --orphan temp_data_branch
+          # git checkout --orphan temp_data_branch
+          git switch --orphan temp_data_branch
           echo "branch 2"
           git branch -a
           git rm -rf .
