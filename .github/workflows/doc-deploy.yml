@@ -88,7 +88,8 @@ jobs:
           if git ls-remote --heads origin doc-latest-data; then
             echo 'Branch doc-latest-data exists in remote, copying files'
             git checkout doc-latest-data
-            rsync -av . "${build_dir}"/docs/examples/
+            # Exclude git tracking files
+            rsync -av --exclude '.git' . "${build_dir}"/docs/examples/
           else
             echo 'Branch doc-latest-data does not exists in remote, create empty dir'
             mkdir "${build_dir}"/docs/examples/
