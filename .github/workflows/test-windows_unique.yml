@@ -1,0 +1,60 @@
+# This workflow will install fractalshades and run tests and lint with a variety of Python versions
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
+
+name: test-windows
+
+on:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  build:
+
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [3.8, 3.9, "3.10"]
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install gmpy2 and adds the headers - creates the .lib files
+      run: |
+        dir
+        python -m pip install --upgrade pip
+        python -m pip install gmpy2
+
+        echo "**** Running python gmpy2 pathch script"
+        python win_build\patch_gmpy2.py
+
+    - name: Install dependencies
+      run: |
+        echo "install libraries needed for the test"
+        python -m pip install pytest
+
+        echo "install build dependencies /"
+        python -m pip install -r win_build/build_requirements.txt
+        dir
+
+    - name: Builds Fractalshades
+      run: |
+        python setup.py build bdist_wheel
+        # dir dist
+
+    - name: Install Fractalshades from the built wheel
+      run: |
+        python -m pip install -r requirements.txt
+        # echo "install fractalshades"
+        # $WHL_TARGETs = Get-ChildItem  "./dist/" -Recurse "*.whl"
+        # echo "wheel target found:" $WHL_TARGETs[0]
+        python3 -m pip install fractalshades --user --force-reinstall --no-deps --no-index --find-links dist
+
+    - name: Test with pytest
+      run: |
+        python tests/test_perturbation.py
+

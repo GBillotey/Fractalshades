@@ -1,0 +1,44 @@
+# This workflow will install fractalshades, and run a unique test
+# with a variety of Python versions - edit for a specific test
+
+name: test-linux
+
+on:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  test:
+
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.9", "3.10"]
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install GMP MPFR MPC needed for gmpy2
+      run: |
+        sudo apt-get install libgmp-dev
+        sudo apt-get install libmpfr-dev
+        sudo apt-get install libmpc-dev
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install pytest
+    - name: install Fractalshades
+      run: |
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        python3 setup.py bdist_wheel
+        python3 -m pip install fractalshades --user --force-reinstall --no-deps --no-index --find-links dist
+        # Note: an alternative install strategy would be:
+        # python -m pip install git+https://github.com/${{ github.repository }}.git@${{ github.sha }}
+    - name: Test with pytest
+      run: |
+        python3 tests/test_perturbation.py
+
