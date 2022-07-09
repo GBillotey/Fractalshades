@@ -39,14 +39,12 @@ jobs:
     - name: Install dependencies
       run: |
         echo "install build dependencies /"
-        # Is it really needed ?
-        # python -m pip install -r win_build/build_requirements.txt
-        dir
+        # Is it really needed ? yes because soem are imported in setup.py !
+        python -m pip install -r win_build/build_requirements.txt
 
     - name: Builds Fractalshades
       run: |
         python setup.py bdist_wheel
-        dir dist
 
     - name: Archive production artifacts
       uses: actions/upload-artifact@v2
