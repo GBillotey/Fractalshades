@@ -1,7 +1,7 @@
 # This workflow will install fractalshades, and run a unique test
 # with a variety of Python versions - edit for a specific test
 
-name: test-linux
+name: test-linux_unique
 
 on:
   # Allows you to run this workflow manually from the Actions tab
