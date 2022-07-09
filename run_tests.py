@@ -17,7 +17,7 @@ if abs_test_rep not in sys.path:
 loader = unittest.TestLoader()
 suite = loader.discover(test_rep)
 
-buffer = sys.stdout # None # Controls the output stream
-runner = unittest.TextTestRunner(verbosity=2, buffer=buffer)
+# Buffer controls the output stream - use buffer=False for full output
+runner = unittest.TextTestRunner(verbosity=2, buffer=False)
 
 runner.run(suite)
