@@ -45,7 +45,7 @@ jobs:
 
     - name: Builds Fractalshades
       run: |
-        python setup.py build bdist_wheel
+        python setup.py bdist_wheel
         dir dist
 
     - name: Archive production artifacts
