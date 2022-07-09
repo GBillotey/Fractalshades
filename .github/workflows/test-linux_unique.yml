@@ -40,5 +40,7 @@ jobs:
         # python -m pip install git+https://github.com/${{ github.repository }}.git@${{ github.sha }}
     - name: Test with pytest
       run: |
+        python3 test_parallel.py
         python3 tests/test_perturbation.py
+        python3 test_pickle.py
 
