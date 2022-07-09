@@ -39,7 +39,8 @@ jobs:
     - name: Install dependencies
       run: |
         echo "install build dependencies /"
-        python -m pip install -r win_build/build_requirements.txt
+        # Is it really needed ?
+        # python -m pip install -r win_build/build_requirements.txt
         dir
 
     - name: Builds Fractalshades
