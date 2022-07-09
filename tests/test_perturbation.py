@@ -47,6 +47,13 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         colors = np.vstack((purple[np.newaxis, :], gold[np.newaxis, :]))
         cls.colormap = fscolors.Fractal_colormap(kinds="Lch", colors=colors,
              grad_npts=200, grad_funcs="x**2", extent="mirror")
+        
+    def tearDown(self):
+        # Called after each test - cleaning the data directory
+        data_dir = os.path.join(
+            self.perturb_dir, self.test_name, "data"
+        )
+        shutil.rmtree(data_dir)
 
 
     @test_config.no_stdout
