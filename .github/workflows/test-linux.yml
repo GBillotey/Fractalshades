@@ -39,4 +39,4 @@ jobs:
         # python -m pip install git+https://github.com/${{ github.repository }}.git@${{ github.sha }}
     - name: Test with pytest
       run: |
-        python -m pytest
+        python3 run_tests.py
