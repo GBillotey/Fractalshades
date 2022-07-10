@@ -105,17 +105,17 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                     shininess=350.,
                     angles=(50., 50.),
                     coords=None,
-                    color=np.array([1.0, 1.0, 0.9]))
+                    color=np.array([1.0, 1.0, 0.9])
+                )
                 light.add_light_source(
                     k_diffuse=0.,
-                    k_spec
-            k_diffuse=1.05,ular=1.5,
+                    k_specular=1.5,
                     shininess=350.,
                     angles=(50., 40.),
                     coords=None,
                     color=np.array([1.0, 1.0, 0.9]),
                     material_specular_color=np.array([1.0, 1.0, 1.0])
-                    )
+                )
                 plotter[layer_name].shade(plotter["DEM_map"], light)
                 plotter.plot()
 
