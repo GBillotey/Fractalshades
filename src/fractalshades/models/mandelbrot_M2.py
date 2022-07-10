@@ -358,7 +358,8 @@ epsilon_stationnary : float
     points belonging to a minibrot, based on dzndz1 value.
     If reached, the loop is exited with exit code "stationnary"
 SA_params :
-    Obsolete.
+    Obsolete. This option is kept for backward-compatibility, use of Bilinear
+    Approximations is recommended instead.
     The dictionnary of parameters for Series-Approximations :
 
     .. list-table:: 
@@ -372,9 +373,7 @@ SA_params :
        * - SA_err
          - float: relative error criteria (default: 1.e-6)
 
-    if `None` (default) SA is not activated. This option is kept for
-    backward-compatibility, use of Bilinear Approximations is recommended
-    instead.
+    if `None` (default) SA is not activated. 
 BLA_params :
     The dictionnary of parameters for Bilinear Approximations :
 
@@ -390,8 +389,8 @@ BLA_params :
     if `None` BLA is not activated.
 interior_detect : bool
     If True, activates interior point early detection.
-    This will trigger the computation of additionnal quantities, so only
-    use when a mini fills a significant part of the view.
+    This will trigger the computation of additionnal quantities, so will be
+    efficient only when a mini fills a significant part of the view.
 """
         self.init_data_types(np.complex128)
 

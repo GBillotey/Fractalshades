@@ -79,7 +79,7 @@ For any point :math:`c` in the image we can express it as
 Similarly for its iterated sequence we will write:
 :math:`z_n = Z_n + \delta z_n`.
 
-Some elementary manipulations yields the recurrence formula for
+Some elementary manipulations yield the recurrence formula for
 :math:`\delta z_n` :
 
 .. math::
@@ -93,21 +93,22 @@ Some elementary manipulations yields the recurrence formula for
     \right.
 
 Similar formulas can be found for the derivatives (useful for instance
-for distance approximation)
+for distance approximation, or early interior points detection)
 :math:`\frac {\partial \delta z_n}{\partial c}` and
-:math:`\frac {\partial \delta z_n}{\partial \delta z_1}`.
+:math:`\frac {\partial \delta z_n}{\partial z_1}`.
 
 The good and a bit unexpected news is that :math:`\delta z_n` can be iterated
-at standard precision and, with a few caveat, still give . A rigorous demonstation is
-probably quite involving... 
+at standard precision and, with a few caveat, still give similar results to a
+calculation with full precision! A rigorous demonstation is
+probably quite involving and in any case beyond the scope of this section... 
 
 
 Avoiding loss of precision
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When iterating :eq:`perturb` loss of precision may occur leading to invalid
-results. This is evidenced by so-called "glitches" in the image: large zones
-with uniform color or noisy rendering.
+When iterating :eq:`perturb` loss of precision may still occur, leading to invalid
+results. This is often evidenced by so-called "glitches" in the image:
+large zones with uniform color or noisy rendering.
 
 A deeper investigation shows that these issues occur when the calculated orbit
 :math:`z_n` goes close to zero [#f1]_, under the influence of a nearby
@@ -118,7 +119,7 @@ Several methods have been investigated to avoid such glitches.
 We present here the one used in `fractalshades` which is based
 on an original idea from Zhuoran in 2021 (see :cite:p:`glitches`). Whenever 
 :math:`|z_n| <= |Z_n|` we do a *rebase* i.e. basically restart the reference
-orbit at index 0 :
+orbit at index 0:
 
 .. math::
     :label: rebase
@@ -130,31 +131,46 @@ orbit at index 0 :
     \end{array}
     \right.
 
-The same strategy can be applied when the reference orbit diverges.
+Of course from an implementation point of view it is easier to just
+reset the index :math:`n` in :math:`Z_n` to 0 - rather than making the
+substitution above.
+
+The same strategy can also be applied whenever the reference orbit diverges.
 
 Billinear approximations
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-When :math:`|z_n^2| << |2 Z_n z_n + c|` :eq:`perturb` can be approximated by
-a billinear expression in :math:`\delta z_n`, :math:`\delta c` :
+When :math:`|\delta z_n^2| \ll |2 Z_n \delta z_n + \delta c|`,
+:eq:`perturb` can be approximated by
+a billinear expression in :math:`\delta z_n` and :math:`\delta c` :
 
 .. math::
     :label: perturb_BLA
 
     \delta z_{n+1} = 2 Z_n \delta z_n + \delta c 
+                   = A_n \delta z_n + B_n \delta c
 
-Such approximations remain valid for :math:`\delta z_n < \delta z^*` and
-:math:`\delta c < \delta c^*`, where :math:`\delta z^*` and 
-:math:`\delta c^*` depend only on :math:`n`.
+Such approximations can be deemed valid for instance when the residue
+(here, :math:`\delta z_n^2`) is below the standard double precision (hence taking
+the linear approximation does not introduce more inaccuracy than we already
+have when using double with the full formula).
 
-Now, the composition of 2 bilinear function is still a billinear function.
-It means, we can combine 2 by 2 such approximations (and their validity bound)
-and store the results - for instance in a binary tree structure. 
-We now have a set of precomputed *shortcuts* allowing to skip many iterations,
+We define for each step a validity radii :math:`|\delta z_n| < \delta z^*` and
+:math:`|\delta c| < \delta c^*`, where :
+
+  - :math:`\delta c^*` can be fixed according to the image size
+  - :math:`\delta z^*` depends of :math:`n` through :math:`Z_{n}`.
+
+Now, the composition of 2 bilinear functions is still a billinear function.
+It means, we can combine 2 by 2 such approximations (and their validity bound
+:math:`\delta z^*`) and store the results
+(:math:`A_{n,k}`, :math:`B_{n,k}`, :math:`\delta z^*_{n,k}`)
+- for instance in a binary tree structure.
+This builds a set of precomputed *shortcuts* allowing to skip many iterations,
 when the validity conditions are met.
 
-When applied to the derivatives, billinear approximation becomes a simple 
-linear relationship.
+Note: These billinear approximations can also be applied to the derivatives,
+they just becomes a simple linear relationship.
 
 Extended range floating points
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -181,7 +197,7 @@ datatype.
 Finding minibrots
 ~~~~~~~~~~~~~~~~~
 
-In order to find a minibrot center and size, the process is the following :
+In order to find a minibrot center and size, the process is the following:
 
   - find the period first by iterating a small ball until it contains the
     origin (using ball arithmetic),

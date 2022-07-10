@@ -22,3 +22,4 @@ suite = loader.discover(test_rep)
 runner = unittest.TextTestRunner(verbosity=2, buffer=True)
 
 runner.run(suite)
+

@@ -42,8 +42,8 @@ This package relies on the following dependencies:
 
 They should install automatically with pip_. A special case is gmpy2 as it
 needs the most recent versions of GMP, MPFR and MPC multi-precision
-arithmetic libraries. Under Windows, the recent wheels of gmpy2 (rev >= 2.1.2)
-already ship the latest GMP / MPFR / MPC dll.
+arithmetic libraries. Under Windows 64 bits, the recent wheels of gmpy2
+(rev >= 2.1.2) already ship the latest GMP / MPFR / MPC dll.
 Under Unix / Linux, if your distribution does not include them you will have
 to install them manually:
 
@@ -71,7 +71,7 @@ A 5-minutes guide to fractalshades
 
 The best way to start is probably to have a look at the 
 :doc:`examples/index/` section. Download one of the examples from the GUI
-examples section (links below), run it in an empty directory:
+examples section (selection of links below), run it in an empty directory:
 good exploration !
 
   - :doc:`/examples/interactive_deepzoom/D01_run_interactive`
@@ -105,7 +105,8 @@ kinds of component each implementing a different functionality:
     Fractalshades comes with a small yey  flexible and user-configurable
     GUI based on PyQt5 framework.
 
-
+*Tip:* A click on "show source" in the GUI will generate a python script
+ready-to-run in batch mode.
 
 Graphical user interface
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -123,7 +124,7 @@ The following main components can be seen:
          and output the list of parameters used for the computation (each
          image file produced by the programm is tagged with useful information
          like the location of the image, the program version,  the calculation
-         parameters used) 
+         parameters used)
        - A png to colormap converter : load an image, draw a line on it : the
          colors will be used to create a colormap
        - A tool to select a colormap from the templates available (see 
@@ -141,7 +142,9 @@ The following main components can be seen:
       - Among these, 4 parameters which define the zoom will respond to
         the mouse events on the fractal image panel (`x`, `y`, `xy_ratio`,
         and the arbitrary precision in digits `dps`).
-      - To view the scipt source code, click on "Show source".
+      - To view the scipt source code, click on "Show source". This source
+        code can be run directly in a python interpreter, it will calculate
+        the same image in batch mode.
       - To view the current value of the parameters, click on "Show params"
       - To actually run the script, click on "run".
       - On-going calculation can be also interrupted, this will become

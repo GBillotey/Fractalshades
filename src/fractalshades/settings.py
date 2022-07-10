@@ -26,7 +26,7 @@ critical point will be used (0. for mandelbrot)"""
 
 std_zoom_level = 1.e-8
 """ Zoom level at which we drop some perturbation techniques optimisation 
-Chosen as this level squared is ~ precision of float32
+Chosen as this level squared is ~ precision of float64
 """
 
 xrange_zoom_level = 1.e-300
