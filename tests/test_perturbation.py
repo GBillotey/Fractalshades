@@ -570,7 +570,6 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         light = Blinn_lighting(0.2, np.array([1., 1., 1.]))
         light.add_light_source(
             k_diffuse=1.05,
-            k_diffuse=1.05,
             k_specular=.0,
             shininess=350.,
             angles=(50., 50.),
