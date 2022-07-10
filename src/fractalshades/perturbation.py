@@ -805,6 +805,9 @@ directory : str
 
         # skip Newton if settings impose it
         if fs.settings.no_newton or (newton is None) or (newton == "None"):
+            print("Skipping all Newton calculation according to calc options")
+            print("fs.settings.no_newton:", fs.settings.no_newton)
+            print("newton arg": newton)
             self.compute_FP_orbit(c0, None)
             return
         
