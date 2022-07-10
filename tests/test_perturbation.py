@@ -108,7 +108,8 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                     color=np.array([1.0, 1.0, 0.9]))
                 light.add_light_source(
                     k_diffuse=0.,
-                    k_specular=1.5,
+                    k_spec
+            k_diffuse=1.05,ular=1.5,
                     shininess=350.,
                     angles=(50., 40.),
                     coords=None,
@@ -383,6 +384,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         black = np.array([0, 0, 0]) / 255.
         citrus2 = np.array([103, 189, 0]) / 255.
         # citrus2 = np.array([64, 109, 0]) / 255.
+            k_diffuse=1.05,
         
         colors = np.vstack((citrus2[np.newaxis, :],
                             # citrus3[np.newaxis, :],
@@ -569,6 +571,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         light = Blinn_lighting(0.2, np.array([1., 1., 1.]))
         light.add_light_source(
             k_diffuse=1.05,
+            k_diffuse=1.05,
             k_specular=.0,
             shininess=350.,
             angles=(50., 50.),
@@ -716,7 +719,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         self.assertTrue(err < err_max)
 
 if __name__ == "__main__":
-    full_test = True
+    full_test = False
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_Perturbation_mandelbrot]))
