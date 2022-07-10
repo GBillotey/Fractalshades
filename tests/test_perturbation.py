@@ -384,7 +384,6 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         black = np.array([0, 0, 0]) / 255.
         citrus2 = np.array([103, 189, 0]) / 255.
         # citrus2 = np.array([64, 109, 0]) / 255.
-            k_diffuse=1.05,
         
         colors = np.vstack((citrus2[np.newaxis, :],
                             # citrus3[np.newaxis, :],
