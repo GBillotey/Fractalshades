@@ -78,7 +78,6 @@ def plot(plot_dir):
 
     # Set to True to enable multi-threading
     settings.enable_multithreading = True
-    settings.no_newton =  False # False # debug
 
     directory = plot_dir
     fractal = fsm.Perturbation_mandelbrot(directory)

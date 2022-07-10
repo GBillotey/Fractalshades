@@ -2975,6 +2975,7 @@ parameter
         - `float`
         - `int`
         - `bool`
+        - `mpmath.mpf` (arbitrary precision floating point)
         - `QtGui.QColor=(0., 0., 1.)` (RGB color)
         - `QtGui.QColor=(0., 0., 1., 0)` (RGBA color)
         - `fs.colors.Fractal_colormap`
