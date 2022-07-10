@@ -156,7 +156,11 @@ class Test_ref_path(unittest.TestCase):
     def test_print(self):
         fs.perturbation.PerturbationFractal.print_FP(
             self.FP_params, self.ref_path
-        )    
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        fs.settings.no_newton = False
 
 
 class Test_newton(unittest.TestCase):
