@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import numpy as np
+import numba
 from numpy.lib.format import open_memmap
 
 import fractalshades as fs
@@ -30,8 +31,11 @@ class Postproc_batch:
         self.calc_name = calc_name
         self.posts = dict()
         self.postnames_2d = []
-        # Temporary data used when iterating
-        self.clear_chunk_data()
+
+        # Temporary data used when iterating chunk_slices
+        self.raw_data = dict()
+        self.context = dict()
+        # self.clear_chunk_data()
 
     @property
     def postnames(self):
@@ -82,23 +86,25 @@ class Postproc_batch:
 
     def set_chunk_data(self, chunk_slice, chunk_mask, Z, U, stop_reason,
             stop_iter, complex_dic, int_dic, termination_dic):
-        self.chunk_slice = chunk_slice
-        self.raw_data = (chunk_mask, Z, U, stop_reason, stop_iter,
+        # self.chunk_slice = chunk_slice
+        self.raw_data[chunk_slice] = (chunk_mask, Z, U, stop_reason, stop_iter,
             complex_dic, int_dic, termination_dic)
-        self.context = dict()
+        self.context[chunk_slice] = dict()
 
     def update_context(self, chunk_slice, context_update):
-        if chunk_slice != self.chunk_slice:
-            raise RuntimeError("Attempt to update context"
-                               " from a different chunk")
-        self.context.update(context_update)
+#        if chunk_slice != self.chunk_slice:
+#            raise RuntimeError("Attempt to update context"
+#                               " from a different chunk")
+        self.context[chunk_slice].update(context_update)
 
-    def clear_chunk_data(self):
+    def clear_chunk_data(self, chunk_slice):
         """ Temporary data shared by postproc items when iterating a given
         chunk """
-        self.chunk_slice = None
-        self.raw_data = None
-        self.context = None
+        #self.chunk_slice = None
+        # self.raw_data = None
+        del self.raw_data[chunk_slice]
+        # self.context = None
+        del self.context[chunk_slice]
 
 
 class Postproc:
@@ -147,14 +153,14 @@ class Postproc:
             self._holomorphic = select[np.dtype(complex_type)]
         return self._holomorphic
 
-    def ensure_context(self, key):
+    def ensure_context(self, chunk_slice, key):
         """
         Check that the provided context contains the expected data
 
         :meta private:
         """
         try:
-            return self.context[key]
+            return self.context[chunk_slice][key]
         except KeyError:
             msg = ("{} should be computed before {}. "
                    "Please add the relevant item to this post-processing "
@@ -213,7 +219,7 @@ class Raw_pp(Postproc):
         key = self.key
         (params, codes) = fractal.reload_params(calc_name)
         (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-         termination_dic) = self.raw_data# [chunk_slice]
+         termination_dic) = self.raw_data[chunk_slice]
         
         kind = fractal.kind_from_code(self.key, codes)
         if kind == "complex":
@@ -317,7 +323,7 @@ class Continuous_iter_pp(Postproc):
         """  Returns the real Iteration number
         """
         (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-         termination_dic) = self.raw_data# [chunk_slice]
+         termination_dic) = self.raw_data[chunk_slice]
 
 
         n = stop_iter[0, :]
@@ -328,24 +334,29 @@ class Continuous_iter_pp(Postproc):
             d = potential_dic["d"]
             a_d = potential_dic["a_d"]
             M = potential_dic["M"]
-            k = np.abs(a_d) ** (1. / (d - 1.))
-            # k normaliszation corefficient, because the formula given
-            # in https://en.wikipedia.org/wiki/Julia_set                    
-            # suppose the highest order monome is normalized
-            nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(M * k))
-                        / np.log(d))
-
+            nu_frac = Continuous_iter_pp_infinity(zn, d, a_d, M)
+#            k = np.abs(a_d) ** (1. / (d - 1.))
+#            # k normaliszation corefficient, because the formula given
+#            # in https://en.wikipedia.org/wiki/Julia_set                    
+#            # suppose the highest order monome is normalized
+#            nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(M * k))
+#                        / np.log(d))
+#
         elif potential_dic["kind"] == "convergent":
             eps = potential_dic["epsilon_cv"]
-            alpha = 1. / Z[complex_dic["attractivity"]]
+            attractivity = Z[complex_dic["attractivity"]]
             z_star = Z[complex_dic["zr"]]
-            nu_frac = + np.log(eps / np.abs(zn - z_star)  # nu frac > 0
-                               ) / np.log(np.abs(alpha))
-
-        elif potential_dic["kind"] == "transcendent":
-            # Not possible to define a proper potential for a 
-            # transcendental fonction
-            nu_frac = 0.
+            nu_frac = Continuous_iter_pp_convergent(
+                zn, eps, attractivity, z_star
+            )
+            
+#            nu_frac = + np.log(eps / np.abs(zn - z_star)  # nu frac > 0
+#                               ) / np.log(np.abs(alpha))
+#
+#        elif potential_dic["kind"] == "transcendent":
+#            # Not possible to define a proper potential for a 
+#            # transcendental fonction
+#            nu_frac = 0.
 
         else:
             raise NotImplementedError("Potential 'kind' unsupported")
@@ -411,13 +422,13 @@ class Fieldlines_pp(Postproc):
     def __getitem__(self, chunk_slice):
         """  Returns 
         """
-        nu_frac = self.ensure_context("nu_frac")
-        potential_dic = self.ensure_context("potential_dic")
+        nu_frac = self.ensure_context(chunk_slice, "nu_frac")
+        potential_dic = self.ensure_context(chunk_slice, "potential_dic")
         d = potential_dic["d"]
         a_d = potential_dic["a_d"]
 
         (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-            termination_dic) = self.raw_data
+            termination_dic) = self.raw_data[chunk_slice]
         zn = Z[complex_dic["zn"], :]
 
         if potential_dic["kind"] == "infinity":
@@ -506,7 +517,7 @@ class DEM_normal_pp(Postproc):
         Parameters
         ==========
         `kind`:  str "potential" | "Milnor" | "convergent"
-            if "potential" (default) DEM is base on the potential.
+            if "potential" (default) chunk_sliceDEM is base on the potential.
             For Mandelbrot power 2, "Milnor" option is also available which 
             gives similar but esthetically slightly different results.
             (Use "convergent" for convergent fractals.)
@@ -543,9 +554,9 @@ class DEM_normal_pp(Postproc):
     def __getitem__(self, chunk_slice):
         """  Returns the normal as a complex (x, y, 1) is the normal vec
         """
-        potential_dic = self.ensure_context("potential_dic")
+        potential_dic = self.ensure_context(chunk_slice, "potential_dic")
         (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-            termination_dic) = self.raw_data # (chunk_slice)
+            termination_dic) = self.raw_data[chunk_slice] # (chunk_slice)
         zn = self.get_zn(Z, complex_dic) #["zn"], :]
         
         if self.kind == "Milnor":   # use only for z -> z**2 + c
@@ -614,9 +625,9 @@ class XYCoord_wrapper_pp(Postproc):
             return normal.real, context_update
         elif self.coord == "y":
             # Retrieve imaginary part from context, 
-            val = self.context[self.context_getitem_key]
+            val = self.context[chunk_slice][self.context_getitem_key]
             # Then delete it
-            del self.context[self.context_getitem_key]
+            del self.context[chunk_slice][self.context_getitem_key]
             return val, {}
         else:
             raise ValueError(self.coord)
@@ -651,9 +662,9 @@ class DEM_pp(Postproc):
 
     def __getitem__(self, chunk_slice):
         """  Returns the DEM - """
-        potential_dic = self.ensure_context("potential_dic")
+        potential_dic = self.ensure_context(chunk_slice,"potential_dic")
         (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-            termination_dic) = self.raw_data
+            termination_dic) = self.raw_data[chunk_slice]
 
         zn = self.get_zn(Z, complex_dic) #Z[complex_dic["zn"], :]
 
@@ -729,7 +740,7 @@ class Attr_normal_pp(Postproc):
         """  Returns the normal as a complex (x, y, 1) is the normal vec
         """
         (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-            termination_dic) = self.raw_data
+            termination_dic) = self.raw_data[chunk_slice]
         attr = np.copy(Z[complex_dic["attractivity"], :])
         dattrdc = np.copy(Z[complex_dic["dattrdc"], :])
 
@@ -775,7 +786,7 @@ class Attr_pp(Postproc):
         """  Returns the normal as a complex (x, y, 1) is the normal vec
         """
         (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-            termination_dic) = self.raw_data
+            termination_dic) = self.raw_data[chunk_slice]
         # Plotting the 'domed' height map for the cycle attractivity
         attr = Z[complex_dic["attractivity"], :]
         abs2_attr = np.real(attr)**2 + np.imag(attr)**2
@@ -878,3 +889,28 @@ class Fractal_array:
         ret = Fractal_array(self.fractal, self.calc_name, self.key, self.func)
         ret.inv = True
         return ret
+
+#==============================================================================
+# Numba Nogil implementations
+        
+@numba.njit(nogil=True, fastmath=True)
+def Continuous_iter_pp_infinity(zn, d, a_d, M):
+    k = np.abs(a_d) ** (1. / (d - 1.))
+    # k normaliszation corefficient, because the formula given
+    # in https://en.wikipedia.org/wiki/Julia_set                    
+    # suppose the highest order monome is normalized
+    nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(M * k))
+                / np.log(d))
+    return nu_frac
+
+@numba.njit(nogil=True, fastmath=True)
+def Continuous_iter_pp_convergent(zn, eps, attractivity, z_star):
+    alpha = 1. / attractivity
+    nu_frac = + np.log(eps / np.abs(zn - z_star)  # nu frac > 0
+                               ) / np.log(np.abs(alpha))
+    return nu_frac
+
+#        elif potential_dic["kind"] == "transcendent":
+#            # Not possible to define a proper potential for a 
+#            # transcendental fonction
+#            nu_frac = 0.

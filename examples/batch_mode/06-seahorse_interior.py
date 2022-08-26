@@ -51,6 +51,7 @@ def plot(plot_dir=None):
     y = -0.0959468433527
     dx = 0.00745
     nx = 2400
+    fs.settings.optimize_RAM = True
 
     calc_name="escaping"
     colormap = fscolors.cmap_register["legacy"]

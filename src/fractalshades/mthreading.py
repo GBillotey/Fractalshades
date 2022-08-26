@@ -39,7 +39,6 @@ def method(self, *args, iter_kwarg=None, **otherkwargs):
             parallel = (
                 fs.settings.enable_multithreading and not self.veto_parallel
             )
-            print("in wrapper, parallel:", parallel)
             if parallel:
                 self.call_multi_thread(instance, method, *args, **kwargs)
             else:
@@ -60,7 +59,8 @@ def method(self, *args, iter_kwarg=None, **otherkwargs):
                 threadpool.submit(
                     method,
                     *full_args,
-                    **get_kwargs(key))
+                    **get_kwargs(key)
+                )
                 for key in getattr(instance, self.iterable_attr)()
             )
             for fut in concurrent.futures.as_completed(futures):

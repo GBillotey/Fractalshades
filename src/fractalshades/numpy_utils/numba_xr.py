@@ -39,7 +39,7 @@ import fractalshades.numpy_utils.xrange as fsx
 import operator
 
 """
-Its purpose is to allow the use of Xrange_arrays, polynomials and SA objects
+This modules allows the use of Xrange_arrays, polynomials and SA objects
 inside jitted functions by defining mirrored low-level implementations.
 
 By default, Numba will treat all numpy.ndarray subtypes as if they were of the
@@ -50,13 +50,13 @@ release of Numba, see https://github.com/numba/numba/pull/6148)
 
 The workaround followed here is to provide ad-hoc implementation at datatype
 level (in numba langage, for our specific numba.types.Record types). User code
-in jitted function should fully expand the loops to work on individual array
-elements - indeed numba is made for this.
+in jitted function shall fully expand the loops to work on individual array
+elements - not on whole arrays !
 
 As the extra complexity is not worth it, we drop support for float32, complex64
 in numba: only float64, complex128 mantissa are currently supported.
 
-NOte:
+Note:
     https://numba.pydata.org/numba-doc/latest/proposals/extension-points.html
 
 /!\ This submodule has side effects at import time (due to its use of

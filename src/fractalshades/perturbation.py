@@ -2,6 +2,8 @@
 import os
 import pickle
 import warnings
+import logging
+import textwrap
 
 import mpmath
 import numpy as np
@@ -13,6 +15,8 @@ import fractalshades.numpy_utils.numba_xr as fsxn
 from fractalshades.mthreading import Multithreading_iterator
 
 
+logger = logging.getLogger(__name__)
+
 class PerturbationFractal(fs.Fractal):
 
     def __init__(self, directory):
@@ -20,17 +24,16 @@ class PerturbationFractal(fs.Fractal):
 Base class for escape-time fractals calculations implementing the 
 perturbation technique, with an iteration matching:
 
-z_(n+1) = f(z_n) + c, critial point at 0
+z_(n+1) = f(z_n) + c, critical point at 0
 
 Derived classes should implement the actual function f
 
 Parameters
 ----------
 directory : str
-    Path for the working base directory
-        """
+    Path for the working base directory"""
         super().__init__(directory)
-        self.iref = 0 # Only one reference point
+        # self.iref = 0 # Only one reference point
 
 
     @fs.utils.zoom_options
@@ -155,28 +158,28 @@ directory : str
             ref_point = self.FP_params["ref_point"]
             max_iter_ref = self.FP_params["max_iter"]
         except FileNotFoundError:
-            print("no ref pt file found FP_params")
+            logger.debug("No data file found for ref point")
             return False
 
         # Parameters 'max_iter' borrowed from last "@fsutils.calc_options" call
         calc_options = self.calc_options
         max_iter = calc_options["max_iter"]
-        
-        print("## in ref_point_matching", ref_point, type(ref_point))
 
         drift_xr = fsx.mpc_to_Xrange((self.x + 1j * self.y) - ref_point)
         dx_xr = fsx.mpf_to_Xrange(self.dx)
 
-        matching = (
-            (mpmath.mp.dps <= self.FP_params["dps"] + 3)
-            and ((drift_xr / dx_xr).abs2() < 1.e6)
-            and (max_iter_ref >= max_iter)
-        )
-        print("ref point matching", matching)
-        print("dps -->", (mpmath.mp.dps <= self.FP_params["dps"] + 3))
-        print("position -->", ((drift_xr / dx_xr).abs2() < 1.e6))
-        print("max_iter -->", (max_iter_ref >= max_iter), max_iter_ref, max_iter)
-        return matching
+        
+        dic_match = {
+           "dps": mpmath.mp.dps <= self.FP_params["dps"] + 3,
+           "location": (drift_xr / dx_xr).abs2() < 1.e6,
+           "max_iter": max_iter_ref >= max_iter,
+        }
+        for item, match in dic_match.items():
+            if not match:
+                logger.info(f"Updating ref point: {item} not matching")
+                break
+
+        return all(match for match in dic_match.values())
 
 
     def save_ref_point(self, FP_params, Zn_path):
@@ -186,13 +189,17 @@ directory : str
            - codes = complex_codes, int_codes, termination_codes
            - arrays : [Z, U, stop_reason, stop_iter]
         """
-        print("saved ref point")
         self._FP_params = FP_params
         self._Zn_path = Zn_path
         save_path = self.ref_point_file()
         fs.utils.mkdir_p(os.path.dirname(save_path))
         with open(save_path, 'wb+') as tmpfile:
-            print("Path computed, saving", save_path)
+            # print("Path computed, saving", save_path)
+            logger.info(textwrap.dedent(f"""\
+                    Full precision path computed, saving to:
+                      {save_path}"""
+            ))
+
             pickle.dump(FP_params, tmpfile, pickle.HIGHEST_PROTOCOL)
             pickle.dump(Zn_path, tmpfile, pickle.HIGHEST_PROTOCOL)
 
@@ -218,7 +225,7 @@ directory : str
         Return the FP_params attribute, if not available try to reload it
         from file
         """
-        print("in FP_params", hasattr(self, "_FP_params"))
+        # print("in FP_params", hasattr(self, "_FP_params"))
         if hasattr(self, "_FP_params"):
             return self._FP_params
         FP_params = self.reload_ref_point(scan_only=True)
@@ -231,7 +238,7 @@ directory : str
         Return the Zn_path attribute, if not available try to reload it
         from file
         """
-        print("in Zn_path", hasattr(self, "_Zn_path"))
+        # print("in Zn_path", hasattr(self, "_Zn_path"))
         if hasattr(self, "_Zn_path"):
             return self._Zn_path
         FP_params, Zn_path = self.reload_ref_point()
@@ -287,7 +294,7 @@ directory : str
             # /!\ ref_xr at least len 1 to ensure typing as complex
             refx_xr = fsx.Xrange_array([0.] * max(len(ref_xr_python), 1))
             refy_xr = fsx.Xrange_array([0.] * max(len(ref_xr_python), 1))
-            print("init refx_xr", refx_xr.shape, refx_xr.dtype)
+            # print("init refx_xr", refx_xr.shape, refx_xr.dtype)
             for i, xr_index in enumerate(ref_xr_python.keys()):
                 ref_index_xr[i] = xr_index
                 tmpx, tmpy = ref_xr_python[xr_index]
@@ -319,7 +326,7 @@ directory : str
         fs.utils.mkdir_p(os.path.dirname(save_path))
 
         with open(save_path, 'wb+') as tmpfile:
-            print("SA computed, saving", save_path)
+            logger.debug("SA computed, saving", save_path)
             for item in (FP_params, SA_params, SA_kc, P, n_iter, P_err):
                 pickle.dump(item, tmpfile, pickle.HIGHEST_PROTOCOL)
 
@@ -367,7 +374,9 @@ directory : str
         valid_FP_params = (stored_FP_params == self.FP_params)
         valid_SA_params = (stored_SA_params == self.SA_params)
         valid_kc = (stored_kc == self.kc)
-        print("validate stored SA", valid_FP_params, valid_SA_params, valid_kc)
+        logger.debug("validate stored SA",
+                     valid_FP_params, valid_SA_params, valid_kc
+        )
 
         return (valid_FP_params and valid_SA_params and valid_kc)
 
@@ -376,19 +385,27 @@ directory : str
     @staticmethod
     def print_FP(FP_params, Zn_path):
         """
-        Just a pretty-print of the reference path
+        Just a pretty-print of the reference path, for debugging purposes
         """
-        print("--------------------------------------------------------------")
-        print("Full precision orbit loaded, FP_params:")
+        
+        pp = "-------------------------------------------------------------"
+ 
+        pp += "  Full precision orbit loaded, FP_params:"
         for k, v in FP_params.items():
             try:
                 for kv, vv in v.items():
-                    print(k, f"({kv}) --> ", str(vv))
+                    pp +=  f"  {k}, ({kv}) --> {vv}"
+                    # print(k, f"({kv}) --> ", str(vv))
             except AttributeError:
-                print(k, " --> ", v)
-        print("ref_path, shape: ", Zn_path.shape, Zn_path.dtype) 
-        print(Zn_path)
-        print("--------------------------------------------------------------")
+                pp +=  f"  {k} --> {v}"
+                # print(k, " --> ", v)
+        pp += f"ref_path, shape: {Zn_path.shape}, {Zn_path.dtype}"
+        pp += str(Zn_path)
+        # print("ref_path, shape: ", Zn_path.shape, Zn_path.dtype) 
+        # print(Zn_path)
+        pp += "  -------------------------------------------------------------"
+        logger.info(pp)
+
 
     @staticmethod
     def write_FP(path, out_file):
@@ -415,24 +432,11 @@ directory : str
         done for each tile and each glitch correction iteration, so i enables
         calculation to restart from an unfinished status.
         """
-        has_status_bar = hasattr(self, "_status_wget")
-
-        if not(self.res_available()):
-            # We write the param file and initialize the
-            # memmaps for progress reports and calc arrays
-            # /!\ It is not thread safe, do it before multithreading
-            # loop
-            fs.utils.mkdir_p(os.path.join(self.directory, "data"))
-            self.open_report_mmap()
-            self.open_data_mmaps()
-            self.save_params()
-
-        # Lazzy compilation of subset boolean array chunk-span
-        self._mask_beg_end = None
+        self.initialize_cycles()
 
         # Initialise the reference path
-        if has_status_bar:
-            self.set_status("Reference", "running")
+        # if has_status_bar:
+        self.set_status("Reference", "running")
         self.get_FP_orbit()
         ref_xr = None
         drift_xr = None
@@ -448,8 +452,8 @@ directory : str
              ref_div_iter, ref_order, driftx_xr, drifty_xr,
              dx_xr) = self.get_path_data()
 
-        if has_status_bar:
-            self.set_status("Reference", "completed")
+        # if has_status_bar:
+        self.set_status("Reference", "completed")
             
         # Initialize the derived ref path - with a scale coefficient self.dx
         # Note: only useful if the analytical derivatives are computed
@@ -500,7 +504,7 @@ directory : str
         # Compute also dzndz
         dZndz_path = None
         if hasattr(self, "calc_dZndz") and self.calc_dZndz:
-            print("new: interior detection at deep zoom")
+            # print("new: interior detection at deep zoom")
             dx_xr = fsx.mpf_to_Xrange(self.dx, dtype=self.float_type).ravel()
             casted_ref_order = ref_order # 
             if ref_order is None:
@@ -554,15 +558,15 @@ directory : str
             bla_len = None
             stages_bla = None
         else:
-            print("Initialise BLA interpolation")
-            if has_status_bar:
-                self.set_status("Bilin. approx", "running")
+            # print("Initialise BLA interpolation")
+            # if has_status_bar:
+            self.set_status("Bilin. approx", "running")
             eps = self.BLA_params["eps"]
-            print("** eps", eps)
+            # print("** eps", eps)
             M_bla, r_bla, bla_len, stages_bla = self.get_BLA_tree(
                     Zn_path, eps)
-            if has_status_bar:
-                self.set_status("Bilin. approx", "completed")
+            # if has_status_bar:
+            self.set_status("Bilin. approx", "completed")
 
 
         # Jitted function used in numba inner-loop
@@ -579,12 +583,8 @@ directory : str
             P, kc, n_iter, M_bla, r_bla, bla_len, stages_bla,
             chunk_slice=None
         )
-        if has_status_bar:
-            self.set_status("Tiles", "completed")
+        self.finalize_cycles()
 
-        # Export to human-readable format
-        if fs.settings.inspect_calc:
-            self.inspect_calc()
 
     @Multithreading_iterator(
         iterable_attr="chunk_slices", iter_kwargs="chunk_slice")
@@ -641,11 +641,9 @@ directory : str
         """
 
         if self.is_interrupted():
-            print("interrupted", chunk_slice)
             return
 
         if self.res_available(chunk_slice):
-            print("res available: ", chunk_slice)
             if hasattr(self, "_status_wget"):
                 self.incr_tiles_status()
             return
@@ -680,7 +678,7 @@ directory : str
                 self._interrupted
             )
         if ret_code == self.USER_INTERRUPTED:
-            print("Interruption signal received")
+            logger.error("Interruption signal received")
             return
 
         if hasattr(self, "_status_wget"):
@@ -710,29 +708,30 @@ directory : str
             elif (key in SPECIAL_CASE):
                 if key == "prec":
                     if dparams[key] < val:
-                        print("KO, higher precision requested",
-                              dparams[key], "-->",  val)
+                        logger.debug(textwrap.dedent(f"""\
+                        Higher precision needed ; will trigger a recalculation
+                          {key}, {val} --> {dparams[key]}"""
+                    ))
                         return False
-                    else:
-                        pass
-#                        print("ok", key, val, dparams[key])
+
             else:
                 if dparams[key] != val:
-                    print("KO,", key, dparams[key], "-->", val)
+                    logger.debug(textwrap.dedent(f"""\
+                        Parameter mismatch ; will trigger a recalculation
+                          {key}, {val} --> {dparams[key]}"""
+                    ))
                     return False
-#                print("ok", key, val, dparams[key])
-#        print("** TOTAL: param_matching")
         return True
 
 
     def get_SA(self, Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter,
                ref_order):
         """
-        Check if we have a suitable SA approximation stored for iref, 
+        Check if we have a suitable SA approximation stored, 
           - otherwise computes and stores it in a file
         """
         if self.SA_matching():
-            print("SA already stored")
+            logger.debug("SA already stored")
             return
 
         else:            
@@ -763,7 +762,6 @@ directory : str
         M_bla, r_bla, stages_bla
         """
         kc = self.kc
-        print("mabe BLA tree")
 
         if self.holomorphic:
             dfdz = self.dfdz
@@ -780,7 +778,7 @@ directory : str
     def get_FP_orbit(self, c0=None, newton="cv", order=None,
                      max_newton=None):
         """
-        # Check if we have a reference point stored for iref, 
+        # Check if we have a reference point stored, 
           - otherwise computes and stores it in a file
 
         newton: ["cv", "step", None]
@@ -791,7 +789,7 @@ directory : str
 
         # Early escape if file exists
         if self.ref_point_matching():
-            print("Ref point already stored")
+            logger.info("Reference point already stored, skipping calc")
             return
 
         # no newton if zoom level is low. TODO: early escape possible
@@ -805,55 +803,58 @@ directory : str
 
         # skip Newton if settings impose it
         if fs.settings.no_newton or (newton is None) or (newton == "None"):
-            print("Skipping all Newton calculation according to calc options")
-            print("fs.settings.no_newton:", fs.settings.no_newton)
-            print("newton arg:", newton)
+            logger.info(textwrap.dedent(f"""\
+                Skipping all Newton calculation according to calc options
+                    fs.settings.no_newton: {fs.settings.no_newton}
+                    newton arg: {newton}"""
+            ))
             self.compute_FP_orbit(c0, None)
             return
         
-        # Here we will compute a Newton iteration. First, guess a cycle order
-        print("Launching Newton iteration process with ref point:\n", c0)
-
-        # Try Ball method to find the order, then Newton
+        # Here we will compute a Newton iteration.
+        # First, try Ball method to guess the order
         if order is None:
             k_ball = 1.0
             order = self.ball_method(c0, self.dx * k_ball)
-            if order is None: 
-                print("##### Ball method failed #####")
-                print("##### Default to image center or c0 #####")
+            if order is None:
+                logger.warning(
+                    "Ball method failed - Default to image center"
+                )
                 self.compute_FP_orbit(c0, None)
                 return
 
         if order is None:
-            raise ValueError("Order must be specified for Newton"
-                             "iteration")
+            raise ValueError("Order must be specified for Newton iteration")
 
-        print("Launch Newton", newton, " with order: ", order)
-        print("max newton iter ", max_newton)
+        # Now launch Newton descent
+        max_attempt = 2
+        logger.info(textwrap.dedent(f"""\
+            "Launch Newton descent with parameters:
+                order: {order}, max newton attempts: {max_attempt + 1}"""
+        ))
+
         eps_pixel = self.dx * (1. / self.nx)
         try:
             newton_cv, nucleus = self.find_nucleus(
                 c0, order, eps_pixel, max_newton=max_newton
             )
         except NotImplementedError:
-            print("*** Default to find any")
             newton_cv, nucleus = self.find_any_nucleus(
                 c0, order, eps_pixel, max_newton=max_newton
             )
-            
-        print("first", newton_cv, nucleus)
 
         # If Newton did not CV, we try to boost the dps / precision
+        attempt = 1
         if not(newton_cv):
-            max_attempt = 2
-            attempt = 0
             old_dps = mpmath.mp.dps
 
-            while not(newton_cv) and attempt < max_attempt:
+            while not(newton_cv) and attempt <= max_attempt:
                 attempt += 1
                 mpmath.mp.dps = int(1.25 * mpmath.mp.dps)
-                
-                print(f"Newton failed, dps incr. {old_dps} -> {mpmath.mp.dps}")
+                logger.info(textwrap.dedent(f"""\
+                    Newton attempt {attempt} failed
+                      Increasing dps for next : {old_dps} -> {mpmath.mp.dps}"""
+                ))
                 eps_pixel = self.dx * (1. / self.nx)
 
                 try:
@@ -863,13 +864,9 @@ directory : str
                     )
                 except NotImplementedError:
                     no_div = False
-                    print("*** Default to find any")
                     newton_cv, nucleus = self.find_any_nucleus(
                         c0, order, eps_pixel, max_newton=max_newton
                     )
-                     
-                    
-                print("incr", newton_cv, nucleus)
 
                 if no_div and not(newton_cv) and (attempt == max_attempt):
                     # Last try, we just release constraint on the cycle order
@@ -877,27 +874,32 @@ directory : str
                     newton_cv, nucleus = self.find_any_nucleus(
                         c0, order, eps_pixel, max_newton=max_newton
                     )
-                    print("any", newton_cv, nucleus)
+
 
         # Still not CV ? we default to the center of the image
-        if not(newton_cv):
+        if newton_cv:
+            logger.info(f"Newton descent converged at attempt {attempt}.")
+        else:
             order = None # We cannot wrap the ref point here...
             nucleus = c0
+            logger.warning("Newton descent failed - Default to image center")
+
 
         shift = nucleus - (self.x + self.y * 1j)
         shift_x = shift.real / self.dx
         shift_y = shift.imag / self.dx
-        print("Reference nucleus found at shift (expressed in dx units):\n", 
-              f"({shift_x}, {shift_y})",
-              f"with order {order}"
-        )
+        logger.info(textwrap.dedent(f"""\
+            Reference nucleus found at shift from center:
+              ({shift_x}, {shift_y}) in dx units
+              with order {order}"""
+            ))
         self.compute_FP_orbit(nucleus, order)
 
     def compute_critical_orbit(self, crit):
         """
         Basically nothing to 'compute' here, just short-cutting
         """
-        print("Short cutting ref pt orbit calc for low res")
+        logger.debug("Skipping ref pt orbit calc for low res")
         FP_code = self.FP_code
         # Parameters 'max_iter' borrowed from last "@fsutils.calc_options" call
         # max_iter = self.max_iter
@@ -935,10 +937,10 @@ directory : str
             partials : dictionary iteration -> partial value
             xr : dictionary iteration -> xr_value
         """
+        # Parameter 'max_iter' from last "@fsutils.calc_options" call
+        max_iter = self.max_iter
+        logger.info(f"Computing full precision path with max_iter {max_iter}")
         FP_code = self.FP_code
-        # Parameters 'max_iter' borrowed from last "@fsutils.calc_options" call
-        max_iter = self.max_iter 
-
         FP_params = {
              "ref_point": ref_point,
              "dps": mpmath.mp.dps,
@@ -954,15 +956,13 @@ directory : str
         FP_params["ref_orbit_len"] = ref_orbit_len
         Zn_path = np.empty([ref_orbit_len], dtype=np.complex128)
 
-        print("Computing full precision path with max_iter", max_iter)
         if order is not None:
-            print("order known, wraping at", ref_orbit_len)
+            logger.info(f"Order is known, wraping at {ref_orbit_len}")
 
         i, partial_dict, xr_dict = self.FP_loop(Zn_path, ref_point)
         FP_params["partials"] = partial_dict
         FP_params["xr"] = xr_dict
         FP_params["div_iter"] = i
-        print()
 
         self.save_ref_point(FP_params, Zn_path)
 
@@ -973,7 +973,6 @@ directory : str
         maxiter) of nucleus
         """
         max_iter = self.max_iter
-        print("ball method", c, type(c), px, type(px))
 
         if kind == 1:
             return self._ball_method(c, px, max_iter, M_divergence)
@@ -1489,7 +1488,6 @@ def numba_iterate(
         # End of iterations for this point
         U[0] = w_iter
 
-        
         if xr_detect_activated:
             Z[zn] = fsxn.to_standard(Z_xr[zn]) + Zn_path[w_iter]
             Z[dzndc] = fsxn.to_standard(Z_xr[dzndc] + dZndc_path[w_iter])
@@ -1497,8 +1495,6 @@ def numba_iterate(
             Z[zn] += Zn_path[w_iter]
             Z[dzndc] += dZndc_path[w_iter]
 
-#        print(n_iter, w_iter, "--> exit with zn dzndc", Z[zn], Z[dzndc])
-#        print("exit ZAZA")
         return n_iter
 
     return numba_impl
@@ -1885,7 +1881,7 @@ def numba_SA_run(
     """
     # Note : SA 23064 23063 for order 23063
     # ref_path[ref_order-1] ** 2 == -c OK
-    print("SA", ref_div_iter, ref_order)#, ref_path[ref_order-1])
+    # print("SA", ref_div_iter, ref_order)#, ref_path[ref_order-1])
     if SA_stop == -1:
         SA_stop = ref_div_iter
     else:
@@ -1977,7 +1973,7 @@ def numba_make_BLA(Zn_path, dfdz, kc, eps):
     # number of needed "stages" is (ref_orbit_len).bit_length()
     kc_std = fsxn.to_standard(kc[0])
     ref_orbit_len = Zn_path.shape[0]
-    print("ref_orbit_len", ref_orbit_len)
+    # ("ref_orbit_len", ref_orbit_len)
     bla_dim = 2
     M_bla = np.zeros((2 * ref_orbit_len, bla_dim), dtype=numba.complex128)
     r_bla = np.zeros((2 * ref_orbit_len,), dtype=numba.float64)
@@ -1998,7 +1994,7 @@ def numba_make_BLA_BS(Zn_path, dfxdx, dfxdy, dfydx, dfydy, kc, eps):
     # number of needed "stages" is (ref_orbit_len).bit_length()
     kc_std = fsxn.to_standard(kc[0])
     ref_orbit_len = Zn_path.shape[0]
-    print("ref_orbit_len in BLA", ref_orbit_len)
+    # print("ref_orbit_len in BLA", ref_orbit_len)
     bla_dim = 8
     M_bla = np.zeros((2 * ref_orbit_len, bla_dim), dtype=numba.float64)
     r_bla = np.zeros((2 * ref_orbit_len,), dtype=numba.float64)
@@ -2014,7 +2010,7 @@ def init_BLA(M_bla, r_bla, Zn_path, dfdz, kc_std, eps):
     Initialize BLA tree at stg 0
     """
     ref_orbit_len = Zn_path.shape[0]  # at order + 1, we wrap
-    print("in init_BLA", Zn_path)
+    # print("in init_BLA", Zn_path)
 
     for i in range(ref_orbit_len):
         i_0 = 2 * i # BLA index for (i, 0)
@@ -2058,12 +2054,12 @@ def init_BLA(M_bla, r_bla, Zn_path, dfdz, kc_std, eps):
                 # ((0.5 * mZZ) - kc_std) / (1. + mA)
             )
         )
-    print("orbit loop done")
+    # print("orbit loop done")
 
     # Now the combine step
     # number of needed "stages" (ref_orbit_len).bit_length()
     stages = _stages_bla(ref_orbit_len)
-    print("in combine BLA")
+    # print("in combine BLA")
     for stg in range(1, stages):
         combine_BLA(M_bla, r_bla, kc_std, stg, ref_orbit_len, eps)
     M_bla_new, r_bla_new, bla_len = compress_BLA(M_bla, r_bla, stages)
@@ -2280,7 +2276,7 @@ def compress_BLA(M_bla, r_bla, stages):
                 M_bla_new[new_index + d * new_len] = M_bla[index, d]
 
             r_bla_new[new_index] = r_bla[index]
-    print("BLA tree compressed with coeff:", k_comp)
+    # print("BLA tree compressed with coeff:", k_comp)
     return M_bla_new, r_bla_new, new_len
 
 @numba.njit

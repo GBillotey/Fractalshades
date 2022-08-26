@@ -210,7 +210,7 @@ class Color_tools():
                 raise ValueError("expectd rgb array")
             rgb = np.copy(rgb.reshape(imx * imy, 3))
             shade = np.copy(shade.reshape(imx * imy, 1))
-        
+
         XYZ = Color_tools.rgb_to_XYZ(rgb[:, 0:3])
 
         XYZ_overlay = np.zeros([imx * imy, 3])
@@ -618,7 +618,7 @@ def im_interpolate(channel, x, y, wrap, screen_coord, out):
     y: The 1d y-axis pts for interpolation
     wrap: if True, wraps, otherwise, clip
     out: the res array
-    
+
     # note :  channel.shape: height x width (column-major)
     """
     (ny, nx) =  channel.shape

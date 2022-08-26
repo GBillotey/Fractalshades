@@ -25,7 +25,7 @@ import fractalshades.gui as fsgui
 
 from fractalshades.postproc import (
     Postproc_batch,
-    Raw_pp,
+    Raw_pp,  
     DEM_pp,
     DEM_normal_pp,
     Continuous_iter_pp

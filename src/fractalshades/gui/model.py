@@ -198,9 +198,9 @@ class Func_submodel(Submodel):
         self.model_notification.connect(self._model.model_notified_slot)
         # Bindings for dps
         if dps_var is not None:
-            print("dps_var", dps_var)
+            # print("dps_var", dps_var)
             self.connect_dps(dps_var)
-    
+
     def connect_dps(self, dps_var):
         """
         Register this var as the dps event listener at model level
@@ -367,7 +367,7 @@ class Func_submodel(Submodel):
         - main Fractal object
         - gui-separators
         """
-        print("*** saving kwargs")
+        # print("*** saving kwargs")
         fd = self._dict.copy()
 
         unpickables = []
@@ -400,7 +400,7 @@ class Func_submodel(Submodel):
 
     def load_func_dict(self):
         """ Reload parameters stored from last call """
-        print("*** load kwargs")
+        # print("*** load kwargs")
         with open(self.save_func_path(), 'rb') as param_file:
             fd = pickle.load(param_file)
         
@@ -599,7 +599,7 @@ class Colormap_presenter(Presenter):
         else:
             raise ValueError(key)
         
-        print("############### REMOVE TEMPLATE TAG")
+        # print("############### REMOVE TEMPLATE TAG")
         cmap._template = None
 
         self.model_changerequest.emit(self._mapping["Colormap_presenter"],

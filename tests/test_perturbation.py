@@ -724,6 +724,7 @@ if __name__ == "__main__":
     else:
         suite = unittest.TestSuite()
         # suite.addTest(Test_Perturbation_mandelbrot("test_glitch_dyn"))
-        suite.addTest(Test_Perturbation_mandelbrot("test_ultradeep_interior_detect"))
+        # suite.addTest(Test_Perturbation_mandelbrot("test_ultradeep_interior_detect"))
+        suite.addTest(Test_Perturbation_mandelbrot("test_glitch_divref"))
         runner.run(suite)
 

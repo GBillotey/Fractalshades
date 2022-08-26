@@ -127,8 +127,6 @@ class Test_ref_path(unittest.TestCase):
                 interior_detect=False,
                 SA_params={"cutdeg": 2, "eps": 1.e-8},  # 7886 :  for 7884 partial
                 calc_dzndc=False)
-        print("f.iref", f.iref)
-        f.iref = 0
 
         print("################# before get_FP_orbit")
         f.get_FP_orbit()
@@ -390,7 +388,7 @@ class Test_BS(unittest.TestCase):
 #        assert order == 3
 
 if __name__ == "__main__":
-    full_test = False
+    full_test = True
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_ref_path,

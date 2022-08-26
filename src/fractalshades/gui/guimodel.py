@@ -80,8 +80,6 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem
 )
 
-#
-
 import fractalshades as fs
 from fractalshades.gui.model import (
     Model,
@@ -91,10 +89,24 @@ from fractalshades.gui.model import (
     type_name,
     separator
 )
-
 from fractalshades.gui.QCodeEditor import Fractal_code_editor
-
 import fractalshades.numpy_utils.expr_parser as fs_parser
+
+
+# Setting allocation limit for QImageReader - to allow displaying larger image
+# in the GUI 
+# setAllocationLimit() is  currently not wrapped in pyQt6 implementation
+# as of 2022.08.07 ; see: 
+# https://doc.qt.io/qt-6/qimagereader.html#setAllocationLimit
+# https://stackoverflow.com/questions/71458968/pyqt6-how-to-set-allocation-limit-in-qimagereader
+def QImageReader_setAllocationLimit(mblimit: int):
+    # Note: The memory requirements are calculated for a minimum of 32 bits per
+    # pixel, since Qt will typically convert an image to that depth when it is
+    # used in GUI. This means that the effective allocation limit is
+    # significantly smaller than mbLimit when reading 1 bpp and 8 bpp images.
+    os.environ['QT_IMAGEIO_MAXALLOC'] = str(mblimit)
+QImageReader_setAllocationLimit(fs.settings.GUI_image_Mblimit)
+
 
 # QMainWindow
 MAIN_WINDOW_CSS = """
@@ -323,7 +335,7 @@ class Calc_status_bar(QStatusBar):
         self.timer.timeout.connect(self.on_time_incr)
         self.reset_status()
         self.layout()
-        print("debug2 status", self._layout)
+        # print("debug2 status", self._layout)
 
     def reset_status(self):
         """ Reset the properties of the status according to the fractal
@@ -479,7 +491,7 @@ class Action_func_widget(QFrame):
 
     def load_calling_kwargs(self):
         """ Reload parameters stored from last call """
-        print("*** load kwargs")
+        # print("*** load kwargs")
         with open(self.kwargs_path(), 'rb') as param_file:
             return pickle.load(param_file)
 
@@ -555,7 +567,7 @@ class Action_func_widget(QFrame):
             + script_footer
             + "\n"
         )
-        print("debug, script:\n", script)
+        # print("debug, script:\n", script)
         ce = Fractal_code_editor()
         ce.set_text(script)
         ce.setWindowTitle("Script")
@@ -616,7 +628,7 @@ class Func_widget(QFrame):
         if fd[(i_param, "n_types")] == 0:
             if fd[(i_param, 0, "type")] is separator:
                 sep_name = fd[(i_param, 0, "val")]
-                print("adding separator", sep_name)
+                # print("adding separator", sep_name)
                 self._layout.addWidget(Func_widget_separator(sep_name),
                                        i_param, 0, 1, 4)
                 self._layout.setRowStretch(i_param, 0)
@@ -1960,7 +1972,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             has_skew = False
             skew_00 = skew_11 = 1.
             skew_01 = skew_10 = 0.
-        print("SKEW params", has_skew, skew_00, skew_01, skew_10, skew_11)
+        # print("SKEW params", has_skew, skew_00, skew_01, skew_10, skew_11)
         return has_skew, skew_00, skew_01, skew_10, skew_11
 
     @staticmethod
@@ -2044,7 +2056,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
          - from the saved pickled files
          - of, if not found, from the script parameters
         """
-        print("Resetting zoom init")
+        # print("Resetting zoom init")
         # parent is Fractal_MainWindow - func_wget is not initialized at this
         # point, so we use the model itself
         func_sm = self._parent.from_register(("func",))
@@ -2060,7 +2072,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         # Setting _fractal_zoom_init from script_params
         gui = self._parent._gui
         self._fractal_zoom_init = dict()
-        print("other_parameters", self.other_parameters)
+        # print("other_parameters", self.other_parameters)
         for key in (self.full_zoom_keys + self.other_parameters):
             # Mapping with func param as defined through `connect_mouse` method
             # of the gui object
@@ -2073,7 +2085,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             self._fractal_zoom_init["nx"] / self._fractal_zoom_init["xy_ratio"]
             + 0.5
         )
-        print("_fractal_zoom_init as reloaded", self._fractal_zoom_init)
+        # print("_fractal_zoom_init as reloaded", self._fractal_zoom_init)
 
 
     def set_im(self):
@@ -2114,8 +2126,13 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
                 self._group.removeFromGroup(item)
 
         if valid_image:
-            self._qim = QGraphicsPixmapItem(QtGui.QPixmap.fromImage(
-                    QtGui.QImage(image_file)))
+            self._qim = QGraphicsPixmapItem(
+                QtGui.QPixmap.fromImage(QtGui.QImage(image_file))
+            )
+            # Antialiasing activated
+            self._qim.setTransformationMode(
+                Qt.TransformationMode.SmoothTransformation
+            )
             self._qim.setAcceptHoverEvents(True)
             self._group.addToGroup(self._qim)
             self.fit_image()
@@ -2156,7 +2173,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             else:
                 casted = self.cast(value, expected)
                 if casted != expected:
-                    print("***unmatching", casted, expected)
+                    # print("***unmatching", casted, expected)
                     ret = 1
         return ret
 
@@ -2286,7 +2303,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         if self.has_dps:
             keys += ("dps",)
         for key in keys:
-            print("pushing to presenter", key, ref_zoom[key])
+            # print("pushing to presenter", key, ref_zoom[key])
             self._presenter[key] = ref_zoom[key]
             
 
@@ -2776,7 +2793,7 @@ class Fractal_MainWindow(QMainWindow):
             import __main__
             script_dir = os.path.abspath(os.path.dirname(__main__.__file__))
         except NameError:
-            print("Failed finding __main__.__file__")
+            # print("Failed finding __main__.__file__")
             script_dir = None
         file_path = QFileDialog.getOpenFileName(
                 self,
@@ -2822,7 +2839,7 @@ class Fractal_MainWindow(QMainWindow):
 
     def clear_cache(self):
         func_submodel = self.from_register(("func",))
-        print("func_submodel", func_submodel)
+        # print("func_submodel", func_submodel)
         fractal = next(iter(func_submodel.getkwargs().values()))
         fractal.clean_up()
         msg = Fractal_MessageBox()
@@ -2918,7 +2935,7 @@ class Fractal_MainWindow(QMainWindow):
     def on_error_in_thread(self, exc):
         """ A simple callback when error occured in computation computation
         """
-        print("ERROR detected in thread")
+        # print("ERROR detected in thread")
         raise exc
 
     def add_image_wget(self):

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import numpy as np
-from numpy.lib.format import open_memmap
+#from numpy.lib.format import open_memmap
 #import matplotlib.colors
 #from matplotlib.figure import Figure
 #from matplotlib.backends.backend_agg import FigureCanvasAgg
@@ -144,31 +144,51 @@ class Virtual_layer:
         
         Note: this is the raw, unscaled values
         """
-        (ix, ixx, iy, iyy) = chunk_slice
         plotter = self.plotter
-        if plotter.has_memmap:
-            mmap = open_memmap(filename=plotter.temporary_mmap_path(),
-                               mode='r')
-        else:
-            mmap = self.plotter._RAM_data
-        arr = np.empty((ixx - ix, iyy - iy), mmap.dtype)
+        dtype = plotter.post_dtype
+        (ix, ixx, iy, iyy) = chunk_slice
+        
+#        if plotter.has_memmap:
+#            mmap = open_memmap(
+#                filename=plotter.temporary_mmap_path(), mode='r'
+#            )
+#
+#        
+#        else:
+#            mmap = self.plotter._RAM_data
 
         postname = self.postname
+
         try:
-            rank = list(plotter.postnames).index(postname)
-            arr[:] = mmap[rank, ix:ixx, iy:iyy]
+            field_count = 1
+            post_index = list(plotter.postnames).index(postname)
+            # arr[:] = plotter.get_2d_arr(rank, chunk_slice)
+            # mmap[rank, ix:ixx, iy:iyy]
+
         except ValueError:
             # Could happen that we need 2 fields (e.g., normal map...)
             if postname not in self.plotter.postnames_2d:
                 raise ValueError("postname not found: {}".format(postname))
-            rank = list(self.plotter.postnames).index(postname + "_x")
-            rank2 = list(self.plotter.postnames).index(postname + "_y")
-            if rank2 != rank + 1:
-                raise ValueError("x y coords not contiguous for postname: "
-                                 "{}".format(postname))
+            post_index_x = list(self.plotter.postnames).index(postname + "_x")
+            post_index_y = list(self.plotter.postnames).index(postname + "_y")
+            if post_index_y != post_index_x + 1:
+                raise ValueError(
+                    "x y coords not contiguous for postname: {}".format(
+                        postname)
+                )
+            field_count = 2
+        
+        if field_count == 1:
+            arr = np.empty((ixx - ix, iyy - iy), dtype)
+            arr[:] = plotter.get_2d_arr(post_index, chunk_slice)
+    
+        elif field_count == 2:
+            arr = np.empty((2, ixx - ix, iyy - iy), dtype)
+            arr[0, :] = plotter.get_2d_arr(post_index_x, chunk_slice)
+            arr[1, :] = plotter.get_2d_arr(post_index_y, chunk_slice)
             
-            arr = np.empty((2, ixx - ix, iyy - iy), mmap.dtype)
-            arr[:] = mmap[rank:rank+2, ix:ixx, iy:iyy]
+#            mmap[rank:rank+2, ix:ixx, iy:iyy]
+            
         return arr
 
     def update_scaling(self, chunk_slice):
@@ -481,6 +501,7 @@ class Color_layer(Virtual_layer):
 class Grey_layer(Virtual_layer):
     default_mask_color = 0.
     mode = "L"
+    k_int = 255
 
     def __init__(self, postname, func, curve=None, probes_z=[0., 1.],
                  probes_kind="relative", output=True):
@@ -531,10 +552,6 @@ class Grey_layer(Virtual_layer):
             mask_color = self.default_mask_color
         self.mask = (layer, mask_color)
 
-    @property
-    def mode(self):
-        return "L"
-
     def crop(self, chunk_slice):
         """ Return the image for this chunk"""
         # 1) The "base" image
@@ -574,7 +591,7 @@ class Grey_layer(Virtual_layer):
         return crop
 
     def get_grey(self, arr):
-        return np.uint8(arr * 255)
+        return self.dtype(arr * self.k_int)
     
     @property
     def mask_kind(self):
@@ -596,13 +613,18 @@ class Grey_layer(Virtual_layer):
         """
 
         if self.mask_kind == "bool":
-            crop_mask = PIL.Image.fromarray(self.np2PIL(
-                    self.get_grey(mask_arr)))
             lx, ly = crop_size
+#            mask_arr = np.tile(np.array(mask_arr), crop_size
+#                ).reshape([lx, ly])
+            crop_mask = PIL.Image.fromarray(
+                self.np2PIL(np.uint8(mask_arr * 255)), mode="L"
+            )
             mask_colors = np.tile(np.array(mask_color), crop_size
-                                  ).reshape([lx, ly])
-            mask_colors = self.np2PIL(np.uint8(255 * mask_colors))
-            mask_colors = PIL.Image.fromarray(mask_colors, mode=self.mode)
+                ).reshape([lx, ly])
+            mask_colors = PIL.Image.fromarray(
+                    self.np2PIL(self.get_grey(mask_colors)),
+                    mode=self.mode
+            )
             crop.paste(mask_colors, (0, 0), crop_mask)
         else:
             raise ValueError(self.mask_kind)
@@ -616,8 +638,11 @@ class Disp_layer(Grey_layer):
     Blender)
     """
     mode = "I"
-    def get_grey(self, arr):
-        return np.int32(arr * 65535) # 2**16-1
+    # According to Pillow doc
+    # "a 32-bit signed integer has a range of 0-65535". why? cf source code:
+    # https://github.com/python-pillow/Pillow/blob/7bf5246b93cc89cfb9d6cca78c4719a943b10585/src/PIL/PngImagePlugin.py#L693-L708
+    k_int = 65535
+
 
 class Normal_map_layer(Color_layer):
     default_mask_color = (0.5, 0.5, 1.)
@@ -679,7 +704,6 @@ class Normal_map_layer(Color_layer):
         (ix, ixx, iy, iyy) = chunk_slice
         crop_size = (ixx-ix, iyy-iy)
         mask_layer, mask_color = self.mask
-        mask_color
         self.apply_mask(crop, crop_size,
                         mask_layer[chunk_slice], mask_color) #, self.mask_kind)
         return crop

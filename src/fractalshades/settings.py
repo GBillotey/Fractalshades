@@ -3,9 +3,8 @@
 General settings at application-level
 """
 import sys
-
-# this is a pointer to the module object instance itself.
-this = sys.modules[__name__]
+# this_module is a pointer to the module object instance itself.
+this_module = sys.modules[__name__]
 
 enable_multithreading = True
 """Turn on or off multithreading (for debugging purpose)"""
@@ -26,29 +25,65 @@ critical point will be used (0. for mandelbrot)"""
 
 std_zoom_level = 1.e-8
 """ Zoom level at which we drop some perturbation techniques optimisation 
-Chosen as this level squared is ~ precision of float64
-"""
+Chosen as this level squared is ~ precision of float64"""
 
 xrange_zoom_level = 1.e-300
-""" Minimal zoom level (dx) for activating Xrange special branches
+"""Zoom level (dx) which triggers Xrange special branches
 """
 
 no_newton = False
-""" Veto all Newton iterations- keep the ref point as is for the full precision
+"""Veto all Newton iterations- keep the ref point as is for the full precision
 iterations (usually the center of the image). Useful when the center
 coordinates of a deep zoom are already known."""
 
 inspect_calc = False
-""" Outputs a synthesis files of the calculation done. Useful for debugging"""
-
-#glitch_off_last_iref = True / not needed in new implementation
-#"""Turns glitch correction off for last reference point run."""
+"""Outputs a synthesis files of the calculation done. Useful for debugging"""
 
 chunk_size = 200
 """The size for the basic calculation tile is chunk_size x chunk_size"""
 
 BLA_compression = 3
 """ number of BLA levels which are dropped (not stored) """
+
+GUI_image_Mblimit = 0
+"""Maximal size of image that will be displayed in the GUI, in Mb - use 0 for
+no limit (default). If limit exceeded, the image is still written to disk but 
+will not be interactively displayed in the GUI"""
+
+Disk_image_pixlimit = "xxx"
+"""PIL sets a default output limit to 89478485 pixels and will raise a 
+DecompressionBombWarning if it is exceeded.
+Image size (144000000 pixels) exceeds limit of 89478485 pixels, could be
+decompression bomb DOS attack.
+"""
+
+verbosity = 2
+"""
+Controls the verbosity for the log messages:
+    0: WARNING & higher severity, output to stdout
+    1: INFO & higher severity, output to stdout
+    2 (default): INFO & higher severity, output to stdout
+                 + DEBUG & higher severity, output to a log file
+    3: INFO & higher severity, output to stdout
+       + all message (incl. NOTSET), output to a log file
+
+Note: Severities in descending order:
+CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET
+"""
+
+
+"""
+Limits the amount of RAM used (mostly for debugging / test purpose)
+ RAM limit in Gb, or None for no limit
+"""
+def set_RAM_limit(RAM_limit_Gb):
+    import resource
+    rsrc = resource.RLIMIT_AS
+    if RAM_limit_Gb is None:
+        byte_limit = resource.RLIM_INFINITY
+    else:
+        byte_limit =  (2**30) * RAM_limit_Gb  # Gbyte to byte
+    resource.setrlimit(rsrc, (byte_limit, byte_limit))
 
 
 # output_context: "doc" True if we are building the doc (Pillow output)
@@ -71,15 +106,15 @@ figures = list()
 
 def add_figure(fig):
     """ add a figure to the stagged images """
-    this.figures += [fig]
+    this_module.figures += [fig]
 
 def get_figures():
     """ push the stagged images """
-    return this.figures
+    return this_module.figures
 
 def close(which):
     """ delete the stagged images """
     if which == "all":
-        this.figures = list()
+        this_module.figures = list()
     else:
         raise ValueError(which)

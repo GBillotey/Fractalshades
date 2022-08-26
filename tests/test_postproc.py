@@ -14,9 +14,9 @@ import test_config
 
 class Dummy_Fractal(fs.Fractal):
     """ Minimal test implementation """
-    
+
     @fsutils.calc_options
-    def calc1(self, calc_name):
+    def calc1(self, calc_name, subset=None):
         complex_codes = ["z", "_z2", "z3"]
         int_codes = ["int_1"]  # reference FP
         stop_codes = ["max_iter"]
@@ -66,9 +66,9 @@ class Test_postproc(unittest.TestCase):
     def test_arr(self):
         """
         Testing Fractal simple calc, storing of result arrays, re-reading them
-        though a Fractal_array object.
+        through a Fractal_array object.
         """
-        
+        # fs.settings.inspect_calc = True
         f = self.fractal
         f.clean_up("test")
 
