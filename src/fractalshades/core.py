@@ -47,7 +47,8 @@ class _Pillow_figure:
 
 
 class Fractal_plotter:
-    def  __init__(self, postproc_batch):
+    def  __init__(self, postproc_batch, final_render=False, antialiasing=None,
+                  jitter=None):
         """
         The base plotting class.
         
@@ -64,15 +65,34 @@ class Fractal_plotter:
         postproc_batch
             A single `fractalshades.postproc.Postproc_batch` or a list of 
             these
+        final_render: bool
+            If False, this is an exploration rendering based on already
+            computed data
+            If True, this is the final rendering, the RGB arrays will
+            computed by chunks on the fly to limit disk usage
+            saved during plot
+        antialiasing: None | "2x2" | ... | "7x7"
+            Used only for the final render. if not None, the final image will
+            leverage antialiasing (from 4 to 49 pixels computed for 1 pixel in 
+            the image)
+        jitter: None, True, float
+            Used only for the final render. If not None, the final image will
+            leverage jitter
 
         Notes
         -----
 
         .. warning::
             When passed a list of `fractalshades.postproc.Postproc_batch`
-            objects, each one shall point to
-            the same `Fractal`.
+            objects, each postprocessing batch shall reference a unique
+            `Fractal`.
         """
+        self.postproc_options = {
+            "final_render": final_render,
+            "antialiasing": antialiasing,
+            "jitter": jitter
+        }
+
         # postproc_batchescan be single or an enumeration
         postproc_batches = postproc_batch
         if isinstance(postproc_batch, fs.postproc.Postproc_batch):
@@ -238,7 +258,7 @@ class Fractal_plotter:
         f = self.fractal
         nx, ny = (f.nx, f.ny)
         n_pp = len(self.posts)
-        mmap = open_memmap(
+        open_memmap(
             filename=self.temporary_mmap_path(), 
             mode='w+',
             dtype=self.post_dtype,
@@ -246,7 +266,6 @@ class Fractal_plotter:
             shape=(n_pp, nx * ny),
             fortran_order=False,
             version=None)
-        del mmap
 
     def get_temporary_mmap(self, mode='r'):
 # A word of caution: Every instance of numpy.memmap creates its own mmap
@@ -265,6 +284,7 @@ class Fractal_plotter:
 
     def close_temporary_mmap(self):
         if hasattr(self, "_temporary_mmap"):
+            # self._temporary_mmap.flush()
             del self._temporary_mmap
 
 
@@ -292,7 +312,9 @@ class Fractal_plotter:
         """
         f = self.fractal
         inc = inc_postproc_rank
-        post_array, chunk_mask = self.fractal.postproc(batch, chunk_slice)
+        post_array, chunk_mask = self.fractal.postproc(
+                batch, chunk_slice, self.postproc_options
+        )
         arr_1d = f.reshape1d(post_array, chunk_mask, chunk_slice)
         # arr_2d = f.reshape2d(post_array, chunk_mask, chunk_slice)
         n_posts, _ = arr_1d.shape
@@ -308,7 +330,7 @@ class Fractal_plotter:
         # mmap[inc:inc+n_posts, ix:ixx, iy:iyy] = arr_2d
         mmap[inc:inc+n_posts, beg:end] = arr_1d
         # mmap.flush()
-        del mmap
+        # del mmap
         
 
 
@@ -322,7 +344,9 @@ class Fractal_plotter:
         """
         f = self.fractal
         inc = inc_postproc_rank
-        post_array, chunk_mask = self.fractal.postproc(batch, chunk_slice)
+        post_array, chunk_mask = self.fractal.postproc(
+                batch, chunk_slice, self.postproc_options
+        )
         arr_1d = f.reshape1d(post_array, chunk_mask, chunk_slice)
         # arr_2d = f.reshape2d(post_array, chunk_mask, chunk_slice)
         # n_posts, cx, cy = arr_2d.shape
@@ -631,7 +655,7 @@ advanced users when subclassing.
              xy_ratio: float,
              theta_deg: float,
              projection: str="cartesian",
-             antialiasing: bool=False
+             antialiasing: bool=False  # TODO - this is not anti alisasing but jitter - move to finl render ??
     ):
         """
         Define and stores as class-attributes the zoom parameters for the next
@@ -687,29 +711,38 @@ advanced users when subclassing.
         self.set_status("Tiles", str_val)
 
 
-    def run(self):
+    def run(self, lazzy_evaluation=False):
         """
-        Lauch a full calculation.
-                
-        The parameters from the last 
-        @ `fractalshades.zoom_options`\-tagged method call and last
-        @ `fractalshades.calc_options`\-tagged method call will be used.
+        Launch a full calculation.
+
+        The zoom and calculation options from the last
+        @ `fractalshades.zoom_options`\-tagged method called and last
+        @ `fractalshades.calc_options`\-tagged method called will be used.
 
         If calculation results are already there, the parameters will be
         compared and if identical, the calculation will be skipped. This is
         done for each tile, so it enables calculation to restart from an
         unfinished status.
+        
+        Parameters:
+        -----------
+        lazzy_evaluation: bool
+            If True, this is the final rendering, the RGB arrays will be
+            computed on the fly during plotting. Intermediate arrays will not
+            be stored.
         """
-        self.initialize_cycles()
 
         # Jitted function used in numba inner-loop
-        self._initialize = self.initialize()
-        self._iterate = self.iterate() 
+        cycle_indep_args = self.get_cycle_indep_args()
 
         # Launch parallel computing of the inner-loop (Multi-threading with GIL
         # released)
-        self.cycles(chunk_slice=None)
-        self.finalize_cycles()
+        if lazzy_evaluation:
+            pass
+        else:
+            self.initialize_cycles()
+            self.cycles(cycle_indep_args, chunk_slice=None)
+            self.finalize_cycles()
 
 
     def initialize_cycles(self):
@@ -1064,7 +1097,7 @@ advanced users when subclassing.
 
     @Multithreading_iterator(
         iterable_attr="chunk_slices", iter_kwargs="chunk_slice")
-    def cycles(self, chunk_slice=None):
+    def cycles(self, cycle_indep_args, chunk_slice=None):
         """
         Fast-looping for Julia and Mandelbrot sets computation.
 
@@ -1094,13 +1127,38 @@ advanced users when subclassing.
         if self.is_interrupted():
             return
         if self.res_available(chunk_slice):
+            self.incr_tiles_status()
             return
 
-        (c_pix, Z, U, stop_reason, stop_iter
-         ) = self.init_cycling_arrays(chunk_slice)
+        cycle_dep_args = self.get_cycling_dep_args(chunk_slice)
+        # ========================ad-hoc part==================================
+        ret_code = self.numba_cycle_call(cycle_dep_args, cycle_indep_args)
+        #======================================================================
 
-        initialize = self._initialize
-        iterate = self._iterate
+        if ret_code == self.USER_INTERRUPTED:
+            logger.error("Interruption signal received")
+            return
+        self.incr_tiles_status()
+
+        # Saving the results after cycling - the arrays or the input ??
+        (c_pix, Z, U, stop_reason, stop_iter) = cycle_dep_args
+        self.update_report_mmap(chunk_slice, stop_reason)
+        self.update_data_mmaps(chunk_slice, Z, U, stop_reason, stop_iter)
+
+    
+    @staticmethod
+    def numba_cycle_call(cycle_dep_args, cycle_indep_args):
+        return numba_cycles(*cycle_dep_args, *cycle_indep_args)
+
+    def get_cycle_indep_args(self):
+        """
+        This is just a diggest of the zoom and calculation parameters
+        """
+        # Dev notes for "on the fly" calc -  In cycle you have :
+        # - chunck dependant args -> Shall be stored once only !
+        # - chunck dependant args ->  Shall be 
+        initialize = self.initialize()
+        iterate = self.iterate()
 
         dx = self.dx
         center = self.x + 1j * self.y
@@ -1108,25 +1166,16 @@ advanced users when subclassing.
         theta = self.theta_deg / 180. * np.pi # used for expmap
         projection = self.PROJECTION_ENUM[self.projection]
 
-        ret_code = numba_cycles(
-            c_pix, Z, U, stop_reason, stop_iter,
-            initialize, iterate,
-            dx, center, xy_ratio, theta, projection,
-            self._interrupted
+        return (
+            initialize, iterate,  # INDEP
+            dx, center, xy_ratio, theta, projection, # INDEP
+            self._interrupted # INDEP
         )
-        if ret_code == self.USER_INTERRUPTED:
-            logger.error("Interruption signal received")
-            return
 
-        self.incr_tiles_status()
-
-        # Saving the results after cycling
-        self.update_report_mmap(chunk_slice, stop_reason)
-        self.update_data_mmaps(chunk_slice, Z, U, stop_reason, stop_iter)
-
-
-    def init_cycling_arrays(self, chunk_slice):
-
+    def get_cycling_dep_args(self, chunk_slice):
+        """
+        The actual input / output arrays
+        """
         c_pix = np.ravel(self.chunk_pixel_pos(chunk_slice))
         if self.subset is not None:
             chunk_mask = self.subset[chunk_slice]
@@ -1242,8 +1291,6 @@ advanced users when subclassing.
         full_cumsum[0] = 0
         mmap[:, items.index("chunk1d_begin")] = full_cumsum[:-1]
         mmap[:, items.index("chunk1d_end")] = full_cumsum[1:]
-        del mmap
-        # self.report_mmap[self.calc_name] = mmap
     
 
     def get_report_memmap(self, calc_name=None, mode='r'):
@@ -1253,8 +1300,8 @@ advanced users when subclassing.
         #    address space and a file, shared memory object, or [TYM] typed
         #    memory object.
         # 1)
-        # A word of caution: Every instance of np.memmap creates its own mmap
-        # of the whole file (even if it only creates an array from part of the
+        # Every instance of np.memmap creates its own mmap of the whole file
+        # (even if it only creates an array from part of the
         # file). The implications of this are A) you can't use np.memmap's
         # offset parameter to get around file size limitations, and B) you
         # shouldn't create many numpy.memmaps of the same file. To work around
@@ -1290,6 +1337,7 @@ advanced users when subclassing.
         ):  
             to_del += (item,)
         for item in to_del:
+            # getattr(self, item).flush()
             delattr(self, item) # self._temporary_mmap
 
 
@@ -1431,7 +1479,6 @@ advanced users when subclassing.
                             (f_complex_codes, f_int_codes, stop_codes))
         # Followin C row-major order --> arr[x, :] shall be fast
         data_dim = {
-            # "chunk_mask": (pts_count,),
             "Z": (n_Z, pts_count),
             "U": (n_U, pts_count),
             "stop_reason": (1, pts_count),
@@ -1439,7 +1486,7 @@ advanced users when subclassing.
         }
 
         for key in keys:
-            mmap = open_memmap(
+            open_memmap(
                 filename=data_path[key], 
                 mode='w+',
                 dtype=data_type[key],
@@ -1447,8 +1494,6 @@ advanced users when subclassing.
                 fortran_order=False,
                 version=None
             )
-            del mmap
-
         # Store the chunk_mask (if there is one) at this stage : it is already
         # known
         # /!\ the size of the chunk_mask is always the same, irrespective of
@@ -1465,7 +1510,6 @@ advanced users when subclassing.
             for rank, chunk_slice in enumerate(self.chunk_slices()):
                 beg, end = self.mask_beg_end(rank)
                 mmap[beg:end] = self.chunk_mask[chunk_slice]
-            del mmap
 
 
     def get_data_memmap(self, key, calc_name=None, mode='r'):
@@ -1494,6 +1538,7 @@ advanced users when subclassing.
         ):  
             to_del += (item,)
         for item in to_del:
+            # getattr(self, item).flush()
             delattr(self, item) # self._temporary_mmap
 
 
@@ -1530,16 +1575,16 @@ advanced users when subclassing.
             arr = arr_map[key]
             for (field, f_field) in zip(*codes_index_map[key]):
                 mmap[field, beg:end] = arr[f_field, :]
-            del mmap
 
     def reload_data(self, chunk_slice, calc_name=None): # public
         """ Reload all stored raw arrays for this chunk : 
         raw_data = chunk_mask, Z, U, stop_reason, stop_iter
         """
-        is_current_calc = True
+        is_current_calc = False
         if calc_name is None:
             is_current_calc = True
             calc_name = self.calc_name
+        print("RELOADING data", calc_name, "is_current_calc:", is_current_calc)
 
         keys = self.SAVE_ARRS
         rank = self.chunk_rank(chunk_slice)
@@ -1550,7 +1595,6 @@ advanced users when subclassing.
         for key in keys:
             mmap = self.get_data_memmap(key, calc_name)
             arr[key] = mmap[:, beg:end]
-            del mmap
 
         subset = self.subset
         # Here we can t always rely on self.subset, it has to be consistent
@@ -1564,7 +1608,6 @@ advanced users when subclassing.
             beg, end = self.mask_beg_end(rank)
             mmap = self.get_data_memmap("chunk_mask", calc_name)
             arr["chunk_mask"] = mmap[beg: end]
-            del mmap
         else:
             arr["chunk_mask"] = None
 
@@ -1573,6 +1616,24 @@ advanced users when subclassing.
             arr["stop_iter"]
         )
 
+    def evaluate_data(self, chunk_slice, calc_name=None): # public
+        """ Compute on the fly the raw arrays for this chunk : 
+        raw_data = chunk_mask, Z, U, stop_reason, stop_iter
+        Note: this is normally a final redering
+        """
+        raise NotImplementedError()
+#        rank = self.chunk_rank(chunk_slice)
+#        
+##        c_pix, Z, U, stop_reason, stop_iter,
+##            initialize, iterate,
+##            dx, center, xy_ratio, theta, projection, self._interrupted
+#
+#        chunk_cycle_params = self.get_params(rank, )
+#        chunk_mask = self.subset[chunk_slice]
+#        ret_code = numba_cycles(
+#            *chunk_cycle_params, self._interrupted
+#        )
+#        return chunk_mask, Z, U, stop_reason, stop_iter
 
     @staticmethod
     def kind_from_code(code, codes):
@@ -1680,7 +1741,7 @@ advanced users when subclassing.
         bool_subset[bool_set] = bool_subset_of_set
         return bool_subset
 
-    def postproc(self, postproc_batch, chunk_slice):
+    def postproc(self, postproc_batch, chunk_slice, postproc_options):
         """ Computes the output of ``postproc_batch`` for chunk_slice
         Return
           post_array of shape(nposts, chunk_n_pts)
@@ -1691,9 +1752,16 @@ advanced users when subclassing.
 
         # Input data
         calc_name = postproc_batch.calc_name
-        chunk_mask, Z, U, stop_reason, stop_iter = self.reload_data(
-            chunk_slice, calc_name
-        )
+        
+        # Is it the final render ?
+        if postproc_options["final_render"]:
+            # This is the final render, we compute from scratch
+            chunk_mask, Z, U, stop_reason, stop_iter = self.evaluate_data(
+                chunk_slice, calc_name, postproc_options)
+        else:
+            # This shall have been precomputed
+            chunk_mask, Z, U, stop_reason, stop_iter = self.reload_data(
+                chunk_slice, calc_name)
 
         params, codes = self.reload_params(calc_name)
         complex_dic, int_dic, termination_dic = self.codes_mapping(*codes)
@@ -1753,7 +1821,7 @@ def numba_cycles(
         cpt = ref_path_c_from_pix(c_pix[ipt], dx, center, xy_ratio, theta,
                                   projection)
         stop_pt = stop_reason[:, ipt]
-        
+
         initialize(Zpt, Upt, cpt)
         n_iter = iterate(
             Zpt, Upt, cpt, stop_pt, 0,
@@ -1769,7 +1837,6 @@ def numba_cycles(
 proj_cartesian = Fractal.PROJECTION_ENUM["cartesian"]
 proj_spherical = Fractal.PROJECTION_ENUM["spherical"]
 proj_expmap = Fractal.PROJECTION_ENUM["expmap"]
-
 
 @numba.njit
 def apply_skew_2d(skew, arrx, arry):
@@ -1808,7 +1875,7 @@ def apply_rot_2d(theta, arrx, arry):
 
 
 @numba.njit
-def ref_path_c_from_pix(pix, dx, center, xy_ratio, theta, projection):
+def ref_path_c_from_pix(pix, dx, center, xy_ratio, theta, projection): # TODO : rename this to proj_c_from_pix ??
     """
     Returns the true c (coords from ref point) from the pixel coords
     

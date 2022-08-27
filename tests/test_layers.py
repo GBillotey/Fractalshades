@@ -475,5 +475,8 @@ if __name__ == "__main__":
         runner.run(test_config.suite([Test_layers]))
     else:
         suite = unittest.TestSuite()
-        suite.addTest(Test_layers("test_twin"))
+        # suite.addTest(Test_layers("test_light_source"))
+        # suite.addTest(Test_layers("test_twin"))
+        suite.addTest(Test_layers("test_overlay1"))
+        # suite.addTest(Test_layers("test_overlay2"))
         runner.run(suite)

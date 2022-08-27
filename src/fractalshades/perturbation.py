@@ -419,79 +419,123 @@ directory : str
 
 #==============================================================================
 # Calculation functions
-    def run(self):
+
+    @staticmethod
+    def numba_cycle_call(cycle_dep_args, cycle_indep_args):
+        """ Here we customize for perturbation iterations """
+        # We still have a case switch on indep parameter "holomorphic"
+        holomorphic = cycle_indep_args[0]
+        cycle_indep_args = cycle_indep_args[1:]
+        
+        if holomorphic:
+            return numba_cycles_perturb(
+                *cycle_dep_args, *cycle_indep_args
+            )
+#                c_pix, Z, U, stop_reason, stop_iter,
+#                initialize, iterate,
+#                Zn_path, dZndc_path, dZndz_path,
+#                has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
+#                drift_xr, dx_xr,
+#                P, kc, n_iter, M_bla, r_bla, bla_len, stages_bla,
+#                self._interrupted
+        else:
+            return numba_cycles_perturb_BS(
+                *cycle_dep_args, *cycle_indep_args
+            )
+#                c_pix, Z, U, stop_reason, stop_iter, # DEP
+#                initialize, iterate, # INDEP
+#                Zn_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path, # INDEP
+#                has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order, # INDEP
+#                driftx_xr, drifty_xr, dx_xr, # INDEP
+#                P, kc, n_iter, M_bla, r_bla, bla_len, stages_bla, # INDEP
+#                self._interrupted # INDEP
+
+
+    def get_cycle_indep_args(self):
         """
-        Launch a full perturbation calculation with glitch correction.
-
-        The parameters from the last 
-        @ `fractalshades.zoom_options`\-tagged method call and last
-        @ `fractalshades.calc_options`\-tagged method call will be used.
-
-        If calculation results are already there, the parameters will be
-        compared and if identical, the calculation will be skipped. This is
-        done for each tile and each glitch correction iteration, so i enables
-        calculation to restart from an unfinished status.
+        Parameters independant of the cycle
+        This is where the hard work is done
         """
-        self.initialize_cycles()
+        # Dev notes for "on the fly" calc -  In cycle you have :
+        # - chunck dependant args -> Shall be stored once only !
+        # - chunck dependant args ->  Shall be 
+        
+        # Parent class implementation
+        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#        initialize = self.initialize()
+#        iterate = self.iterate()
+#
+#        dx = self.dx
+#        center = self.x + 1j * self.y
+#        xy_ratio = self.xy_ratio
+#        theta = self.theta_deg / 180. * np.pi # used for expmap
+#        projection = self.PROJECTION_ENUM[self.projection]
+#
+#        return (
+#            initialize, iterate,  # INDEP
+#            dx, center, xy_ratio, theta, projection, # INDEP
+#            self._interrupted # INDEP
+#        )
+        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+        # ====================================================================
+        # CUSTOM class impl
         # Initialise the reference path
         # if has_status_bar:
+        holomorphic = self.holomorphic
+        calc_deriv_c = self.calc_dZndc if holomorphic else self.calc_hessian
+        calc_dZndz = self.calc_dZndz if holomorphic else False
+        has_SA = (
+            (self.SA_params is not None) if hasattr(self, "SA_params") 
+            else False
+        )
+        
+        # if hasattr(self, "calc_dZndz") and self.calc_dZndz:
+
+        # expected ret value for holomorphic :
+        # (holomorphic, initialize, iterate,
+#                Zn_path, dZndc_path, dZndz_path,
+#                has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
+#                drift_xr, dx_xr,
+#                P, kc, n_iter, M_bla, r_bla, bla_len, stages_bla,
+#                self._interrupted)
+
+        # 1) compute or retrieve the reference orbit
         self.set_status("Reference", "running")
         self.get_FP_orbit()
-        ref_xr = None
-        drift_xr = None
-        refx_xr = None
-        refy_xr = None
-        driftx_xr = None
-        drifty_xr = None
-        if self.holomorphic:
+        if holomorphic:
             (Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
              drift_xr, dx_xr) = self.get_path_data()
-        else:
+        else: 
             (Zn_path, has_xr, ref_index_xr, refx_xr, refy_xr,
              ref_div_iter, ref_order, driftx_xr, drifty_xr,
              dx_xr) = self.get_path_data()
-
-        # if has_status_bar:
+        if ref_order is None:
+            ref_order = (1 << 62) # a quite large int64
         self.set_status("Reference", "completed")
-            
-        # Initialize the derived ref path - with a scale coefficient self.dx
-        # Note: only useful if the analytical derivatives are computed
-        calc_deriv = None
+
+        # 2) compute the orbit derivatives if needed
         dZndc_path = None
-        dXnda_path = None
-        dXndb_path = None
-        dYnda_path = None
-        dYndb_path = None
-
-        if self.holomorphic:
-            calc_deriv = self.calc_dZndc
-        else:
-            calc_deriv = self.calc_hessian
-
-        if calc_deriv is not None:
+        (dXnda_path, dXndb_path, dYnda_path, dYndb_path) = (None,) * 4
+        if calc_deriv_c:
             dx_xr = fsx.mpf_to_Xrange(self.dx, dtype=self.float_type).ravel()
-            casted_ref_order = ref_order # 
-            if ref_order is None:
-                casted_ref_order = (1 << 62) # a quite large int64
             xr_detect_activated = self.xr_detect_activated
 
-            if self.holomorphic:
+            if holomorphic:
                 dZndc_path, dZndc_xr_path = numba_dZndc_path(
                     Zn_path, has_xr, ref_index_xr, ref_xr,
-                    ref_div_iter, casted_ref_order,
+                    ref_div_iter, ref_order,
                     self.dfdz, dx_xr, xr_detect_activated
                 )
                 if xr_detect_activated:
                     dZndc_path = dZndc_xr_path
 
             else:
-                (
-                    dXnda_path, dXndb_path, dYnda_path, dYndb_path,
-                    dXnda_xr_path, dXndb_xr_path, dYnda_xr_path, dYndb_xr_path
+                (dXnda_path, dXndb_path, dYnda_path, dYndb_path,
+                 dXnda_xr_path, dXndb_xr_path, dYnda_xr_path, dYndb_xr_path
                 ) = numba_dZndc_path_BS(
                     Zn_path, has_xr, ref_index_xr, refx_xr, refy_xr,
-                    ref_div_iter, casted_ref_order,
+                    ref_div_iter, ref_order,
                     self.dfxdx, self.dfxdy, self.dfydx, self.dfydy,
                     dx_xr, xr_detect_activated #, self.reverse_y
                 )
@@ -501,55 +545,40 @@ directory : str
                     dYnda_path = dYnda_xr_path
                     dYndb_path = dYndb_xr_path
 
-        # Compute also dzndz
+        # 2') compute the orbit derivatives wrt z if needed
+        # (interior detection)
         dZndz_path = None
-        if hasattr(self, "calc_dZndz") and self.calc_dZndz:
+        if calc_dZndz:
             # print("new: interior detection at deep zoom")
             dx_xr = fsx.mpf_to_Xrange(self.dx, dtype=self.float_type).ravel()
-            casted_ref_order = ref_order # 
-            if ref_order is None:
-                casted_ref_order = (1 << 62) # a quite large int64
             xr_detect_activated = self.xr_detect_activated
 
             dZndz_path, dZndz_xr_path = numba_dZndz_path(
                 Zn_path, has_xr, ref_index_xr, ref_xr,
-                ref_div_iter, casted_ref_order,
+                ref_div_iter, ref_order,
                 self.dfdz, xr_detect_activated
             )
             if xr_detect_activated:
                 dZndz_path = dZndz_xr_path
 
-            # Debug - export to txt
-            print_path = False
-            if print_path:
-                out_file = os.path.join(
-                    "/home/geoffroy/Pictures/math/github_fractal_rep/",
-                    "Z0.txt"
-                )
-                self.write_FP(dZndz_path, out_file)
-
-#        print("Zn_path:\n", Zn_path)
-#        print("dZndc_path:\n", dZndc_path)
-#        print("dZndz_path:\n", dZndz_path)
 
         self.kc = kc = self.ref_point_kc().ravel()  # Make it 1d for numba use
         if kc == 0.:
             raise RuntimeError(
                 "Resolution is too low for this zoom depth. Try to increase"
                 "the reference calculation precicion."
-            )
+        )
 
-        # Initialise SA interpolation
-        if not(hasattr(self, "SA_params")) or (self.SA_params is None):
-            n_iter = 0
-            P = None
-            P_err = None
-        else:
+        # Initialise SA interpolation - legacy code
+        n_iter = 0
+        P = None
+        if has_SA:
             warnings.warn('SA is obsolete, use BLA instead',
                           DeprecationWarning)
             self.get_SA(Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter,
                         ref_order)
-            P, n_iter, P_err = self.get_SA_data()
+            P, n_iter, _ = self.get_SA_data()
+
 
         # Initialize BLA interpolation
         if self.BLA_params is None:
@@ -557,109 +586,23 @@ directory : str
             r_bla = None
             bla_len = None
             stages_bla = None
+            self.set_status("Bilin. approx", "N.A.")
         else:
-            # print("Initialise BLA interpolation")
-            # if has_status_bar:
             self.set_status("Bilin. approx", "running")
             eps = self.BLA_params["eps"]
-            # print("** eps", eps)
             M_bla, r_bla, bla_len, stages_bla = self.get_BLA_tree(
                     Zn_path, eps)
-            # if has_status_bar:
             self.set_status("Bilin. approx", "completed")
 
 
         # Jitted function used in numba inner-loop
-        self._initialize = self.initialize()
-        self._iterate = self.iterate()        
-
-        # Launch parallel computing of the inner-loop (Multi-threading with GIL
-        # released)
-        self.cycles(
-            Zn_path, dZndc_path, dZndz_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
-            has_xr, ref_index_xr, ref_xr, refx_xr, refy_xr,
-            ref_div_iter, ref_order,
-            drift_xr, driftx_xr, drifty_xr, dx_xr, 
-            P, kc, n_iter, M_bla, r_bla, bla_len, stages_bla,
-            chunk_slice=None
-        )
-        self.finalize_cycles()
+        initialize = self.initialize()
+        iterate = self.iterate()   
 
 
-    @Multithreading_iterator(
-        iterable_attr="chunk_slices", iter_kwargs="chunk_slice")
-    def cycles(
-        self, 
-        Zn_path, dZndc_path, dZndz_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
-        has_xr, ref_index_xr, ref_xr, refx_xr, refy_xr,
-        ref_div_iter, ref_order,
-        drift_xr, driftx_xr, drifty_xr, dx_xr, 
-        P, kc, n_iter, M_bla, r_bla, bla_len, stages_bla,
-        chunk_slice
-    ):
-        """
-        Fast-looping for Julia and Mandelbrot sets computation.
-
-        Parameters:
-        -----------
-        chunk_slice : 4-tuple int
-            The calculation tile
-        Zn_path : complex128[]
-            The array for the reference point orbit, in low precision
-        has_xr : boolean
-            True if the Zn_path needs extended range values - when it gets close
-            to 0.
-        ref_index_xr : int[:]
-            indices for the extended range values
-        ref_xr : X_range[:]
-            The extended range values
-        ref_div_iter : int
-            The first invalid iteration for the reference orbit (either
-            missing or diverging)
-        drift_xr : X_range
-            vector between image center and reference point : center - ref_pt
-        dx_xr :
-            width of the image (self.dx)
-        P : Xrange_polynomial
-            Polynomial from the Series approximation
-        kc :
-            Scaling coefficient for the Series Approximation
-        n_iter :
-            iteration to which "jumps" the SA approximation
-
-        Returns:
-        --------
-        None
-        
-        Save to a file : 
-        *raw_data* = (chunk_mask, Z, U, stop_reason, stop_iter) where
-            *chunk_mask*    1d mask
-            *Z*             Final values of iterated fields [ncomplex, :]
-            *U*             Final values of int fields [nint, :]       np.int32
-            *stop_reason*   Byte codes -> reasons for termination [:]  np.int8
-            *stop_iter*     Numbers of iterations when stopped [:]     np.int32
-        """
-
-        if self.is_interrupted():
-            return
-
-        if self.res_available(chunk_slice):
-            if hasattr(self, "_status_wget"):
-                self.incr_tiles_status()
-            return
-
-        (c_pix, Z, U, stop_reason, stop_iter
-         ) = self.init_cycling_arrays(chunk_slice)
-
-        initialize = self._initialize
-        iterate = self._iterate
-
-        if ref_order is None:
-            ref_order = (1 << 62) # a quite large int64
-
-        if self.holomorphic:
-            ret_code = numba_cycles_perturb(
-                c_pix, Z, U, stop_reason, stop_iter,
+        if holomorphic:
+            cycle_indep_args = (
+                holomorphic,
                 initialize, iterate,
                 Zn_path, dZndc_path, dZndz_path,
                 has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
@@ -668,8 +611,8 @@ directory : str
                 self._interrupted
             )
         else:
-            ret_code = numba_cycles_perturb_BS(
-                c_pix, Z, U, stop_reason, stop_iter,
+            cycle_indep_args = (
+                holomorphic,
                 initialize, iterate,
                 Zn_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
                 has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
@@ -677,16 +620,19 @@ directory : str
                 P, kc, n_iter, M_bla, r_bla, bla_len, stages_bla,
                 self._interrupted
             )
-        if ret_code == self.USER_INTERRUPTED:
-            logger.error("Interruption signal received")
-            return
 
-        if hasattr(self, "_status_wget"):
-            self.incr_tiles_status()
-
-        # Saving the results after cycling
-        self.update_report_mmap(chunk_slice, stop_reason)
-        self.update_data_mmaps(chunk_slice, Z, U, stop_reason, stop_iter)
+        return cycle_indep_args
+        
+        
+#        self.cycles(
+#            Zn_path, dZndc_path, dZndz_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
+#            has_xr, ref_index_xr, ref_xr, refx_xr, refy_xr,
+#            ref_div_iter, ref_order,
+#            drift_xr, driftx_xr, drifty_xr, dx_xr, 
+#            P, kc, n_iter, M_bla, r_bla, bla_len, stages_bla,
+#            chunk_slice=None
+#        )
+        # ====================================================================
 
 
     def param_matching(self, dparams):
