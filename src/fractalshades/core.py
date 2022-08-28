@@ -6,6 +6,7 @@ import datetime
 import pickle
 import logging
 import textwrap
+import warnings
 
 import numpy as np
 from numpy.lib.format import open_memmap
@@ -151,10 +152,9 @@ class Fractal_plotter:
         ----------
         layer : `fractalshades.colors.layers.Virtual_layer` or a derived class
             The layer to add
-        
+
         Notes
         -----
-
         .. warning::
             Layer `postname` shall have been already registered in one of the
             plotter batches.
@@ -190,200 +190,278 @@ class Fractal_plotter:
         When called, it will got through all the instance-registered layers
         and plot each layer for which the `output` attribute is set to `True`.
         """
-        logger.info("Plotting image - postprocessing fields: computing")
-        self.store_postprocs()
-        self.close_temporary_mmap()
-        logger.info("Plotting image - postprocessing fields: done")
-
-        self.compute_scalings()
-        self.write_postproc_report()
+#        logger.info("Plotting image - postprocessing fields: computing")
+#        self.store_postprocs()
+#        self.close_temporary_mmap()
+#        logger.info("Plotting image - postprocessing fields: done")
+#
+#        self.compute_scalings()
+#        self.write_postproc_report()
+#        self.open_images()
+#
+#        logger.info("Plotting image - colorized layers: computing")
+#        self.push_layers_to_images()
+#        logger.info("Plotting image - colorized layers: done")
+#
+#        self.save_images()
+#        self.clean_up()
+#        self.close_temporary_mmap()
+        
+        # Refactoring with direct calculation
+        logger.info("Plotting images: computing tiles")
         self.open_images()
-
-        logger.info("Plotting image - colorized layers: computing")
-        self.push_layers_to_images()
-        logger.info("Plotting image - colorized layers: done")
-
+        self._raw_arr = dict()
+        self._current_tile = 0
+        self.plot_tiles(chunk_slice=None)
         self.save_images()
-        self.clean_up()
-        self.close_temporary_mmap()
-
-
-    def store_postprocs(self):
-        """ Computes and stores posprocessed data in a temporary mmap
-        :meta private:
-        """
-        if fs.settings.optimize_RAM:
-            self.has_memmap = True
-            self.open_temporary_mmap()
-        else:
-            self.has_memmap = False
-            self.open_RAM_data()
-
-        inc_postproc_rank = 0
-        self.postname_rank = dict()
+        logger.info("Plotting images: done")
         
-        for batch in self.postproc_batches:
-            if self.has_memmap:
-                self.store_temporary_mmap(
-                        chunk_slice=None,
-                        batch=batch,
-                        inc_postproc_rank=inc_postproc_rank
-                )
-            else:
-                
-                self.store_data(
-                        chunk_slice=None,
-                        batch=batch,
-                        inc_postproc_rank=inc_postproc_rank
-                )
-            for i, postname in enumerate(batch.postnames):
-                self.postname_rank[postname] = inc_postproc_rank + i
-            inc_postproc_rank += len(batch.posts)
-        
-        self.fractal.close_data_mmaps()
-        self.fractal.close_report_mmaps()
+        # Output data file
+        self.write_postproc_report()
 
 
-    def temporary_mmap_path(self):
-        """ Path to the temporary memmap used to stored plotting arrays"""
-        # from tempfile import mkdtemp
-        return os.path.join(
-            self.fractal.directory, "data", "_plotter.tpm")
-
-    def open_temporary_mmap(self):
-        """
-        Creates the memory mappings for postprocessed arrays
-        Note: We expand to 2d format
-        """
-        f = self.fractal
-        nx, ny = (f.nx, f.ny)
-        n_pp = len(self.posts)
-        open_memmap(
-            filename=self.temporary_mmap_path(), 
-            mode='w+',
-            dtype=self.post_dtype,
-            # shape=(n_pp, nx, ny),
-            shape=(n_pp, nx * ny),
-            fortran_order=False,
-            version=None)
-
-    def get_temporary_mmap(self, mode='r'):
-# A word of caution: Every instance of numpy.memmap creates its own mmap
-# of the whole file (even if it only creates an array from part of the
-# file). The implications of this are A) you can't use numpy.memmap's
-# offset parameter to get around file size limitations, and B) you
-# shouldn't create many numpy.memmaps of the same file. To work around
-# B, you should create a single memmap, and dole out views and slices.
-        # attr = "_temporary_mmap" # + mode
-        if hasattr(self, "_temporary_mmap"):
-            return self._temporary_mmap
-        else:
-            val = open_memmap(filename=self.temporary_mmap_path(), mode=mode)
-            self._temporary_mmap = val
-            return val
-
-    def close_temporary_mmap(self):
-        if hasattr(self, "_temporary_mmap"):
-            # self._temporary_mmap.flush()
-            del self._temporary_mmap
-
-
-    def open_RAM_data(self):
-        """
-        Same as open_temporary_mmap but in RAM
-        """
-        f = self.fractal
-        nx, ny = (f.nx, f.ny)
-        n_pp = len(self.posts)
-        self._RAM_data = np.zeros(
-            shape=(n_pp, nx * ny), dtype=self.post_dtype
-        )
-
-
-    # multithreading: OK
     @Multithreading_iterator(
         iterable_attr="chunk_slices", iter_kwargs="chunk_slice"
     )
-    def store_temporary_mmap(self, chunk_slice, batch, inc_postproc_rank):
+    def plot_tiles(self, chunk_slice):
+
+        # 1) Compute the postprocs for this field
+        n_pp = len(self.posts)
+        (ix, ixx, iy, iyy) = chunk_slice
+        arr_shp = (n_pp, (ixx - ix) * (iyy - iy))
+        raw_arr = np.empty(shape= arr_shp,dtype=self.post_dtype)
+
+        batch_first_post = 0 # index of the first post for the current batch
+        for batch in self.postproc_batches:
+            self.fill_raw_arr(raw_arr, chunk_slice, batch, batch_first_post)
+            batch_first_post += len(batch.posts)
+
+        self._raw_arr[chunk_slice] = raw_arr
+        
+        # 2) Push each layer crop to the relevant image 
+        for i, layer in enumerate(self.layers):
+            layer.update_scaling(chunk_slice)
+            if layer.output:
+                self.push_cropped(chunk_slice, layer=layer, im=self._im[i])
+
+
+        # clean-up
+        self.incr_tiles_status()
+        del self._raw_arr[chunk_slice]
+            
+            
+    def fill_raw_arr(self, raw_arr, chunk_slice, batch, batch_first_post):
         """ Compute & store temporary arrays for this postproc batch
             Note : inc_postproc_rank rank shift to take into account potential
             other batches for this plotter.
             (memory mapping version)
         """
         f = self.fractal
-        inc = inc_postproc_rank
+        inc = batch_first_post
         post_array, chunk_mask = self.fractal.postproc(
                 batch, chunk_slice, self.postproc_options
         )
         arr_1d = f.reshape1d(post_array, chunk_mask, chunk_slice)
         # arr_2d = f.reshape2d(post_array, chunk_mask, chunk_slice)
         n_posts, _ = arr_1d.shape
-        # (ix, ixx, iy, iyy) = chunk_slice
-        # mmap = open_memmap(filename=self.temporary_mmap_path(), mode='r+')
-        mmap = self.get_temporary_mmap(mode="r+")
+        raw_arr[inc: (inc + n_posts), :] = arr_1d
+    
+    def incr_tiles_status(self):
+        self._current_tile += 1
+        f = self.fractal
+        str_val = str(self._current_tile)+ " / " + str(f.chunks_count)
+        logger.info(f"Image output: {str_val}")
+        
+#        def set_status(self, key, str_val):
+#        """ Just a simple text status """
+#        # if hasattr(self, "_status_wget"): # always has...
+#        self._status_wget.update_status(key, str_val)
+#        logger.info(f"{key}: {str_val}")
+#
+#    def incr_tiles_status(self):
+#        """ Dealing with more complex status : 
+#        Increase by 1 the number of computed tiles reported in status bar
+#        """
+#        dic = self._status_wget._status
+#        dic["Tiles"]["val"] += 1
+#        str_val = str(dic["Tiles"]["val"]) + " / " + str(self.chunks_count)
+#        self.set_status("Tiles", str_val)
 
-        # Mmap shall be contiguous by chunks to speed-up disk access
-        rank = f.chunk_rank(chunk_slice)
-        beg, end = f.mask_beg_end(rank)
-#        chunk1d_begin
-#        chunk1d_end
-        # mmap[inc:inc+n_posts, ix:ixx, iy:iyy] = arr_2d
-        mmap[inc:inc+n_posts, beg:end] = arr_1d
-        # mmap.flush()
-        # del mmap
+
+#==============================================================================
+
+#    def store_postprocs(self):
+#        """ Computes and stores posprocessed data in a temporary mmap
+#        :meta private:
+#        """
+#        if fs.settings.optimize_RAM:
+#            self.has_memmap = True
+#            self.open_temporary_mmap()
+#        else:
+#            self.has_memmap = False
+#            self.open_RAM_data()
+#
+#        inc_postproc_rank = 0
+#        self.postname_rank = dict()
+#        
+#        for batch in self.postproc_batches:
+#            if self.has_memmap:
+#                self.store_temporary_mmap(
+#                        chunk_slice=None,
+#                        batch=batch,
+#                        inc_postproc_rank=inc_postproc_rank
+#                )
+#            else:
+#                
+#                self.store_data(
+#                        chunk_slice=None,
+#                        batch=batch,
+#                        inc_postproc_rank=inc_postproc_rank
+#                )
+#            for i, postname in enumerate(batch.postnames):
+#                self.postname_rank[postname] = inc_postproc_rank + i
+#            inc_postproc_rank += len(batch.posts)
+#        
+#        self.fractal.close_data_mmaps()
+#        self.fractal.close_report_mmaps()
+
+
+#    def temporary_mmap_path(self):
+#        """ Path to the temporary memmap used to stored plotting arrays"""
+#        # from tempfile import mkdtemp
+#        return os.path.join(
+#            self.fractal.directory, "data", "_plotter.tpm")
+#
+#    def open_temporary_mmap(self):
+#        """
+#        Creates the memory mappings for postprocessed arrays
+#        Note: We expand to 2d format
+#        """
+#        f = self.fractal
+#        nx, ny = (f.nx, f.ny)
+#        n_pp = len(self.posts)
+#        open_memmap(
+#            filename=self.temporary_mmap_path(), 
+#            mode='w+',
+#            dtype=self.post_dtype,
+#            # shape=(n_pp, nx, ny),
+#            shape=(n_pp, nx * ny),
+#            fortran_order=False,
+#            version=None)
+
+#    def get_temporary_mmap(self, mode='r'):
+## A word of caution: Every instance of numpy.memmap creates its own mmap
+## of the whole file (even if it only creates an array from part of the
+## file). The implications of this are A) you can't use numpy.memmap's
+## offset parameter to get around file size limitations, and B) you
+## shouldn't create many numpy.memmaps of the same file. To work around
+## B, you should create a single memmap, and dole out views and slices.
+#        # attr = "_temporary_mmap" # + mode
+#        if hasattr(self, "_temporary_mmap"):
+#            return self._temporary_mmap
+#        else:
+#            val = open_memmap(filename=self.temporary_mmap_path(), mode=mode)
+#            self._temporary_mmap = val
+#            return val
+#
+#    def close_temporary_mmap(self):
+#        if hasattr(self, "_temporary_mmap"):
+#            # self._temporary_mmap.flush()
+#            del self._temporary_mmap
+#
+#
+#    def open_RAM_data(self):
+#        """
+#        Same as open_temporary_mmap but in RAM
+#        """
+#        f = self.fractal
+#        nx, ny = (f.nx, f.ny)
+#        n_pp = len(self.posts)
+#        self._RAM_data = np.zeros(
+#            shape=(n_pp, nx * ny), dtype=self.post_dtype
+#        )
+
+
+#    # multithreading: OK
+#    @Multithreading_iterator(
+#        iterable_attr="chunk_slices", iter_kwargs="chunk_slice"
+#    )
+#    def store_temporary_mmap(self, chunk_slice, batch, inc_postproc_rank):
+#        """ Compute & store temporary arrays for this postproc batch
+#            Note : inc_postproc_rank rank shift to take into account potential
+#            other batches for this plotter.
+#            (memory mapping version)
+#        """
+#        f = self.fractal
+#        inc = inc_postproc_rank
+#        post_array, chunk_mask = self.fractal.postproc(
+#                batch, chunk_slice, self.postproc_options
+#        )
+#        arr_1d = f.reshape1d(post_array, chunk_mask, chunk_slice)
+#        # arr_2d = f.reshape2d(post_array, chunk_mask, chunk_slice)
+#        n_posts, _ = arr_1d.shape
+#        # (ix, ixx, iy, iyy) = chunk_slice
+#        # mmap = open_memmap(filename=self.temporary_mmap_path(), mode='r+')
+#        mmap = self.get_temporary_mmap(mode="r+")
+#
+#        # Mmap shall be contiguous by chunks to speed-up disk access
+#        rank = f.chunk_rank(chunk_slice)
+#        beg, end = f.mask_beg_end(rank)
+##        chunk1d_begin
+##        chunk1d_end
+#        # mmap[inc:inc+n_posts, ix:ixx, iy:iyy] = arr_2d
+#        mmap[inc:inc+n_posts, beg:end] = arr_1d
+#        # mmap.flush()
+#        # del mmap
         
 
 
-    # multithreading: OK
-    @Multithreading_iterator(
-        iterable_attr="chunk_slices", iter_kwargs="chunk_slice"
-    )
-    def store_data(self, chunk_slice, batch, inc_postproc_rank):
-        """ Compute & store temporary arrays for this postproc batch
-            (in-RAM version -> shall not use multiprocessing)
-        """
-        f = self.fractal
-        inc = inc_postproc_rank
-        post_array, chunk_mask = self.fractal.postproc(
-                batch, chunk_slice, self.postproc_options
-        )
-        arr_1d = f.reshape1d(post_array, chunk_mask, chunk_slice)
-        # arr_2d = f.reshape2d(post_array, chunk_mask, chunk_slice)
-        # n_posts, cx, cy = arr_2d.shape
-        n_posts, _ = arr_1d.shape
-        # Use contiguous data by chunks to speed-up memory access
-        rank = f.chunk_rank(chunk_slice)
-        beg, end = f.mask_beg_end(rank)
-
-        # (ix, ixx, iy, iyy) = chunk_slice
-        # self._RAM_data[inc:inc+n_posts, ix:ixx, iy:iyy] = arr_2d
-        self._RAM_data[inc:inc+n_posts, beg:end] = arr_1d
-
-    # All methods needed for plotting
-    def compute_scalings(self):
-        """ Compute the scaling for all layer field
-        (needed for mapping to color) """
-        for layer in self.layers:
-            self.compute_layer_scaling(chunk_slice=None, layer=layer)
+#    # multithreading: OK
+#    @Multithreading_iterator(
+#        iterable_attr="chunk_slices", iter_kwargs="chunk_slice"
+#    )
+#    def store_data(self, chunk_slice, batch, inc_postproc_rank):
+#        """ Compute & store temporary arrays for this postproc batch
+#            (in-RAM version -> shall not use multiprocessing)
+#        """
+#        f = self.fractal
+#        inc = inc_postproc_rank
+#        post_array, chunk_mask = self.fractal.postproc(
+#                batch, chunk_slice, self.postproc_options
+#        )
+#        arr_1d = f.reshape1d(post_array, chunk_mask, chunk_slice)
+#        # arr_2d = f.reshape2d(post_array, chunk_mask, chunk_slice)
+#        # n_posts, cx, cy = arr_2d.shape
+#        n_posts, _ = arr_1d.shape
+#        # Use contiguous data by chunks to speed-up memory access
+#        rank = f.chunk_rank(chunk_slice)
+#        beg, end = f.mask_beg_end(rank)
+#
+#        # (ix, ixx, iy, iyy) = chunk_slice
+#        # self._RAM_data[inc:inc+n_posts, ix:ixx, iy:iyy] = arr_2d
+#        self._RAM_data[inc:inc+n_posts, beg:end] = arr_1d
+#
+#    # All methods needed for plotting
+#    def compute_scalings(self):
+#        """ Compute the scaling for all layer field
+#        (needed for mapping to color) """
+#        for layer in self.layers:
+#            self.compute_layer_scaling(chunk_slice=None, layer=layer)
 
 
     def get_2d_arr(self, post_index, chunk_slice):
         """
         Returns a 2d view of a chunk for the given post-processed field
         """
-        f = self.fractal
-        rank = f.chunk_rank(chunk_slice)
-        beg, end = f.mask_beg_end(rank)
-        
-        if self.has_memmap:
-#            mmap = open_memmap(
-#                filename=self.temporary_mmap_path(), mode='r'
-#            )
-            mmap = self.get_temporary_mmap()
-            arr = mmap[post_index, beg:end]
-            del mmap
-        else:
-            arr = self._RAM_data[post_index, beg:end]
+#        f = self.fractal
+#        if self.current_chunck != chunk_slice:
+            
+#        rank = f.chunk_rank(chunk_slice)
+#        beg, end = f.mask_beg_end(rank)
+        try:
+            arr = self._raw_arr[chunk_slice][post_index, :]
+        except KeyError:
+            raise ValueError("Data requested for an unexpected chunk")
 
         (ix, ixx, iy, iyy) = chunk_slice
         nx, ny = ixx - ix, iyy - iy
@@ -414,7 +492,7 @@ class Fractal_plotter:
             report.write("output: {}\n".format(layer.output))
             report.write("min: {}\n".format(layer.min))
             report.write("max: {}\n\n".format(layer.max))
-            
+
         with open(txt_report_path, 'w', encoding='utf-8') as report:
             for i, layer in enumerate(self.layers):
                 write_layer_report(i, layer, report)
@@ -424,13 +502,14 @@ class Fractal_plotter:
               {txt_report_path}"""
         ))
 
-    # multithreading: OK
-    @Multithreading_iterator(
-        iterable_attr="chunk_slices", iter_kwargs="chunk_slice"
-    )
-    def compute_layer_scaling(self, chunk_slice, layer):
-        """ Compute the scaling for this layer """
-        layer.update_scaling(chunk_slice)
+#    # multithreading: OK
+#    @Multithreading_iterator(
+#        iterable_attr="chunk_slices", iter_kwargs="chunk_slice"
+#    )
+#    def compute_layer_scaling(self, chunk_slice, layer):
+#        """ Compute the scaling for this layer """
+#        layer.update_scaling(chunk_slice)
+
 
     def open_images(self):
         self._im = []
@@ -467,16 +546,16 @@ class Fractal_plotter:
                   {img_path}"""
             ))
 
-    def push_layers_to_images(self):
-        for i, layer in enumerate(self.layers):
-            if not(layer.output):
-                continue
-            self.push_cropped(chunk_slice=None, layer=layer, im=self._im[i])
+#    def push_layers_to_images(self):
+#        for i, layer in enumerate(self.layers):
+#            if not(layer.output):
+#                continue
+#            self.push_cropped(chunk_slice=None, layer=layer, im=self._im[i])
 
-    # multithreading: OK
-    @Multithreading_iterator(
-        iterable_attr="chunk_slices", iter_kwargs="chunk_slice"
-    )
+#    # multithreading: OK
+#    @Multithreading_iterator(
+#        iterable_attr="chunk_slices", iter_kwargs="chunk_slice"
+#    )
     def push_cropped(self, chunk_slice, layer, im):
         """ push "cropped image" from layer for this chunk to the image"""
         (ix, ixx, iy, iyy) = chunk_slice
@@ -485,11 +564,11 @@ class Fractal_plotter:
         paste_crop = layer.crop(chunk_slice)
         im.paste(paste_crop, box=crop_slice)
         
-    def clean_up(self):
-        if self.has_memmap:
-            os.unlink(self.temporary_mmap_path())
-        else:
-            del self._RAM_data
+#    def clean_up(self):
+#        if self.has_memmap:
+#            os.unlink(self.temporary_mmap_path())
+#        else:
+#            del self._RAM_data
 
 class _Null_status_wget:
     def __init__(self, fractal):
@@ -678,9 +757,14 @@ advanced users when subclassing.
         projection : "cartesian" | "spherical" | "exp_map"
             Kind of projection used (default to cartesian)
         antialiasing : bool
-            If True, some degree of randomization is applied
+            Deprecated - Use the options provided by `Fractal_plotter`
+            (This parameter might be removed in a future version)
         """
-        # In case the GUI inputs were strings, we override with floats
+        if antialiasing:
+            logger.warn("antialiasing parameter for zoom is obsolete, "
+                          "Use the options provided by `Fractal_plotter`")
+
+        # Safeguard in case the GUI inputs were strings
         if isinstance(x, str) or isinstance(y, str) or isinstance(dx, str):
             raise RuntimeError("Float expected")
 
@@ -735,11 +819,21 @@ advanced users when subclassing.
         # Jitted function used in numba inner-loop
         cycle_indep_args = self.get_cycle_indep_args()
 
-        # Launch parallel computing of the inner-loop (Multi-threading with GIL
-        # released)
         if lazzy_evaluation:
-            pass
+            # We just store these parameters for later
+            if not(hasattr(self, "_lazzy_cycle_indep_args")):
+                self._lazzy_cycle_indep_args = dict()
+            self._lazzy_cycle_indep_args[self.calc_name] = cycle_indep_args
+    
+            if not(hasattr(self, "_lazzy_params")):
+                self._lazzy_params = dict()
+            self._lazzy_params[self.calc_name] = self.params
+            # We still need a disk copy as it is used everywhere
+            self.save_params()
+
         else:
+            # Launch parallel computing of the inner-loop
+            # (Multi-threading with GIL released)
             self.initialize_cycles()
             self.cycles(cycle_indep_args, chunk_slice=None)
             self.finalize_cycles()
@@ -975,10 +1069,11 @@ advanced users when subclassing.
             )
         if not valid:
             arr = self.recompute_mask_beg_end(rank)
-
         return arr[rank], arr[rank + 1]
 
     def recompute_mask_beg_end(self, rank):
+        """ A bit brutal but does the job
+        """
         arr = np.empty((self.chunks_count + 1,), dtype=np.int32)
         arr[0] = 0
         for i, chunk_slice in enumerate(self.chunk_slices()):
@@ -1030,16 +1125,35 @@ advanced users when subclassing.
         (nx, ny) = (self.nx, self.ny)
         (ix, ixx, iy, iyy) = chunk_slice
 
-        dx_grid = np.linspace(-0.5, 0.5, num=nx, dtype=data_type)
-        dy_grid = np.linspace(-0.5, 0.5, num=ny, dtype=data_type)
-        dy_vec, dx_vec  = np.meshgrid(dy_grid[iy:iyy], dx_grid[ix:ixx])
+        kx = 0.5 / (nx - 1)
+        x_1d = np.linspace(
+                kx * (2 * ix - nx + 1), kx * (2 * ixx - nx - 1),
+                num=(ixx - ix), dtype=data_type
+        )
 
-        if self.antialiasing:
-            rg = np.random.default_rng(0)
-            rand_x = rg.random(dx_vec.shape, dtype=data_type)
-            rand_y = rg.random(dx_vec.shape, dtype=data_type)
-            dx_vec += (0.5 - rand_x) * 0.5 / nx
-            dy_vec += (0.5 - rand_y) * 0.5 / ny
+        ky = 0.5 / (ny - 1)
+        y_1d = np.linspace(
+                ky * (2 * iy - ny + 1), ky * (2 * iyy - ny - 1),
+                num=(iyy - iy), dtype=data_type
+        )
+
+        # DEBUG - alternative definition
+        if False:
+            dx_grid = np.linspace(-0.5, 0.5, num=nx, dtype=data_type)
+            dy_grid = np.linspace(-0.5, 0.5, num=ny, dtype=data_type)
+            x_1dr = dx_grid[ix:ixx]
+            y_1dr = dy_grid[iy:iyy]
+            np.testing.assert_almost_equal(x_1dr, x_1d)
+            np.testing.assert_almost_equal(y_1dr, y_1d)
+        
+        dy_vec, dx_vec  = np.meshgrid(y_1d, x_1d)
+
+#        if antialiasing:
+#            rg = np.random.default_rng(0)
+#            rand_x = rg.random(dx_vec.shape, dtype=data_type)
+#            rand_y = rg.random(dx_vec.shape, dtype=data_type)
+#            dx_vec += (0.5 - rand_x) * 0.5 / nx
+#            dy_vec += (0.5 - rand_y) * 0.5 / ny
 
         dy_vec /= self.xy_ratio
 
@@ -1172,12 +1286,18 @@ advanced users when subclassing.
             self._interrupted # INDEP
         )
 
-    def get_cycling_dep_args(self, chunk_slice):
+    def get_cycling_dep_args(self, chunk_slice, use_current_subset=True,
+                             subset=None):
         """
         The actual input / output arrays
         """
         c_pix = np.ravel(self.chunk_pixel_pos(chunk_slice))
-        if self.subset is not None:
+
+        if use_current_subset:
+            # This is the current calculation, we use class attribute
+            subset = self.subset
+
+        if subset is not None:
             chunk_mask = self.subset[chunk_slice]
             c_pix = c_pix[chunk_mask]
 
@@ -1436,7 +1556,7 @@ advanced users when subclassing.
         np.savetxt(
             outpath,
             full_report,
-            fmt=('%8i|%8i|%8i|%i4|%8i|%8i|%8i|' + '%8i|' * len(reason_ITEMS)),
+            fmt=('%8i|%8i|%8i|%4i|%8i|%8i|%8i|' + '%8i|' * len(reason_ITEMS)),
             header=(report_header + stop_header + reason_header),
             comments=''
         )
@@ -1584,7 +1704,6 @@ advanced users when subclassing.
         if calc_name is None:
             is_current_calc = True
             calc_name = self.calc_name
-        print("RELOADING data", calc_name, "is_current_calc:", is_current_calc)
 
         keys = self.SAVE_ARRS
         rank = self.chunk_rank(chunk_slice)
@@ -1599,6 +1718,7 @@ advanced users when subclassing.
         subset = self.subset
         # Here we can t always rely on self.subset, it has to be consistent
         # with calc_name ie loaded from params options
+        # TODO: seems not very reliable as subset is not Serialisable
         if not(is_current_calc):
             params, _ = self.reload_params(calc_name)
             subset = params["calc-param_subset"]
@@ -1616,24 +1736,38 @@ advanced users when subclassing.
             arr["stop_iter"]
         )
 
-    def evaluate_data(self, chunk_slice, calc_name=None): # public
+    def evaluate_data(self, chunk_slice, calc_name, postproc_options): # public
         """ Compute on the fly the raw arrays for this chunk : 
         raw_data = chunk_mask, Z, U, stop_reason, stop_iter
         Note: this is normally a final redering
         """
-        raise NotImplementedError()
-#        rank = self.chunk_rank(chunk_slice)
-#        
-##        c_pix, Z, U, stop_reason, stop_iter,
-##            initialize, iterate,
-##            dx, center, xy_ratio, theta, projection, self._interrupted
-#
-#        chunk_cycle_params = self.get_params(rank, )
-#        chunk_mask = self.subset[chunk_slice]
-#        ret_code = numba_cycles(
-#            *chunk_cycle_params, self._interrupted
-#        )
-#        return chunk_mask, Z, U, stop_reason, stop_iter
+        # The subset is the most tricky...
+        # params, _ = self._params[]#reload_params(calc_name)
+        subset = self._lazzy_params[calc_name]["calc-param_subset"]
+        if subset is not None:
+            raise NotImplementedError(
+                "'Final' fast-renderering mode not implemented for "
+                "calculations with a subset. Please run in standard mode."
+            )
+
+        cycle_dep_args = self.get_cycling_dep_args(
+            chunk_slice, use_current_subset=False, subset=subset
+        )
+        cycle_indep_args = self._lazzy_cycle_indep_args[calc_name]
+
+        ret_code = self.numba_cycle_call(cycle_dep_args, cycle_indep_args)
+
+        if ret_code == self.USER_INTERRUPTED:
+            logger.error("Interruption signal received")
+            return
+
+        # Just need to wrap it up
+        (c_pix, Z, U, stop_reason, stop_iter) = cycle_dep_args
+        chunk_mask = None
+        if subset is not None:
+            chunk_mask = subset[chunk_slice]
+        return chunk_mask, Z, U, stop_reason, stop_iter
+
 
     @staticmethod
     def kind_from_code(code, codes):
@@ -1756,12 +1890,12 @@ advanced users when subclassing.
         # Is it the final render ?
         if postproc_options["final_render"]:
             # This is the final render, we compute from scratch
-            chunk_mask, Z, U, stop_reason, stop_iter = self.evaluate_data(
-                chunk_slice, calc_name, postproc_options)
+            (chunk_mask, Z, U, stop_reason, stop_iter
+             ) = self.evaluate_data(chunk_slice, calc_name, postproc_options)
         else:
-            # This shall have been precomputed
-            chunk_mask, Z, U, stop_reason, stop_iter = self.reload_data(
-                chunk_slice, calc_name)
+            # Not the final -> raw data shall have been precomputed & stored
+            (chunk_mask, Z, U, stop_reason, stop_iter
+             ) = self.reload_data(chunk_slice, calc_name)
 
         params, codes = self.reload_params(calc_name)
         complex_dic, int_dic, termination_dic = self.codes_mapping(*codes)
@@ -1799,9 +1933,10 @@ coords = {{
 """
         return res_str
 
-
-# Numba JIT functions =========================================================
-
+#==============================================================================
+# Numba JIT functions
+#==============================================================================
+        
 USER_INTERRUPTED = 1
 
 @numba.njit(nogil=True)

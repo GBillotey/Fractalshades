@@ -3,6 +3,12 @@ Changelog
 
 Rev 0.5.6
 ~~~~~~~~~
+- `antialiasing` and `jitter` parameters added to Plotter class
+- 'antialiasing' parameter from zoom method deprecated
+
+
+Rev 0.5.6
+~~~~~~~~~
 - Added Shark Fin escape-time fractal (incl. arbitrary precision implementation)
 - "Show source" export button from the GUI now gives a ready-to-run script
 - Fixed bug in GUI where a modified colormap was not updated correctly

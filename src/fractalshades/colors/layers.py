@@ -71,7 +71,7 @@ class Virtual_layer:
         self.postname = postname
         self.min = np.inf     # neutral value for np.nanmin
         self.max = -np.inf    # neutral value for np.nanmax
-        self._scaling_defined = False # tracker
+#        self._scaling_defined = False # tracker
         self._func_arg = func # kept for the record
         self.func = self.parse_func(func)
         self.output = output
@@ -219,7 +219,7 @@ class Virtual_layer:
             self.min = - self.max
         else:
             raise ValueError(n_fields)
-        self._scaling_defined = True
+#        self._scaling_defined = True
 
     def nanmin_with_mask(self, arr, chunk_slice):
         """ nanmin but disregarding the masked vals (if layer has a mask)"""
@@ -380,10 +380,8 @@ class Color_layer(Virtual_layer):
         layer : `Virtual_Layer` instance
             The combined layer
         scale : float
-            The scaling coefficient ; if 1. both layer will have the same
-            min-max contribtion. If 0.1 the combined layer will only contribute
-            to 10 % (This is based on min and max values reached for each
-            layer)
+            A scaling coefficient which will be applied to the twin layer field
+            before adding it to the base field
 
         Notes
         -----
@@ -409,10 +407,11 @@ class Color_layer(Virtual_layer):
         # is there a twin-field ? If yes we add it here, before colormaping
         if self._twin_field is not None:
             twin_layer, scale = self._twin_field
-            if not twin_layer._scaling_defined:
-                raise RuntimeError("Twin layer should be computed before")
-            k = scale * (self.max - self.min
-                         ) / (twin_layer.max - twin_layer.min)
+#            if not twin_layer._scaling_defined:
+#                raise RuntimeError("Twin layer should be computed before")
+            k = scale 
+#            * (self.max - self.min
+#                         ) / (twin_layer.max - twin_layer.min)
             twin_func = twin_layer.func
             if twin_func is None:
                 arr += k * twin_layer[chunk_slice]
