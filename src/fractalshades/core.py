@@ -6,7 +6,7 @@ import datetime
 import pickle
 import logging
 import textwrap
-import warnings
+import time
 
 import numpy as np
 from numpy.lib.format import open_memmap
@@ -49,17 +49,12 @@ class _Pillow_figure:
 
 class Fractal_plotter:
     def  __init__(self, postproc_batch, final_render=False, antialiasing=None,
-                  jitter=None):
+                  jitter=None, reload=False):
         """
         The base plotting class.
         
-        A Fractal plotter :
-
-        - points to a single Fractal
-        - can hold several `fractalshades.postproc.Postproc_batch` each one
-          point to a single
-          (`Fracal`, ``calculation``) couple
-        - can hold several post-processing layers
+        A Fractal plotter is a container for 
+        `fractalshades.postproc.Postproc_batch` and fractal layers.
          
         Parameters
         ----------
@@ -76,22 +71,26 @@ class Fractal_plotter:
             Used only for the final render. if not None, the final image will
             leverage antialiasing (from 4 to 49 pixels computed for 1 pixel in 
             the image)
-        jitter: None, True, float
+        jitter: None | True | float
             Used only for the final render. If not None, the final image will
             leverage jitter
+        reload: bool
+            Used only for the final render. If True, will attempt to reload
+            the tiles already computed
 
         Notes
         -----
 
         .. warning::
             When passed a list of `fractalshades.postproc.Postproc_batch`
-            objects, each postprocessing batch shall reference a unique
-            `Fractal`.
+            objects, each postprocessing batch shall point to the same
+            unique `Fractal` object.
         """
         self.postproc_options = {
             "final_render": final_render,
             "antialiasing": antialiasing,
-            "jitter": jitter
+            "jitter": jitter,
+            "reload": reload
         }
 
         # postproc_batchescan be single or an enumeration
@@ -183,6 +182,14 @@ class Fractal_plotter:
         raise KeyError("Layer {} not in available layers: {}".format(
                 layer_name, list(l.postname for l in self.layers)))
 
+    def plotter_info_str(self):
+        str_info = "Plotting images: plotter options"
+        for k, v in self.postproc_options.items():
+            str_info += f"\n    {k}: {v}"
+        str_info += ("\n  /!\\ antialiasing and jitter only activated "
+                     + "for final render")
+        return str_info
+
     def plot(self):
         """
         The base method to produce images.
@@ -208,10 +215,17 @@ class Fractal_plotter:
 #        self.close_temporary_mmap()
         
         # Refactoring with direct calculation
+        logger.info(self.plotter_info_str()) 
         logger.info("Plotting images: computing tiles")
+        # self.postproc_options
+        
         self.open_images()
         self._raw_arr = dict()
-        self._current_tile = 0
+        self._current_tile = {
+                "value": 0,
+                "time": 0.  # time of last evt in seconds
+        }
+        
         self.plot_tiles(chunk_slice=None)
         self.save_images()
         logger.info("Plotting images: done")
@@ -220,10 +234,41 @@ class Fractal_plotter:
         self.write_postproc_report()
 
 
+#    def initialize_plot(self):
+    @property
+    def try_reload(self):
+        """ Will we try to reopen saved image chunks ?"""
+        return (
+            self.postproc_options["reload"]
+            and self.postproc_options["final_render"]
+        )
+
+    @property
+    def final_render(self):
+        """ Just an alias"""
+        return self.postproc_options["final_render"]
+
     @Multithreading_iterator(
         iterable_attr="chunk_slices", iter_kwargs="chunk_slice"
     )
     def plot_tiles(self, chunk_slice):
+        """
+        
+        """
+        # early exit if already computed
+        if self.try_reload:
+            f = self.fractal
+            rank = f.chunk_rank(chunk_slice)
+            is_valid = (self._mmap_status[rank] > 0)
+            if is_valid:
+                for i, layer in enumerate(self.layers):
+                    # TODO what about 'update scaling' ???
+                    # It is invalid as we lost the data...
+                    self.push_reloaded(
+                        chunk_slice, layer=layer, im=self._im[i], ilayer=i
+                    )
+                self.incr_tiles_status(chunk_slice)
+                return
 
         # 1) Compute the postprocs for this field
         n_pp = len(self.posts)
@@ -242,11 +287,11 @@ class Fractal_plotter:
         for i, layer in enumerate(self.layers):
             layer.update_scaling(chunk_slice)
             if layer.output:
-                self.push_cropped(chunk_slice, layer=layer, im=self._im[i])
-
+                self.push_cropped(chunk_slice, layer=layer, im=self._im[i],
+                                  ilayer=i)
 
         # clean-up
-        self.incr_tiles_status()
+        self.incr_tiles_status(chunk_slice)
         del self._raw_arr[chunk_slice]
             
             
@@ -258,20 +303,39 @@ class Fractal_plotter:
         """
         f = self.fractal
         inc = batch_first_post
-        post_array, chunk_mask = self.fractal.postproc(
-                batch, chunk_slice, self.postproc_options
+        post_array, chunk_mask = f.postproc(
+            batch, chunk_slice, self.postproc_options
         )
         arr_1d = f.reshape1d(post_array, chunk_mask, chunk_slice)
         # arr_2d = f.reshape2d(post_array, chunk_mask, chunk_slice)
         n_posts, _ = arr_1d.shape
         raw_arr[inc: (inc + n_posts), :] = arr_1d
-    
-    def incr_tiles_status(self):
-        self._current_tile += 1
+
+
+    def incr_tiles_status(self, chunk_slice):
         f = self.fractal
-        str_val = str(self._current_tile)+ " / " + str(f.chunks_count)
-        logger.info(f"Image output: {str_val}")
+        curr_val = self._current_tile["value"] + 1
+        self._current_tile["value"] = curr_val
+
+        prev_log = self._current_tile["time"]
+        curr_time = time.time()
+        time_diff = curr_time - prev_log
         
+        ntiles = f.chunks_count
+        bool_log = ((time_diff > 1) or (curr_val == 1) or (curr_val == ntiles))
+        
+        # Marking this chunk as valid (in case of 'final render')
+        if self.final_render:
+            rank = f.chunk_rank(chunk_slice)
+            self._mmap_status[rank] = 1
+
+        if bool_log:
+            self._current_tile["time"] = curr_time
+            str_val = str(curr_val)+ " / " + str(f.chunks_count)
+            logger.info(f"Image output: {str_val}")
+
+
+
 #        def set_status(self, key, str_val):
 #        """ Just a simple text status """
 #        # if hasattr(self, "_status_wget"): # always has...
@@ -509,21 +573,127 @@ class Fractal_plotter:
 #    def compute_layer_scaling(self, chunk_slice, layer):
 #        """ Compute the scaling for this layer """
 #        layer.update_scaling(chunk_slice)
-
+    def image_name(self, layer):
+        return "{}_{}".format(type(layer).__name__, layer.postname)
 
     def open_images(self):
+        """ Open 
+         - the image files
+         - the associated memory mappings in case of "final render"
+        ("""
         self._im = []
+        if self.final_render:
+            self._mmaps = []
+            self.open_mmap_status()
+        
         for layer in self.layers:
             if layer.output:
                 self._im += [PIL.Image.new(mode=layer.mode, size=self.size)]
+                if self.final_render:
+                    self._mmaps += [self.open_mmap(layer)]
+
             else:
-                self._im += [None]
+                self._im += [None]    
+                if self.final_render:
+                    self._mmaps += [None]
+
+        if self.try_reload:
+            valid_chunks = np.count_nonzero(self._mmap_status)
+            n = self.fractal.chunks_count
+            logger.info(
+                "Attempt to restart interrupted calculation,\n"
+                f"    Valid image tiles found: {valid_chunks} / {n}"
+            )
+        elif self.final_render:
+            logger.info("Reloading option disabled, all image recomputed")
+
+
+    def open_mmap_status(self):
+        """ Small array to flag the validated image tiles
+        Only for final render """
+        n_chunk = self.fractal.chunks_count
+        file_path = os.path.join(
+                self.plot_dir,"data", "final_render" + ".arr"
+        )
+
+        try:
+            # Does layer the mmap already exists, and does it seems to suit
+            # our need ?
+            if not(self.try_reload):
+#                print("DEBUG no try_reload")
+                raise ValueError("Invalidated mmap_status")
+            _mmap_status = open_memmap(
+                filename=file_path, mode="r+"
+            )
+            if (_mmap_status.shape != (n_chunk,)):
+#                print("DEBUG shape")
+                raise ValueError("Incompatible shapes for mmap_status")
+
+        except (FileNotFoundError, ValueError):
+            # Lets create it from scratch
+            logger.debug(f"No valid status file found - recompute")
+            _mmap_status = open_memmap(
+                    filename=file_path, 
+                    mode='w+',
+                    dtype=np.int32,
+                    shape=(n_chunk,),
+                    fortran_order=False,
+                    version=None
+            )
+            _mmap_status[:] = 0
+
+        self._mmap_status = _mmap_status
+
+
+    def open_mmap(self, layer):
+        """ mmap filled in // of the actual image - to allow restart
+        Only for final render 
+        """
+        mode = layer.mode
+        dtype = fs.colors.layers.Virtual_layer.DTYPE_FROM_MODE[mode]
+        channel = fs.colors.layers.Virtual_layer.N_CHANNEL_FROM_MODE[mode]
+        nx, ny = self.size
+        file_name = self.image_name(layer)
+        file_path = os.path.join(self.plot_dir, "data", file_name + "._img")
+
+        # Does the mmap already exists, and does it seems to suit our need ?
+        try:
+            # Does layer the mmap already exists, and does it seems to suit
+            # our need ?
+            if not(self.postproc_options["reload"]):
+                raise ValueError("Invalidated mmap_status")
+            mmap = open_memmap(
+                filename=file_path, mode="r+"
+            )
+            if mmap.shape != (ny, nx, channel):
+                raise ValueError("Incompatible shapes for mmap")
+            if mmap.dtype != dtype:
+                raise ValueError("Incompatible dtype for mmap")
+
+        except (FileNotFoundError, ValueError):
+            # Create a new one...
+            mmap = open_memmap(
+                    filename=file_path, 
+                    mode='w+',
+                    dtype=dtype,
+                    shape=(ny, nx, channel),
+                    fortran_order=False,
+                    version=None
+            )
+            # Here as we didnt find information for this layer, sadly the whole
+            # memory mapping is invalidated
+            logger.debug(f"No valid data found for layer {file_name}")
+            self._mmap_status[:] = 0
+
+        return mmap
+
 
     def save_images(self):
+        """ Writes the images to disk """
         for i, layer in enumerate(self.layers):
             if not(layer.output):
                 continue
-            file_name = "{}_{}".format(type(layer).__name__, layer.postname)
+            file_name = self.image_name(layer) #"{}_{}".format(type(layer).__name__, layer.postname)
             base_img_path = os.path.join(self.plot_dir, file_name + ".png")
             self.save_tagged(self._im[i], base_img_path, self.fractal.params)
 
@@ -556,14 +726,36 @@ class Fractal_plotter:
 #    @Multithreading_iterator(
 #        iterable_attr="chunk_slices", iter_kwargs="chunk_slice"
 #    )
-    def push_cropped(self, chunk_slice, layer, im):
+    def push_cropped(self, chunk_slice, layer, im, ilayer):
         """ push "cropped image" from layer for this chunk to the image"""
         (ix, ixx, iy, iyy) = chunk_slice
         ny = self.fractal.ny
         crop_slice = (ix, ny-iyy, ixx, ny-iy)
         paste_crop = layer.crop(chunk_slice)
+        
         im.paste(paste_crop, box=crop_slice)
         
+        if self.final_render:
+            # NOW let's also try to save this beast
+            paste_crop_arr = np.asarray(paste_crop)
+            # print("paste_crop_arr:", paste_crop_arr.shape, paste_crop_arr.dtype)
+            layer_mmap = self._mmaps[ilayer]
+            layer_mmap[iy: iyy, ix: ixx, :] = paste_crop_arr
+            # layer_mmap[ix: ixx, (ny-iyy): (ny-iy), :] = paste_crop_arr
+            # ValueError: could not broadcast input array from shape (167,200,3) into shape (200,167,3)
+
+    def push_reloaded(self, chunk_slice, layer, im, ilayer):
+        """ Just grap the already computed pixels and paste them"""
+        if im is None:
+            return
+        (ix, ixx, iy, iyy) = chunk_slice
+        ny = self.fractal.ny
+        crop_slice = (ix, ny-iyy, ixx, ny-iy)
+        layer_mmap = self._mmaps[ilayer]
+        paste_crop = PIL.Image.fromarray(layer_mmap[iy: iyy, ix: ixx, :])
+        im.paste(paste_crop, box=crop_slice)
+
+
 #    def clean_up(self):
 #        if self.has_memmap:
 #            os.unlink(self.temporary_mmap_path())
@@ -774,109 +966,41 @@ advanced users when subclassing.
         status = {
             "Tiles": {
                 "val": 0,
-                "str_val": "- / -"
+                "str_val": "- / -",
+                "last_log": 0.  # time of last logged change in seconds
             }
         }
         return status
 
-    def set_status(self, key, str_val):
+    def set_status(self, key, str_val, bool_log=True):
         """ Just a simple text status """
         # if hasattr(self, "_status_wget"): # always has...
         self._status_wget.update_status(key, str_val)
-        logger.info(f"{key}: {str_val}")
+        if bool_log:
+            logger.info(f"{key}: {str_val}")
 
     def incr_tiles_status(self):
         """ Dealing with more complex status : 
         Increase by 1 the number of computed tiles reported in status bar
         """
         dic = self._status_wget._status
-        dic["Tiles"]["val"] += 1
-        str_val = str(dic["Tiles"]["val"]) + " / " + str(self.chunks_count)
-        self.set_status("Tiles", str_val)
+        curr_val = dic["Tiles"]["val"] + 1
+        dic["Tiles"]["val"] = curr_val
+
+        prev_event = dic["Tiles"]["last_log"]
+        curr_time = time.time()
+        time_diff = curr_time - prev_event
+
+        ntiles = self.chunks_count
+        bool_log = ((time_diff > 1) or (curr_val == 1) or (curr_val == ntiles))
+        if bool_log:
+            dic["Tiles"]["last_log"] = curr_time
+
+        str_val = str(dic["Tiles"]["val"]) + " / " + str(ntiles)
+        self.set_status("Tiles", str_val, bool_log)
 
 
-    def run(self, lazzy_evaluation=False):
-        """
-        Launch a full calculation.
 
-        The zoom and calculation options from the last
-        @ `fractalshades.zoom_options`\-tagged method called and last
-        @ `fractalshades.calc_options`\-tagged method called will be used.
-
-        If calculation results are already there, the parameters will be
-        compared and if identical, the calculation will be skipped. This is
-        done for each tile, so it enables calculation to restart from an
-        unfinished status.
-        
-        Parameters:
-        -----------
-        lazzy_evaluation: bool
-            If True, this is the final rendering, the RGB arrays will be
-            computed on the fly during plotting. Intermediate arrays will not
-            be stored.
-        """
-
-        # Jitted function used in numba inner-loop
-        cycle_indep_args = self.get_cycle_indep_args()
-
-        if lazzy_evaluation:
-            # We just store these parameters for later
-            if not(hasattr(self, "_lazzy_cycle_indep_args")):
-                self._lazzy_cycle_indep_args = dict()
-            self._lazzy_cycle_indep_args[self.calc_name] = cycle_indep_args
-    
-            if not(hasattr(self, "_lazzy_params")):
-                self._lazzy_params = dict()
-            self._lazzy_params[self.calc_name] = self.params
-            # We still need a disk copy as it is used everywhere
-            self.save_params()
-
-        else:
-            # Launch parallel computing of the inner-loop
-            # (Multi-threading with GIL released)
-            self.initialize_cycles()
-            self.cycles(cycle_indep_args, chunk_slice=None)
-            self.finalize_cycles()
-
-
-    def initialize_cycles(self):
-        """ a few things to open """
-        if not(self.res_available()):
-            # We write the param file and initialize the
-            # memmaps for progress reports and calc arrays
-            fsutils.mkdir_p(os.path.join(self.directory, "data"))
-            self.init_report_mmap()# open_report_mmap()
-            self.init_data_mmaps() # #open_data_mmaps()
-            self.save_params()
-
-        # Open the report mmap in mode "r+" as we will need to modify it 
-        self.get_report_memmap(mode='r+')
-
-
-    def finalize_cycles(self):
-        """ A few clean-up stuff"""
-        self.set_status("Tiles", "completed")
-
-        # Export to human-readable format
-        if fs.settings.inspect_calc:
-            self.inspect_calc()
-
-        # Close memory mappings
-        self.close_data_mmaps()
-        self.close_report_mmaps()
-
-
-    def raise_interruption(self):
-        self._interrupted[0] = True
-        
-    def lower_interruption(self):
-        self._interrupted[0] = False
-
-    
-    def is_interrupted(self):
-        """ Either programmatically 'interrupted' (from the GUI) or by the user 
-        in batch mode through fs.settings.skip_calc """
-        return (self._interrupted[0] or fs.settings.skip_calc)
 
     @property
     def ny(self):
@@ -1209,6 +1333,102 @@ advanced users when subclassing.
         return report["done"] > 0
 
 
+    def run(self, lazzy_evaluation=False):
+        """
+        Launch a full calculation.
+
+        The zoom and calculation options from the last
+        @ `fractalshades.zoom_options`\-tagged method called and last
+        @ `fractalshades.calc_options`\-tagged method called will be used.
+
+        If calculation results are already there, the parameters will be
+        compared and if identical, the calculation will be skipped. This is
+        done for each tile, so it enables calculation to restart from an
+        unfinished status.
+        
+        Parameters:
+        -----------
+        lazzy_evaluation: bool
+            If True, this is the final rendering, the RGB arrays will be
+            computed on the fly during plotting. Intermediate arrays will not
+            be stored.
+        """
+        self._lazzy_evaluation = lazzy_evaluation
+        cycle_indep_args = self.get_cycle_indep_args()
+
+        if lazzy_evaluation:
+            # We just store these parameters for later - create the container
+            # as needed
+            if not(hasattr(self, "_lazzy_data")):
+                self._lazzy_data = dict()
+            
+            self._lazzy_data[self.calc_name] = {
+                "cycle_indep_args": cycle_indep_args,
+            }
+            self.save_params()
+#            self._lazzy_cycle_indep_args[self.calc_name] = cycle_indep_args
+#    
+#            if not(hasattr(self, "_lazzy_params")):
+#                self._lazzy_params = dict()
+#            self._lazzy_params[self.calc_name] = self.params
+            
+            # What about the codes ??
+
+#            # We still need a disk copy as it is used everywhere
+#            self.save_params()
+#            # This is a placeholder if a non-fianl is run after
+#            self.init_report_mmap()
+
+        else:
+            # Launch parallel computing of the inner-loop
+            # (Multi-threading with GIL released)
+            self.initialize_cycles()
+            self.cycles(cycle_indep_args, chunk_slice=None)
+            self.finalize_cycles()
+
+
+    def initialize_cycles(self):
+        """ a few things to open """
+        if self.res_available():
+            logger.info("Tiles: Found existing raw results files\n"
+                        "  -> only the missing tiles will be recomputed")
+        else:
+            # We write the param file and initialize the
+            # memmaps for progress reports and calc arrays
+            fsutils.mkdir_p(os.path.join(self.directory, "data"))
+            self.init_report_mmap()# open_report_mmap()
+            self.init_data_mmaps() # #open_data_mmaps()
+            self.save_params()
+
+        # Open the report mmap in mode "r+" as we will need to modify it 
+        self.get_report_memmap(mode='r+')
+
+
+    def finalize_cycles(self):
+        """ A few clean-up stuff"""
+        self.set_status("Tiles", "completed")
+
+        # Export to human-readable format
+        if fs.settings.inspect_calc:
+            self.inspect_calc()
+
+        # Close memory mappings
+        self.close_data_mmaps()
+        self.close_report_mmaps()
+
+
+    def raise_interruption(self):
+        self._interrupted[0] = True
+        
+    def lower_interruption(self):
+        self._interrupted[0] = False
+    
+    def is_interrupted(self):
+        """ Either programmatically 'interrupted' (from the GUI) or by the user 
+        in batch mode through fs.settings.skip_calc """
+        return (self._interrupted[0] or fs.settings.skip_calc)
+
+
     @Multithreading_iterator(
         iterable_attr="chunk_slices", iter_kwargs="chunk_slice")
     def cycles(self, cycle_indep_args, chunk_slice=None):
@@ -1245,23 +1465,21 @@ advanced users when subclassing.
             return
 
         cycle_dep_args = self.get_cycling_dep_args(chunk_slice)
-        # ========================ad-hoc part==================================
+        # Customization hook :
         ret_code = self.numba_cycle_call(cycle_dep_args, cycle_indep_args)
-        #======================================================================
 
         if ret_code == self.USER_INTERRUPTED:
             logger.error("Interruption signal received")
             return
         self.incr_tiles_status()
 
-        # Saving the results after cycling - the arrays or the input ??
         (c_pix, Z, U, stop_reason, stop_iter) = cycle_dep_args
         self.update_report_mmap(chunk_slice, stop_reason)
         self.update_data_mmaps(chunk_slice, Z, U, stop_reason, stop_iter)
 
-    
     @staticmethod
     def numba_cycle_call(cycle_dep_args, cycle_indep_args):
+        # Just a thin wrapper to allow customization in derived classes
         return numba_cycles(*cycle_dep_args, *cycle_indep_args)
 
     def get_cycle_indep_args(self):
@@ -1295,6 +1513,7 @@ advanced users when subclassing.
 
         if use_current_subset:
             # This is the current calculation, we use class attribute
+            # We need to be able to bypass this in case of lazzy eval only
             subset = self.subset
 
         if subset is not None:
@@ -1355,21 +1574,30 @@ advanced users when subclassing.
         f_int_codes = self.filter_stored_codes(int_codes)
         saved_codes = (f_complex_codes, f_int_codes, stop_codes)
 
-        save_path = self.params_path()
-        fsutils.mkdir_p(os.path.dirname(save_path))
-        with open(save_path, 'wb+') as tmpfile:
-            s_params = self.serializable_params(self.params)
-            pickle.dump(s_params, tmpfile, pickle.HIGHEST_PROTOCOL)
-            pickle.dump(saved_codes, tmpfile, pickle.HIGHEST_PROTOCOL)
+        if self._lazzy_evaluation:
+            self._lazzy_data[self.calc_name]["params"] = self.params
+            self._lazzy_data[self.calc_name]["codes"] = saved_codes
+        else:
+            save_path = self.params_path()
+            fsutils.mkdir_p(os.path.dirname(save_path))
+            with open(save_path, 'wb+') as tmpfile:
+                s_params = self.serializable_params(self.params)
+                pickle.dump(s_params, tmpfile, pickle.HIGHEST_PROTOCOL)
+                pickle.dump(saved_codes, tmpfile, pickle.HIGHEST_PROTOCOL)
 #        print("Saved calc params", save_path)
 
     def reload_params(self, calc_name=None): # public
-        save_path = self.params_path(calc_name)
-        with open(save_path, 'rb') as tmpfile:
-            params = pickle.load(tmpfile)
-            codes = pickle.load(tmpfile)
-            return (params, codes)
-
+        if self._lazzy_evaluation:
+            if calc_name is None:
+                calc_name = self.calc_name
+            params = self._lazzy_data[calc_name]["params"]
+            codes = self._lazzy_data[calc_name]["codes"]
+        else:
+            save_path = self.params_path(calc_name)
+            with open(save_path, 'rb') as tmpfile:
+                params = pickle.load(tmpfile)
+                codes = pickle.load(tmpfile)
+        return (params, codes)
 
 #==============================================================================
 # Report path tracks the progress of the calculations
@@ -1718,7 +1946,7 @@ advanced users when subclassing.
         subset = self.subset
         # Here we can t always rely on self.subset, it has to be consistent
         # with calc_name ie loaded from params options
-        # TODO: seems not very reliable as subset is not Serialisable
+        # TODO: seems not very reliable as subset is currently not Serialisable
         if not(is_current_calc):
             params, _ = self.reload_params(calc_name)
             subset = params["calc-param_subset"]
@@ -1742,18 +1970,18 @@ advanced users when subclassing.
         Note: this is normally a final redering
         """
         # The subset is the most tricky...
-        # params, _ = self._params[]#reload_params(calc_name)
-        subset = self._lazzy_params[calc_name]["calc-param_subset"]
+        subset = self._lazzy_data[calc_name]["params"]["calc-param_subset"]
         if subset is not None:
             raise NotImplementedError(
-                "'Final' fast-renderering mode not implemented for "
-                "calculations with a subset. Please run in standard mode."
+                "'Final' high quality renderering mode not implemented for "
+                "calculations with a subset defined."
+                "Please run in standard mode."
             )
 
         cycle_dep_args = self.get_cycling_dep_args(
             chunk_slice, use_current_subset=False, subset=subset
         )
-        cycle_indep_args = self._lazzy_cycle_indep_args[calc_name]
+        cycle_indep_args = self._lazzy_data[calc_name]["cycle_indep_args"]
 
         ret_code = self.numba_cycle_call(cycle_dep_args, cycle_indep_args)
 

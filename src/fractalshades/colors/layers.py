@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 import numpy as np
 #from numpy.lib.format import open_memmap
 #import matplotlib.colors
@@ -25,6 +26,8 @@ import fractalshades.colors as fscolors
 fractal -> postproc -> Secondaryla -> layer -> combined layer (blend, shading)
 
 """
+
+logger = logging.getLogger(__name__)
 
 class Virtual_layer:
 
@@ -288,7 +291,7 @@ class Color_layer(Virtual_layer):
     default_mask_color = (0., 0., 0.)
 
     def __init__(self, postname, func, colormap, probes_z=[0, 1],
-                 probes_kind="relative", output=True):
+                 probes_kind="absolute", output=True):
         """
         A colored layer.
         
@@ -305,9 +308,7 @@ class Color_layer(Virtual_layer):
             `relative` (default) the minimum value of the field will be mapped
             to 0. and the maximum to 1.
         probes_kind : "relative" | "absolute"
-            The key for  probes_z values. If relative, they are expressed
-            relatively to min and max field values (0. <-> min, 1. <-> max) ;
-            if absolute they are used directly
+            Deprecated. All probe values passed as "absolute"
         output : bool
             passed to `Virtual_layer` constructor
         """
@@ -421,8 +422,11 @@ class Color_layer(Virtual_layer):
         # colorize from colormap 
         # taking into account probes for scaling
         if self.probes_kind == "relative":
-            probes = (self.probe_z * self.max
-                      + (1. - self.probe_z) * self.min)
+            logger.warning("probes kind relative option is deprecated"
+                           "and will have no effect - Use absolute scaling")
+
+            probes = self.probe_z #(self.probe_z * self.max
+                      # + (1. - self.probe_z) * self.min)
         elif self.probes_kind == "absolute":
             probes = self.probe_z
         else:
@@ -503,7 +507,7 @@ class Grey_layer(Virtual_layer):
     k_int = 255
 
     def __init__(self, postname, func, curve=None, probes_z=[0., 1.],
-                 probes_kind="relative", output=True):
+                 probes_kind="absolute", output=True):
         """
         A grey layer.
         
@@ -517,13 +521,11 @@ class Grey_layer(Virtual_layer):
             A mapping from [0, 1] to [0, 1] applied *after* rescaling (this is 
             the equivalent of a colormap in greyscale)
         probes_z : 2-floats list
-            The preprocessing affine rescaling. If [0., 1.] and probes_kind is 
-            `relative` (default) the minimum value of the field will be mapped
+            The preprocessing affine rescaling. If [min, max] the minimum value
+            of the field will be mapped
             to 0. and the maximum to 1.
         probes_kind : "relative" | "absolute"
-            The key for  probes_z values. If relative, they are expressed
-            relatively to min and max field values (0. <-> min, 1. <-> max) ;
-            if absolute they are used directly
+            Deprecated. All probe values passed as "absolute"
         output : bool
             passed to `Virtual_layer` constructor
         """
@@ -561,8 +563,9 @@ class Grey_layer(Virtual_layer):
 
         # taking into account probes for scaling
         if self.probes_kind == "relative":
-            probes = (self.probe_z * self.max
-                      + (1. - self.probe_z) * self.min)
+            logger.warning("probes kind 'relative' option is deprecated"
+                           "and will have no effect - Use absolute scaling")
+            probes = self.probe_z
         elif self.probes_kind == "absolute":
             probes = self.probe_z
         else:
@@ -682,7 +685,8 @@ class Normal_map_layer(Color_layer):
         rgb =  np.zeros([ixx - ix, iyy - iy, 3], dtype=np.float32)
         
         # max slope (from layer property) used for renormalisation
-        coeff = np.sin(self.max_slope) / (np.sqrt(2.) * self.max)
+        # TODO : check if removing self.max has an impact...
+        coeff = np.sin(self.max_slope) / np.sqrt(2.) # (np.sqrt(2.) * self.max) 
         rgb[:, :, 0] = - arr[0, :, :] * coeff # nx component
         rgb[:, :, 1] = - arr[1, :, :] * coeff # ny component
 
