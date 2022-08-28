@@ -150,23 +150,18 @@ class Virtual_layer:
         plotter = self.plotter
         dtype = plotter.post_dtype
         (ix, ixx, iy, iyy) = chunk_slice
+        nx, ny = ixx - ix, iyy - iy
         
-#        if plotter.has_memmap:
-#            mmap = open_memmap(
-#                filename=plotter.temporary_mmap_path(), mode='r'
-#            )
-#
-#        
-#        else:
-#            mmap = self.plotter._RAM_data
+        als = plotter.antialiasing
+        if als is not None:
+            nx *= als
+            ny *= als
 
         postname = self.postname
 
         try:
             field_count = 1
             post_index = list(plotter.postnames).index(postname)
-            # arr[:] = plotter.get_2d_arr(rank, chunk_slice)
-            # mmap[rank, ix:ixx, iy:iyy]
 
         except ValueError:
             # Could happen that we need 2 fields (e.g., normal map...)
@@ -182,14 +177,14 @@ class Virtual_layer:
             field_count = 2
         
         if field_count == 1:
-            arr = np.empty((ixx - ix, iyy - iy), dtype)
+            arr = np.empty((nx, ny), dtype)
             arr[:] = plotter.get_2d_arr(post_index, chunk_slice)
     
         elif field_count == 2:
-            arr = np.empty((2, ixx - ix, iyy - iy), dtype)
+            arr = np.empty((2, nx, ny), dtype)
             arr[0, :] = plotter.get_2d_arr(post_index_x, chunk_slice)
             arr[1, :] = plotter.get_2d_arr(post_index_y, chunk_slice)
-            
+
 #            mmap[rank:rank+2, ix:ixx, iy:iyy]
             
         return arr
@@ -449,7 +444,14 @@ class Color_layer(Virtual_layer):
 
         # Here we have a mask, apply it
         (ix, ixx, iy, iyy) = chunk_slice
-        crop_size = (ixx-ix, iyy-iy)
+        nx, ny = ixx - ix, iyy - iy
+
+        als = self.plotter.antialiasing
+        if als is not None:
+            nx *= als
+            ny *= als
+
+        crop_size = (nx, ny)
         mask_layer, mask_color = self.mask
         self.apply_mask(crop, crop_size,  mask_layer[chunk_slice], mask_color)
         return crop
@@ -587,7 +589,15 @@ class Grey_layer(Virtual_layer):
 
         # Here we have a mask, apply it
         (ix, ixx, iy, iyy) = chunk_slice
-        crop_size = (ixx-ix, iyy-iy)
+        nx, ny = ixx - ix, iyy - iy
+
+        als = self.plotter.antialiasing
+        if als is not None:
+            nx *= als
+            ny *= als
+
+        crop_size = (nx, ny)
+
         mask_layer, mask_color = self.mask
         self.apply_mask(crop, crop_size,  mask_layer[chunk_slice], mask_color)
         return crop
@@ -682,7 +692,14 @@ class Normal_map_layer(Color_layer):
 #        print('crop bool', arr, arr.shape, arr.dtype, arr[0:100])
 #        rgb = np.uint8(rgb * 255)
         (ix, ixx, iy, iyy) = chunk_slice
-        rgb =  np.zeros([ixx - ix, iyy - iy, 3], dtype=np.float32)
+        nx, ny = ixx - ix, iyy - iy
+
+        als = self.plotter.antialiasing
+        if als is not None:
+            nx *= als
+            ny *= als
+
+        rgb =  np.zeros((nx, ny, 3), dtype=np.float32)
         
         # max slope (from layer property) used for renormalisation
         # TODO : check if removing self.max has an impact...
@@ -705,7 +722,14 @@ class Normal_map_layer(Color_layer):
 
         # We have a mask, apply it
         (ix, ixx, iy, iyy) = chunk_slice
-        crop_size = (ixx-ix, iyy-iy)
+        nx, ny = ixx - ix, iyy - iy
+
+        als = self.plotter.antialiasing
+        if als is not None:
+            nx *= als
+            ny *= als
+
+        crop_size = (nx, ny)
         mask_layer, mask_color = self.mask
         self.apply_mask(crop, crop_size,
                         mask_layer[chunk_slice], mask_color) #, self.mask_kind)
@@ -954,7 +978,7 @@ class Overlay_mode:
         crop = np.array(overlay.crop(chunk_slice))
         shade = Virtual_layer.PIL2np(crop) / 255.
         shade = shade[:, :, np.newaxis]
-        
+
         # shade = overlay[chunk_slice][:, :, np.newaxis]
 #        if np.any(shade > 1.):
 #            print(np.max(shade), np.min(shade))

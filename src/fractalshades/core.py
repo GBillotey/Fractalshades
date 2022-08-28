@@ -48,8 +48,19 @@ class _Pillow_figure:
 
 
 class Fractal_plotter:
+    
+    ANTIALIASING_DIC = {
+        "2x2": 2,
+        "3x3": 3,
+        "4x4": 4,
+        "5x5": 5,
+        "6x6": 6,
+        "7x7": 7,
+        None: None
+    }
+
     def  __init__(self, postproc_batch, final_render=False, antialiasing=None,
-                  jitter=None, reload=False):
+                  jitter=False, reload=False):
         """
         The base plotting class.
         
@@ -71,9 +82,10 @@ class Fractal_plotter:
             Used only for the final render. if not None, the final image will
             leverage antialiasing (from 4 to 49 pixels computed for 1 pixel in 
             the image)
-        jitter: None | True | float
+        jitter: bool | float
             Used only for the final render. If not None, the final image will
-            leverage jitter
+            leverage jitter, default intensity is 1. This can help reduce moiré
+            effect
         reload: bool
             Used only for the final render. If True, will attempt to reload
             the tiles already computed
@@ -247,6 +259,13 @@ class Fractal_plotter:
     def final_render(self):
         """ Just an alias"""
         return self.postproc_options["final_render"]
+    
+    @property
+    def antialiasing(self):
+        """ Will really implement antialiasing ? """
+        if self.postproc_options["final_render"]:
+            return self.ANTIALIASING_DIC[self.postproc_options["antialiasing"]]
+        # Note:  implicitely return None by default...
 
     @Multithreading_iterator(
         iterable_attr="chunk_slices", iter_kwargs="chunk_slice"
@@ -273,8 +292,13 @@ class Fractal_plotter:
         # 1) Compute the postprocs for this field
         n_pp = len(self.posts)
         (ix, ixx, iy, iyy) = chunk_slice
-        arr_shp = (n_pp, (ixx - ix) * (iyy - iy))
-        raw_arr = np.empty(shape= arr_shp,dtype=self.post_dtype)
+        npts = (ixx - ix) * (iyy - iy)
+
+        if self.antialiasing is not None:
+            npts = npts * self.antialiasing ** 2
+
+        arr_shp = (n_pp, npts)
+        raw_arr = np.empty(shape=arr_shp, dtype=self.post_dtype)
 
         batch_first_post = 0 # index of the first post for the current batch
         for batch in self.postproc_batches:
@@ -287,8 +311,9 @@ class Fractal_plotter:
         for i, layer in enumerate(self.layers):
             layer.update_scaling(chunk_slice)
             if layer.output:
-                self.push_cropped(chunk_slice, layer=layer, im=self._im[i],
-                                  ilayer=i)
+                self.push_cropped(
+                        chunk_slice, layer=layer, im=self._im[i], ilayer=i
+                )
 
         # clean-up
         self.incr_tiles_status(chunk_slice)
@@ -309,6 +334,7 @@ class Fractal_plotter:
         arr_1d = f.reshape1d(post_array, chunk_mask, chunk_slice)
         # arr_2d = f.reshape2d(post_array, chunk_mask, chunk_slice)
         n_posts, _ = arr_1d.shape
+
         raw_arr[inc: (inc + n_posts), :] = arr_1d
 
 
@@ -517,11 +543,6 @@ class Fractal_plotter:
         """
         Returns a 2d view of a chunk for the given post-processed field
         """
-#        f = self.fractal
-#        if self.current_chunck != chunk_slice:
-            
-#        rank = f.chunk_rank(chunk_slice)
-#        beg, end = f.mask_beg_end(rank)
         try:
             arr = self._raw_arr[chunk_slice][post_index, :]
         except KeyError:
@@ -529,6 +550,12 @@ class Fractal_plotter:
 
         (ix, ixx, iy, iyy) = chunk_slice
         nx, ny = ixx - ix, iyy - iy
+        
+        als = self.antialiasing
+        if als is not None:
+            nx *= als
+            ny *= als
+
         return np.reshape(arr, (nx, ny))
 
 
@@ -733,6 +760,20 @@ class Fractal_plotter:
         crop_slice = (ix, ny-iyy, ixx, ny-iy)
         paste_crop = layer.crop(chunk_slice)
         
+        if self.antialiasing:
+            # Here, we should apply a resizig filter
+            # Image.resize(size, resample=None, box=None, reducing_gap=None)
+            print("### resizing filter")
+            print("paste_crop", paste_crop, paste_crop.size, paste_crop.mode)
+            resample = PIL.Image.LANCZOS
+
+            paste_crop = paste_crop.resize(
+                size=(ixx - ix, iyy-iy),
+                resample=resample,
+                box=None,
+                reducing_gap=None
+            )
+
         im.paste(paste_crop, box=crop_slice)
         
         if self.final_render:
@@ -1237,7 +1278,7 @@ advanced users when subclassing.
         return self.subset
 
 
-    def chunk_pixel_pos(self, chunk_slice):
+    def chunk_pixel_pos(self, chunk_slice, jitter, antialiasing):
         """
         Return the image pixels vector distance to center in fraction of image
         width, as a complex
@@ -1249,35 +1290,50 @@ advanced users when subclassing.
         (nx, ny) = (self.nx, self.ny)
         (ix, ixx, iy, iyy) = chunk_slice
 
-        kx = 0.5 / (nx - 1)
-        x_1d = np.linspace(
-                kx * (2 * ix - nx + 1), kx * (2 * ixx - nx - 1),
-                num=(ixx - ix), dtype=data_type
-        )
+        kx = 0.5 / (nx - 1) # interval width
+        ky = 0.5 / (ny - 1) # interval width
 
-        ky = 0.5 / (ny - 1)
-        y_1d = np.linspace(
-                ky * (2 * iy - ny + 1), ky * (2 * iyy - ny - 1),
-                num=(iyy - iy), dtype=data_type
-        )
+        if antialiasing is None:
+            x_1d = np.linspace(
+                kx * (2 * ix - nx + 1),
+                kx * (2 * ixx - nx - 1),
+                num=(ixx - ix),
+                dtype=data_type
+            )
+            y_1d = np.linspace(
+                ky * (2 * iy - ny + 1),
+                ky * (2 * iyy - ny - 1),
+                num=(iyy - iy),
+                dtype=data_type
+            )
 
-        # DEBUG - alternative definition
-        if False:
-            dx_grid = np.linspace(-0.5, 0.5, num=nx, dtype=data_type)
-            dy_grid = np.linspace(-0.5, 0.5, num=ny, dtype=data_type)
-            x_1dr = dx_grid[ix:ixx]
-            y_1dr = dy_grid[iy:iyy]
-            np.testing.assert_almost_equal(x_1dr, x_1d)
-            np.testing.assert_almost_equal(y_1dr, y_1d)
-        
+        else:
+            als = antialiasing
+            als_gap = (als - 1.) / als
+            x_1d = np.linspace(
+                kx * (2 * ix - nx + 1 - als_gap),
+                kx * (2 * ixx - nx - 1 + als_gap),
+                num = (ixx - ix) * als,
+                dtype=data_type
+            )
+            y_1d = np.linspace(
+                ky * (2 * iy - ny + 1 - als_gap),
+                ky * (2 * iyy - ny - 1 + als_gap),
+                num = (iyy - iy) * als,
+                dtype=data_type
+            )
+
         dy_vec, dx_vec  = np.meshgrid(y_1d, x_1d)
 
-#        if antialiasing:
-#            rg = np.random.default_rng(0)
-#            rand_x = rg.random(dx_vec.shape, dtype=data_type)
-#            rand_y = rg.random(dx_vec.shape, dtype=data_type)
-#            dx_vec += (0.5 - rand_x) * 0.5 / nx
-#            dy_vec += (0.5 - rand_y) * 0.5 / ny
+        if jitter:
+            rg = np.random.default_rng(0)
+            rand_x = rg.random(dx_vec.shape, dtype=data_type)
+            rand_y = rg.random(dy_vec.shape, dtype=data_type)
+            dx_vec += (0.5 - rand_x) * 0.5 / (nx - 1) * jitter
+            dy_vec += (0.5 - rand_y) * 0.5 / (ny - 1) * jitter
+            if antialiasing is not None:
+                dx_vec /= antialiasing
+                dy_vec /= antialiasing
 
         dy_vec /= self.xy_ratio
 
@@ -1287,9 +1343,9 @@ advanced users when subclassing.
 
         if self.skew is not None:
             apply_skew_2d(self.skew, dx_vec, dy_vec)
-        
+
         res = dx_vec + 1j * dy_vec
-        
+
         return res
 
 
@@ -1505,11 +1561,13 @@ advanced users when subclassing.
         )
 
     def get_cycling_dep_args(self, chunk_slice, use_current_subset=True,
-                             subset=None):
+                             subset=None, jitter=False, antialiasing=None):
         """
         The actual input / output arrays
         """
-        c_pix = np.ravel(self.chunk_pixel_pos(chunk_slice))
+        c_pix = np.ravel(
+            self.chunk_pixel_pos(chunk_slice, jitter, antialiasing)
+        )
 
         if use_current_subset:
             # This is the current calculation, we use class attribute
@@ -1967,9 +2025,13 @@ advanced users when subclassing.
     def evaluate_data(self, chunk_slice, calc_name, postproc_options): # public
         """ Compute on the fly the raw arrays for this chunk : 
         raw_data = chunk_mask, Z, U, stop_reason, stop_iter
-        Note: this is normally a final redering
+        Note: this is normally activated only for a final redering
         """
-        # The subset is the most tricky...
+        print("DEBUG")
+        print(self._lazzy_data[calc_name]["params"])
+        # TODO raise a Value Error is 
+        
+        # The subset is the most tricky... Lets implement is later...
         subset = self._lazzy_data[calc_name]["params"]["calc-param_subset"]
         if subset is not None:
             raise NotImplementedError(
@@ -1978,8 +2040,15 @@ advanced users when subclassing.
                 "Please run in standard mode."
             )
 
+        # Accounting for jitter & antialiasing
+        jitter = float(postproc_options["jitter"]) # cast to float
+        antialiasing = Fractal_plotter.ANTIALIASING_DIC[
+            postproc_options["antialiasing"]
+        ]
+
         cycle_dep_args = self.get_cycling_dep_args(
-            chunk_slice, use_current_subset=False, subset=subset
+            chunk_slice, use_current_subset=False, subset=subset,
+            jitter=jitter, antialiasing=antialiasing
         )
         cycle_indep_args = self._lazzy_data[calc_name]["cycle_indep_args"]
 
@@ -2049,8 +2118,11 @@ advanced users when subclassing.
         n_post, n_pts = chunk_array.shape
 
         if chunk_mask is None:
-            chunk_1d = np.copy(chunk_array)
+            chunk_1d = np.copy(chunk_array) # TODO: should we pass a reference?
         else:
+            # Note: this will not work in case of antialiasing
+            # Need a refactoring to be able to pass a fine mesh
+            # For the moment we raise NotImplementedError upstream
             indices = np.arange(nx * ny)[chunk_mask]
             chunk_1d = np.empty([n_post, nx * ny], dtype=chunk_array.dtype)
             chunk_1d[:] = np.nan
