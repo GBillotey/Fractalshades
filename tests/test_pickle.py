@@ -53,7 +53,7 @@ class Test_pickle(unittest.TestCase):
         x = -0.5
         y = 0.
         dx = 5.
-        nx = 600
+        nx = 400
         f = fsm.Mandelbrot(pickle_dir)
         f.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
                theta_deg=0., projection="cartesian", antialiasing=False)
@@ -67,7 +67,23 @@ class Test_pickle(unittest.TestCase):
         f.clean_up(cls.calc_name)
         cls.f = f
         
-
+    def test_pickle_fractal_array(self):
+        """ Check that is it possible to pickle / unpickel a Fractal Array
+        """
+        f = self.f
+        f.run()
+        # A Fractal_array with the interior points
+        f_arr = Fractal_array(
+            f, self.calc_name, "stop_reason",func= lambda x: (x!=1)
+        )
+        
+        chunk_slice = next(f.chunk_slices())
+        expected = f_arr[chunk_slice]
+        print("expected", expected, np.sum(expected))
+        
+        save_path = os.path.join(self.pickle_dir, "test.pickle") 
+        with open(save_path, 'wb+') as tmpfile:
+            pickle.dump(f_arr, tmpfile, pickle.HIGHEST_PROTOCOL)
 
 ##    @test_config.no_stdout
 #    def test_pickled_color_basic(self):

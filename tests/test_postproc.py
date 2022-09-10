@@ -105,7 +105,6 @@ class Test_postproc(unittest.TestCase):
             np.testing.assert_array_equal(expected_stop_iter, stop_iter[chunk])
             
 
-
     def tearDown(self):
         pp_dir = self.pp_dir
         try:

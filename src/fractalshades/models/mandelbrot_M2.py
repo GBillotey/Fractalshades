@@ -25,7 +25,7 @@ directory : str
     Path for the working base directory
         """
         super().__init__(directory)
-        # default values used for postprocessing (potential)
+        # Default values used for postprocessing (potential)
         self.potential_kind = "infinity"
         self.potential_d = 2
         self.potential_a_d = 1.
@@ -68,18 +68,20 @@ directory : str
         complex_codes = ["zn", "dzndz", "dzndc", "d2zndc2"]
         int_codes = []
         stop_codes = ["max_iter", "divergence", "stationnary"]
-        self.codes = (complex_codes, int_codes, stop_codes)
-        self.init_data_types(np.complex128)
 
-        self.potential_M = M_divergence
+        def set_state():
+            def impl(instance):
+                instance.codes = (complex_codes, int_codes, stop_codes)
+                instance.complex_type = np.complex128
+                instance.potential_M = M_divergence
+            return impl
 
         def initialize():
             @numba.njit
-            def numba_init_impl(Z, U, c):
+            def numba_impl(Z, U, c):
                 # Not much to do here
                 pass
-            return numba_init_impl
-        self.initialize = initialize
+            return numba_impl
 
         def iterate():
             Mdiv_sq = self.M_divergence ** 2
@@ -111,9 +113,14 @@ directory : str
 
                 # End of while loop
                 return n_iter
-
             return numba_impl
-        self.iterate = iterate
+
+        return {
+            "set_state": set_state,
+            "initialize": initialize,
+            "iterate": iterate
+        }
+        
 
 
     @fs.utils.calc_options
@@ -175,19 +182,24 @@ directory : str
 
     .. [2] <https://mathr.co.uk/blog/2014-11-02_practical_interior_distance_rendering.html>
         """
-        complex_codes = ["zr", "attractivity", "dzrdc", "dattrdc",
-                         "_partial", "_zn"]
+        complex_codes = [
+            "zr", "attractivity", "dzrdc", "dattrdc", "_partial", "_zn"
+        ]
         int_codes = ["order"]
         stop_codes = ["max_order", "order_confirmed"]
-        self.codes = (complex_codes, int_codes, stop_codes)
-        self.init_data_types(np.complex128)
+
+        def set_state():
+            def impl(instance):
+                instance.codes = (complex_codes, int_codes, stop_codes)
+                instance.complex_type = np.complex128
+            return impl
+
 
         def initialize():
             @numba.njit
             def numba_init_impl(Z, U, c):
                 Z[4] = 1.e6 # bigger than any reasonnable np.abs(zn)
             return numba_init_impl
-        self.initialize = initialize
 
         def iterate():
             @numba.njit
@@ -259,7 +271,12 @@ directory : str
                 return n_iter
 
             return numba_impl
-        self.iterate = iterate
+        
+        return {
+            "set_state": set_state,
+            "initialize": initialize,
+            "iterate": iterate
+        }
 
     @fs.utils.interactive_options
     def coords(self, x, y, pix, dps):
@@ -303,10 +320,9 @@ directory : str
         The full precision loop ; fills in place NP_orbit
         """
         xr_detect_activated = self.xr_detect_activated
-        # Parameters borrowed from last "@fs.utils.calc_options" call
-        calc_options = self.calc_options
+
         max_orbit_iter = (NP_orbit.shape)[0] - 1
-        M_divergence = calc_options["M_divergence"]
+        M_divergence = self.M_divergence
 
         x = c0.real
         y = c0.imag
@@ -392,10 +408,10 @@ interior_detect : bool
     This will trigger the computation of additionnal quantities, so will be
     efficient only when a mini fills a significant part of the view.
 """
-        self.init_data_types(np.complex128)
+        # self.init_data_types(np.complex128)
 
         # used for potential post-processing
-        self.potential_M = M_divergence
+        # self.potential_M = M_divergence
 
         # Complex complex128 fields codes "Z" 
         complex_codes = ["zn"]
@@ -426,8 +442,7 @@ interior_detect : bool
         reason_M_divergence = 1
         reason_stationnary = 2
 
-        self.codes = (complex_codes, int_codes, stop_codes)
-        print("###self.codes", self.codes)
+        # self.codes = (complex_codes, int_codes, stop_codes)
 
         #----------------------------------------------------------------------
         # Define the functions used for BLA approximation
@@ -436,18 +451,14 @@ interior_detect : bool
             (BLA_params is not None)
             and (self.dx < fs.settings.newton_zoom_level)
         )
-        self.calc_dZndz = interior_detect
-        self.calc_dZndc = calc_dzndc or BLA_activated
 
         @numba.njit
         def _dfdz(z):
             return 2. * z
-        self.dfdz = _dfdz
 
         @numba.njit
         def _dfdc(z):
             return 1.
-        self.dfdc = _dfdc
 
         #----------------------------------------------------------------------
         # Defines SA_loop via a function factory - jitted implementation
@@ -463,18 +474,30 @@ interior_detect : bool
                 # mostly: pertubation iteration applied to a polynomial
                 return Pn * (Pn + 2. * Zn_xr) + kcX
             return impl
-        self.SA_loop = SA_loop
+
+
+        def set_state():
+            def impl(instance):
+                instance.complex_type = np.complex128
+                instance.potential_M = M_divergence
+                instance.codes = (complex_codes, int_codes, stop_codes)
+
+                instance.calc_dZndz = interior_detect
+                instance.calc_dZndc = calc_dzndc or BLA_activated
+                instance.dfdz = _dfdz
+                instance.dfdc = _dfdc
+                instance.SA_loop = SA_loop
+            return impl
 
         #----------------------------------------------------------------------
         # Defines initialize - jitted implementation
         def initialize():
             return fs.perturbation.numba_initialize(zn, dzndc, dzndz)
-        self.initialize = initialize
 
         #----------------------------------------------------------------------
         # Defines iterate - jitted implementation
-        M_divergence_sq = self.M_divergence ** 2
-        epsilon_stationnary_sq = self.epsilon_stationnary ** 2
+        M_divergence_sq = M_divergence ** 2
+        epsilon_stationnary_sq = epsilon_stationnary ** 2
         # Xr triggered for ultra-deep zoom
         xr_detect_activated = self.xr_detect_activated
 
@@ -491,7 +514,7 @@ interior_detect : bool
             Z[dzndc] = 2. * ((ref_zn + Z[zn]) * Z[dzndc] + ref_dzndc * Z[zn])
 
         def iterate():
-            return fs.perturbation.numba_iterate(
+            return fs.perturbation.numba_iterate(self.
                 max_iter, M_divergence_sq, epsilon_stationnary_sq,
                 reason_max_iter, reason_M_divergence, reason_stationnary,
                 xr_detect_activated, BLA_activated, SA_activated,
@@ -499,7 +522,12 @@ interior_detect : bool
                 p_iter_zn, p_iter_dzndz, p_iter_dzndc,
                 calc_dzndc, calc_dzndz,
             )
-        self.iterate = iterate
+        
+        return {
+            "set_state": set_state,
+            "initialize": initialize,
+            "iterate": iterate
+        }
 
 
 #------------------------------------------------------------------------------

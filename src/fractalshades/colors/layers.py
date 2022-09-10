@@ -139,6 +139,41 @@ class Virtual_layer:
             raise ValueError("Mask layer type not recognized"
                              + type(layer).__name__)
 
+
+    def get_postproc_index(self):
+        """ Refactoring code common to get_postproc_batch / getitem """
+        plotter = self.plotter
+        postname = self.postname
+        try:
+            field_count = 1
+            post_index = list(plotter.postnames).index(self.postname)
+            return (field_count, post_index)
+        except ValueError:
+            # Could happen that we need 2 fields (e.g., normal map...)
+            if postname not in self.plotter.postnames_2d:
+                raise ValueError("postname not found: {}".format(postname))
+            post_index_x = list(self.plotter.postnames).index(postname + "_x")
+            post_index_y = list(self.plotter.postnames).index(postname + "_y")
+            if post_index_y != post_index_x + 1:
+                raise ValueError(
+                    "x y coords not contiguous for postname: {}".format(
+                        postname)
+                )
+            field_count = 2
+            return (field_count, (post_index_x, post_index_y))
+
+    def postproc_batch(self):
+        """ layer -> postproc -> batch """
+        postname = self.postname
+        for pbatch in self.plotter.postproc_batches:
+            if postname in pbatch.postnames():
+                return pbatch
+            if postname in pbatch.postnames_2d:
+                return pbatch
+        raise ValueError(
+            f"Postname not found in this plotter: {postname}"
+        )
+
     def __getitem__(self, chunk_slice):
         """ read the base data array for this layer
         Returns a numpy array of 
@@ -152,35 +187,38 @@ class Virtual_layer:
         (ix, ixx, iy, iyy) = chunk_slice
         nx, ny = ixx - ix, iyy - iy
         
-        als = plotter.antialiasing
-        if als is not None:
-            nx *= als
-            ny *= als
+        ssg = plotter.supersampling
+        if ssg is not None:
+            nx *= ssg
+            ny *= ssg
 
-        postname = self.postname
+#        postname = self.postname
 
-        try:
-            field_count = 1
-            post_index = list(plotter.postnames).index(postname)
-
-        except ValueError:
-            # Could happen that we need 2 fields (e.g., normal map...)
-            if postname not in self.plotter.postnames_2d:
-                raise ValueError("postname not found: {}".format(postname))
-            post_index_x = list(self.plotter.postnames).index(postname + "_x")
-            post_index_y = list(self.plotter.postnames).index(postname + "_y")
-            if post_index_y != post_index_x + 1:
-                raise ValueError(
-                    "x y coords not contiguous for postname: {}".format(
-                        postname)
-                )
-            field_count = 2
+#        try:
+#            field_count = 1
+#            post_index = list(plotter.postnames).index(postname)
+#
+#        except ValueError:
+#            # Could happen that we need 2 fields (e.g., normal map...)
+#            if postname not in self.plotter.postnames_2d:
+#                raise ValueError("postname not found: {}".format(postname))
+#            post_index_x = list(self.plotter.postnames).index(postname + "_x")
+#            post_index_y = list(self.plotter.postnames).index(postname + "_y")
+#            if post_index_y != post_index_x + 1:
+#                raise ValueError(
+#                    "x y coords not contiguous for postname: {}".format(
+#                        postname)
+#                )
+#            field_count = 2
+        
+        field_count, post_index = self.get_postproc_index()
         
         if field_count == 1:
             arr = np.empty((nx, ny), dtype)
             arr[:] = plotter.get_2d_arr(post_index, chunk_slice)
     
         elif field_count == 2:
+            (post_index_x, post_index_y) = post_index
             arr = np.empty((2, nx, ny), dtype)
             arr[0, :] = plotter.get_2d_arr(post_index_x, chunk_slice)
             arr[1, :] = plotter.get_2d_arr(post_index_y, chunk_slice)
@@ -446,10 +484,10 @@ class Color_layer(Virtual_layer):
         (ix, ixx, iy, iyy) = chunk_slice
         nx, ny = ixx - ix, iyy - iy
 
-        als = self.plotter.antialiasing
-        if als is not None:
-            nx *= als
-            ny *= als
+        ssg = self.plotter.supersampling
+        if ssg is not None:
+            nx *= ssg
+            ny *= ssg
 
         crop_size = (nx, ny)
         mask_layer, mask_color = self.mask
@@ -591,10 +629,10 @@ class Grey_layer(Virtual_layer):
         (ix, ixx, iy, iyy) = chunk_slice
         nx, ny = ixx - ix, iyy - iy
 
-        als = self.plotter.antialiasing
-        if als is not None:
-            nx *= als
-            ny *= als
+        ssg = self.plotter.supersampling
+        if ssg is not None:
+            nx *= ssg
+            ny *= ssg
 
         crop_size = (nx, ny)
 
@@ -694,10 +732,10 @@ class Normal_map_layer(Color_layer):
         (ix, ixx, iy, iyy) = chunk_slice
         nx, ny = ixx - ix, iyy - iy
 
-        als = self.plotter.antialiasing
-        if als is not None:
-            nx *= als
-            ny *= als
+        ssg = self.plotter.supersampling
+        if ssg is not None:
+            nx *= ssg
+            ny *= ssg
 
         rgb =  np.zeros((nx, ny, 3), dtype=np.float32)
         
@@ -724,10 +762,10 @@ class Normal_map_layer(Color_layer):
         (ix, ixx, iy, iyy) = chunk_slice
         nx, ny = ixx - ix, iyy - iy
 
-        als = self.plotter.antialiasing
-        if als is not None:
-            nx *= als
-            ny *= als
+        ssg = self.plotter.supersampling
+        if ssg is not None:
+            nx *= ssg
+            ny *= ssg
 
         crop_size = (nx, ny)
         mask_layer, mask_color = self.mask

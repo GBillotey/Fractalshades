@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+import pickle
+import inspect
+
 import numpy as np
 import numba
 from numpy.lib.format import open_memmap
@@ -87,8 +90,10 @@ class Postproc_batch:
     def set_chunk_data(self, chunk_slice, chunk_mask, Z, U, stop_reason,
             stop_iter, complex_dic, int_dic, termination_dic):
         # self.chunk_slice = chunk_slice
-        self.raw_data[chunk_slice] = (chunk_mask, Z, U, stop_reason, stop_iter,
-            complex_dic, int_dic, termination_dic)
+        self.raw_data[chunk_slice] = (
+            chunk_mask, Z, U, stop_reason, stop_iter,
+            complex_dic, int_dic, termination_dic
+        )
         self.context[chunk_slice] = dict()
 
     def update_context(self, chunk_slice, context_update):
@@ -217,7 +222,8 @@ class Raw_pp(Postproc):
         calc_name = self.calc_name
         func = self.func
         key = self.key
-        (params, codes) = fractal.reload_params(calc_name)
+        # (params, codes) = fractal.reload_params(calc_name)
+        codes = fractal._calc_data[calc_name]["saved_codes"]
         (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
          termination_dic) = self.raw_data[chunk_slice]
         
@@ -799,7 +805,7 @@ class Attr_pp(Postproc):
         return val, {}
 
 class Fractal_array:
-    def __init__(self, fractal, calc_name, key, func=None):
+    def __init__(self, fractal, calc_name, key, func=None, inv=False):
         """
         Class which provide a direct access to the res data stored (memory
         mapping)  during calculation.
@@ -823,9 +829,26 @@ class Fractal_array:
         self.fractal = fractal
         self.calc_name = calc_name
         self.key = key
+
+        try:
+            pickle.dumps(func)
+        except:
+            # TODO: possible improvment see:
+            # https://stackoverflow.com/questions/11878300/serializing-and-deserializing-lambdas
+            # Seems over-the top here, just raising a detailed error
+            source_code = inspect.getsource(func)
+            raise ValueError(
+                "func is unserializable:\n"
+                + f"{source_code}\n"
+                + "Consider passing func definition by string"
+                + " (e.g. \"np.sin(x)\")"
+            )
+        self._func = func # stored for future serialization
         self.func = self.parse_func(func)
+
         # Manage ~ notation
-        self.inv = False
+        self.inv = inv
+
 
     @staticmethod
     def parse_func(func):
@@ -833,13 +856,32 @@ class Fractal_array:
             return fs_parser.func_parser(["x"], func)
         else:
             return func
+    
+    # Note: to implement pickling, the easiest way seems to just re-link the
+    # fractal object outside - ie unpickle in an unfinished state
+    def __reduce__(self):
+        """ Enable standard Python serialization mechanism
+        """
+        args = (None, self.calc_name, self.key, self._func, self.inv)
+        return (self.__class__, args)
 
     def __getitem__(self, chunk_slice):
         """ Returns the raw array, with self.func applied if not None """
         fractal = self.fractal
+
+        if fractal is None:
+            raise ValueError(
+                "Fractal_array without valid Fractal, "
+                "might be an unbound state from unppickling. Use "
+                "self.bind_fractal to rebind"
+            )
+
+        f_class = fractal.__class__
+
         calc_name = self.calc_name
-        (params, codes) = fractal.reload_params(calc_name)
-        kind = fractal.kind_from_code(self.key, codes)
+        codes = fractal._calc_data[calc_name]["saved_codes"]
+        # (params, codes) = fractal.reload_params(calc_name)
+        kind = f_class.kind_from_code(self.key, codes)
 
         # localise the pts range for the chunk /!\ use the right calc_name
         if chunk_slice is not None:
@@ -851,17 +893,19 @@ class Fractal_array:
             end = report_mmap[rank, items.index("chunk1d_end")]
 
         # load the data
-        arr_from_kind = {"complex": "Z",
-                         "int": "U",
-                         "stop_reason": "stop_reason",
-                         "stop_iter": "stop_iter"}
+        arr_from_kind = {
+            "complex": "Z",
+             "int": "U",
+             "stop_reason": "stop_reason",
+             "stop_iter": "stop_iter"
+        }
         arr_str = arr_from_kind[kind]
         data_path = fractal.data_path(calc_name)
         mmap = open_memmap(filename=data_path[arr_str], mode='r')
-        
+
         # field from key :
         key = self.key
-        complex_dic, int_dic, termination_dic = fractal.codes_mapping(*codes)
+        (complex_dic, int_dic, termination_dic) = f_class.codes_mapping(*codes)
         if kind == "complex":
             field = complex_dic[key]
         elif kind == "int":
@@ -885,10 +929,27 @@ class Fractal_array:
         return arr
 
     def __invert__(self):
-        """ Allows use of the ~ notation """
-        ret = Fractal_array(self.fractal, self.calc_name, self.key, self.func)
-        ret.inv = True
+        """ Allows use of the ~ notation 'ala numpy' """
+        ret = Fractal_array(
+            self.fractal, self.calc_name, self.key, self.func, not(self.inv)
+        )
         return ret
+
+    def __eq__(self, other):
+        """ Equality testing, useful when pickling / unpickling"""
+        if isinstance(other, self.__class__):
+            eq = (
+                (self._func == other._func)
+                and (self.calc_name == other.calc_name)
+                and (self.key == other.key)
+                and (self.inv == other.inv)
+            )
+            return eq
+        else:
+            return NotImplemented
+
+    def bind_fractal(self, fractal):
+        self.fractal = fractal
 
 #==============================================================================
 # Numba Nogil implementations

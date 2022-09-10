@@ -12,7 +12,6 @@ import numba
 import fractalshades as fs
 import fractalshades.numpy_utils.xrange as fsx
 import fractalshades.numpy_utils.numba_xr as fsxn
-from fractalshades.mthreading import Multithreading_iterator
 
 
 logger = logging.getLogger(__name__)
@@ -162,8 +161,8 @@ directory : str
             return False
 
         # Parameters 'max_iter' borrowed from last "@fsutils.calc_options" call
-        calc_options = self.calc_options
-        max_iter = calc_options["max_iter"]
+        # calc_options = self.calc_options
+        max_iter = self.max_iter #calc_options["max_iter"]
 
         drift_xr = fsx.mpc_to_Xrange((self.x + 1j * self.y) - ref_point)
         dx_xr = fsx.mpf_to_Xrange(self.dx)
@@ -451,7 +450,7 @@ directory : str
 #                self._interrupted # INDEP
 
 
-    def get_cycle_indep_args(self):
+    def get_cycle_indep_args(self, initialize, iterate):
         """
         Parameters independant of the cycle
         This is where the hard work is done
@@ -540,7 +539,7 @@ directory : str
                     dx_xr, xr_detect_activated #, self.reverse_y
                 )
                 if xr_detect_activated:
-                    dXnda_path = dXnda_xr_path
+                    dXnda_path = dXnda_xr_path        # Jitted function used in numba inner-loop 
                     dXndb_path = dXndb_xr_path
                     dYnda_path = dYnda_xr_path
                     dYndb_path = dYndb_xr_path
@@ -595,9 +594,9 @@ directory : str
             self.set_status("Bilin. approx", "completed")
 
 
-        # Jitted function used in numba inner-loop
-        initialize = self.initialize()
-        iterate = self.iterate()   
+#        # Jitted function used in numba inner-loop
+#        initialize = self.initialize()
+#        iterate = self.iterate()   
 
 
         if holomorphic:
