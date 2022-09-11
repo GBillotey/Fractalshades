@@ -66,7 +66,7 @@ def plot(directory):
             xy_ratio=1.0,
             theta_deg=0., 
             projection="cartesian",
-            antialiasing=False)
+    )
 
     f.calc_std_div(
             calc_name="div",
@@ -76,9 +76,7 @@ def plot(directory):
             epsilon_stationnary=1.e-3,
             BLA_params={"eps": 1.e-6},
             interior_detect=True,
-            )
-
-    f.run()
+    )
 
     # Plot the image
     pp = Postproc_batch(f, "div")
@@ -94,8 +92,7 @@ def plot(directory):
             "DEM",
             func="x",
             colormap=colormap,
-            probes_z=[0.5, 1.5],
-            probes_kind="relative",
+            probes_z=[0.01061, 0.03184],
             output=True
     ))
     plotter["DEM"].set_mask(

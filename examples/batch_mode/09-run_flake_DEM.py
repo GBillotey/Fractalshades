@@ -48,7 +48,7 @@ def plot(directory):
     nx = 2400
     x = '-1.99996619445037030418434688506350579675531241540724851511761922944801584242342684381376129778868913812287046406560949864353810575744772166485672496092803920095332'
     y = '-0.00000000000000000000000000000000030013824367909383240724973039775924987346831190773335270174257280120474975614823581185647299288414075519224186504978181625478529'
-    dx = '1.8e-157'
+    dx = '1.7e-157'
 
     colormap = fscolors.cmap_register["valensole"]
 
@@ -63,10 +63,10 @@ def plot(directory):
             y=y,
             dx=dx,
             nx=nx,
-            xy_ratio=1.,
+            xy_ratio=1.0,
             theta_deg=0., 
             projection="cartesian",
-            antialiasing=False)
+    )
 
     f.calc_std_div(
             calc_name="div",
@@ -76,9 +76,9 @@ def plot(directory):
             epsilon_stationnary=1.e-3,
             SA_params=None,
             BLA_params={"eps": 1.e-8},
-            interior_detect=True)
+            interior_detect=True
+    )
 
-    f.run()
 
     # Plot the image
     pp = Postproc_batch(f, "div")
@@ -95,8 +95,7 @@ def plot(directory):
             "DEM",
             func="np.log(x)",
             colormap=colormap,
-            probes_z=[0., 5.],
-            probes_kind="absolute",
+            probes_z=[0., 5.0],
             output=True
     ))
     plotter["DEM"].set_mask(

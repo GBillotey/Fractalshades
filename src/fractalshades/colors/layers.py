@@ -611,9 +611,14 @@ class Grey_layer(Virtual_layer):
         else:
             raise ValueError(self.probes_kind, "not in [relative, absolute]")
             
-        # clip values in excess, rescale to [0, 1]
-        arr = np.clip(arr, probes[0], probes[1])
+        
+        # arr = np.clip(arr, probes[0], probes[1])
+        # wraps values in excess, rescale to [0, 1]
+        # Formula: https://en.wikipedia.org/wiki/Triangle_wave
+        # 4/p * (t - p/2 * floor(2t/p + 1/2)) * (-1)**floor(2t/p + 1/2) where p = 4
         arr = (arr - probes[0]) / (probes[1] - probes[0])
+        e = np.floor((arr + 1.) / 2.)
+        arr = np.abs((arr - 2. * np.floor(e)) * (-1)**e)
 
         # then apply the transfert curve if provided
         if self.curve is not None:
@@ -641,8 +646,9 @@ class Grey_layer(Virtual_layer):
         return crop
 
     def get_grey(self, arr):
+        # Fits to numerical range
         return self.dtype(arr * self.k_int)
-    
+
     @property
     def mask_kind(self):
         """ private - 3 possiblilities : 

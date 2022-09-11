@@ -57,7 +57,7 @@ def plot(plot_dir):
         epsilon_stationnary= 0.001,
     )
     # f.clean_up(calc_name)
-    f.run()
+
 
     # Plot the image
     pp = Postproc_batch(f, calc_name)
@@ -76,12 +76,14 @@ def plot(plot_dir):
             probes_kind="absolute",
             output=True
     ))
-    plotter.add_layer(Virtual_layer("fieldlines", func=None, output=False))
+    plotter.add_layer(
+        Virtual_layer("fieldlines", func=None, output=False)
+    )
     plotter["cont_iter"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
 
     # This is the line where we indicate that coloring is a combination of
     # "Continuous iteration" and "fieldines values"
-    plotter["cont_iter"].set_twin_field(plotter["fieldlines"], -0.08)
+    plotter["cont_iter"].set_twin_field(plotter["fieldlines"], -0.19)
     plotter.plot()
 
 

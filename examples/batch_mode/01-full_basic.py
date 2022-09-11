@@ -46,7 +46,7 @@ def plot(plot_dir):
 
     # Run the calculation
     f = fsm.Mandelbrot(plot_dir)
-    f.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=4.0,
+    f.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
            theta_deg=0., projection="cartesian", antialiasing=False)
     f.base_calc(
         calc_name=calc_name,
@@ -56,7 +56,7 @@ def plot(plot_dir):
         epsilon_stationnary= 0.001,
     )
     # f.clean_up(calc_name) 
-    f.run()
+    # f.run()
 
     # Plot the image
     pp = Postproc_batch(f, calc_name)
@@ -70,7 +70,6 @@ def plot(plot_dir):
             func="np.log(x)",
             colormap=colormap,
             probes_z=[1., 3.],
-            probes_kind="absolute",
             output=True
     ))
 

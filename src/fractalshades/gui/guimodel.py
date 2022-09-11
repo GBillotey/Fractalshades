@@ -2101,7 +2101,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
                 info = im.info
                 nx, ny = im.size
 
-                # print("info debug", info["debug"])
+                print("info debug:\n", info.keys(), "\n", info)
         except FileNotFoundError:
             valid_image = False
             info = dict(zip(self.zoom_keys, (None,) * len(self.zoom_keys)))

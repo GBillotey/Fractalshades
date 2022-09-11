@@ -58,15 +58,15 @@ def plot(plot_dir):
         M_divergence=100.,
         epsilon_stationnary= 0.001,
     )
-    # f.clean_up(calc_name) # keep this line if you want to force recalculate
-    f.run()
 
     # Plot the image
     pp = Postproc_batch(f, calc_name)
     pp.add_postproc("cont_iter", Continuous_iter_pp())
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
-    pp.add_postproc("fieldlines",
-                Fieldlines_pp(n_iter=4, swirl=0., damping_ratio=1.0))
+    pp.add_postproc(
+        "fieldlines",
+        Fieldlines_pp(n_iter=4, swirl=0., damping_ratio=1.0)
+    )
 
     plotter = fs.Fractal_plotter(pp)   
     plotter.add_layer(Bool_layer("interior", output=False))
@@ -78,7 +78,10 @@ def plot(plot_dir):
             probes_kind="absolute",
             output=True
     ))
-    plotter.add_layer(Grey_layer("fieldlines", func=None, output=False))
+    plotter.add_layer(
+            Grey_layer("fieldlines", func=None, output=True,
+                       probes_z=[1.505, 6.494])
+    )
     plotter["cont_iter"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
     # This is the lines where we indicate that coloring is shaded or tinted
     # depending on "fieldines" values

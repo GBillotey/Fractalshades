@@ -50,7 +50,7 @@ def plot(plot_dir=None):
     x = -0.746223962861
     y = -0.0959468433527
     dx = 0.00745
-    nx = 2400
+    nx = 800
     fs.settings.optimize_RAM = True
 
     calc_name="escaping"
@@ -69,11 +69,9 @@ def plot(plot_dir=None):
         epsilon_stationnary= 0.001,
     )
     # f.clean_up("escaping") # keep this line if you want to force recalculate
-    f.run()
     
     # Run the calculation for the interior points
-    interior = Fractal_array(f, "escaping", "stop_reason",
-                         func= lambda x: (x != 1))
+    interior = Fractal_array(f, "escaping", "stop_reason", func= "x != 1")
     f.newton_calc(
         calc_name="interior",
         subset=interior,
@@ -81,9 +79,8 @@ def plot(plot_dir=None):
         max_order=1500,
         max_newton=20,
         eps_newton_cv=1.e-12,
-        )
+    )
     # f.clean_up("interior")
-    f.run()
 
     # Plot the image
     pp = Postproc_batch(f, calc_name)
@@ -92,7 +89,7 @@ def plot(plot_dir=None):
     pp.add_postproc("div", Raw_pp("stop_reason", func="x == 1."))
     pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
     pp.add_postproc("fieldlines",
-                Fieldlines_pp(n_iter=10, swirl=1., damping_ratio=0.1))
+                Fieldlines_pp(n_iter=3, swirl=0., damping_ratio=0.4))
     
     # Defines a second pastproc batch for interior points
     pp_int = Postproc_batch(f, "interior")
@@ -119,9 +116,12 @@ def plot(plot_dir=None):
             probes_z=[1., 2.],
             probes_kind="absolute",
             output=False))
-    plotter.add_layer(Grey_layer("fieldlines", func=None,
-                                 curve=lambda x: 0.5 + (x - 0.5) * 0.2,
-                                 output=False))
+    plotter.add_layer(
+        Grey_layer("fieldlines", func=None,
+                   probes_z=[1.8314, 8.2314],
+                   curve=lambda x: 0.5 + (x - 0.5) * 0.4,
+                   output=False)
+    )
 
     # plotter["cont_iter"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
     plotter["DEM_map"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))

@@ -83,7 +83,7 @@ def plot(plot_dir):
             xy_ratio=xy_ratio,
             theta_deg=0., 
             projection="cartesian",
-            antialiasing=False)
+    )
 
     f.calc_std_div(
             calc_name=calc_name,
@@ -93,7 +93,6 @@ def plot(plot_dir):
             epsilon_stationnary=1.e-3,
             BLA_params={"eps": 1.e-6},
             interior_detect=False)
-    f.run()
 
     # Plot the image
     pp = Postproc_batch(f, calc_name)
@@ -112,7 +111,6 @@ def plot(plot_dir):
             func="np.log(x)",
             colormap=colormap,
             probes_z=[9.015, 9.025],
-            probes_kind="absolute",
             output=True
     ))
 

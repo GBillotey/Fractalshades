@@ -56,7 +56,6 @@ def plot(plot_dir):
         M_divergence=100.,
         epsilon_stationnary= 0.005,
     )
-    f.run()
 
     # Plot the image
     pp = Postproc_batch(f, calc_name)

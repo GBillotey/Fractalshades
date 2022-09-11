@@ -108,23 +108,26 @@ https://www.deviantart.com/microfractal/art/Mandelbrot-Deep-Julia-Morphing-22-Go
         interior_detect=False
     )
 
-    f.run()
-
     # Plot the image
     pp = Postproc_batch(f, calc_name)
     pp.add_postproc("cont_iter", Continuous_iter_pp())
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
     pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
 
-    plotter = fs.Fractal_plotter(pp)   
+    plotter = fs.Fractal_plotter(
+            pp,
+            final_render=True,
+            supersampling="5x5",
+            jitter=False,
+            reload=True
+    )
     plotter.add_layer(Bool_layer("interior", output=False))
     plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=True))
     plotter.add_layer(Color_layer(
             "cont_iter",
             func="x",
             colormap=colormap,
-            probes_z= [0.35, 0.92],
-            probes_kind="relative",
+            probes_z= [5392625.725, 5406165.22],
             output=True
     ))
 

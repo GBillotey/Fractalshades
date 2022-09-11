@@ -64,7 +64,6 @@ def plot(plot_dir):
         epsilon_stationnary= 0.001,
     )
     # f.clean_up(calc_name) # keep this line if you want to force recalculation
-    f.run()
 
     # Plot the image
     pp = Postproc_batch(f, calc_name)
