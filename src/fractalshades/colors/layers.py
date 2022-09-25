@@ -246,6 +246,7 @@ class Virtual_layer:
             max_chunk = self.nanmax_with_mask(arr, chunk_slice)
             self.min = np.nanmin([self.min, min_chunk])
             self.max = np.nanmax([self.max, max_chunk])
+
         elif n_fields == 2: # case of normal maps
             # Normalizing by its module
             arr = arr[0, :, :]**2 + arr[1, :, :]**2
@@ -253,6 +254,7 @@ class Virtual_layer:
             max_chunk = np.sqrt(max_chunk)
             self.max = np.nanmax([self.max, max_chunk])
             self.min = - self.max
+
         else:
             raise ValueError(n_fields)
 #        self._scaling_defined = True
@@ -454,16 +456,18 @@ class Color_layer(Virtual_layer):
 
         # colorize from colormap 
         # taking into account probes for scaling
-        if self.probes_kind == "relative":
-            logger.warning("probes kind relative option is deprecated"
-                           "and will have no effect - Use absolute scaling")
+#        if self.probes_kind == "relative":
+#            logger.warning("probes kind relative option is deprecated"
+#                           "and will have no effect - Use absolute scaling")
+#
+#            probes = self.probe_z #(self.probe_z * self.max
+#                      # + (1. - self.probe_z) * self.min)
+#        elif self.probes_kind == "absolute":
+#            probes = self.probe_z
+#        else:
+#            raise ValueError(self.probes_kind, "not in [relative, absolute]")
 
-            probes = self.probe_z #(self.probe_z * self.max
-                      # + (1. - self.probe_z) * self.min)
-        elif self.probes_kind == "absolute":
-            probes = self.probe_z
-        else:
-            raise ValueError(self.probes_kind, "not in [relative, absolute]")
+        probes = self.probe_z
         rgb = self.colormap.colorize(arr, probes)
 
         # Apply the modifiers
@@ -524,12 +528,13 @@ class Color_layer(Virtual_layer):
         """ private - apply the shading to rgb color array
         """
         if not(isinstance(layer, Normal_map_layer)):
-            raise ValueError("Can only shade with Normal_map_layer")
+            raise ValueError("Can only shade with a Normal_map_layer")
         normal = layer[chunk_slice]
         nf, nx, ny = normal.shape
         complex_n = np.empty(shape=(nx, ny), dtype=np.complex64)
         # max slope (from layer property) used for renormalisation
-        coeff = np.sin(layer.max_slope) / (np.sqrt(2.) * layer.max)
+        # /!\ Responsability of the caller to ensure that nx**2 + ny**2 <= 1.
+        coeff = np.sin(layer.max_slope)
         complex_n.real = normal[0, :, :] * coeff
         complex_n.imag = normal[1, :, :] * coeff
         return lighting.shade(rgb, complex_n)
@@ -547,7 +552,7 @@ class Grey_layer(Virtual_layer):
     k_int = 255
 
     def __init__(self, postname, func, curve=None, probes_z=[0., 1.],
-                 probes_kind="absolute", output=True):
+                 output=True):
         """
         A grey layer.
         
@@ -564,8 +569,6 @@ class Grey_layer(Virtual_layer):
             The preprocessing affine rescaling. If [min, max] the minimum value
             of the field will be mapped
             to 0. and the maximum to 1.
-        probes_kind : "relative" | "absolute"
-            Deprecated. All probe values passed as "absolute"
         output : bool
             passed to `Virtual_layer` constructor
         """
@@ -573,7 +576,7 @@ class Grey_layer(Virtual_layer):
         # Will only become RGBA if masked & mask_color has transparency
         self.curve = curve
         self.probe_z = np.asarray(probes_z)
-        self.probes_kind = probes_kind
+#        self.probes_kind = probes_kind
 
     def set_mask(self, layer, mask_color=None):
         """
@@ -602,14 +605,16 @@ class Grey_layer(Virtual_layer):
             arr = self.func(arr)
 
         # taking into account probes for scaling
-        if self.probes_kind == "relative":
-            logger.warning("probes kind 'relative' option is deprecated"
-                           "and will have no effect - Use absolute scaling")
-            probes = self.probe_z
-        elif self.probes_kind == "absolute":
-            probes = self.probe_z
-        else:
-            raise ValueError(self.probes_kind, "not in [relative, absolute]")
+#        if self.probes_kind == "relative":
+#            logger.warning("probes kind 'relative' option is deprecated"
+#                           "and will have no effect - Use absolute scaling")
+#            probes = self.probe_z
+#        elif self.probes_kind == "absolute":
+#            probes = self.probe_z
+#        else:
+#            raise ValueError(self.probes_kind, "not in [relative, absolute]")
+        
+        probes = self.probe_z
             
         
         # arr = np.clip(arr, probes[0], probes[1])
@@ -894,20 +899,26 @@ class Blinn_lighting:
         # Normal vector coordinates
         nx = normal.real
         ny = normal.imag
-        nz = np.sqrt(1. - nx**2 - ny**2) # sin of max_slope
+        nz = np.sqrt(1. - nx**2 - ny**2) # cos of max_slope
         lambert = LSx * nx + LSy * ny + LSz * nz
         np.putmask(lambert, lambert < 0., 0.)
-        
+
         # half-way vector coordinates - Blinn Phong shading
         specular = np.zeros_like(lambert)
         if ls["k_specular"] != 0.:
+            # half azimuth angle vector between light and view
             phi_half = (np.pi * 0.5 + phi_LS) * 0.5
             half_x = np.cos(theta_LS) * np.cos(phi_half)
             half_y = np.sin(theta_LS) * np.cos(phi_half)
             half_z = np.sin(phi_half)
-            spec_angle = half_x * nx + half_y * ny + half_z * nz
-            np.putmask(spec_angle, spec_angle < 0., 0.)
-            specular = np.power(spec_angle, ls["shininess"])
+            print("DEBUG phi half", phi_half * 180. / np.pi, "(", half_x, half_y, half_z, ")")
+            print("DEBUG theta_LS phi_LS", theta_LS * 180. / np.pi, phi_LS * 180. / np.pi)
+
+            print("DEBUG normal", np.mean( nz), np.mean( np.sqrt(nx**2 + ny**2)), np.mean(nz**2 + nx**2 + ny**2))
+
+            specular_coeff = half_x * nx + half_y * ny + half_z * nz
+            np.putmask(specular_coeff, specular_coeff < 0., 0.)
+            specular = np.power(specular_coeff, ls["shininess"])
 
         if ls["material_specular_color"] is None:
             res =  (ls["k_diffuse"] * lambert[:, :, np.newaxis] * XYZ
@@ -916,7 +927,7 @@ class Blinn_lighting:
             XYZ_sp = np.asarray(ls["material_specular_color"])
             res =  (ls["k_diffuse"] * lambert[:, :, np.newaxis] * XYZ
                     + ls["k_specular"] * specular[:, :, np.newaxis]  * XYZ_sp)
-                   
+
         return res * ls["color"]
 
         

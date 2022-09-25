@@ -8,6 +8,8 @@ import logging
 import textwrap
 import time
 import types
+import typing
+import enum
 
 import numpy as np
 from numpy.lib.format import open_memmap
@@ -16,8 +18,9 @@ import PIL.PngImagePlugin
 import numba
 
 import fractalshades as fs
-import fractalshades.settings as fssettings
-import fractalshades.utils as fsutils
+import fractalshades.settings
+import fractalshades.utils
+import fractalshades.postproc
 
 from fractalshades.mthreading import Multithreading_iterator
 import fractalshades.numpy_utils.expr_parser as fs_parser
@@ -58,11 +61,20 @@ class Fractal_plotter:
         "5x5": 5,
         "6x6": 6,
         "7x7": 7,
-        None: None
+        "None": None
     }
 
-    def  __init__(self, postproc_batch, final_render=False, supersampling=None,
-                  jitter=False, reload=False):
+    supersampling_type = typing.Literal[
+        enum.Enum("supersampling_type", list(SUPERSAMPLING_DIC.keys()))
+    ]
+
+    def  __init__(self,
+        postproc_batch,
+        final_render: bool=False,
+        supersampling: supersampling_type="None",
+        jitter: bool=False,
+        reload: bool=False
+    ):
         """
         The base plotting class.
         
@@ -73,7 +85,7 @@ class Fractal_plotter:
         ----------
         postproc_batch
             A single `fractalshades.postproc.Postproc_batch` or a list of 
-            these
+            theses
         final_render: bool
             - If False, this is an exploration rendering, the raw arrays will be
               stored to allow fast modifcation of the plotting parameters
@@ -104,6 +116,9 @@ class Fractal_plotter:
             objects, each postprocessing batch shall point to the same
             unique `Fractal` object.
         """
+        if supersampling is None: # Nonetype not allowed in Enum...
+            supersampling = "None"
+
         self.postproc_options = {
             "final_render": final_render,
             "supersampling": supersampling,
@@ -111,7 +126,7 @@ class Fractal_plotter:
             "reload": reload
         }
 
-        # postproc_batchescan be single or an enumeration
+        # postproc_batches can be single or an enumeration
         postproc_batches = postproc_batch
         if isinstance(postproc_batch, fs.postproc.Postproc_batch):
             postproc_batches = [postproc_batch]
@@ -568,9 +583,9 @@ class Fractal_plotter:
         pnginfo = PIL.PngImagePlugin.PngInfo()
         for k, v in tag_dict.items():
             pnginfo.add_text(k, str(v))
-        if (fssettings.output_context["doc"]
-            and not(fssettings.output_context["gui_iter"] > 0)):
-            fssettings.add_figure(_Pillow_figure(img, pnginfo))
+        if (fs.settings.output_context["doc"]
+            and not(fs.settings.output_context["gui_iter"] > 0)):
+            fs.settings.add_figure(_Pillow_figure(img, pnginfo))
         else:
             img.save(img_path, pnginfo=pnginfo)
             
@@ -585,6 +600,7 @@ class Fractal_plotter:
         (ix, ixx, iy, iyy) = chunk_slice
         ny = self.fractal.ny
         crop_slice = (ix, ny-iyy, ixx, ny-iy)
+        # Key: Calling get_2d_arr
         paste_crop = layer.crop(chunk_slice)
         
         if self.supersampling:
@@ -656,7 +672,7 @@ class Fractal:
     }
     USER_INTERRUPTED = 1
 
-    def __init__(self, directory):
+    def __init__(self, directory: fs.Working_directory):
         """
 The base class for all escape-time fractals calculations.
 
@@ -771,7 +787,7 @@ advanced users when subclassing.
             + "(plot_dir)"
         )
 
-    @fsutils.zoom_options
+    @fs.utils.zoom_options
     def zoom(self, *,
              x: float,
              y: float,
@@ -951,7 +967,7 @@ advanced users when subclassing.
         with each chunk of size chunk_size x chunk_size
         """
         # if chunk_size is None:
-        chunk_size = fssettings.chunk_size
+        chunk_size = fs.settings.chunk_size
 
         for ix in range(0, self.nx, chunk_size):
             ixx = min(ix + chunk_size, self.nx)
@@ -964,7 +980,7 @@ advanced users when subclassing.
         """
         Return the total number of chunks (tiles) for the current image
         """
-        chunk_size = fssettings.chunk_size
+        chunk_size = fs.settings.chunk_size
         (cx, r) = divmod(self.nx, chunk_size)
         if r != 0:
             cx += 1
@@ -977,7 +993,7 @@ advanced users when subclassing.
         """
         Return the generator yield index for chunk_slice
         """
-        chunk_size = fssettings.chunk_size
+        chunk_size = fs.settings.chunk_size
         (ix, _, iy, _) = chunk_slice
         chunk_item_x = ix // chunk_size
         chunk_item_y = iy // chunk_size
@@ -990,7 +1006,7 @@ advanced users when subclassing.
         """
         Return the chunk_slice from the generator yield index
         """
-        chunk_size = fssettings.chunk_size
+        chunk_size = fs.settings.chunk_size
         (cy, r) = divmod(self.ny, chunk_size)
         if r != 0: cy += 1
         chunk_item_x, chunk_item_y = divmod(rank, cy)
@@ -1010,7 +1026,7 @@ advanced users when subclassing.
             valid = (
                 self.nx == in_nx,
                 self.ny == in_ny,
-                fssettings.chunk_size == in_csize
+                fs.settings.chunk_size == in_csize
             )
         if not valid:
             arr = self.recompute_uncompressed_beg_end(rank)
@@ -1025,7 +1041,7 @@ advanced users when subclassing.
             (ix, ixx, iy, iyy) = chunk_slice
             arr[i + 1] = arr[i] + (ixx - ix) * (iyy - iy)
         self._uncompressed_beg_end = (
-                arr, self.nx, self.ny, fssettings.chunk_size
+                arr, self.nx, self.ny, fs.settings.chunk_size
         )
         return arr
 
@@ -1400,7 +1416,7 @@ advanced users when subclassing.
 
     def save_fingerprint(self, calc_name, fingerprint):
         save_path = self.fingerprint_path(calc_name)
-        fsutils.mkdir_p(os.path.dirname(save_path))
+        fs.utils.mkdir_p(os.path.dirname(save_path))
         with open(save_path, 'wb+') as fp_file:
             pickle.dump(fingerprint, fp_file, pickle.HIGHEST_PROTOCOL)
 
@@ -1444,7 +1460,7 @@ advanced users when subclassing.
         report_cols_count = len(items)
 
         save_path = self.report_path(calc_name)
-        fsutils.mkdir_p(os.path.dirname(save_path))
+        fs.utils.mkdir_p(os.path.dirname(save_path))
         mmap = open_memmap(
             filename=save_path, 
             mode='w+',
@@ -1613,7 +1629,6 @@ advanced users when subclassing.
         
         Note : subset can be initialized here
         """
-
         keys = self.SAVE_ARRS
         data_type = {
             "Z": self.complex_type,
@@ -1621,7 +1636,6 @@ advanced users when subclassing.
             "stop_reason": self.termination_type,
             "stop_iter": self.int_type,
         }
-
         data_path = self.data_path(calc_name)
 
         pts_count = self.pts_count(calc_name) # the memmap 1st dim
@@ -1640,13 +1654,17 @@ advanced users when subclassing.
         }
 
         for key in keys:
-            open_memmap(
-                filename=data_path[key], 
-                mode='w+',
-                dtype=data_type[key],
-                shape=data_dim[key],
-                fortran_order=False,
-                version=None
+            setattr(
+                self,
+                self.dat_memmap_attr(key, calc_name),
+                open_memmap(
+                    filename=data_path[key], 
+                    mode='w+',
+                    dtype=data_type[key],
+                    shape=data_dim[key],
+                    fortran_order=False,
+                    version=None
+                )
             )
         # Store the subset (if there is one) at this stage : it is already
         # known
@@ -1654,7 +1672,7 @@ advanced users when subclassing.
         # the number of items masked
         state = self._calc_data[calc_name]["state"]
         subset = state.subset
-        
+
         if subset is not None:
             mmap = open_memmap(
                 filename=data_path["subset"], 
@@ -1664,9 +1682,37 @@ advanced users when subclassing.
                 fortran_order=False,
                 version=None
             )
+            setattr(
+                self,
+                self.dat_memmap_attr("subset", calc_name),
+                mmap
+            )
             for rank, chunk_slice in enumerate(self.chunk_slices()):
                 beg, end = self.uncompressed_beg_end(rank) # indep of calc_name
                 mmap[beg:end] = subset[chunk_slice]
+
+    def open_data_mmaps(self, calc_name):
+        """ Reopens existing files"""
+        keys = self.SAVE_ARRS
+        data_path = self.data_path(calc_name)
+        if (self._calc_data[calc_name]["state"]).subset is not None:
+            keys = keys +  ["subset"]
+        for key in keys:
+            setattr(
+                self,
+                self.dat_memmap_attr(key, calc_name),
+                open_memmap(filename=data_path[key], mode='r+')
+            )
+
+#    def flush_data_mmaps(self, calc_name):
+#        """ Delete reference to existing files, forcing a flush """
+#        keys = self.SAVE_ARRS
+#        if (self._calc_data[calc_name]["state"]).subset is not None:
+#            keys = keys +  ["subset"]
+#        for key in keys:
+#            print("flush_data_mmaps", self.dat_memmap_attr(key, calc_name))
+#            delattr(self, self.dat_memmap_attr(key, calc_name))
+#            # getattr(self, self.dat_memmap_attr(key, calc_name)).flush()
 
 
     def get_data_memmap(self, calc_name, key, mode='r+'):
@@ -1760,16 +1806,18 @@ advanced users when subclassing.
     def compute_rawdata_dev(self, calc_name, chunk_slice):
         """ In dev mode we follow a 2-step approach : here the compute step
         """
-        logger.debug("In compute_rawdata_dev")
 
         if self.res_available(calc_name, chunk_slice):
-            logger.debug(f"In compute_rawdata_dev, res available {chunk_slice}")
+            logger.debug(
+                "Result already available - skipping calc for:\n"
+                f"  {calc_name} ; {chunk_slice}"
+            )
             return
 
         cycle_dep_args = self.get_cycling_dep_args(calc_name, chunk_slice)
         cycle_indep_args = self._calc_data[calc_name]["cycle_indep_args"]
 
-        logger.debug(f"cycle_indep_args DEBUGGGGGG\n {cycle_indep_args}")
+#        logger.debug(f"cycle_indep_args DEBUGGGGGG\n {cycle_indep_args}")
         
         ret_code = self.numba_cycle_call(cycle_dep_args, cycle_indep_args)
         (c_pix, Z, U, stop_reason, stop_iter) = cycle_dep_args
@@ -1956,15 +2004,20 @@ advanced users when subclassing.
     def calc_raw(self, calc_name):
         """ Here we can create the memory mappings and launch the calculation
         loop"""
-        logger.debug("In Calc RAW")
+        # Note: at this point res_available(calc_name) IS True, however
+        # mmaps might not have been created.
         if self._calc_data[calc_name]["need_new_mmap"]:
-            # Note: at this point res_available(calc_name) IS True, however
-            # mmaps might not have been created.
             self.init_report_mmap(calc_name)
             self.init_data_mmaps(calc_name)
+        else:
+            self.open_data_mmaps(calc_name)
 
         # Launching the calculation + mmap storing multithreading loop
         self.compute_rawdata_dev(calc_name, chunk_slice=None)
+        
+        # TODO: "flush" the memaps ?
+#        logger.debug("In Calc RAW, flush_data_mmaps")
+#        self.flush_data_mmaps(calc_name)
 
 
     def postproc(self, postproc_batch, chunk_slice, postproc_options):
@@ -1980,6 +2033,7 @@ advanced users when subclassing.
 
         ret = self.evaluate_data(calc_name, chunk_slice, postproc_options)
         if ret is None:
+            raise RuntimeError("DEBUG - How to deal with this")
             return
 
         (subset, Z, U, stop_reason, stop_iter) = ret
@@ -1997,6 +2051,7 @@ advanced users when subclassing.
 
         for i, postproc in enumerate(postproc_batch.posts.values()):
             val, context_update = postproc[chunk_slice]
+            print("post array chunck slice", chunk_slice, "from", postproc)
             post_array[i, :]  = val
             postproc_batch.update_context(chunk_slice, context_update)
 

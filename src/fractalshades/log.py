@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
+import os
+import datetime
 import logging
 import sys
 import textwrap
 
+import fractalshades as fs
 # Default log levels
 # CRITICAL 50
 # ERROR 40
@@ -14,9 +17,18 @@ import textwrap
 # Log attributes
 # https://docs.python.org/2/library/logging.html#logrecord-attributes
 
-def set_log_handlers(verbosity, version_info=None):
+def set_log_handlers(verbosity):
+    """
 
+    """
     logger = logging.getLogger("fractalshades")
+
+    # Remove previous handlers
+    # https://stackoverflow.com/questions/12158048/changing-loggings-basicconfig-which-is-already-set
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+
+    # Sets verbosity level
     verbosity_mapping = {
         0: logging.WARNING,
         1: logging.INFO,
@@ -24,25 +36,7 @@ def set_log_handlers(verbosity, version_info=None):
     }
     logger.setLevel(verbosity_mapping[verbosity])
 
-    # Remove previous handlers
-    # https://stackoverflow.com/questions/12158048/changing-loggings-basicconfig-which-is-already-set
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
-
-    if verbosity >= 2:
-        # create file handler which logs debug messages
-        fh = logging.FileHandler('session.log')
-        fh.setLevel(logging.DEBUG)
-        if verbosity == 3:
-            fh.setLevel(logging.NOTSET)
-        fh_formatter = logging.Formatter(
-            "%(asctime)s - %(levelname)s - %(filename)s: %(funcName)s\n  "
-            "%(message)s"
-        )
-        fh.setFormatter(fh_formatter)
-        logger.addHandler(fh)
-
-    # create console handler with a higher log level
+    # create Console handler with a higher log level
     if verbosity <= 0:
         ch = logging.StreamHandler(sys.stderr)
         ch.setLevel(logging.WARNING)
@@ -55,15 +49,45 @@ def set_log_handlers(verbosity, version_info=None):
     ch.setFormatter(ch_formatter)
     logger.addHandler(ch)
 
-    if version_info is not None:
-        logger.info(textwrap.dedent(f"""\
-            ============================
-              Loading fractalshades {version_info}
-              ============================"""
-        ))
-        logger.info(f"Started logger with verbosity: {verbosity}")
-    else:
-        logger.info(f"Restarted logger with verbosity: {verbosity}")
 
+    # create File handler 
     if verbosity >= 2:
-        logger.info(f"Debugging log file: {fh}")
+        if fs.settings.working_directory.path is None:
+            file_logger_warning = True
+        else:
+            file_logger_warning = False
+            now = datetime.datetime.now()
+            file_prefix = now.strftime("%Y-%m-%d_%Hh%M_%S")
+            file_config = os.path.join(
+                    fs.settings.working_directory,
+                    f'{file_prefix}_factalshades.log'
+            )
+            print("OPEN", fs.settings.working_directory, f'{file_prefix}_factalshades.log', file_config)
+            fh = logging.FileHandler(file_config)
+            fh.setLevel(logging.DEBUG)
+            if verbosity == 3:
+                fh.setLevel(logging.NOTSET)
+            fh_formatter = logging.Formatter(
+                "%(asctime)s - %(levelname)s - %(filename)s: %(funcName)s\n  "
+                "%(message)s"
+            )
+            fh.setFormatter(fh_formatter)
+            logger.addHandler(fh)
+
+
+    logger.info(textwrap.dedent(f"""\
+        =======================================
+          Starting logger for fractalshades {fs.__version__}
+          ======================================="""
+    ))
+    logger.info(f"Logger verbosity: {verbosity}")
+    
+    if  file_logger_warning:       
+        logger.warning(
+            "Unable to start file logger: dir_config not specified"
+        )
+    else:
+        logger.info(
+            f"Started file logger: {file_config}"
+        )  
+

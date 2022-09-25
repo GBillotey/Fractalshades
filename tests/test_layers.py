@@ -65,7 +65,7 @@ class Test_layers(unittest.TestCase):
             epsilon_stationnary= 0.001,
             )
         f.clean_up(cls.calc_name)
-        f.run()
+        #f.run()
         
         cls.colormap = fscolors.Fractal_colormap(
             colors=[[1.        , 0.82352941, 0.25882353],
@@ -108,7 +108,7 @@ class Test_layers(unittest.TestCase):
                 "cont_iter",
                 func="np.log(x)",
                 colormap=self.colormap,
-                probes_z=[0., 0.2],
+                probes_z=[1.0511069297790527, 2.2134017944335938],
                 probes_kind="relative",
                 output=True
         ))
@@ -185,7 +185,7 @@ class Test_layers(unittest.TestCase):
                 layer_name,
                 func=None, #lambda x : np.cos(x),
                 curve=None,
-                probes_z=[0., 1.],
+                probes_z=[0.9737706184387207, 4.380473613739014],
                 probes_kind="relative",
                 output=True))
         plotter[layer_name].set_mask(
@@ -214,7 +214,7 @@ class Test_layers(unittest.TestCase):
                 layer_name,
                 func="np.log(x)",
                 colormap=self.colormap,
-                probes_z=[0., 0.8],
+                probes_z=[1.0511069297790527, 5.700286388397217],
                 probes_kind="relative",
                 output=True))
         plotter[layer_name].set_mask(plotter["interior"],
@@ -251,7 +251,7 @@ class Test_layers(unittest.TestCase):
         self.check_current_layer()
 
 
-    @test_config.no_stdout
+    # @test_config.no_stdout
     def test_twin(self):
         """ Testing `Color_layer` `twin_field` method """
         layer_name = "cont_iter_twinned"
@@ -267,14 +267,14 @@ class Test_layers(unittest.TestCase):
                 layer_name,
                 func="np.log(x)",
                 colormap=self.colormap,
-                probes_z=[0.0, 0.4], #[0.065, 0.465],
+                probes_z=[1.0511069297790527, 3.3756966590881348], #[0.065, 0.465],
                 probes_kind="relative",
                 output=True))
         plotter.add_layer(Virtual_layer("fieldlines", func="x-2.2", output=False))
 
         plotter[layer_name].set_mask(plotter["interior"],
                                      mask_color=(0., 0., 0.))
-        plotter[layer_name].set_twin_field(plotter["fieldlines"], 0.1)
+        plotter[layer_name].set_twin_field(plotter["fieldlines"], 0.1925)
 
         plotter.plot()
         self.layer = plotter[layer_name]
@@ -288,7 +288,7 @@ class Test_layers(unittest.TestCase):
         interior_calc_name = self.calc_name + "_over-1"
         f = self.f 
         interior = Fractal_array(f, self.calc_name, "stop_reason",
-                                 func= lambda x: (x!=1))
+                                 func="x != 1.")
         f.newton_calc(
             calc_name=interior_calc_name,
             subset=interior,
@@ -298,7 +298,6 @@ class Test_layers(unittest.TestCase):
             eps_newton_cv=1.e-12,
         )
         f.clean_up(interior_calc_name)
-        f.run()
 
         pp0 = Postproc_batch(f, self.calc_name)
         pp0.add_postproc(layer_name, Continuous_iter_pp())
@@ -318,7 +317,7 @@ class Test_layers(unittest.TestCase):
                 layer_name,
                 func="np.log(x)",
                 colormap=self.colormap,
-                probes_z=[0., 0.4],
+                probes_z=[1.0511069297790527, 3.3979762077331546], # 0..0.4
                 probes_kind="relative",
                 output=True))
         plotter.add_layer(Color_layer(
@@ -330,7 +329,7 @@ class Test_layers(unittest.TestCase):
                 output=True))
         
         plotter.add_layer(Virtual_layer("fieldlines", func="x-2.2", output=False))
-        plotter[layer_name].set_twin_field(plotter["fieldlines"], 0.1)
+        plotter[layer_name].set_twin_field(plotter["fieldlines"], 0.1925)
 
         plotter.add_layer(Normal_map_layer("attr_map", max_slope=90, output=True))
         plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=True))
@@ -465,18 +464,19 @@ class Test_layers(unittest.TestCase):
         ref_file_path = os.path.join(self.dir_ref, file_name + ".REF.png")
         err = test_config.compare_png(ref_file_path, test_file_path)
         self.assertTrue(err < err_max)
+        print("err", err)
 
 
 
 if __name__ == "__main__":
     runner = unittest.TextTestRunner(verbosity=2)
-    full_test = True
+    full_test = False
     if full_test:
         runner.run(test_config.suite([Test_layers]))
     else:
         suite = unittest.TestSuite()
         # suite.addTest(Test_layers("test_light_source"))
         # suite.addTest(Test_layers("test_twin"))
-        suite.addTest(Test_layers("test_overlay1"))
+        suite.addTest(Test_layers("test_color_basic"))
         # suite.addTest(Test_layers("test_overlay2"))
         runner.run(suite)

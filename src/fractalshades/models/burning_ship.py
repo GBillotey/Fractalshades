@@ -259,11 +259,11 @@ Implementation based on :
             str(y).encode('utf8'),
             seed_prec
         )
-        print("** FP_loop")
-        print("partial_dict", partial_dict)
-        print("xr_dict", xr_dict)
-        print("NP_orbit", NP_orbit.dtype, NP_orbit.shape)
-        print(NP_orbit)
+#        print("** FP_loop")
+#        print("partial_dict", partial_dict)
+#        print("xr_dict", xr_dict)
+#        print("NP_orbit", NP_orbit.dtype, NP_orbit.shape)
+#        print(NP_orbit)
         
         
         return i, partial_dict, xr_dict
@@ -312,7 +312,6 @@ Implementation based on :
     calc_hessian: bool
         if True, the derivatives will be caculated allowing distance
         estimation and shading.
-
         """
         self.init_data_types(np.float64)
 
@@ -348,7 +347,7 @@ Implementation based on :
         # reason_stationnary = 2
 
         self.codes = (complex_codes, int_codes, stop_codes)
-        print("###self.codes", self.codes)
+#        print("###self.codes", self.codes)
 
         #----------------------------------------------------------------------
         # Define the functions used for BLA approximation
@@ -578,8 +577,8 @@ https://fractalforums.org/fractal-mathematics-and-new-theories/28/miniset-and-em
             seed_prec,
             order
         )
-        print("raw nucleus_size", nucleus_size)
-        print("raw skew", skew)
+#        print("raw nucleus_size", nucleus_size)
+#        print("raw skew", skew)
 
         # r_J = r_M ** 0.75 for power 2 Mandelbrot
         sqrt = np.sqrt(nucleus_size)
@@ -1226,7 +1225,7 @@ newton_search = {{
 
     @fs.utils.interactive_options
     def quick_skew_estimate(self, x, y, pix, dps, maxiter: int=100000):
-        print("in quick_skew_estimate", x, type(x), y, type(y))
+        # print("in quick_skew_estimate", x, type(x), y, type(y))
 
         seed_prec = mpmath.mp.prec
         skew = fsFP.perturbation_perpendicular_BS_skew_estimate(

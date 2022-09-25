@@ -523,20 +523,20 @@ class DEM_normal_pp(Postproc):
         Parameters
         ==========
         `kind`:  str "potential" | "Milnor" | "convergent"
-            if "potential" (default) chunk_sliceDEM is base on the potential.
+            if "potential" (default) DEM is base on the potential.
             For Mandelbrot power 2, "Milnor" option is also available which 
-            gives similar but esthetically slightly different results.
-            (Use "convergent" for convergent fractals.)
+            gives slightly different results (sharper edges).
+            Use "convergent" for convergent fractals...
 
         Notes
         =====
 
         .. note::
 
-            The Continuous iteration number  shall have been calculated before
+            The Continuous iteration number shall have been calculated before
             in the same `Postproc_batch`
 
-            Alternatively, if kind="Milnor", the following raw complex fields
+            If kind="Milnor", the following raw complex fields
             must be available from the calculation:
 
                 - "zn", "dzndc", "d2zndc2"
@@ -573,7 +573,6 @@ class DEM_normal_pp(Postproc):
             lo = np.log(abs_zn)
             normal = zn * dzndc * ((1+lo)*np.conj(dzndc * dzndc)
                           -lo * np.conj(zn * d2zndc2))
-            # normal = normal / np.abs(normal)
 
         elif self.kind == "potential":
             if potential_dic["kind"] == "infinity":
@@ -819,7 +818,7 @@ class Fractal_array:
             The reference fracal object
         calc_name : str 
             The calculation name
-        key : 
+        key :
             The raw data key. Should be one of the *complex_codes*,
             *int_codes*, *termination_codes* for this calculation.
         func: None | callable | a str of variable x (e.g. "np.sin(x)")

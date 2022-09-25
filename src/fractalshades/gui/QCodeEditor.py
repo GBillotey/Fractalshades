@@ -26,6 +26,7 @@ QWidget {{
 """
 
 class Fractal_code_editor(QDialog):
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setModal(False)
@@ -92,15 +93,14 @@ class Fractal_code_widget(QTextEdit):
             self.setTextCursor(cursor)
 
 
-
 if __name__ == "__main__":
-    from PyQt5.QtCore import QCoreApplication 
+    from PyQt6.QtCore import QCoreApplication 
+
     app = QCoreApplication.instance()
     if app is None:
         app = QApplication([])
-    
-    win = Fractal_code_editor()
+
+    win = Fractal_code_editor(None)
     win.set_text('print ("Hello World")\n# Test Program')
     win.show()
-
-
+    app.exec()

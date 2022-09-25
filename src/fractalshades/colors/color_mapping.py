@@ -346,6 +346,16 @@ class Color_tools():
 
         return res# k_ambient + k_lambert * lambert + k_spec * specular
 
+class Color:
+    def __init__(self, arr):
+        """ An interface for QtGui.QColor """
+        self._validate(arr)
+        self.arr = arr
+
+    def _validate(self, arr):
+        if len(arr) not in (3, 4):
+            raise ValueError(f"arr shape not as expected: {arr.shape}")
+        
 
 class Fractal_colormap:
     def __init__(self, colors, kinds, grad_npts=32, grad_funcs="x",

@@ -3,7 +3,7 @@ Changelog
 
 Rev 0.5.6
 ~~~~~~~~~
-- `antialiasing` and `jitter` parameters added to Plotter class
+- `supersampling` and `jitter` parameters added to Plotter class
 - 'antialiasing' parameter from zoom method deprecated
 
 

@@ -6,7 +6,9 @@ __version__ = "0.5.6"
 import numpy as np
 import warnings
 
-from .settings import get_figures, close, verbosity
+from .settings import (
+    get_figures, close, verbosity, Working_directory, working_directory
+)
 from .utils import zoom_options, calc_options, interactive_options
 from .core import Fractal, Fractal_plotter, _Pillow_figure
 from .perturbation import PerturbationFractal
@@ -24,7 +26,7 @@ if verbosity < 3:
         message="overflow encountered in"
     )
 
-# Starts logging
-import logging
-logger = logging.getLogger(__name__)
-set_log_handlers(verbosity, version_info=__version__)
+## Starts logging
+#import logging
+#logger = logging.getLogger(__name__)
+#set_log_handlers(verbosity, version_info=__version__)

@@ -1,13 +1,7 @@
 # -*- coding: utf-8 -*-
-
-
+import copy
 import numpy as np
-#import matplotlib.colors
-#from matplotlib.figure import Figure
-#from matplotlib.backends.backend_agg import FigureCanvasAgg
-
 import fractalshades.colors as fscolors
-
 
 
 ##: A colormap circling through black, blue, white, orange, black
@@ -2481,6 +2475,5 @@ cmap_register = {
     "dawn": cmap_dawn,
     "lily": cmap_lily
 }
-
 for k, v in cmap_register.items():
     v._template = k

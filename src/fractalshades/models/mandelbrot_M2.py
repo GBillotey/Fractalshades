@@ -10,7 +10,7 @@ import fractalshades.mpmath_utils.FP_loop as fsFP
 #==============================================================================
 
 class Mandelbrot(fs.Fractal):
-    def __init__(self, directory):
+    def __init__(self, directory: fs.Working_directory):
         """
 A standard power-2 Mandelbrot Fractal. 
 
@@ -33,7 +33,7 @@ directory : str
     @fs.utils.calc_options
     def base_calc(self, *,
             calc_name: str,
-            subset,
+            subset: fs.postproc.Fractal_array,
             max_iter: int,
             M_divergence: float,
             epsilon_stationnary: float,
@@ -287,7 +287,7 @@ directory : str
 
 class Perturbation_mandelbrot(fs.PerturbationFractal):
     
-    def __init__(self, directory):
+    def __init__(self, directory: fs.Working_directory):
         """
 An arbitrary precision power-2 Mandelbrot Fractal. 
 

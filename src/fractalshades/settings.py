@@ -2,6 +2,7 @@
 """
 General settings at application-level
 """
+import os
 import sys
 # this_module is a pointer to the module object instance itself.
 this_module = sys.modules[__name__]
@@ -72,11 +73,15 @@ CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET
 """
 
 
-"""
-Limits the amount of RAM used (mostly for debugging / test purpose)
- RAM limit in Gb, or None for no limit
-"""
 def set_RAM_limit(RAM_limit_Gb):
+    """
+    Limits the amount of RAM used (mostly for debugging / test purpose)
+
+    Parameters
+    ----------
+    RAM_limit_Gb
+        RAM limit in Gb, or None for no limit
+    """
     import resource
     rsrc = resource.RLIMIT_AS
     if RAM_limit_Gb is None:
@@ -85,6 +90,22 @@ def set_RAM_limit(RAM_limit_Gb):
         byte_limit =  (2**30) * RAM_limit_Gb  # Gbyte to byte
     resource.setrlimit(rsrc, (byte_limit, byte_limit))
 
+
+class Working_directory(os.PathLike):
+    # https://docs.python.org/3/library/os.html#os.PathLike
+    def __init__(self, str_path=None):
+        self.path = str_path
+
+    def __fspath__(self):
+        if self.path is None:
+            raise RuntimeError(
+                "Working directory not specified, please define it through:\n"
+                "fs.working_directory = Working_directory(str_path)"
+            )
+        return self.path
+
+working_directory = Working_directory(None)
+""" The working directory for this session """
 
 # output_context: "doc" True if we are building the doc (Pillow output)
 # "gui_iter" 0 if not in GUI loop otherwise, start at 1 and increment
