@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+import inspect
+from typing import Optional
+
 import numpy as np
 import mpmath
 import numba
@@ -6,10 +9,25 @@ import numba
 import fractalshades as fs
 import fractalshades.mpmath_utils.FP_loop as fsFP
 
-#==============================================================================
-#==============================================================================
+from fractalshades.postproc import Fractal_array
+from fractalshades.models.plotting_protocols import Implements
 
+#==============================================================================
+#==============================================================================
+#@plotting_protocols(
+#    calculations={
+#        "base": ("base_calc", None),
+#        "interior": ("newton_calc", {"key": "stop_reason", "func": "x != 1"})
+#    },
+#    postprocs={
+#        "base": (),
+#        "interior": ()
+#    }
+#)
+
+@Implements(base="base_calc", interior="newton_calc")
 class Mandelbrot(fs.Fractal):
+
     def __init__(self, directory: fs.Working_directory):
         """
 A standard power-2 Mandelbrot Fractal. 
@@ -30,13 +48,32 @@ directory : str
         self.potential_d = 2
         self.potential_a_d = 1.
 
+    @Implements(
+        subset_params=None,
+        mandatory=("Continuous_iter",),
+        float_pp={
+            "Continuous_iter": {},
+            "DEM": {"px_snap": None},
+            "Fieldlines": {
+                "n_iter": None, "swirl": None, "damping_ratio": None
+            },  
+        },
+        normal_pp={
+            "DEM_normal": {
+                "kind": inspect.Parameter(
+                    "kind", inspect.Parameter.KEYWORD_ONLY,
+                    default="potential", annotation=["potential", "Milnor"]
+                )
+            }
+        },
+    )
     @fs.utils.calc_options
     def base_calc(self, *,
-            calc_name: str,
-            subset: fs.postproc.Fractal_array,
-            max_iter: int,
-            M_divergence: float,
-            epsilon_stationnary: float,
+            calc_name: str="base_calc",
+            subset: Optional[Fractal_array] = None,
+            max_iter: int=10000,
+            M_divergence: float=1000.,
+            epsilon_stationnary: float=0.01,
     ):
         """
     Basic iterations for Mandelbrot standard set (power 2).
@@ -120,17 +157,30 @@ directory : str
             "initialize": initialize,
             "iterate": iterate
         }
-        
 
 
+    @Implements(
+        subset_params={
+            "calc_name_key": "base", # As defined by the class decorator
+            "key": "stop_reason",
+            "func": "x != 1",
+        },
+        mandatory=list(),
+        float_pp={
+            "Attr_pp": {"scale_by_order": None},
+        },
+        normal_pp={
+            "Attr_normal_pp": {}
+        },
+    )
     @fs.utils.calc_options
     def newton_calc(self, *,
-            calc_name: str,
-            subset=None,
-            known_orders=None,
-            max_order,
-            max_newton,
-            eps_newton_cv
+            calc_name: str = "newton_calc",
+            subset: Optional[Fractal_array] = None,
+            known_orders: Optional[int] = None,
+            max_order: int = 500,
+            max_newton: int = 20,
+            eps_newton_cv: float = 1.e-12
     ):
         """
     Newton iterations for Mandelbrot standard set interior (power 2).
@@ -158,7 +208,7 @@ directory : str
     .. note::
 
         The following complex fields will be calculated:
-    
+
         *zr*
             A (any) point belonging to the attracting cycle
         *attractivity*
@@ -168,9 +218,9 @@ directory : str
             Derivative of *zr*
         *dattrdc*
             Derivative of *attractivity*
-    
+
         The following integer field will be calculated:
-    
+
         *order*
             The cycle order
     

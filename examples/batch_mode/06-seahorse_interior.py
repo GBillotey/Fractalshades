@@ -60,7 +60,7 @@ def plot(plot_dir=None):
     # Run the calculation
     f = fsm.Mandelbrot(plot_dir)
     f.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
-           theta_deg=0., projection="cartesian", antialiasing=False)
+           theta_deg=0., projection="cartesian")
     f.base_calc(
         calc_name=calc_name,
         subset=None,

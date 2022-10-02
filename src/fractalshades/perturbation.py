@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import typing
 import pickle
 import warnings
 import logging
@@ -44,8 +45,7 @@ directory : str
              nx: int,
              xy_ratio: float,
              theta_deg: float,
-             projection: str="cartesian",
-             antialiasing: bool=False,
+             projection: typing.Literal["cartesian"]="cartesian",
              has_skew: bool=False,
              skew_00: float=1.,
              skew_01: float=0.,
@@ -75,8 +75,6 @@ directory : str
             Pre-rotation of the calculation domain, in degree
         projection : "cartesian"
             Kind of projection used (only "cartesian" supported)
-        antialiasing : bool
-            If True, some degree of randomization is applied
         has_skew : bool
             If True, unskew the view base on skew coefficients skew_ii
         """

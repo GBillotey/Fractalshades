@@ -67,7 +67,6 @@ class Postproc_batch:
         if postproc.batch is not None:
             raise ValueError("Postproc can only be linked to one batch")
 
-
         postproc.link_batch(self) # Give access to batch members from postproc
         if postproc.field_count == 1:
             self.posts[postname] = postproc
@@ -84,8 +83,9 @@ class Postproc_batch:
             self.posts[postname + "_y"] = y_field
             self.postnames_2d += [postname]
         else:
-            raise ValueError("postproc.field_count bigger than 2: {}".format(
-                    postproc.field_count))
+            raise ValueError(
+                f"postproc.field_count bigger than 2: {postproc.field_count}"
+            )
 
     def set_chunk_data(self, chunk_slice, chunk_mask, Z, U, stop_reason,
             stop_iter, complex_dic, int_dic, termination_dic):

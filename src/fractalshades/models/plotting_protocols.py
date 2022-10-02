@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import sys
 import typing
 import functools
 import os
@@ -11,29 +12,31 @@ import textwrap
 
 import mpmath
 import numpy as np
-from PyQt6 import QtGui
-
+#
+import fractalshades
 import fractalshades as fs
-import fractalshades.models as fsm
-import fractalshades.settings as settings
-import fractalshades.colors as fscolors
-import fractalshades.gui as fsgui
-
+from fractalshades.postproc import Fractal_array
+#import fractalshades.models as fsm
+#import fractalshades.settings as settings
+#import fractalshades.colors as fscolors
+#import fractalshades.gui as fsgui
+#
 from fractalshades.postproc import (
     Postproc_batch,
-    Continuous_iter_pp,
-    DEM_normal_pp,
-    Raw_pp,
+#    Continuous_iter_pp,
+#    DEM_normal_pp,
+#    Raw_pp,
 )
-from fractalshades.colors.layers import (
-    Color_layer,
-    Bool_layer,
-    Normal_map_layer,
-    Blinn_lighting
-)
+#from fractalshades.colors.layers import (
+#    Color_layer,
+#    Bool_layer,
+#    Normal_map_layer,
+#    Blinn_lighting
+#)
 
 logger = logging.getLogger(__name__)
 
+separator = typing.TypeVar('gui_separator')
 
 script_header = """# -*- coding: utf-8 -*-
 \"""============================================================================
@@ -137,27 +140,41 @@ def set_signature(func_impl, func_signature):
     func_impl.__defaults__ = defaults
     func_impl.__kwdefaults__ = kwonlydefaults
 
+
+
 # Note: to copy + modifiy a paramter, use:
 # Parameter.replace from inspect module
 
 class Code_writer:
-
+    """
+    A list of static method allowing to write Python source code
+    """
     @staticmethod
     def write_assignment(varname, value, indent=0):
         """
         %varname = %value
         """
         shift = " " * (4 * indent)
-        var_str = Code_writer.var_str(value, indent)
-        str_assignment = f"{shift}{varname} = {var_str}"
+
+        try:
+            var_str = Code_writer.var_str(value, indent)
+        except NotImplementedError: # rethrow with hopefully better descr
+            raise NotImplementedError(varname, value)
+    
+        
+        str_assignment = f"{shift}{varname} = {var_str}\n"
+        # print("varname", f"*{varname}*", f"*{shift}{varname}*", f"*{str_assignment}*")
         return str_assignment
 
     @staticmethod
     def var_str(var, indent=0):
         """
+        'value' part of assignment:
         (varname = )%value
         """
         shift = " " * (4 * indent)
+        if var is None:
+            return "None"
         if isinstance(var, numbers.Number):
             return repr(var)
         if isinstance(var, str):
@@ -173,11 +190,26 @@ class Code_writer:
             ])
             ret = f"{{\n{shift_inc}{ret}{shift}}}" # {{ for \{ in f-string
             return ret
-        elif issubclass(var, fs.Fractal):
-            ret = f"{var}"
+        elif isinstance(var, list):
+            shift_inc = shift + " " * 4
+            ret = (shift_inc).join([
+                f"{Code_writer.var_str(v, indent+1)},\n"
+                for v in var
+            ])
+            ret = f"[\n{shift_inc}{ret}{shift}]" # {{ for \{ in f-string
+            return ret
+        elif inspect.isclass(var):
+            ret = f"{Code_writer.fullname(var)}"
+            return ret
             # ret = Code_writer.write_fractal(var, indent)
         else:
             raise NotImplementedError(var)
+    
+    def fullname(_class):
+        module = _class.__module__
+        if module == 'builtins':
+            return _class.__qualname__ # avoid outputs like 'builtins.str'
+        return module + '.' + _class.__qualname__
 
 
 #    @staticmethod
@@ -199,7 +231,7 @@ class Code_writer:
         
         # changing the name
         beg = ret.find("(")
-        ret = f"def {funcname}{ret[beg:]}"
+        ret = f"def {funcname}{ret[beg:]}\n"
 
         # Apply the indentation
         ret = shift.join(l for l in ret.splitlines())
@@ -220,27 +252,52 @@ class Code_writer:
         return str_call_func
 
     @staticmethod
+    def call_func_direct(funcname, func_args, indent=0):
+        """
+        funcname(func_args):
+        """
+        shift = " " * (4 * indent)
+        shift_arg = " " * (4 * (indent+1))
+        func_args = func_args.replace(", ", ",")
+        func_args = (
+            shift_arg
+            + (",\n" + shift_arg).join(func_args.split(","))
+            + "\n"
+        )
+        
+        str_call_func = f"{shift}ret = {funcname}(\n{func_args}{shift})"
+        return str_call_func
+
+    @staticmethod
     def func_args(kwargs, indent=0):
         """
            key1=value1,
            key2=value2,
         """
         shift = " " * (4 * indent)
-        ret = shift.join([
-            f"{k}={Code_writer.var_str(v)},\n"
-            for (k, v) in kwargs.items()
-        ])
+        try:
+            ret = shift.join([
+                f"{k}={Code_writer.var_str(v)},\n"
+                for (k, v) in kwargs.items()
+            ])
+        except NotImplementedError:
+            etype, evalue, etraceback = sys.exc_info()
+            raise  NotImplementedError(f"{evalue}  raised from {kwargs}")
+
         return shift + ret
 
 
 class Plotting_Factory:
     """
-    Only provides the basic frame without implementing a plot method
-    Derived classes should implement
+    The main purposes of this plotting factory class is:
+        - generate the functions + signatures used by the gui: method *wrapup*
+        - generate the equivalent python source code to run in batch mode:
+          method *wrapup_code*
 
-    Structure of the generated source code "wrapup" function
-    
-    closure = {..} # from plotting factory
+    Structure of the generated source code "wrapup" function (compilation of
+    several add-hoc functions)
+
+    closure = {..} # dict for data used by successive func calls
 
     for func in funcs: # list from plotting factory
         kwargs = {..} # from GUI-input
@@ -251,21 +308,39 @@ class Plotting_Factory:
         self.fractal_class = fractal_class
         self.directory = directory
 
-
-    def closure(self):
+    def closure(self, funcs_kwargs_dict):
         """
-        The closure dict needed for the first func
+        The closure "bootstrap" dict needed to call the GUI components
+        functions (hence the *closure* name), fed to the first func call.
+        It will grow with successive calls
         """
+        activated_calc = self.activated_calcs(
+                self.fractal_class, funcs_kwargs_dict
+        )
+        
         return {
             "fractal_class": self.fractal_class,
-            "directory": self.directory
+            "directory": self.directory,
+            "activated_calc": activated_calc
         }
 
+    def activated_calcs(self, fractal_class, funcs_kwargs_dict):
+        """ Gathers the activated calculations from the layers params"""
+        # This is fine tuning ; for the moement lets be brutal
+        calculations = fractal_class._plot_protocol
+        return list(calculations.keys())
+        
+
     def func_keys(self):
+        """
+        The break-down of wrap-up func in successive items
+        """
         return (
             "general_settings",
             "fractal",
-            # "raw_plot",
+            "zoom",
+            "calc",
+            # "layers",
             "rendering",
         )
 
@@ -274,8 +349,9 @@ class Plotting_Factory:
         func_key"""
         return getattr(self, f"func_{func_key}")
 
+
     def func_general_settings(self):
-        """ Tuning settings from fs.settings
+        """ Allows tuning programm settings from fs.settings
         """
         def impl(
             closure,
@@ -284,10 +360,10 @@ class Plotting_Factory:
             inspect_calc: bool=False,
             enable_multithreading: bool=True
         ):
-            fs.settings.verbosity = verbosity
-            fs.settings.chunk_size = chunk_size
-            fs.settings.inspect_calc = inspect_calc
-            fs.settings.enable_multithreading = enable_multithreading
+            fractalshades.settings.verbosity = verbosity
+            fractalshades.settings.chunk_size = chunk_size
+            fractalshades.settings.inspect_calc = inspect_calc
+            fractalshades.settings.enable_multithreading = enable_multithreading
             return {}
 
         gui_signature = inspect.signature(functools.partial(impl, None))
@@ -297,6 +373,8 @@ class Plotting_Factory:
 
     def func_fractal(self):
         """
+        Genrerates the fractal instance
+
         Needed closure:  fractal_class
         Returned closure: fractal
 
@@ -304,6 +382,10 @@ class Plotting_Factory:
             - fine-tune the "directory" parameter
             - remove the "self" parameter
         """
+        def impl(closure, fractal_kwargs):
+            fractal_class = closure["fractal_class"]
+            return {"fractal": fractal_class(**fractal_kwargs)}
+
         parameters = []
         s = inspect.signature(self.fractal_class.__init__)
         for p_name, param in s.parameters.items():
@@ -313,18 +395,93 @@ class Plotting_Factory:
                 param = param.replace(default=self.directory)
             parameters += [param]
 
-        def impl(closure, gui_kwargs):
-            fractal_class = closure["fractal_class"]
-            return {"fractal": fractal_class(**gui_kwargs)}
-
         gui_signature = Signature(
             parameters=parameters, return_annotation=Signature.empty)
         set_signature(impl, gui_signature)
 
         return impl
+    
+    def func_zoom(self):
+        """
+        Apply the zoom settings
+
+        Needed closure: fractal
+        Returned closure: projection
+
+        Based on the fractal zoom method, from which we:
+            - fine-tune the "directory" parameter
+            - remove the "self" parameter
+        """
+        def impl(closure, zoom_kwargs):
+            fractal = closure["fractal"]
+            fractal.zoom(**zoom_kwargs)
+            return {}
+
+        parameters = []
+        zoom = self.fractal_class.zoom
+
+        s = inspect.signature(zoom)
+        for p_name, param in s.parameters.items():
+            if p_name == "self":
+                continue
+            if p_name == "directory":
+                param = param.replace(default=self.directory)
+            parameters += [param]
+
+        gui_signature = Signature(
+            parameters=parameters, return_annotation=Signature.empty
+        )
+        set_signature(impl, gui_signature)
+
+        return impl
+
+    def func_calc(self):
+        """
+        Setup the calculations ; Delegated to the fractal Plotting_protocol
+        mixin.
+        
+        Needed closure:  fractal
+        Returned closure: postproc_batches
+        """
+        calc_sign = Implements.calc(self.fractal_class, sgn_only=True)
+
+        def impl(closure_vars, calc_kwargs):
+            fractal = closure_vars["fractal"]
+            activated_calc = closure_vars["activated_calc"]
+            calc_impl, _ = Implements.calc(fractal.__class__)
+            return calc_impl(fractal, activated_calc, calc_kwargs)
+
+        set_signature(impl, calc_sign)
+
+        return impl
+
+
+    def func_layers(self):
+        """
+        Setup the calculations ; Delegated to the fractal Plotting_protocol
+        mixin.
+        
+        Needed closure:  fractal
+        Returned closure: None
+        """
+        layers_impl, layers_sign = Implements.layers(self.fractal_class)
+
+        def impl(closure_vars, layers_kwargs):
+            fractal = closure_vars["fractal"]
+            activated_calc = closure_vars["selected_calc"]
+#            postproc_batches = fractal.postproc_batches()
+            layers_impl(fractal, activated_calc, layers_kwargs)
+
+        set_signature(impl, layers_impl)
+
+        return impl
+
 
     def func_rendering(self):
         """
+        Apply the rendering option ("final render", supersampling, jitter,
+        etc.)
+
         Needed closure:  postproc_batches
         Returned closure: fractal plotter
 
@@ -332,28 +489,42 @@ class Plotting_Factory:
             - fine-tune the "postproc_batches" parameter
             - remove the "self" parameter
         """
+        def impl(closure_vars, rendering_kwargs):
+            postproc_batches = closure_vars["postproc_batches"]
+            return {
+                "plotter": fs.Fractal_plotter(
+                        postproc_batches,
+                        _delay_register=True,
+                        **rendering_kwargs)
+            }
+
         parameters = []
         s = inspect.signature(fs.Fractal_plotter.__init__)
         for p_name, param in s.parameters.items():
-            if p_name in ["self", "postproc_batch"]:
+            if p_name in ["self", "postproc_batch", "_delay_register"]:
                 continue
             parameters += [param]
+        gui_sign = Signature(parameters=parameters,
+                         return_annotation=Signature.empty)
 
-        def impl(closure_vars, gui_kwargs):
-            postproc_batches = closure_vars["postproc_batches"]
-            return {
-                "plotter": fs.Fractal_plotter(postproc_batches, **gui_kwargs)
-            }
-
-        gui_signature = Signature(
-            parameters=parameters, return_annotation=Signature.empty)
-        set_signature(impl, gui_signature)
-
+        set_signature(impl, gui_sign)
         return impl
-    
-    def func_raw_plot(self):
+
+
+    def func_plot(self):
+        """
+        Needed closure: fractal
+        Returned closure:  postproc_batches
+        """
         pass
 
+#    def wrapup_signature(self):
+#        """ 
+#        Returns the full plotting function signature.
+#        This is needed whenever a change of args impacts the signature itself
+#        (hence the GUI compoenents)
+#        """
+        
 
     def wrapup(self):
         """ 
@@ -364,10 +535,8 @@ class Plotting_Factory:
             funcs_kwargs_dict: mapping of func_key -> kwargs
                 {}
             """
-            closure = {
-                "fractal_class": self.fractal_class,
-                "directory": self.directory
-            }
+            closure = self.closure(funcs_kwargs_dict)
+
             for func_key, func_kwargs in funcs_kwargs_dict.items():
                 # Calling the successive functions with the right
                 # kwargs and closure
@@ -386,10 +555,12 @@ class Plotting_Factory:
         shift_inc = " " * (4 * indent)
 
         source_code = ""
-        closure = {
-            "fractal_class": self.fractal_class,
-            "directory": self.directory
-        }
+        closure = self.closure(funcs_kwargs_dict)
+        
+#        {
+#            "fractal_class": self.fractal_class,
+#            "directory": self.directory
+#        }
         source_code += Code_writer.write_assignment(
             "closure",
             closure,
@@ -397,14 +568,21 @@ class Plotting_Factory:
         )
 
         for func_key, func_kwargs in funcs_kwargs_dict.items():
+            source_code += Code_writer.write_assignment(
+                f"{func_key}_kwargs",
+                func_kwargs,
+                indent
+            )
+
+        for func_key in funcs_kwargs_dict.keys():
             source_code += "\n" + Code_writer.write_func(
                 f"func_{func_key}",
                 self.func(func_key)(),
                 indent
             )
-            source_code += "\n" + Code_writer.call_func(
+            source_code += "\n" + Code_writer.call_func_direct(
                 f"func_{func_key}",
-                func_kwargs,
+                f"closure, {func_key}_kwargs",
                 indent
             )
             source_code += f"\n{shift_inc}closure.update(ret)"
@@ -413,9 +591,11 @@ class Plotting_Factory:
 
     def wrapup_guiparams_default(self):
         """
-        Utilily function - return the parameters needed as input for wrapup
+        Utility function - return the default values for the parameters needed
+        as input for wrapup method call
         """
         gui_params_default = dict()
+
         for func_key in self.func_keys():
             func = self.func(func_key)()
             sign = inspect.signature(func)
@@ -423,357 +603,216 @@ class Plotting_Factory:
                 name: param.default 
                 for name, param in sign.parameters.items()
             }
-            
+
         return gui_params_default
-            
 
 
-#
-#class Divmap_plotting_factory(Plotting_Factory):
-#    
-#    def __init__(self, fractal_class, directory, plot_interior=False,
-#                 use_Milnor=False):
-#        """
-#        A plotting factory for divergent maps for which it is possible to
-#        define a potential function
-#        
-#        Parameters
-#        ----------
-#        plot_interior: boolean
-#            Activates the interior plotting option
-#        use_Milnor: boolean
-#            Activates the Milnor shading option
-#        """
-#        super().__init__(fractal_class, directory)
-#        self.plot_interior = plot_interior
-#        self.use_Milnor = use_Milnor
-#
-#
-#    def plotting_scheme(self):
-#        """
-#        """
-#        scheme = {
-#            "Fractal instance": self.func_fractal,
-#            "General parameters": self.func_gen_params,
-#        }
-#        if not self.plot_interior:
-#            del scheme[""]
+class Implements():
+    
+    def __init__(self, **kwargs):
+        """Decorator for a Fractal class or method used to specify a few
+        options
+        
+        Typical usage:
             
+            for a Fractal class:
+                @implements(base="base_calc", interior="newton_calc")
             
+            for a Fractal plotting method:
+                @implements(
+                    mandatory=("Continuous_iter",),
+                    float_pp={
+                        "Continuous_iter": {},
+                        "DEM": {"px_snap": None},
+                        "Fieldlines": {
+                            "n_iter": None,
+                            "swirl": None,
+                            "damping_ratio": None
+                        },  
+                    },
+                    normal_pp={
+                        "DEM_normal": {
+                            "kind": inspect.Parameter(
+                                "kind", inspect.Parameter.KEYWORD_ONLY,
+                                default="potential",
+                                annotation=["potential", "Milnor"]
+                            )
+                        }
+                    },
+                    subset_params=None,
+                )
+        """
+        self._plot_protocol = kwargs
 
+
+    def __call__(self, fractal_obj):
+        """
+        Class wrapper - simply attach the _plotting_protocols dictionnary
+        """
+        fractal_obj._plot_protocol = self._plot_protocol
+        return fractal_obj
+
+
+
+    @staticmethod
+    def calc(fractal_class, sgn_only=False):
+        """
+        Returns a generic postproc_batches list for this fractal
+
+        Idea: build the signature first to allow "mapping" the parameters to
+        the correct calculation
+        """
+        calculations = fractal_class._plot_protocol
+
+        full_parameters = [] # full listing provided to GUI, with the titles
+        mapped_parameters = {} # dict by calculations
+        impl_subset = {} # dict of subet implementations
+
+        for key_name, str_method in calculations.items():
+            calc_method = getattr(fractal_class, str_method)
+            subset_params = calc_method._plot_protocol["subset_params"]
+
+            # Adds a spacer
+            full_parameters += [inspect.Parameter(
+                key_name,
+                kind=Parameter.KEYWORD_ONLY,
+                annotation=separator,
+                default=f"Parameters choice for {key_name}"
+            )]
+
+            # Adding the parameters to define the calculation
+            s = inspect.signature(getattr(fractal_class, str_method))
+            local_params = dict()
+            for p_name, param in s.parameters.items():
+                if p_name in ["self", "calc_name"]:
+                    continue
+                if p_name == "subset":
+                    if subset_params is None:
+                        impl_subset[key_name] = (lambda fractal : None)
+                    else:
+                        # It is a Fractal_array... Let's built a signature
+                        # with the provided default
+                        real_subset_params = subset_params.copy()
+                        real_subset_params["calc_name"] = calculations[
+                            real_subset_params.pop("calc_name_key")
+                        ]
+
+                        def local_impl_subset(fractal):
+                            return Fractal_array(
+                                fractal=fractal, **real_subset_params
+                            )
+                        impl_subset[key_name] = local_impl_subset
+                    continue
+
+                local_params[param.name] = param.default
+                full_parameters += [param]
+
+            mapped_parameters[key_name] = local_params
+        
+        sgn = Signature(
+            parameters=full_parameters, return_annotation=Signature.empty
+        )
+
+        if sgn_only:
+            return sgn
+
+        def impl(fractal, activated_calc, gui_kwargs):
+            """
+            Output: list of postproc_batches that can be passed to a plotter
+            """
+            postproc_batches = []
+
+            for key_name, str_method in calculations.items():
+                calc_method = getattr(fractal_class, str_method)
+
+                if key_name not in activated_calc: # This calculation is bypassed
+                    logger.debug(
+                        f"Skipping calc {str_method}:"
+                        + f" not in {activated_calc}"
+                    )
+                    continue
+
+                param_sset = mapped_parameters[key_name]
+                params = {k: gui_kwargs[k] for k in param_sset}
+                calc_subset = impl_subset[key_name](fractal)
+                calc_method(fractal, subset=calc_subset, **params)
+
+                postproc_batches += [Postproc_batch(fractal, key_name)]
                 
-                
+
+            return {"postproc_batches": postproc_batches}
+
+        return impl, sgn
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#
-#
-#
-#
-#
-#
-#
-#class oldFunc_factory():
-#    # https://smarie.github.io/python-makefun/
-#    # https://chriswarrick.com/blog/2018/09/20/python-hackery-merging-signatures-of-two-python-functions/
-#    def __init__(self, fractal):
-#        self.fractal = fractal
+#    def pp_batch(fractal_class):
+#        """
+#        This only generates the pp batch needed.
 #        
-#    def code_gen(self, type="plot"):
+#        It will also be passed the layers_kwargs
 #        """
-#        Returns a dictionnary, e.g.,
+#        calculations = fractal_class._plot_protocol
 #        
-#        kind = "plot":
-#            - "zoom" -> func
-#            - "plot_batch_xxx" -> func
-#            - "plot_batch_yyy" -> func
-#            - "Extra outputs" -> func
-#            - "HQ rendering" -> func
-#            - "General settings" -> func
+#        for key_name, str_method in calculations.items():
+#            calc_method = getattr(fractal_class, str_method)
 #
-#        func codes blocks are just pass-through parameters
-#        
-#        then the hard work is done in "wrap_up"
-#        """
-#        func_dict = NotImplemented
-#        wrap_up = NotImplemented
-#        return func_dict, wrap_up
-#
-#
-#    def gui_plot_func(self):
-#        """
-#        Main idea : we build step by steps the function blocks and signature in
-#        parallel. Main blacks:
-#
-#        1) zoom
-#            1.1) skew
-#        2) divergent_calc
-#            2.1) divergent_base_field
-#            2.2) divergent_optionnal_field
-#            2.3) divergent_shading
-#        3) convergent_calc
-#           3.1) convergent_base_field
-#           3.2) convergent_shading
-#        4) Extra outputs
-#        5) Final rendering
-#        6) General settings
-#        """
-#        # 1) Zoom
-#        zoom_impl, zoom_params, chapter = self.zoom_code(0)
-#
-#        # 2) Base_calc
-#        calc_impl, calc_params, chapter = self.calc_code("calc_std_div", chapter)
-#
-#        # 3) layer
-##        print("zoom_params", zoom_params, zoom_params.keys)
-##        print("calc_params", calc_params)
-#        
-#        #  Error on duplicates
-#        full_pnames = tuple(p.name for p in (zoom_params + calc_params))
-#        if len(full_pnames) != len(set(full_pnames)):
-#            raise ValueError(
-#                    f"Found duplicates in parameters name: {full_pnames}"
-#            )
-#        
-#
-#        def func_impl(**kwargs):
-#            
-#            
-#            # Zooming parameters
-#            zoom_pnames = (p.name for p in zoom_params)
-#            zoom_kwargs = {k: kwargs[k] for k in zoom_pnames}
-#            zoom_impl(**zoom_kwargs)    
-#
-#            # First calculation
-#            calc_pnames = (p.name for p in calc_params)
-#            calc_kwargs = {k: kwargs[k] for k in calc_pnames}
-#            pp_batch = calc_impl(**calc_kwargs)
-#            
-#            # First layers
-#            
-#            # Second calculation
-#            
-#            # Second layers
-#            
-#            # Clean-up
-#            
-#            
-#            
-##            div_calc(**div_calc_params)
-##
-##            # Second calculation
-##            cv_calc(**cv_calc_params)
-##
-##            # Layers for div calc
-##            div_base_layer(**div_base_layer_params)
-##            div_2nd_layer(**div_2nd_layer_params)
-##            div_shade(**div_shade_params)
-##
-##            # Layers for cv calc
-##            cv_base_layer(**c""v_base_layer_params)
-##            cv_2nd_layer(**cv_2nd_layer_params)
-##            cv_shade(**cv_shade_params)
-#
-#        func_sig = Signature(zoom_params + calc_params)
-#        set_signature(func_impl, func_sig)
-#        func_impl.__doc__ = f"""Plotting function dynamically generated for:
-#        {self.fractal.__class__}
-#        """
-#        return func_impl
-#
-#
-#    def zoom_code(self, chapter: int):
-#        """
-#        Generate code for zooming into this fractal
-#        Skew parameters included in a subsection (only for non-holomorphic)
-#        """
-#        f = self.fractal
-#        s = inspect.signature(f.zoom)
-#        
-#        # Create the "Zoom" section
-#        param = chapter_param(chapter, "Zoom parameters")
-#        chapter += 1
-#        chapter_names = [param.name]
-#        zoom_params = [param]
-#
-#        # Do we need skew ? Only if flagged explicitely as non-holomorphic
-#        need_skew = False
-#        triggered_skew = False
-#        if hasattr(f, "holomorphic"):
-#            need_skew = not(f.holomorphic)
-#
-#        for p_name, p in s.parameters.items():
-#
-#            if "skew" in p_name:
-#                if not(need_skew):
-#                    continue
-#                if not(triggered_skew):
-#                    triggered_skew = True
-#                    param = chapter_param(chapter, "Skew matrix")
-#                    chapter += 1
-#                    chapter_names += [param.name]
-#                    zoom_params += [param]
-#
-#            zoom_params += passed_through_param(p_name, p)
-#
-#        def zoom_impl(**kwargs):
-#            # Just remove the headers and we are done
-#            for name in chapter_names:
-#                kwargs.pop(name)
-#            self.fractal.zoom(**kwargs)
-#
-#        return (zoom_impl, zoom_params, chapter)
-#
-#    def calc_code(self, calc_name, chapter: int, subset=None):
-#        """
-#        Generate code for a calculation
-#        Subset is either None or need to be passed as keyword
-#        """
-#        f = self.fractal
-#        s = inspect.signature(getattr(f, calc_name))
-#        
-#        # Create the "Calc" section
-#        param = chapter_param(chapter, f"{calc_name} parameters")
-#        chapter += 1
-#        chapter_names = [param.name]
-#        calc_params = [param]
-#
-#        for p_name, p in s.parameters.items():
-#            if "subset" in p_name:
-#                continue
-#            calc_params += passed_through_param(p_name, p)
-#
-#        def calc_impl(**kwargs):
-#            for name in chapter_names:
-#                kwargs.pop(name)
-#            kwargs["subset"] = subset
-#            getattr(f, calc_name)(**kwargs)
-#            return Postproc_batch(fractal, kwargs["calc_name"])
-#
-#        return (calc_impl, calc_params, chapter)
-#
-#
-#    def base_layer_code(self, calc_name, layer_name, chapter: int):
-#        """
-#        """
-#        f = self.fractal
-#        s = inspect.signature(getattr(f, calc_name))
-#         
-#        # Create the "Calc" section
-#        param = chapter_param(chapter, f"{calc_name} base layer")
-#        chapter += 1
-#        chapter_names = [param.name]
-#        calc_params = [param]
-#
-#        def layer_impl(**kwargs):
-#            # remove the headers
-#            for name in chapter_names:
-#                kwargs.pop(name)
-#            # get the postproc batch
-#            pp_batch = kwargs.pop("pp_batch")
-#
-#            pp_batch.add_postproc("base_layer", Continuous_iter_pp())
-#
-#
-#def chapter_param(chapter_index, title):
-#    """ Returns a fsgui.separator Parameter based on index & title"""
-#    return Parameter(
-#        "_" + str(chapter_index),
-#        kind=Parameter.KEYWORD_ONLY,
-#        default=title,
-#        annotation=fsgui.separator
-#    )
-#
-#
-#def passed_through_param(p_name, p):
-#    """ Returns a fsgui.separator Parameter based on index & title"""
-#    if p.annotation is Signature.empty:
-#        warnings.warn(f"Missing annotation for {p_name}")
-#        return []
-#    return [Parameter(
-#        p_name,
-#        kind=Parameter.KEYWORD_ONLY,
-#        default=p.default,
-#        annotation=p.annotation
-#    )]
-#
-#def params_to_names(plist):
-#    return [p.name for p in plist]
+#        def impl(fractal, gui_kwargs):
+            
 
-#def set_signature(func_impl, func_signature):
-#    """
-#    Dynamically modifies a function with signature with `func_signature`
+#    def layers(fractal_class):
+#        """
+#        This fine-tune the plotter
+#        """
+#        calculations = fractal_class._plot_protocol
+#                
+#
+#        def impl(fractal, plotter, gui_kwargs):
+#
+#            for key_name, str_method in calculations.items():
+#
+#                plotter.add_layer(Bool_layer("interior", output=False)
+#                
+#                # the base calc
+#                
+#                # the 
+#            
+#            
 #    
-#    Parameters
-#    ----------
-#    func_impl: function with signature to be modified
-#    func_signature: inspect.Signature
+#    return impl, sgn
+
+        
+        
+
+#def implements_plotting(**kwargs):
 #    """
-#    # inspect.signature looks for the existence of a __signature__ attribute
-#    # before it looks at the function's actual signature:
-#    func_impl.__signature__ = func_signature
+#    Class factory for Plotting_protocol derived classes.
 #
-#    # typing.get_type_hints does not respect __signature__,
-#    # so we should update the __annotations__ attribute as well:
-#    annotations, defaults, kwonlydefaults = get_signature_details(func_signature)
-#    print("annotations, defaults, kwonlydefaults", annotations, defaults, kwonlydefaults)
+#    Parameters:
+#    -----------
+#    Continuous_iter: bool
+#        If True, can define a Continuous_iter_pp()
+#    Fieldlines_pp: bool
+#        If True, can define a Fieldlines_pp() 
+#    DEM_pp: bool
+#        If True, can define a DEM_normal_pp() 
+#    DEM_normal_pp: None | str[]
+#        If not None, can define a DEM_pp with kind from the str[] list which
+#        take value in "potential" | "Milnor" | "convergent"
+#        DEM_normal_pp(kind=str)
+#    DEM_pp: bool
+#        If True, can define a DEM_pp
+#    
+#    """
+#    class Implements_plotting(Plotting_protocol):
+#        implements = kwargs
 #
-#    defaults = tuple(defaults)
-#    if len(kwonlydefaults) == 0:
-#        kwonlydefaults = None
-#
-#    func_impl.__annotations__ = annotations
-#    func_impl.__defaults__ = defaults
-#    func_impl.__kwdefaults__ = kwonlydefaults
+#    return Implements_plotting
 
 
-#def get_signature_details(s):
-#    """
-#    Utility method to extract the annotations, defaults and kwdefaults from a `Signature` object
-#    :param s:
-#    :return:
-#    """
-#    annotations = dict()
-#    defaults = []
-#    kwonlydefaults = dict()
-#    if s.return_annotation is not s.empty:
-#        annotations['return'] = s.return_annotation
-#    for p_name, p in s.parameters.items():
-#        if p.annotation is not s.empty:
-#            annotations[p_name] = p.annotation
-#        if p.default is not s.empty:
-#            # if p_name not in kwonly_names:
-#            if p.kind is not Parameter.KEYWORD_ONLY:
-#                defaults.append(p.default)
-#            else:
-#                kwonlydefaults[p_name] = p.default
-#    return annotations, defaults, kwonlydefaults
+
+
+
+
 def test_Code_writer():
     val = np.pi
     val = {"abs": np.pi, "c": 4.59785}
@@ -797,18 +836,26 @@ def test_Code_writer():
     
 
 if __name__ == "__main__":
+    
+    import fractalshades.models as fsm
+    
     realpath = os.path.realpath(__file__)
     directory = os.path.splitext(realpath)[0]
-    fractal_c = fsm.Perturbation_mandelbrot# (directory)
+    fractal_c = fsm.Mandelbrot #Perturbation_mandelbrot# (directory)
 
     pf = Plotting_Factory(fractal_c, directory)
     
     guiparams_default = pf.wrapup_guiparams_default()
-    print("guiparams_default", guiparams_default)
+    print("**********************************************************")
+    print("guiparams_default\n", guiparams_default)
+    print("**********************************************************")
+    
+    # guiparams_default["general_settings"]["verbosity"] = -314
 
     gui_source_code = pf.wrapup_code(guiparams_default)
     
-    print("************* gui_source_code:\n", gui_source_code)
+    print("************* gui_source_code:\n*")
+    print(gui_source_code)
     
 #    print(f_impl)
 #    

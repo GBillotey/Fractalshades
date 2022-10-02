@@ -65,15 +65,20 @@ class Fractal_plotter:
     }
 
     supersampling_type = typing.Literal[
-        enum.Enum("supersampling_type", list(SUPERSAMPLING_DIC.keys()))
+        enum.Enum(
+                    "supersampling_type",
+                    list(SUPERSAMPLING_DIC.keys()),
+                    module=__name__
+        )
     ]
 
     def  __init__(self,
         postproc_batch,
-        final_render: bool=False,
-        supersampling: supersampling_type="None",
-        jitter: bool=False,
-        reload: bool=False
+        final_render: bool = False,
+        supersampling: supersampling_type = "None",
+        jitter: bool = False,
+        reload: bool = False,
+        _delay_register: bool = False
     ):
         """
         The base plotting class.
@@ -127,28 +132,39 @@ class Fractal_plotter:
         }
 
         # postproc_batches can be single or an enumeration
+        # At this stage it is unfreezed, waiting for a freeze_postprocs call
         postproc_batches = postproc_batch
         if isinstance(postproc_batch, fs.postproc.Postproc_batch):
+#            print("YESSSSSSSSSS, isinstance")
             postproc_batches = [postproc_batch]
-        for i, postproc_batch in enumerate(postproc_batches):
-            if i == 0:
-                self.postproc_batches = [postproc_batch]
-                self.posts = copy.copy(postproc_batch.posts)
-                self.postnames_2d = postproc_batch.postnames_2d
-                # iterator :
-                self.fractal = postproc_batch.fractal
-            else:
-                self.add_postproc_batch(postproc_batch)
 
-        self.chunk_slices = self.fractal.chunk_slices
-        # layer data
-        self.layers = []
-        self.scalings = None # to be computed !
-        # Plotting directory
-        self.plot_dir = self.fractal.directory
+#        for i, postproc_batch in enumerate(postproc_batches):
+#            if i == 0:
+#                self.postproc_batches = [postproc_batch]
+#                self.posts = copy.copy(postproc_batch.posts)
+#                self.postnames_2d = postproc_batch.postnames_2d
+#                # iterator :
+#                self.fractal = postproc_batch.fractal
+#            else:
+#                self.add_postproc_batch(postproc_batch)
+#
+#        self.chunk_slices = self.fractal.chunk_slices
+#        # layer data
+#        self.layers = []
+#        self.scalings = None # to be computed !
+#        # Plotting directory
+#        self.plot_dir = self.fractal.directory
+#
+#        # Mem mapping dtype
+#        self.post_dtype = np.float32 # TODO check this - use float64 ??
 
-        # Mem mapping dtype
-        self.post_dtype = np.float32 # TODO check this - use float64 ??
+
+        self._postproc_batches = postproc_batches # unfreezed 
+#        print("## in __init__, LEN", len(self._postproc_batches ))
+
+        if not(_delay_register):
+            self.register_postprocs()
+
 
     @property
     def postnames(self):
@@ -172,14 +188,51 @@ class Fractal_plotter:
             raise ValueError("Attempt to add a postproc_batch from a different"
                              "fractal: {} from {}".format(
                 postproc_batch.fractal, postproc_batch.calc_name))
+        print("## ADDING, postproc_batches", postproc_batch)
         self.postproc_batches += [postproc_batch]
+        print("## ADDING, postproc_batch.posts", postproc_batch.posts)
         self.posts.update(postproc_batch.posts)
+        print("## ADDING, postproc_batch.postnames_2d", postproc_batch.postnames_2d)
         self.postnames_2d += postproc_batch.postnames_2d
+    
+    def register_postprocs(self):
+        """
+        Freezing of the layers - might be delayed after a plotter instanciation
+        but shall be called before any coloring method.
+        """
+        postproc_batches = self._postproc_batches
+        # delattr(self, "_postproc_batches")
+
+        print("## in register_postprocs, LEN", len(postproc_batches ))
+
+        for i, postproc_batch in enumerate(postproc_batches):
+            print("##>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<< in register_postprocs", i, postproc_batch, postproc_batch.posts)
+            if i == 0:
+                self.postproc_batches = [postproc_batch]
+                self.posts = copy.copy(postproc_batch.posts)
+                self.postnames_2d = postproc_batch.postnames_2d
+                # iterator :
+                self.fractal = postproc_batch.fractal
+            else:
+                self.add_postproc_batch(postproc_batch)
+            print("## self.posts", self.posts)
+
+        self.chunk_slices = self.fractal.chunk_slices
+        # layer data
+        self.layers = []
+        self.scalings = None # to be computed !
+        # Plotting directory
+        self.plot_dir = self.fractal.directory
+
+        # Mem mapping dtype
+        self.post_dtype = np.float32 # TODO check this - use float64 ??
+        
+        
 
     def add_layer(self, layer):
         """
         Adds a layer field to allow subsequent graphical operations or outputs.
-        
+
         Parameters
         ----------
         layer : `fractalshades.colors.layers.Virtual_layer` or a derived class
@@ -665,11 +718,19 @@ class Fractal:
         "stop_reason",
         "stop_iter"
     ]
-    PROJECTION_ENUM = {
-        "cartesian": 1,
-        "spherical": 2,
-        "expmap": 3
-    }
+#    PROJECTION_ENUM = {
+#        "cartesian": 1,
+#        "spherical": 2,
+#        "expmap": 3
+#    }
+    PROJECTION_ENUM = enum.Enum(
+        "projection",
+        ("cartesian", "spherical", "expmap"),
+        module=__name__
+    )
+    projection_type = typing.Literal[PROJECTION_ENUM]
+
+
     USER_INTERRUPTED = 1
 
     def __init__(self, directory: fs.Working_directory):
@@ -789,14 +850,13 @@ advanced users when subclassing.
 
     @fs.utils.zoom_options
     def zoom(self, *,
-             x: float,
-             y: float,
-             dx: float,
-             nx: int,
-             xy_ratio: float,
-             theta_deg: float,
-             projection: str="cartesian",
-             antialiasing: bool=False  # DEPRECATED
+             x: float=0.,
+             y: float=0.,
+             dx: float=8.,
+             nx: int=800,
+             xy_ratio: float=1.,
+             theta_deg: float=0.,
+             projection: projection_type="cartesian",
     ):
         """
         Define and stores as class-attributes the zoom parameters for the next
@@ -818,16 +878,7 @@ advanced users when subclassing.
             Pre-rotation of the calculation domain, in degree
         projection : "cartesian" | "spherical" | "exp_map"
             Kind of projection used (default to cartesian)
-        antialiasing : bool
-            Deprecated - Use the options provided by `Fractal_plotter`
-            (This parameter might be removed in a future version)
         """
-        if antialiasing:
-            logger.warn(
-                "antialiasing parameter for zoom is obsolete, "
-                "Use the supersampling option provided by `Fractal_plotter`"
-            )
-
         # Safeguard in case the GUI inputs were strings
         if isinstance(x, str) or isinstance(y, str) or isinstance(dx, str):
             raise RuntimeError("Float expected")
@@ -1329,7 +1380,8 @@ advanced users when subclassing.
         center = self.x + 1j * self.y
         xy_ratio = self.xy_ratio
         theta = self.theta_deg / 180. * np.pi # used for expmap
-        projection = self.PROJECTION_ENUM[self.projection]
+        projection = getattr(self.PROJECTION_ENUM, self.projection).value
+        # was : self.PROJECTION_ENUM[self.projection]
 
         return (
             initialize, iterate,
@@ -2218,9 +2270,9 @@ def numba_cycles(
     return 0
 
 
-proj_cartesian = Fractal.PROJECTION_ENUM["cartesian"]
-proj_spherical = Fractal.PROJECTION_ENUM["spherical"]
-proj_expmap = Fractal.PROJECTION_ENUM["expmap"]
+proj_cartesian = Fractal.PROJECTION_ENUM.cartesian.value
+proj_spherical = Fractal.PROJECTION_ENUM.spherical.value
+proj_expmap = Fractal.PROJECTION_ENUM.expmap.value
 
 @numba.njit
 def apply_skew_2d(skew, arrx, arry):

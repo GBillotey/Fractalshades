@@ -19,7 +19,7 @@ import typing
 import os
 
 import numpy as np
-from PyQt6 import QtGui
+#from PyQt6 import QtGui
 
 import fractalshades as fs
 import fractalshades.models as fsm
@@ -116,7 +116,7 @@ def plot(plot_dir):
                  "not_diverging",
                  "dzndz_detection",
          ]="all",
-         interior_color: QtGui.QColor=(0.1, 0.1, 0.1),
+         interior_color: fscolors.Color=(0.1, 0.1, 0.1),
          colormap: fscolors.Fractal_colormap=colormap,
          invert_cmap: bool=False,
          cmap_z_kind: typing.Literal["relative", "absolute"]=cmap_z_kind,
@@ -127,8 +127,8 @@ def plot(plot_dir):
          shade_kind: typing.Literal["None", "standard", "glossy"]=shade_kind,
          gloss_intensity: float=10.,
          light_angle_deg: float=65.,
-         light_color: QtGui.QColor=(1.0, 1.0, 1.0),
-         gloss_light_color: QtGui.QColor=(1.0, 1.0, 1.0),
+         light_color: fscolors.Color=(1.0, 1.0, 1.0),
+         gloss_light_color: fscolors.Color=(1.0, 1.0, 1.0),
 
          _6: fsgui.separator="Plotting parameters: field lines",
          field_kind: typing.Literal["None", "overlay", "twin"]=field_kind,
@@ -166,13 +166,13 @@ def plot(plot_dir):
                 interior_detect=interior_detect,
             )
 
-        if fractal.res_available():
-            print("RES AVAILABLE, no compute")
-        else:
-            print("RES NOT AVAILABLE, clean-up")
-            fractal.clean_up(calc_name)
+#        if fractal.res_available():
+#            print("RES AVAILABLE, no compute")
+#        else:
+#            print("RES NOT AVAILABLE, clean-up")
+#            fractal.clean_up(calc_name)
 
-        fractal.run()
+#        fractal.run()
 
         pp = Postproc_batch(fractal, calc_name)
         

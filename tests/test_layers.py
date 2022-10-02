@@ -297,7 +297,7 @@ class Test_layers(unittest.TestCase):
             max_newton=20,
             eps_newton_cv=1.e-12,
         )
-        f.clean_up(interior_calc_name)
+        # f.clean_up(interior_calc_name)
 
         pp0 = Postproc_batch(f, self.calc_name)
         pp0.add_postproc(layer_name, Continuous_iter_pp())
@@ -477,6 +477,6 @@ if __name__ == "__main__":
         suite = unittest.TestSuite()
         # suite.addTest(Test_layers("test_light_source"))
         # suite.addTest(Test_layers("test_twin"))
-        suite.addTest(Test_layers("test_color_basic"))
+        suite.addTest(Test_layers("test_overlay1"))
         # suite.addTest(Test_layers("test_overlay2"))
         runner.run(suite)
