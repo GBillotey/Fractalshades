@@ -619,84 +619,54 @@ directory : str
             )
 
         return cycle_indep_args
-        
-        
-#        self.cycles(
-#            Zn_path, dZndc_path, dZndz_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
-#            has_xr, ref_index_xr, ref_xr, refx_xr, refy_xr,
-#            ref_div_iter, ref_order,
-#            drift_xr, driftx_xr, drifty_xr, dx_xr, 
-#            P, kc, n_iter, M_bla, r_bla, bla_len, stages_bla,
-#            chunk_slice=None
-#        )
-        # ====================================================================
 
 
-    def param_matching(self, dparams):
+    def fingerprint_matching(self, calc_name, test_fingerprint, log=False):
         """
-        If not matching shall trigger recomputing
-        dparams is the stored computation
+        Test if the stored parameters match those of new calculation
+        /!\ modified in subclass
         """
-#        print("**CALLING param_matching +++", self.params)
+        flatten_fp = fs.utils.dic_flatten(test_fingerprint)
 
-        UNTRACKED = [
-            # "SA_params",
-            "datetime",
-            "debug",
-        ]
-        SPECIAL_CASE = ["prec"] # TODO should it be calc-param_prec ?
-        for key, val in self.params.items():
-            if (key in UNTRACKED):
-                continue
-            elif (key in SPECIAL_CASE):
-                if key == "prec":
-                    if dparams[key] < val:
-                        logger.debug(textwrap.dedent(f"""\
-                        Higher precision needed ; will trigger a recalculation
-                          {key}, {val} --> {dparams[key]}"""
-                    ))
+        state = self._calc_data[calc_name]["state"]
+        expected_fp = fs.utils.dic_flatten(state.fingerprint)
+        
+        if log:
+            logger.debug(f"flatten_fp:\n {flatten_fp}")
+            logger.debug(f"expected_fp:\n {expected_fp}")
+
+        precision_key = f"zoom_kwargs@precision"
+        SPECIAL = [precision_key,]
+
+        for key, val in expected_fp.items():
+            if (key in SPECIAL):
+                if key == precision_key:
+                    # We allow precision to *decrease* without rerunning
+                    # the whole calc
+                    if flatten_fp[key] < val:
+                        if log:
+                            logger.debug(textwrap.dedent(f"""\
+                        Higher precision needed: will trigger a recalculation
+                          {key}, {flatten_fp[key]} --> {val}"""
+                            ))
                         return False
-
+                    elif flatten_fp[key] > val:
+                        if log:
+                            logger.debug(textwrap.dedent(f"""\
+                        Lower precision requested: no need for recalculation
+                          {key}, {flatten_fp[key]} --> {val}"""
+                            ))
+                continue
             else:
-                if dparams[key] != val:
-                    logger.debug(textwrap.dedent(f"""\
-                        Parameter mismatch ; will trigger a recalculation
-                          {key}, {val} --> {dparams[key]}"""
-                    ))
+                if flatten_fp[key] != val:
+                    if log:
+                        logger.debug(textwrap.dedent(f"""\
+                            Parameter mismatch ; will trigger a recalculation
+                              {key}, {flatten_fp[key]} --> {val}"""
+                        ))
                     return False
         return True
 
-
-#    def get_SA(self, Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter,
-#               ref_order):
-#        """
-#        Check if we have a suitable SA approximation stored, 
-#          - otherwise computes and stores it in a file
-#        """
-#        if self.SA_matching():
-#            logger.debug("SA already stored")
-#            return
-#
-#        else:            
-#            SA_params = self.SA_params
-#            FP_params = self.FP_params
-#            kc = self.kc
-#
-#            SA_loop = self.SA_loop()
-#            SA_cutdeg = SA_params["cutdeg"]
-#            SA_err_sq = SA_params["err"] ** 2
-#            SA_stop = SA_params.get("stop", -1)
-#
-#            if ref_order is None:
-#                ref_order = 2**62 # a quite large int64
-#
-#            P, n_iter, P_err = numba_SA_run(
-#                SA_loop, 
-#                Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
-#                kc, SA_cutdeg, SA_err_sq, SA_stop
-#            )
-#            self._SA_data = (P, n_iter, P_err)
-#            self.save_SA(FP_params, SA_params, kc, P, n_iter, P_err)
 
     def get_BLA_tree(self, Zn_path, eps):
         """

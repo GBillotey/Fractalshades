@@ -52,17 +52,20 @@ def set_log_handlers(verbosity):
 
     # create File handler 
     if verbosity >= 2:
-        if fs.settings.working_directory.path is None:
+        if fs.settings.log_directory is None:
             file_logger_warning = True
         else:
             file_logger_warning = False
             now = datetime.datetime.now()
             file_prefix = now.strftime("%Y-%m-%d_%Hh%M_%S")
             file_config = os.path.join(
-                    fs.settings.working_directory,
+                    fs.settings.log_directory,
                     f'{file_prefix}_factalshades.log'
             )
-            print("OPEN", fs.settings.working_directory, f'{file_prefix}_factalshades.log', file_config)
+
+            # if directory for the log does not exists, creates it
+            fs.utils.mkdir_p(os.path.dirname(file_config))
+
             fh = logging.FileHandler(file_config)
             fh.setLevel(logging.DEBUG)
             if verbosity == 3:
@@ -84,7 +87,8 @@ def set_log_handlers(verbosity):
     
     if  file_logger_warning:       
         logger.warning(
-            "Unable to start file logger: dir_config not specified"
+            "Unable to start file logger: "
+            "fs.settings.log_directory not specified"
         )
     else:
         logger.info(

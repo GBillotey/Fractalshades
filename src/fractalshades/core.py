@@ -66,9 +66,9 @@ class Fractal_plotter:
 
     supersampling_type = typing.Literal[
         enum.Enum(
-                    "supersampling_type",
-                    list(SUPERSAMPLING_DIC.keys()),
-                    module=__name__
+            "supersampling_type",
+            list(SUPERSAMPLING_DIC.keys()),
+            module=__name__
         )
     ]
 
@@ -734,7 +734,7 @@ class Fractal:
 
     USER_INTERRUPTED = 1
 
-    def __init__(self, directory: fs.Working_directory):
+    def __init__(self, directory: str):
         """
 The base class for all escape-time fractals calculations.
 
@@ -790,7 +790,7 @@ advanced users when subclassing.
     
     **Calculation parameters**
 
-    To lanch a calculation, call `~fractalshades.Fractal.run`. The parameters
+    To launch a calculation, call `~fractalshades.Fractal.run`. The parameters
     from the last 
     @ `fractalshades.zoom_options` call and last 
     @ `fractalshades.calc_options` call will be used. 
@@ -1237,15 +1237,22 @@ advanced users when subclassing.
             logger.debug(f"flatten_fp:\n {flatten_fp}")
             logger.debug(f"expected_fp:\n {expected_fp}")
 
-        UNTRACKED = ["Software", "datetime", "debug"]
+        # We currently do not have special keys to handle
+        # (Note: The software version and calculation info are now only added
+        # to the tagged image)
+        SPECIAL = []
 
         for key, val in expected_fp.items():
-            if not(key in UNTRACKED) and flatten_fp[key] != val:
-                logger.debug(textwrap.dedent(f"""\
-                    Parameter mismatch ; will trigger a recalculation
-                      {key}, {flatten_fp[key]} --> {val}"""
-                ))
-                return False
+            if (key in SPECIAL):
+                continue
+            else:
+                if flatten_fp[key] != val:
+                    if log:
+                        logger.debug(textwrap.dedent(f"""\
+                            Parameter mismatch ; will trigger a recalculation
+                              {key}, {flatten_fp[key]} --> {val}"""
+                        ))
+                    return False
         return True
 
     def res_available(self, calc_name, chunk_slice=None):

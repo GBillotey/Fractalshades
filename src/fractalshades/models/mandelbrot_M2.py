@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import inspect
 from typing import Optional
 
 import numpy as np
@@ -27,7 +26,7 @@ from fractalshades.numpy_utils.expr_parser import Numpy_expr
 
 class Mandelbrot(fs.Fractal):
 
-    def __init__(self, directory: fs.Working_directory):
+    def __init__(self, directory: str):
         """
 A standard power-2 Mandelbrot Fractal. 
 
@@ -304,7 +303,7 @@ directory : str
 
 class Perturbation_mandelbrot(fs.PerturbationFractal):
     
-    def __init__(self, directory: fs.Working_directory):
+    def __init__(self, directory: str):
         """
 An arbitrary precision power-2 Mandelbrot Fractal. 
 

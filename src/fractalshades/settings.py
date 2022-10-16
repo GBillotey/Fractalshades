@@ -2,7 +2,7 @@
 """
 General settings at application-level
 """
-import os
+# import os
 import sys
 # this_module is a pointer to the module object instance itself.
 this_module = sys.modules[__name__]
@@ -91,21 +91,21 @@ def set_RAM_limit(RAM_limit_Gb):
     resource.setrlimit(rsrc, (byte_limit, byte_limit))
 
 
-class Working_directory(os.PathLike):
-    # https://docs.python.org/3/library/os.html#os.PathLike
-    def __init__(self, str_path=None):
-        self.path = str_path
+#class Working_directory(os.PathLike):
+#    # https://docs.python.org/3/library/os.html#os.PathLike
+#    def __init__(self, str_path=None):
+#        self.path = str_path
+#
+#    def __fspath__(self):
+#        if self.path is None:
+#            raise RuntimeError(
+#                "Working directory not specified, please define it through:\n"
+#                "fs.working_directory = Working_directory(str_path)"
+#            )
+#        return self.path
 
-    def __fspath__(self):
-        if self.path is None:
-            raise RuntimeError(
-                "Working directory not specified, please define it through:\n"
-                "fs.working_directory = Working_directory(str_path)"
-            )
-        return self.path
-
-working_directory = Working_directory(None)
-""" The working directory for this session """
+log_directory = None # Working_directory(None)
+""" The logging directory for this session """
 
 # output_context: "doc" True if we are building the doc (Pillow output)
 # "gui_iter" 0 if not in GUI loop otherwise, start at 1 and increment
