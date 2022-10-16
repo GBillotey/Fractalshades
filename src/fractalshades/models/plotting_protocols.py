@@ -142,12 +142,52 @@ def set_signature(func_impl, func_signature):
 
 
 
+def partial_sgn(func, params_dict):
+    """
+    Parameters:
+    ----------
+    func: callable
+        The func whose signature will be modified, keyword only can be modified
+    params_dict: dict (keys -> values)
+        keys : a subset of the func parameters
+        values:
+            - either a paramter assignement (in this case we remove from the
+               func signature and add it to the 'imposed' values)
+            - or a inspect.Parameter (in this case we replace in the signature)
+            - or None (we just remove from signature)
+    
+    Returns:
+    --------
+    sgn, imposed_params
+    """
+    sgn_params = []
+    imposed_params = dict()
+    for p_name, param in inspect.signature(func).parameters.items():
+        if not(p_name in params_dict):
+            sgn_params += [param]
+            continue
+        pval = params_dict[p_name]
+        if isinstance(pval, inspect.Parameter):
+            sgn_params += pval
+            continue
+        elif pval is None:
+            continue
+        else:
+            imposed_params[p_name] = pval
+
+    sgn = Signature(
+            parameters=sgn_params, return_annotation=Signature.empty
+    )
+    return sgn, imposed_params
+     
+        
+
 # Note: to copy + modifiy a paramter, use:
 # Parameter.replace from inspect module
 
 class Code_writer:
     """
-    A list of static method allowing to write Python source code
+    A list of static methods allowing to write Python source code
     """
     @staticmethod
     def write_assignment(varname, value, indent=0):
@@ -160,8 +200,7 @@ class Code_writer:
             var_str = Code_writer.var_str(value, indent)
         except NotImplementedError: # rethrow with hopefully better descr
             raise NotImplementedError(varname, value)
-    
-        
+
         str_assignment = f"{shift}{varname} = {var_str}\n"
         # print("varname", f"*{varname}*", f"*{shift}{varname}*", f"*{str_assignment}*")
         return str_assignment
@@ -461,7 +500,7 @@ class Plotting_Factory:
         Setup the calculations ; Delegated to the fractal Plotting_protocol
         mixin.
         
-        Needed closure:  fractal
+        Needed closure:  fractal, plotter, postproc_batches
         Returned closure: None
         """
         layers_impl, layers_sign = Implements.layers(self.fractal_class)
@@ -492,10 +531,11 @@ class Plotting_Factory:
         def impl(closure_vars, rendering_kwargs):
             postproc_batches = closure_vars["postproc_batches"]
             return {
-                "plotter": fs.Fractal_plotter(
+                "plotter": fractalshades.core.Fractal_plotter(
                         postproc_batches,
-                        _delay_register=True,
-                        **rendering_kwargs)
+                        _delay_registering=True,
+                        **rendering_kwargs
+                )
             }
 
         parameters = []
@@ -662,19 +702,20 @@ class Implements():
         Idea: build the signature first to allow "mapping" the parameters to
         the correct calculation
         """
-        calculations = fractal_class._plot_protocol
+        # calc_name -> str_method_name mapping
+        calc_funcs = fractal_class._plot_protocol
 
         full_parameters = [] # full listing provided to GUI, with the titles
         mapped_parameters = {} # dict by calculations
-        impl_subset = {} # dict of subet implementations
+        impl_subset = {} # dict of subset implementations
 
-        for key_name, str_method in calculations.items():
+        for key_name, str_method in calc_funcs.items():
             calc_method = getattr(fractal_class, str_method)
             subset_params = calc_method._plot_protocol["subset_params"]
 
             # Adds a spacer
             full_parameters += [inspect.Parameter(
-                key_name,
+                "_" + key_name,
                 kind=Parameter.KEYWORD_ONLY,
                 annotation=separator,
                 default=f"Parameters choice for {key_name}"
@@ -693,7 +734,7 @@ class Implements():
                         # It is a Fractal_array... Let's built a signature
                         # with the provided default
                         real_subset_params = subset_params.copy()
-                        real_subset_params["calc_name"] = calculations[
+                        real_subset_params["calc_name"] = calc_funcs[
                             real_subset_params.pop("calc_name_key")
                         ]
 
@@ -722,7 +763,7 @@ class Implements():
             """
             postproc_batches = []
 
-            for key_name, str_method in calculations.items():
+            for key_name, str_method in calc_funcs.items():
                 calc_method = getattr(fractal_class, str_method)
 
                 if key_name not in activated_calc: # This calculation is bypassed
@@ -738,25 +779,224 @@ class Implements():
                 calc_method(fractal, subset=calc_subset, **params)
 
                 postproc_batches += [Postproc_batch(fractal, key_name)]
-                
+
 
             return {"postproc_batches": postproc_batches}
 
         return impl, sgn
 
 
-#    def pp_batch(fractal_class):
-#        """
-#        This only generates the pp batch needed.
-#        
-#        It will also be passed the layers_kwargs
-#        """
-#        calculations = fractal_class._plot_protocol
-#        
-#        for key_name, str_method in calculations.items():
+    @staticmethod
+    def layers(fractal_class, postproc_batches, plotter, sgn_only=False):
+        """
+        Returns a generic postproc_batches list for this fractal
+
+        postproc batch1
+          - base field
+          - secondary field
+          - shading
+          - undef_color
+
+        Idea: build the signature first to allow "mapping" the parameters to
+        the correct calculation
+
+        Parameters naming convention :
+
+            b{i}_f{j}_param   (float postproc)
+            b{i}_n{j}_param    (normal postproc)
+            b{i}_mask_param    (mask postproc)
+        """
+        # calc_name -> str_method_name mapping
+        calc_funcs = fractal_class._plot_protocol
+
+        full_parameters = [] # full listing provided to GUI, with the titles
+        mapped_parameters = {} # dict by calculations / postproc == pp btaches
+        impl_mask = {} # dict of mask implementations
+
+        for ib, batch in enumerate(postproc_batches): #calculations.items(): # Should we loop on pp
+            mapped_parameters[ib] = {"f": {}, "n": {}} # float / normal
+            calc_name = batch.calc_name
+            calc_method = getattr(fractal_class, calc_funcs[calc_name])
+            # mandatory_pps = calc_method._plot_protocol["mandatory"]
+            float_pps = calc_method._plot_protocol["float_pp"]
+            normal_pps = calc_method._plot_protocol["normal_pp"]
+
+            
 #            calc_method = getattr(fractal_class, str_method)
-#
-#        def impl(fractal, gui_kwargs):
+#            subset_params = calc_method._plot_protocol["subset_params"]
+
+            # Adds a spacer
+            full_parameters += [inspect.Parameter(
+                f"_{ib}_{key_name}",
+                kind=Parameter.KEYWORD_ONLY,
+                annotation=separator,
+                default=f"** Layer choice for {key_name}"
+            )]
+
+            # Adding the parameters to define the layers
+            # Adding the pp that are compulsary
+            
+            for ipp, pp in enumerate(float_pps):
+                prefix = f"b{ib}f{ipp}"
+                mapped_parameters[ib]["f"][ipp] = []
+                
+                sep_pp = inspect.Parameter(
+                    f"_prefix_{pp}", kind=Parameter.KEYWORD_ONLY,
+                    annotation=separator, default=f"Layer {prefix}: {pp}"
+                )
+                full_parameters += [sep_pp]
+
+                # Do we add greyscale export ?
+                greyscale_export_param = Parameter(
+                    f"{prefix}_greyscale_export",
+                    kind=Parameter.KEYWORD_ONLY,
+                    annotation=bool,
+                    default=True
+                )
+                # Then -> func=None, curve=lambda x: 0.5 + (x - 0.5) * 0.2, output
+                
+                full_parameters += [greyscale_export_param]
+                mapped_parameters[ib]["f"][ipp] += [greyscale_export_param]
+                
+                # add pp signature params
+                s = inspect.signature(getattr(pp + "_pp", "__init__"))
+                for p_name, param in s.parameters.items():
+                    if p_name in ["self"]:
+                        continue
+                    local_param = Parameter(
+                        f"{prefix}_{p_name}",
+                        kind=Parameter.KEYWORD_ONLY,
+                        annotation=param.annotation,
+                        default=param.default
+                    )
+                    parameters[ib]["f"][ipp] += [local_param]
+            
+            # Same loop for 
+            
+            # Color for masked 
+
+                
+                
+                full_parameters += []
+                
+                assert mandat_classname in float_pp.keys()
+                mandat_params = float_pp[mandat_classname]
+                pp_class = getattr(
+                    fractalshades.postproc, mandat_classname + "_pp"
+                )
+                s = inspect.signature(getattr(fractal_class, str_method))
+
+            for layers in float_pp:
+                
+            s = inspect.signature(getattr(fractal_class, str_method))
+
+            local_params = dict()
+            for p_name, param in s.parameters.items():
+                if p_name in ["self", "calc_name"]:
+                    continue
+
+                local_params[param.name] = param.default
+                full_parameters += [param]
+
+            mapped_parameters[key_name] = local_params
+
+        sgn = Signature(
+            parameters=full_parameters, return_annotation=Signature.empty
+        )
+
+        if sgn_only:
+            return sgn
+
+        # =====================================================================
+        def impl(fractal, plotter, postproc_batches, gui_kwargs):
+            """
+            Output: None, this is the main plotting code
+            
+            
+            """
+            plotter = fs.Fractal_plotter(
+                    [pp, pp_int], final_render=test_final,
+                    _delay_register=True
+            )
+
+            for ib, batch in postproc_batches:
+                prefix = f"b{ib}f{ipp}"
+                
+                calc_name = batch.calc_name
+                calc_method = getattr(fractal_class, calc_funcs[calc_name])
+                mandatory = calc_method._plot_protocol["mandatory"]
+                float_pp = calc_method._plot_protocol["float_pp"]
+                normal_pp = calc_method._plot_protocol["normal_pp"]
+                mask_pp = calc_method._plot_protocol["normal_pp"]
+                
+
+                # 1) The post processed fields
+                
+                # Adding the pp that are compulsary
+                for ipp, pp in enumerate(float_pp):
+                    
+                    # Some logic to double check if we activate...
+                    
+                    batch.add_postproc(
+                        "cont_iter",
+                        getattr(fractal_class, "__init__")(
+                            **pp_kwargs[ib, ipp]
+                        )
+                    )
+                
+                for mandat_classname in mandatory_pp:
+                    assert mandat_classname in float_pp.keys()
+                    mandat_params = float_pp[mandat_classname]
+
+                    mandat_kw = {p: gui_kwargs[p] for p in mandat_params}
+                    # E.g;, : Continuous_iter_pp...
+                    pp_class = getattr(
+                        fractalshades.postproc, mandat_classname + "_pp"
+                    )
+                    pp.add_postproc(mandat_classname, pp_class(mandat_kw))
+
+                # Adding the bool pp + layer
+                for key, val in mask_pp:
+                    
+                pp.add_postproc(
+                    f"mask_{calc_name}",
+                    Raw_pp(**mask_pp)
+                )
+                plotter.add_layer(Bool_layer(
+                        f"mask_{calc_name}", output=False)
+                )
+
+                # Adding the base pp 
+                
+                # Adding the secondary pp
+                # ? grey or Color ??
+                
+                # Adding the normal map pp
+                
+                
+                # 2) The layers
+                plotter.add_layer(
+                
+                
+
+                if key_name not in activated_calc: # This calculation is bypassed
+                    logger.debug(
+                        f"Skipping all layers related to {str_method}:"
+                        + f" not in {activated_calc}"
+                    )
+                    continue
+
+                # param_sset = mapped_parameters[key_name]
+                params = {k: gui_kwargs[k] for k in param_sset}
+                calc_subset = impl_subset[key_name](fractal)
+                calc_method(fractal, subset=calc_subset, **params)
+
+                postproc_batches += [Postproc_batch(fractal, key_name)]
+                
+
+            return {}
+
+        return impl, sgn
             
 
 #    def layers(fractal_class):

@@ -4,7 +4,6 @@ import typing
 import functools
 import os
 import pickle
-import threading
 import logging
 
 #import dataclasses
@@ -18,19 +17,18 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtCore import pyqtSignal, pyqtSlot
 
 import fractalshades as fs
-from fractalshades.gui.guifunc import Plotting_Factory
 
 """
 Implementation of a GUI following a Model-View-Presenter
 architectural pattern.
 
 - The model data is stored in a nested dict stored wrapped in a Model or
-Submodel instances. The class in charge of the model is always the more deeply
-nested. For instance considering a model item dict[key1, key2, key3],
-model.from_register(dict[key1][key2]) shall be a Submodel instance and is
-responsible for this item.
+  Submodel instances. The class in charge of the model is always the more deeply
+  nested. For instance considering a model item dict[key1, key2, key3],
+  model.from_register(dict[key1][key2]) shall be a Submodel instance and is
+  responsible for this item.
 
-- the GUI-compenents "Views" are hosted in guimodel.py
+- the GUI-compenents "Views" are the hosted in guimodel.py
 
 - Presenter make the link between the model and the view. However in the case
   where a view stricly implements a (sub)model, then no presenter is needed, the
@@ -39,8 +37,9 @@ responsible for this item.
   Event Publish / subscribe chain is as follows :
   
   submodel_changerequest :  Model -> Submodel (request to update) # was : model_changerequest_event
+  
   model_event : Model -> View (notify has been updated)
-
+  
   model_notification : Submodel -> Model (Notify has been updated)
   
   model_changerequest : Presenter -> Model (request to update)
@@ -58,6 +57,9 @@ Note on the datatype:
 """
 
 logger = logging.getLogger(__name__)
+
+separator = typing.TypeVar('gui_separator')
+collapsible_separator = typing.TypeVar('gui_collapsible_separator')
 
 class Model(QtCore.QObject):
     """
@@ -82,10 +84,10 @@ class Model(QtCore.QObject):
         # Register all Submodel and Presenter classes
         self._register = dict()
         # Register for model-level settings (dps, ...)
-        self._settings = dict()
+        self._alias = dict()
             
 
-    def register(self, data, register_key): # was : to_register
+    def register(self, data, register_key): # was : to_register(register_key, data)
         """
         Keep references to Submodel or Presenter objects
         """
@@ -98,39 +100,40 @@ class Model(QtCore.QObject):
         return self._register[register_key]
 
     def __setitem__(self, keys, val):
-        # Sets an item value. keys: iterable of nested keys
         setitem(self[keys[:-1]], keys[-1], val)
+
 
     def __getitem__(self, keys):
         # Gets an item value. keys is an iterable of nested keys
         try:
            return functools.reduce(getitem, keys, self._model)
         except KeyError:
-            # key known by the Model, maybe a specific Submodel implementation
+            # key known by the Model, might be a specific Submodel
+            # implementation
             return self.from_register(keys[:-1])[keys[-1]]
 
-    def set_alias(self, alias_name, alias_keys): # was: declare_setting
+
+    def set_alias(self, alias_name, alias_keys):
         """ Stores an alias for a model key"""
         self._alias[alias_name] = alias_keys
 
     def get_alias(self, alias_name):
-        """ Return a global setting, eg: dps """
+        """ Return the current model value for this alias """
         return self[self._alias[alias_name]]
 
-
     @pyqtSlot(object)
-    def need_item_refresh(self, alias_name):  # was: setting_touched
+    def item_refresh(self, alias_name):
         """ Reloads a model item from its alias name
         (Emits a change request with same value)
         """
-        setting_val = self.alias(alias_name)
+        setting_val = self.get_alias(alias_name)
         self.submodel_changerequest.emit(
             self._alias[alias_name], setting_val
         )
 
     @pyqtSlot(object, object)
-    def need_item_update(self, alias_name, setting_val): # was: setting_modified
-        """ Updates a model item from its alias name
+    def item_update(self, alias_name, setting_val):
+        """ Updates a model item from its alias name - new value
         """
         self.submodel_changerequest.emit(
             self._alias[alias_name], setting_val
@@ -140,7 +143,6 @@ class Model(QtCore.QObject):
     def model_notified_slot(self, keys, oldval, val):
         """ A change has been done in a model / submodel,
         need to notify the widgets (viewers) """
-        # Here we could implement UNDO / REDO stack
         self.model_event.emit(keys, val)
 
 
@@ -153,7 +155,7 @@ class Model(QtCore.QObject):
             self._model[keys] = val
             self.model_event.emit(keys, val)
         else:
-            # Change to be be handled at submodel level
+            # This change need to be be handled at submodel level
             self.submodel_changerequest.emit(keys, val)
 
 
@@ -167,7 +169,7 @@ class Submodel(QtCore.QObject):
         self._model = model
         self._keys = submodel_keys
         self._model[submodel_keys] = self._dict = dict()
-        # self._model.to_register(submodel_keys, self) Bad design, refactoring
+        # self._model.to_register(submodel_keys, self) # Bad design, refactoring
         # connect to change request from model
         self._model.submodel_changerequest.connect(self.model_event_slot)
 
@@ -180,8 +182,6 @@ class Submodel(QtCore.QObject):
         oldval = self[key]
         setitem(self._dict, key, val)
         self.model_notification.emit(self._keys + tuple([key]), oldval, val)  
-
-separator = typing.TypeVar('gui_separator')
 
 
 class Func_submodel(Submodel):
@@ -196,19 +196,13 @@ class Func_submodel(Submodel):
         super().__init__(model, submodel_keys)
         self._func = func
         self.build_dict()
-        
-#        print("DEBUG, after build_dict")
-#        print(self._dict , "\n\n")
-        # (22, 0, 'type')
-        # fractalshades.colors.color_mapping.Color : OK
-        
         # Publish-subscribe model
         self.model_notification.connect(self._model.model_notified_slot)
         # Bindings for dps
         if dps_var is not None:
-            # print("dps_var", dps_var)
+            print("dps_var", dps_var)
             self.connect_dps(dps_var)
-
+    
     def connect_dps(self, dps_var):
         """
         Register this var as the dps event listener at model level
@@ -218,23 +212,19 @@ class Func_submodel(Submodel):
 #            print(name, param)
             if name == dps_var:
                 if typing.get_origin(param.annotation) is not None:
-                    # Union / Litteral not accepted
-                    raise ValueError(
-                        "Unexpected type for math.dps: {}".format(
-                        typing.get_origin(param.annotation))
-                    )
+                    raise ValueError("Unexpected type for math.dps: {}".format(
+                            typing.get_origin(param.annotation)))
                 key = (i_param, 0, "val")
 #                print("setting dps listener",key )
                 self._model.set_alias("dps", self._keys + tuple([key]))
                 return
         raise ValueError("Parameter for dps not found", dps_var)
-    
-    
-    def connect_alias(self, func_var, alias):
-        """
-        Refactoring, more general - connect a model alias to a func parameter,
-        thus providing a setter hook.
 
+
+    def connect_alias(self, func_var, alias): # Refactoring
+        """
+        Connect a model alias to a func parameter,
+        thus providing a setter hook.
         func_var: str
             parameter name
         alias: str
@@ -285,9 +275,8 @@ class Func_submodel(Submodel):
         """
         fd = self._dict
         fd[(i_param, "name")] = name
-        ptype = param.annotation
-        
         default = param.default
+        ptype = param.annotation
         uargs = typing.get_args(ptype)
         origin = typing.get_origin(ptype)
 
@@ -298,14 +287,14 @@ class Func_submodel(Submodel):
 
         fd[(i_param, "is_def")] = fd[(i_param, "has_def")] # at initialization
         fd[(i_param, "val_def")] = default
-        # fd[(i_param, "type_def")] = None # to be completed later
 
         # inspect the datatype - is it a Union a Litteral or standard
         if origin is typing.Union:
             fd[(i_param, "n_types")] = len(uargs)
             fd[(i_param, "n_choices")] = 0
-            type_index, type_match = best_match(fd[(i_param, "val_def")],
-                                                   uargs)
+            type_index, type_match = best_match(
+                    fd[(i_param, "val_def")], uargs
+            )
             fd[(i_param, "type_sel")] = type_index
             fd[(i_param, "type_def")] = type_index #type_match
 
@@ -368,7 +357,7 @@ class Func_submodel(Submodel):
                 
             kwargs[iparam_name] = iparam_val
         return kwargs
-    
+
     def setkwarg(self, kwarg, val):
         """ sets the current value of the kwarg specified by its name """
         fd = self._dict
@@ -384,8 +373,7 @@ class Func_submodel(Submodel):
                 self.func_user_modified_slot(param_key, val)
             else:
                 raise NotImplementedError()
-#            print("Setting param", param_key, kwarg, val)
-            
+
     @property
     def param0(self):
         """ Return the value of the first parameter - which should be, the
@@ -398,12 +386,13 @@ class Func_submodel(Submodel):
         """
         return os.path.join(self.param0.directory, "gui", "params.pickle")
 
+
     def save_func_dict(self):
         """ Save the calling parameters - except unpickable parameters
         - main Fractal object
         - gui-separators
         """
-        # print("*** saving kwargs")
+        print("*** saving kwargs")
         fd = self._dict.copy()
 
         unpickables = []
@@ -417,7 +406,9 @@ class Func_submodel(Submodel):
                         unpickables += [key[0]]
                     if (
                         isinstance(val, typing.TypeVar)
-                        and (val.__name__ == "gui_separator")
+                        and (val.__name__
+                             in ("gui_separator", "gui_collapsible_separator")
+                        )
                     ):
                         # This is a gui separator, not something the user may
                         # modify
@@ -436,7 +427,7 @@ class Func_submodel(Submodel):
 
     def load_func_dict(self):
         """ Reload parameters stored from last call """
-        # print("*** load kwargs")
+        print("*** load kwargs")
         with open(self.save_func_path(), 'rb') as param_file:
             fd = pickle.load(param_file)
         
@@ -464,9 +455,8 @@ class Func_submodel(Submodel):
             self.setkwarg(key, val)
             # Emit a model modification for the presenter that might be
             # tracking
-            self.model_notification.emit(
-                    self._keys + tuple([key]), oldval, val
-            )
+            self.model_notification.emit(self._keys + tuple([key]),
+                                         oldval, val)
 
     def getsource(self):
         """ Returns the function source code """
@@ -479,7 +469,7 @@ class Func_submodel(Submodel):
 
     @pyqtSlot(object, object)
     def func_user_modified_slot(self, key, val):
-#        print("in submodel, widget_modified", key, val)
+        #  print("in submodel, widget_modified", key, val)
         if isinstance(key, str):
             # Accessing directly a kwarg by its name
             # TODO: should be only nparams
@@ -546,11 +536,11 @@ class Presenter(QtCore.QObject):
     """
     model_changerequest = pyqtSignal(object, object)
 
-    def __init__(self, model, mapping):#, register_key):
+    def __init__(self, model, mapping): #, register_key):
         super().__init__()
         self._model = model
         self._mapping = mapping
-        # self._model.to_register(register_key, self) # Bad design, refactoring
+        # self._model.to_register(register_key, self) # refactoring
         self.model_changerequest.connect(self._model.model_changerequest_slot)
 
     def __getitem__(self, key):
@@ -563,6 +553,7 @@ class Presenter(QtCore.QObject):
 
 
 class Colormap_presenter(Presenter):
+    # model_notification = pyqtSignal(object, object, object)
     
     model_changerequest = pyqtSignal(object, object)
     
@@ -575,14 +566,16 @@ class Colormap_presenter(Presenter):
 
     cmap_attr =  cmap_arr_attr + ["extent"]
     extent_choices = ["mirror", "repeat", "clip"]
+    
+    
+   # kwargs = ["colors", "kinds", "grad_npts", "grad_funcs"]
 
-
-    def __init__(self, model, mapping):#, register_key):
+    def __init__(self, model, mapping): #, register_key):
         """
         Presenter for a `fractalshades.colors.Fractal_colormap` parameter
         Mapping expected : mapping = {"cmap": cmap_key}
         """
-        super().__init__(model, mapping)#, register_key)
+        super().__init__(model, mapping) #, register_key)
 
     @property
     def cmap(self):
@@ -608,9 +601,9 @@ class Colormap_presenter(Presenter):
         else:
             raise ValueError(attr)
 
+
     @pyqtSlot(object, object)
     def cmap_user_modified_slot(self, key, val):
-#        print("cmap model event", key, val)
 
         if key == "size":
             cmap = self.adjust_size(val)
@@ -622,11 +615,11 @@ class Colormap_presenter(Presenter):
         else:
             raise ValueError(key)
         
-        # print("############### REMOVE TEMPLATE TAG")
         cmap._template = None
 
-        self.model_changerequest.emit(self._mapping["Colormap_presenter"],
-                                      cmap)
+        self.model_changerequest.emit(
+                self._mapping["Colormap_presenter"], cmap
+        )
     
     def adjust_size(self, val):
         npts = self.cmap.n_probes
@@ -651,7 +644,6 @@ class Colormap_presenter(Presenter):
 
         return fs.colors.Fractal_colormap(**cmap_dic)
         self.build_dict()
-#        print("cmap model_notification", self._keys)
     
     def update_table(self, item):
         """ item : modified QTableWidgetItem """
@@ -672,195 +664,6 @@ class Colormap_presenter(Presenter):
         cmap_dic[kwarg_key] = modified_kwarg
         return fs.colors.Fractal_colormap(**cmap_dic)
 
-
-class Lighting_presenter(Presenter):
-    pass
-
-
-def script_repr(obj):
-    """ Utility function for scrit generation """
-    if isinstance(obj, (fs.Fractal, fs.colors.Fractal_colormap)):
-        return obj._repr()
-    return repr(obj)
-
-
-class Code_exec_presenter(Presenter):
-
-    fractal_reloaded = pyqtSignal()
-    func_started = pyqtSignal()
-    func_performed = pyqtSignal()
-    lock_navigation = pyqtSignal(bool)
-    error_in_thread = QtCore.pyqtSignal(Exception)
-    
-    def __init__(self, model, mapping, wget, auto=True, refresh_aliases=None,
-                 callbacks=None, may_interrupt=False,
-                 locks_wgets=False, on_error_in_thread=None, status_bar=None
-                 ):
-        """
-        mapping: list of func_submodel
-            Keys provided should be at least the following:
-                - fractal, returns the fractal Object
-            The other func_submodel will be added programmatically once the
-            fractal object is generated (if auto=True).
-
-        wget: the user control for triggering
-
-        refresh_aliases: None | list of (aliases, keys)
-            List of model items for which a refresh shall be triggered after
-            code execution
-        callbacks: None | list of callables
-            Called when execution is done
-        may_interrupt: boolean
-            might be interrupted
-        locks_wgets : None | list of wgets
-            If true, will throw a "lock" event (True / False) at
-            (start / end) of code execution
-        """
-        super().__init__(model, mapping)
-
-        # Event binding for model items which will need a refresh after
-        # execution
-        if refresh_aliases is not None:
-            for refresh_alias in refresh_aliases:
-                (alias, keys) = refresh_alias
-                model = self._model
-                model.set_alias(alias, keys)
-                self.func_performed.connect(
-                    functools.partial(model.need_item_refresh, alias)
-                )
-
-        # Callbacks
-        if callbacks is not None:
-            for callback in callbacks:
-                self.func_performed.connect(functools.partial(
-                    callback, self)
-                )
-        
-#                if may_interrupt:
-#            self._interrupt.clicked.connect(self.raise_interruption)
-
-        # add a binding to the lock wget during exec
-        if locks_wgets is not None: 
-            for wget in locks_wgets:
-                self.lock_navigation.connect(wget.lock)
-
-        # Adds Exception handling
-        if on_error_in_thread is not None:
-            self.error_in_thread.connect(on_error_in_thread)
-
-        # Starts / stops status bar timer
-        if status_bar is not None:
-            self.func_started.connect(status_bar.start_timer)
-            self.func_performed.connect(status_bar.stop_timer)
-        
-        # Aciton button bindings
-        self._script.clicked.connect()
-        self._params.clicked.connect(self.show_func_params)
-
-    def load_fractal(self):
-        """ First step, needed to generate the application parameters """
-        old_fractal = self._fractal
-        sm = self["fractal"]
-        func_kwargs = sm.getkwargs()
-        self._fractal = new_fractal = sm._func(**func_kwargs)
-
-        if type(old_fractal) is not type(new_fractal):
-            # Fractal type has changed, need to update the whole interface
-            self.cleanup_submodels()
-            self.autoload_submodels()
-            logger.info("Fractal type changed, reloding GUI")
-            self.fractal_reloaded.emit()
-        else:
-            self.autoload_submodels()
-
-    def cleanup_submodels(self):
-        """ submodels are invalidated, deleting them except "fractal"""
-        to_del = []
-        for sm_name, model_key in self._mapping.items():
-            if sm_name != "fractal":
-                to_del += [sm_name]
-
-        for sm_name in to_del:
-            logger.debug(f"Deleting invalidated submodel {sm_name}")
-            del self._model[self._mapping[sm_name]]
-            del self._mapping[sm_name]
-
-    def autoload_submodels(self):
-        """ Automatic generation through a function factory """
-        model = self._model
-        ff = Plotting_Factory(self._fractal)
-        func_dict, wrap_up = ff.code_gen("plot")
-        self._wrap_up = wrap_up
-
-        for item, func in func_dict.items():
-            model_key = ("Code_exec", item)
-            sm = Func_submodel(model, model_key, func)
-            self._model.register(sm, model_key)
-            self._mapping[item] = model_key
-            
-            
-            # aka at least zoom, plot_batch_xxx, (plot_batch_yyy),
-            # HQ_render, extra_outputs, general_settings
-
-    def code_exe(self):
-
-        # Reset the interruption setting
-        if self.may_interrupt:
-            self.lower_interruption()
-
-        # Save the func kwargs
-        func_kwargs = self._submodel.getkwargs()
-        self._submodel.save_func_dict()
-
-        def thread_job():
-            self.func_started.emit()
-            if self.locks_navigation:
-                self.lock_navigation.emit(True)
-#            self._run.setStyleSheet("background-color: red")
-            try:
-                self._submodel._func(**func_kwargs)
-                
-            except Exception as e:
-                # send exception to the mainloop
-                self.error_in_thread.emit(e)
-            finally:
-                # Does some clean-up to not lock everything on Error
-                self._run.setStyleSheet("background-color: #646464")
-
-                if self.locks_navigation:
-                    self.lock_navigation.emit(False)
-                self.func_performed.emit()
-
-        # Now run the function in a dedicated thread
-        threading.Thread(target=thread_job).start()
-
-    # Output methods
-    
-    def show_script(self):
-        str_full_script = "Not yet implemented"
-        self.wget.show_params(str_full_script)
-
-    def show_func_params(self):
-        """ Builds the current full parameters list """
-        str_full_args = ""
-        for (func_name, func_key) in self.mapping:
-            str_full_args += f"**** Parameters for function: {func_name}***"
-            sm = self[func_key]
-            str_args = "\n".join(
-                [(k + " = " + script_repr(v)) for (k, v) in sm.getkwargs().items()]
-            )
-            str_full_args += str_args + "\n"
-        
-        self.wget.show_params(str_full_args)
-
-
-#    def thread(self):
-#        kwarg
-#        for 
-##        ce = Fractal_code_editor(self)
-##        ce.set_text(str_full_args)
-##        ce.setWindowTitle("Parameters")
-##        ce.show() # exec()
 
 
 def default_val(utype):

@@ -448,19 +448,29 @@ class Fieldlines_pp(Postproc):
             swirl_fl = self.swirl
             t = [np.angle(z_norm)]
             val = np.zeros_like(t)
+            val_max = 0
+
             # Geometric serie, last term being damping_ratio * first term
             damping = self.damping_ratio ** (1. / (n_iter_fl + 1))
             di = 1.
             rg = np.random.default_rng(0)
             dphi_arr = rg.random(n_iter_fl) * swirl_fl * np.pi
+
             for i in range(1, n_iter_fl + 1):
                 t += [d * t[i - 1]] # chained list
                 dphi = dphi_arr[i-1]
-                angle = 1. + np.sin(t[i-1] + dphi) + (
+                angle = np.sin(t[i-1] + dphi) + (
                       k_alpha + k_beta * d**nu_frac) * (
                       np.sin(t[i] + dphi) - np.sin(t[i-1] + dphi))
+                
+                max_angle = 1. #(1 - (k_alpha + k_beta * d**nu_frac))
+                
                 val += di * angle
+                val_max += di * max_angle
                 di *= damping
+            
+            val = val / val_max
+
             del t
 
         elif potential_dic["kind"] == "convergent":

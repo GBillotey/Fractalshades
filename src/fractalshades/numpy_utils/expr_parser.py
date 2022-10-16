@@ -73,6 +73,24 @@ def func_parser(variables, expr):
     else:
         return None
 
+class Numpy_expr():
+    # Note: We *could* use typing.Annotated when dropping 3.8 support
+    # See https://docs.python.org/3/library/typing.html#typing.Annotated
+    # https://peps.python.org/pep-0593/
+    # T1 = Annotated[Func_expr, Vars("x", "y")]
+    def __init__(self, variables, expr):
+        self.variables = variables
+        self.expr = expr
+
+    def validates(self):
+        return func_parser(variables=self.variables, expr=self) is not None
+
+
+class Vars:
+    # to be used with Numpy_expr, see note above
+    def __init__(self, *args):
+        self.args = args
+
 
 if __name__ == "__main__":
 #    print(safe_eval("3 + 5 * 2"))
@@ -91,8 +109,11 @@ if __name__ == "__main__":
     print(f)
     print(f(1, 2, 3))
     # print(f(1))
-
 #    e = ast.parse("lambda x: 2. * x", mode="eval")
 #    f = safe_eval(e)
 #    print(f)
 #    print(f(1))
+    expr = Numpy_expr("np.sin(x)")
+    print(isinstance(expr, str))
+    print(isinstance(expr, Numpy_expr))
+    expr.type_check(["y",])

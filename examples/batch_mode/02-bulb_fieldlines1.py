@@ -50,7 +50,7 @@ def plot(plot_dir):
     # Run the calculation
     f = fsm.Mandelbrot(plot_dir)
     f.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
-           theta_deg=0., projection="cartesian", antialiasing=False)
+           theta_deg=0., projection="cartesian")
     f.base_calc(
         calc_name=calc_name,
         subset=None,
@@ -65,7 +65,7 @@ def plot(plot_dir):
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
     pp.add_postproc(
         "fieldlines",
-        Fieldlines_pp(n_iter=4, swirl=0., damping_ratio=1.0)
+        Fieldlines_pp(n_iter=2, swirl=0., damping_ratio=1.0)
     )
 
     plotter = fs.Fractal_plotter(pp)   
@@ -80,7 +80,7 @@ def plot(plot_dir):
     ))
     plotter.add_layer(
             Grey_layer("fieldlines", func=None, output=True,
-                       probes_z=[1.505, 6.494])
+                       probes_z=[-1, 1.])
     )
     plotter["cont_iter"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
     # This is the lines where we indicate that coloring is shaded or tinted

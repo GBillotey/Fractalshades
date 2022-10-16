@@ -78,7 +78,7 @@ class Fractal_plotter:
         supersampling: supersampling_type = "None",
         jitter: bool = False,
         reload: bool = False,
-        _delay_register: bool = False
+        _delay_registering: bool = False # Private
     ):
         """
         The base plotting class.
@@ -162,7 +162,7 @@ class Fractal_plotter:
         self._postproc_batches = postproc_batches # unfreezed 
 #        print("## in __init__, LEN", len(self._postproc_batches ))
 
-        if not(_delay_register):
+        if not(_delay_registering):
             self.register_postprocs()
 
 
@@ -188,25 +188,25 @@ class Fractal_plotter:
             raise ValueError("Attempt to add a postproc_batch from a different"
                              "fractal: {} from {}".format(
                 postproc_batch.fractal, postproc_batch.calc_name))
-        print("## ADDING, postproc_batches", postproc_batch)
+#        print("## ADDING, postproc_batches", postproc_batch)
         self.postproc_batches += [postproc_batch]
-        print("## ADDING, postproc_batch.posts", postproc_batch.posts)
+#        print("## ADDING, postproc_batch.posts", postproc_batch.posts)
         self.posts.update(postproc_batch.posts)
-        print("## ADDING, postproc_batch.postnames_2d", postproc_batch.postnames_2d)
+#        print("## ADDING, postproc_batch.postnames_2d", postproc_batch.postnames_2d)
         self.postnames_2d += postproc_batch.postnames_2d
     
     def register_postprocs(self):
         """
-        Freezing of the layers - might be delayed after a plotter instanciation
-        but shall be called before any coloring method.
+        Freezing of the postprocs - call might be delayed after a plotter
+        instanciation but shall be before any coloring method.
         """
         postproc_batches = self._postproc_batches
         # delattr(self, "_postproc_batches")
 
-        print("## in register_postprocs, LEN", len(postproc_batches ))
+#        print("## in register_postprocs, LEN", len(postproc_batches ))
 
         for i, postproc_batch in enumerate(postproc_batches):
-            print("##>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<< in register_postprocs", i, postproc_batch, postproc_batch.posts)
+#            print("##>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<< in register_postprocs", i, postproc_batch, postproc_batch.posts)
             if i == 0:
                 self.postproc_batches = [postproc_batch]
                 self.posts = copy.copy(postproc_batch.posts)
@@ -215,7 +215,7 @@ class Fractal_plotter:
                 self.fractal = postproc_batch.fractal
             else:
                 self.add_postproc_batch(postproc_batch)
-            print("## self.posts", self.posts)
+#            print("## self.posts", self.posts)
 
         self.chunk_slices = self.fractal.chunk_slices
         # layer data
@@ -673,7 +673,12 @@ class Fractal_plotter:
             # NOW let's also try to save this beast
             paste_crop_arr = np.asarray(paste_crop)
             layer_mmap = self._mmaps[ilayer]
-            layer_mmap[iy: iyy, ix: ixx, :] = paste_crop_arr
+            if layer_mmap.shape[2] == 1:
+                # For a 1-channel image, PIL will remove the last dim...
+                layer_mmap[iy: iyy, ix: ixx, 0] = paste_crop_arr
+            else:
+                layer_mmap[iy: iyy, ix: ixx, :] = paste_crop_arr
+                
 
 
     def push_reloaded(self, chunk_slice, layer, im, ilayer):
@@ -718,11 +723,7 @@ class Fractal:
         "stop_reason",
         "stop_iter"
     ]
-#    PROJECTION_ENUM = {
-#        "cartesian": 1,
-#        "spherical": 2,
-#        "expmap": 3
-#    }
+
     PROJECTION_ENUM = enum.Enum(
         "projection",
         ("cartesian", "spherical", "expmap"),
@@ -920,8 +921,6 @@ advanced users when subclassing.
 
         str_val = str(dic["Tiles"]["val"]) + " / " + str(ntiles)
         self.set_status("Tiles", str_val, bool_log)
-
-
 
 
     @property
@@ -1224,7 +1223,7 @@ advanced users when subclassing.
         return fs.utils.dic_flatten(tag)
 
 
-    def fingerprint_matching(self, calc_name, test_fingerprint):
+    def fingerprint_matching(self, calc_name, test_fingerprint, log=False):
         """
         Test if the stored parameters match those of new calculation
         /!\ modified in subclass
@@ -1233,6 +1232,10 @@ advanced users when subclassing.
 
         state = self._calc_data[calc_name]["state"]
         expected_fp = fs.utils.dic_flatten(state.fingerprint)
+        
+        if log:
+            logger.debug(f"flatten_fp:\n {flatten_fp}")
+            logger.debug(f"expected_fp:\n {expected_fp}")
 
         UNTRACKED = ["Software", "datetime", "debug"]
 
@@ -1261,7 +1264,12 @@ advanced users when subclassing.
                 ))
             return False
 
-        matching = self.fingerprint_matching(calc_name, fingerprint)
+        log = (chunk_slice is None)
+        matching = self.fingerprint_matching(calc_name, fingerprint, log)
+        if log:
+            logger.debug(
+                f"Fingerprint match for {chunk_slice}: {matching}"
+            )
         if not(matching):
             return False
         if chunk_slice is None:
@@ -1511,6 +1519,11 @@ advanced users when subclassing.
         chunks_count = self.chunks_count
         report_cols_count = len(items)
 
+        logger.debug(
+            "Create new report_mmap with chunks_count: "
+            f"{self.chunks_count}"
+        )
+
         save_path = self.report_path(calc_name)
         fs.utils.mkdir_p(os.path.dirname(save_path))
         mmap = open_memmap(
@@ -1535,6 +1548,10 @@ advanced users when subclassing.
         full_cumsum[0] = 0
         mmap[:, items.index("chunk1d_begin")] = full_cumsum[:-1]
         mmap[:, items.index("chunk1d_end")] = full_cumsum[1:]
+
+        # Store as attribute
+        attr = self.report_memmap_attr(calc_name)
+        setattr(self, attr, mmap)
 
 
     def get_report_memmap(self, calc_name, mode='r+'):
@@ -1782,6 +1799,11 @@ advanced users when subclassing.
 
     def dat_memmap_attr(self, key, calc_name):
         return "_@data_mmap_" + calc_name + "_" + key
+
+#    def del_dat_memmap_attr(self, key, calc_name):
+#        attr =  self.dat_memmap_attr(self, key, calc_name)
+#        if hasattr(self, attr):
+#            delattr(self, attr)
 
 
     def update_data_mmaps(
@@ -2059,17 +2081,15 @@ advanced users when subclassing.
         # Note: at this point res_available(calc_name) IS True, however
         # mmaps might not have been created.
         if self._calc_data[calc_name]["need_new_mmap"]:
+            # logger.debug("***calc_raw need_new_mmap")
             self.init_report_mmap(calc_name)
             self.init_data_mmaps(calc_name)
         else:
+            # logger.debug("***calc_raw DO NOT need_new_mmap")
             self.open_data_mmaps(calc_name)
 
         # Launching the calculation + mmap storing multithreading loop
         self.compute_rawdata_dev(calc_name, chunk_slice=None)
-        
-        # TODO: "flush" the memaps ?
-#        logger.debug("In Calc RAW, flush_data_mmaps")
-#        self.flush_data_mmaps(calc_name)
 
 
     def postproc(self, postproc_batch, chunk_slice, postproc_options):
@@ -2103,7 +2123,7 @@ advanced users when subclassing.
 
         for i, postproc in enumerate(postproc_batch.posts.values()):
             val, context_update = postproc[chunk_slice]
-            print("post array chunck slice", chunk_slice, "from", postproc)
+            # print("post array chunck slice", chunk_slice, "from", postproc)
             post_array[i, :]  = val
             postproc_batch.update_context(chunk_slice, context_update)
 

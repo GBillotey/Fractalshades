@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import inspect
 import typing
-import dataclasses
 import math
 import os
 import sys
@@ -33,13 +32,17 @@ import numpy as np
 from PyQt6 import QtCore
 from PyQt6.QtCore import Qt
 #from PyQt5.QtGui import QIcon
-from PyQt6.QtCore import pyqtSignal, pyqtSlot, QTimer
+from PyQt6.QtCore import (
+     pyqtSignal,
+     pyqtSlot,
+     QTimer,
+     QPropertyAnimation
+)
 
 from PyQt6 import QtWidgets, QtGui
-from PyQt6.QtGui import QAction, QIcon
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QApplication,
-    QStyle,
     QMainWindow,
     QWidget,
     QDialog,
@@ -54,6 +57,7 @@ from PyQt6.QtWidgets import (
     QStatusBar,
 #    QMenuBar,
 #    QToolBar,
+    QToolButton,
     QComboBox,
     QLineEdit,
     QStackedWidget,
@@ -81,22 +85,19 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem
 )
 
+
 import fractalshades as fs
 from fractalshades.gui.model import (
     Model,
     Func_submodel,
     Colormap_presenter,
-    Lighting_presenter,
     Presenter,
     type_name,
-    separator
+    separator,
+    collapsible_separator
 )
+
 from fractalshades.gui.QCodeEditor import Fractal_code_editor
-#from fractalshades.gui import (
-#    Qcmap_image,
-#    Atom_cmap_button,
-#    Qcmap_editor
-#)
 
 import fractalshades.numpy_utils.expr_parser as fs_parser
 
@@ -221,26 +222,79 @@ QTableView::item::selected {
 
 STATUS_BAR_CSS = """
 QStatusBar {
-    background: #7e7e7e;
+background: #7e7e7e;
 }
 QStatusBar::item {
-    background: #7e7e7e;
+background: #646464;
 }
 QStatusBar QLabel {
-    margin: 2px;
-    border: 0;
-    background: #7e7e7e;
+margin: 2px;
+border: 0;
+background: #646464;
 }
 """
 
-TOOLBAR_CSS = """
-QToolBar {
-    background: #7e7e7e;
-    spacing: 3px; /* spacing between items in the tool bar */
-}
-QToolButton {background-color: #7e7e7e}
+
+script_header = """# -*- coding: utf-8 -*-
+\"""============================================================================
+Auto-generated from fractalshades GUI.
+Save to `<file>.py` and run as a python script:
+    > python <file>.py
+============================================================================\"""
+import os
+import typing
+
+import numpy as np
+import mpmath
+from PyQt6 import QtGui
+
+import fractalshades as fs
+import fractalshades.models as fsm
+import fractalshades.gui as fsgui
+import fractalshades.colors as fscolors
+
+from fractalshades.postproc import (
+    Postproc_batch,
+    Continuous_iter_pp,
+    DEM_normal_pp,
+    Fieldlines_pp,
+    DEM_pp,
+    Raw_pp,
+)
+from fractalshades.colors.layers import (
+    Color_layer,
+    Bool_layer,
+    Normal_map_layer,
+    Grey_layer,
+    Virtual_layer,
+    Blinn_lighting,
+    Overlay_mode
+)
+
+def plot(plot_dir):"""
+
+def script_title_sep(title, indent=0):
+    sep_line = " " * 4 * indent + "#" + ">" * (78 - 4 * indent) + "\n"
+    return (
+        "\n\n"
+        + sep_line
+        + " " * 4 * indent + "# " + title + "\n"
+        + sep_line
+    )
+
+script_footer = """
+if __name__ == "__main__":
+    # Some magic to get the directory for plotting: with a name that matches
+    # the file 
+    realpath = os.path.realpath(__file__)
+    plot_dir = os.path.splitext(realpath)[0]
+    plot(plot_dir)
 """
 
+def script_repr(obj):
+    if isinstance(obj, (fs.Fractal, fs.colors.Fractal_colormap)):
+        return obj._repr()
+    return repr(obj)
 
 
 def getapp():
@@ -290,7 +344,7 @@ class Calc_status_bar(QStatusBar):
         self.timer.timeout.connect(self.on_time_incr)
         self.reset_status()
         self.layout()
-        # print("debug2 status", self._layout)
+        print("debug2 status", self._layout)
 
     def reset_status(self):
         """ Reset the properties of the status according to the fractal
@@ -340,7 +394,7 @@ class Calc_status_bar(QStatusBar):
         return key + ": " + self._status[key]["str_val"]
 
 
-class XXX_todelFunc_widget(QFrame): # Was: Action_func_wget !!! moved to : Presenter
+class Action_func_widget(QFrame):
     """
     A Func_widget with parameters & actions group
     """
@@ -349,7 +403,7 @@ class XXX_todelFunc_widget(QFrame): # Was: Action_func_wget !!! moved to : Prese
     lock_navigation = pyqtSignal(bool)
     error_in_thread = QtCore.pyqtSignal(Exception)
     
-    def __init__(self, parent, func_smodel, refresh_alias=None, # was : action_setting
+    def __init__(self, parent, func_smodel, refresh_alias=None,
                  callback=False, may_interrupt=False,
                  locks_navigation=False):
         super().__init__(parent)
@@ -374,18 +428,20 @@ class XXX_todelFunc_widget(QFrame): # Was: Action_func_wget !!! moved to : Prese
             self._interrupt.clicked.connect(self.raise_interruption)
         self._run.clicked.connect(self.run_func)
         
-        # adds an alias to the image & other "settings"
-#        if refresh_alias is not None:
-#            (alias, keys) = refresh_alias
-#            model = func_smodel._model
-#            model.declare_setting(alias, keys)
-#            self.func_performed.connect(functools.partial(
-#                model.need_item_refresh, alias))
+        # adds a binding to the image modified of other setting
+        if refresh_alias is not None:
+            (alias, keys) = refresh_alias
+            model = func_smodel._model
+            model.set_alias(alias, keys)
+            self.func_performed.connect(functools.partial(
+                model.item_refresh, alias)
+            )
         
-#        # adds a binding to the parent slot
-#        if callback:
-#            self.func_performed.connect(functools.partial(
-#                parent.func_callback, self))
+        # adds a binding to the parent slot
+        if callback:
+            self.func_performed.connect(functools.partial(
+                parent.func_callback, self)
+            )
         
         # add a binding to the navigation window
         if locks_navigation: 
@@ -400,20 +456,14 @@ class XXX_todelFunc_widget(QFrame): # Was: Action_func_wget !!! moved to : Prese
         self.func_performed.connect(parent.status_bar.stop_timer)#)
 
     def add_param_box(self, func_smodel):
-        
-#        print("debug xxz0")
-#        print(func_smodel._dict[(22, 0, 'type')])
-#        print(func_smodel._dict[(22, 'name')])
-        
         self._param_widget = Func_widget(self, func_smodel)
-        
-#        print("debug xxz")
-#        print(func_smodel._dict[(22, 0, 'type')])
-#        print(func_smodel._dict[(22, 'name')])
-        
         param_box = QGroupBox("Parameters")
         param_layout = QVBoxLayout()
         param_scrollarea = QScrollArea(self)
+#        param_scrollarea.setSizePolicy(
+#            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+#            # QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+#        )
         param_scrollarea.setWidget(self._param_widget)
         param_scrollarea.setWidgetResizable(True)
 
@@ -422,22 +472,22 @@ class XXX_todelFunc_widget(QFrame): # Was: Action_func_wget !!! moved to : Prese
         self.set_border_style(param_box)
         return param_box
 
-#    def add_action_box(self):
-#        action_layout = QHBoxLayout()
-#        self._script = QPushButton("Show script")
-#        action_layout.addWidget(self._script)
-#        self._params = QPushButton("Show params")
-#        action_layout.addWidget(self._params)
-#        if self.may_interrupt:
-#            self._interrupt= QPushButton("Interrupt")
-#            action_layout.addWidget(self._interrupt)
-#        self._run = QPushButton("Run")
-#        action_layout.addWidget(self._run)
-#        
-#        action_box = QGroupBox("Actions")
-#        action_box.setLayout(action_layout)
-#        self.set_border_style(action_box)
-#        return action_box
+    def add_action_box(self):
+        action_layout = QHBoxLayout()
+        self._script = QPushButton("Show script")
+        action_layout.addWidget(self._script)
+        self._params = QPushButton("Show params")
+        action_layout.addWidget(self._params)
+        if self.may_interrupt:
+            self._interrupt= QPushButton("Interrupt")
+            action_layout.addWidget(self._interrupt)
+        self._run = QPushButton("Run")
+        action_layout.addWidget(self._run)
+        
+        action_box = QGroupBox("Actions")
+        action_box.setLayout(action_layout)
+        self.set_border_style(action_box)
+        return action_box
 
     def set_border_style(self, gb):
         """ adds borders to an action box"""
@@ -456,7 +506,7 @@ class XXX_todelFunc_widget(QFrame): # Was: Action_func_wget !!! moved to : Prese
 
     def load_calling_kwargs(self):
         """ Reload parameters stored from last call """
-        # print("*** load kwargs")
+        print("*** load kwargs")
         with open(self.kwargs_path(), 'rb') as param_file:
             return pickle.load(param_file)
 
@@ -532,26 +582,251 @@ class XXX_todelFunc_widget(QFrame): # Was: Action_func_wget !!! moved to : Prese
             + script_footer
             + "\n"
         )
-        # print("debug, script:\n", script)
+        print("debug, script:\n", script)
         ce = Fractal_code_editor()
         ce.set_text(script)
         ce.setWindowTitle("Script")
         ce.exec()
 
 
-class Func_widget_separator(QLabel):
-    def __init__(self, name):
-        """ Defines a graphical separator with label "name" """
-        super().__init__(name)
+class Layout_col_synchronizer(QtCore.QObject):
+    def __init__(self, cols):
+        """
+        Ensure several Param_Box share the same column width
+        """
+        super().__init__()
+        self.cols = cols
+        self._grid_pool = []
+
+    def add_parambox(self, box):
+        if not isinstance(box, Param_Box):
+            raise ValueError("expecting a Param_Box")
+        self._grid_pool += [box.gridLayout]
+        box.synchro_size_evt.connect(self.synchro_slot)
+
+    @pyqtSlot()
+    def synchro_slot(self):
+        """ On synchro_slot event, align all col width"""
+        for icol in self.cols:
+            self.synchro_width(icol)
+
+    def synchro_width(self, icol):
+        col_w_hint = 0
+        for b in self._grid_pool:
+            for irow in range(b.rowCount()):
+                 l_item = b.itemAtPosition(irow, icol)
+                 if l_item is not None:
+                     col_w_hint = max(col_w_hint, l_item.sizeHint().width())
+        # Now setting the common Width Hint
+        for b in self._grid_pool:
+            b.setColumnMinimumWidth(icol, col_w_hint)
+
+
+class Param_Box(QWidget):
+    
+    synchro_size_evt = pyqtSignal()
+
+    def __init__(self, title="", parent=None):
+        """
+        A QGridLayout with a nice title block
+        """
+        super().__init__(parent)
+        # 
+        box_layout = QVBoxLayout(self)
+        box_layout.setSpacing(0)
+        box_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.make_label(title)
+        self.make_content_area()
+
+        box_layout.addWidget(self.label)
+        box_layout.addWidget(self.content_area)
+        
+
+    def make_label(self, title):
+        """ Create a label child item """
+        # Adds the label at 0 - 0 position
+        self.label = label = QLabel(title)
         sep_Font = QtGui.QFont()
         sep_Font.setStyle(QtGui.QFont.Style.StyleItalic)
-        self.setFont(sep_Font)
-        self.setStyleSheet(
+        label.setFont(sep_Font)
+        label.setStyleSheet(
             "border-bottom-width: 1px; "
             "border-bottom-style: solid; "
             "border-bottom-color: #b8b8b8; "
             "border-radius: 0px; "
         )
+
+    def make_content_area(self):
+        """ Create the content area, with its gridLayout """
+        content_area = self.content_area = QWidget()
+        self.gridLayout = QGridLayout(content_area)
+    
+    def resizeEvent(self, evt):
+        super().resizeEvent(evt)
+        self.synchro_size_evt.emit()
+
+
+class Clickable_QLabel(QLabel):
+    """ Just a QLabel with clicked evt"""
+    clicked = pyqtSignal()
+    def mousePressEvent(self, ev):
+        self.clicked.emit()
+
+
+class Collapsible_Param_Box(Param_Box):
+    
+    def __init__(self, title="", parent=None):
+        """
+        A QGridLayout with a nice title block ; content is collapsible
+        """
+        super().__init__(title, parent)
+        self.anim = QPropertyAnimation(self.content_area, b"maximumHeight")
+
+
+    def make_label(self, title):
+        """ Create a label child item """
+        # Adds the label at 0 - 0 position
+        self.label = QWidget()
+        box_layout = QHBoxLayout(self.label)
+        
+        label_txt = Clickable_QLabel(title)
+        sep_Font = QtGui.QFont()
+        sep_Font.setStyle(QtGui.QFont.Style.StyleItalic)
+        label_txt.setFont(sep_Font)
+        label_txt.setStyleSheet(
+            "border-bottom-width: 1px; "
+            "border-bottom-style: solid; "
+            "border-bottom-color: #b8b8b8; "
+            "border-radius: 0px; "
+        )
+        label_txt.clicked.connect(self.on_label_clicked) 
+
+        toggle_button = self.toggle_button = QToolButton(
+            text="", checkable=True, checked=False
+        )
+        toggle_button.setStyleSheet("QToolButton { border: none; }")
+        toggle_button.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+        )
+        toggle_button.setArrowType(Qt.ArrowType.RightArrow)
+        toggle_button.toggled.connect(self.on_toggle)
+        
+        box_layout.addWidget(toggle_button)
+        box_layout.addWidget(label_txt)
+        
+
+    def make_content_area(self):
+        """ Create the content area, with its gridLayout """
+        content_area = self.content_area = QWidget()
+        self.gridLayout = QGridLayout(content_area)
+
+        content_area.setMaximumHeight(0)
+        content_area.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+
+    def on_label_clicked(self):
+        self.toggle_button.toggle()
+
+    def on_toggle(self):
+        checked = self.toggle_button.isChecked()
+        self.toggle_button.setArrowType(
+            Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow
+        )
+        start = self.content_area.maximumHeight()
+        if checked:
+            end = self.gridLayout.sizeHint().height()
+#            content_height = self.gridLayout.sizeHint().height()
+#            self.content_area.setMaximumHeight(content_height)
+        else:
+            end = 0
+        self.layout()
+        
+        anim = self.anim  # QPropertyAnimation(self.content_area, b"maximumHeight")
+        anim.setDuration(250)
+        anim.setStartValue(start)
+        anim.setEndValue(end)
+        anim.start()
+
+
+#class CollapsibleBox(QtWidgets.QWidget):
+#    def __init__(self, title="", parent=None):
+#        super().__init__(parent)
+#
+#        self.toggle_button = QtWidgets.QToolButton(
+#            text=title, checkable=True, checked=False
+#        )
+#        self.toggle_button.setStyleSheet("QToolButton { border: none; }")
+#        self.toggle_button.setToolButtonStyle(
+#            QtCore.Qt.ToolButtonTextBesideIcon
+#        )
+#        self.toggle_button.setArrowType(QtCore.Qt.RightArrow)
+#        self.toggle_button.pressed.connect(self.on_pressed)
+#
+#        self.toggle_animation = QtCore.QParallelAnimationGroup(self)
+#
+#        self.content_area = QtWidgets.QScrollArea(
+#            maximumHeight=0, minimumHeight=0
+#        )
+#        self.content_area.setSizePolicy(
+#            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+#           #  QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+#        )
+#        self.content_area.setFrameShape(QtWidgets.QFrame.NoFrame)
+#
+#        lay = QtWidgets.QVBoxLayout(self)
+#        lay.setSpacing(0)
+#        lay.setContentsMargins(0, 0, 0, 0)
+#        lay.addWidget(self.toggle_button)
+#        lay.addWidget(self.content_area)
+#
+#        self.toggle_animation.addAnimation(
+#            QtCore.QPropertyAnimation(self, b"minimumHeight")
+#        )
+#        self.toggle_animation.addAnimation(
+#            QtCore.QPropertyAnimation(self, b"maximumHeight")
+#        )
+#        self.toggle_animation.addAnimation(
+#            QtCore.QPropertyAnimation(self.content_area, b"maximumHeight")
+#        )
+#
+#    @QtCore.pyqtSlot()
+#    def on_pressed(self):
+#        checked = self.toggle_button.isChecked()
+#        self.toggle_button.setArrowType(
+#            QtCore.Qt.DownArrow if not checked else QtCore.Qt.RightArrow
+#        )
+#        self.toggle_animation.setDirection(
+#            QtCore.QAbstractAnimation.Forward
+#            if not checked
+#            else QtCore.QAbstractAnimation.Backward
+#        )
+#        self.toggle_animation.start()
+#
+#    def setContentLayout(self, layout):
+#        """ lay = QtWidgets.QVBoxLayout() """
+#        lay = self.content_area.layout()
+#        del lay
+#        self.content_area.setLayout(layout)
+#        collapsed_height = (
+#            self.sizeHint().height() - self.content_area.maximumHeight()
+#        )
+#        content_height = layout.sizeHint().height()
+#        for i in range(self.toggle_animation.animationCount()):
+#            animation = self.toggle_animation.animationAt(i)
+#            animation.setDuration(500)
+#            animation.setStartValue(collapsed_height)
+#            animation.setEndValue(collapsed_height + content_height)
+#
+#        content_animation = self.toggle_animation.animationAt(
+#            self.toggle_animation.animationCount() - 1
+#        )
+#        content_animation.setDuration(500)
+#        content_animation.setStartValue(0)
+#        content_animation.setEndValue(content_height)
+
+
 
 
 class Func_widget(QFrame):
@@ -581,39 +856,92 @@ class Func_widget(QFrame):
 
     def layout(self):
         fd = self._submodel._dict
-#        print("fd", fd)
-        n_params = fd["n_params"]
-        for i_param in range(n_params):
-            self.layout_param(i_param)
 
-    def layout_param(self, i_param):
+        synchro = self.synchro = Layout_col_synchronizer(cols=(0, 2))
+        current_layout = self._layout
+        current_layout_row = 0
+        main_layout_row = 0
+
+        for i_param in range(fd["n_params"]):
+            uni_typed = (fd[(i_param, "n_types")] == 0)
+            if uni_typed and (fd[(i_param, 0, "type")] is separator):
+                # This is a new 'normal, non-collapsible' block
+                box = self.layout_separator(
+                    i_param, self._layout, main_layout_row
+                )
+                synchro.add_parambox(box)
+                current_layout = box.gridLayout
+                current_layout_row = 1
+                main_layout_row += 1
+
+            elif (uni_typed
+                  and (fd[(i_param, 0, "type")] is collapsible_separator)):
+                # This is a new 'collapsible' block
+                box = self.layout_collapsible_separator(
+                    i_param, self._layout, main_layout_row
+                )
+                synchro.add_parambox(box)
+                current_layout = box.gridLayout
+                current_layout_row = 1
+                main_layout_row += 1
+
+            else:
+                # adding a parameter editor to the current block layout, or
+                # directly the main layout
+                self.layout_param(i_param, current_layout, current_layout_row)
+                current_layout_row += 1
+                if (current_layout is self._layout):
+                    main_layout_row += 1
+
+        # adds a spacer at bottom
+        self._layout.setRowStretch(main_layout_row, 1)
+        
+        # Middle column is allocated  all the strech space
+        self._layout.setColumnStretch(0, 0)
+        self._layout.setColumnStretch(1, 1)
+        self._layout.setColumnStretch(2, 0)
+
+
+
+    def layout_separator(self, i_param, layout, layout_row):
+        """ Adds a separator to the main layout - Returns a handle to the
+        separator area sublayout """
+        fd = self._submodel._dict
+        sep_name = fd[(i_param, 0, "val")]
+        box = Param_Box(sep_name, self)
+        layout.addWidget(box, layout_row, 0, 1, 4)
+        layout.setRowStretch(i_param, 0)
+        return box
+
+
+    def  layout_collapsible_separator(self, i_param, layout, layout_row):
+        """ Adds a collapsible separator to the main layout
+        Returns a handle to the separator area sublayout """
+        fd = self._submodel._dict
+        sep_name = fd[(i_param, 0, "val")]
+        box = Collapsible_Param_Box(sep_name, self)
+        layout.addWidget(box, layout_row, 0, 1, 4)
+        layout.setRowStretch(i_param, 0)
+        return box
+        
+
+    def layout_param(self, i_param, layout, layout_row): # Added : layout
         fd = self._submodel._dict
         
-        # Check if we have a separator :
-        if fd[(i_param, "n_types")] == 0:
-            if fd[(i_param, 0, "type")] is separator:
-                sep_name = fd[(i_param, 0, "val")]
-                # print("adding separator", sep_name)
-                self._layout.addWidget(Func_widget_separator(sep_name),
-                                       i_param, 0, 1, 4)
-                self._layout.setRowStretch(i_param, 0)
-                return
-
-        # This is not a separator : is a real parameters
         name = fd[(i_param, "name")]
         name_label = QLabel(name)
         myFont = QtGui.QFont()
         myFont.setWeight(QtGui.QFont.Weight.ExtraBold)
         name_label.setFont(myFont)
-        self._layout.addWidget(name_label, i_param, 0, 1, 1)
+        layout.addWidget(name_label, layout_row, 0, 1, 1)
 
         # Adds a check-box for default value
-        if fd[(i_param, "has_def")]:
-            is_default = self._widgets[(i_param, "is_def")] = QCheckBox()
-            is_default.setChecked(fd[(i_param, "is_def")])
-            is_default.stateChanged.connect(functools.partial(
-                self.on_user_mod, (i_param, "is_def"), is_default.isChecked))
-            self._layout.addWidget(is_default, i_param, 1, 1, 1)
+#        if fd[(i_param, "has_def")]:
+#            is_default = self._widgets[(i_param, "is_def")] = QCheckBox()
+#            is_default.setChecked(fd[(i_param, "is_def")])
+#            is_default.stateChanged.connect(functools.partial(
+#                self.on_user_mod, (i_param, "is_def"), is_default.isChecked))
+#            layout.addWidget(is_default, layout_row, 1, 1, 1)
 
         # Handles Union types
         qs = QStackedWidget()
@@ -626,7 +954,7 @@ class Func_widget(QFrame):
             utype = fd[(i_param, 0, "type")]
 #            print("utype", utype)
             utype_label = QLabel(type_name(utype))
-            self._layout.addWidget(utype_label, i_param, 3, 1, 1)
+            layout.addWidget(utype_label, layout_row, 2, 1, 1)
             self.layout_uarg(qs, i_param, 0)
         else:
             utypes = [fd[(i_param, utype, "type")] for utype in range(n_uargs)]
@@ -636,59 +964,55 @@ class Func_widget(QFrame):
             utypes_combo.setCurrentIndex(fd[(i_param, "type_sel")])
             utypes_combo.activated.connect(functools.partial(
                 self.on_user_mod, (i_param, "type_sel"),
-                utypes_combo.currentIndex))
+                utypes_combo.currentIndex
+            ))
             # Connect to the QS
             utypes_combo.currentIndexChanged[int].connect(qs.setCurrentIndex)
             # utypes_combo.activated.connect(qs.setCurrentIndex)
 
-            self._layout.addWidget(utypes_combo, i_param, 3, 1, 1)
+            self._layout.addWidget(utypes_combo, layout_row, 2, 1, 1)
             for utype in range(n_uargs):
                 self.layout_uarg(qs, i_param, utype)
 
         # The displayed item of the union is denoted by "type_sel" :
         # self.layout_uarg(qs, i_param, fd[(i_param, "type_sel")])
         qs.setCurrentIndex(fd[(i_param, "type_sel")])
-        self._layout.addWidget(qs, i_param, 2, 1, 1)
-        self._layout.setRowStretch(i_param, 0)
+        layout.addWidget(qs, layout_row, 1, 1, 1)
+        layout.setRowStretch(layout_row, 0)
 
-        # adds a spacer at bottom
-        self._layout.setRowStretch(i_param + 1, 1)
 
     
     def layout_uarg(self, qs, i_param, i_union):
 
-        
         fd = self._submodel._dict
         # n_uargs = fd[(i_param, "n_types")]
         utype = fd[(i_param, i_union, "type")]
-        if dataclasses.is_dataclass(utype):
-            for ifield, field in enumerate(dataclasses.fields(utype)):
-                self.layout_field(qs, i_param, i_union, ifield)
-        else:
-            uval = fd[(i_param, i_union, "val")]
+
+        uval = fd[(i_param, i_union, "val")]
 #            print("UVAL", uval)
-            atom_wget = atom_wget_factory(utype)(utype, uval, self._model)
-            self._widgets[(i_param, i_union, "val")] = atom_wget
+        atom_wget = atom_wget_factory(utype)(utype, uval, self._model)
+        self._widgets[(i_param, i_union, "val")] = atom_wget
 #            print("atom_wget", atom_wget, type(atom_wget))
-            atom_wget.user_modified.connect(functools.partial(
-                    self.on_user_mod, (i_param, i_union, "val"),
-                    atom_wget.value))
-            qs.addWidget(atom_wget)
-            
-            if isinstance(atom_wget, Atom_Presenter_mixin):
-                atom_wget.request_presenter.connect(functools.partial(
-                    self.on_presenter, (i_param, i_union, "val"))
-                )
+        atom_wget.user_modified.connect(functools.partial(
+                self.on_user_mod, (i_param, i_union, "val"),
+                atom_wget.value))
+        qs.addWidget(atom_wget)
+        
+        if isinstance(atom_wget, Atom_Presenter_mixin):
+            atom_wget.request_presenter.connect(functools.partial(
+                self.on_presenter, (i_param, i_union, "val")))
             
     
     def reset_layout(self):
         """ Delete every item in self._layout """
+        raise RuntimeError("Shall never be called ?")
         for i in reversed(range(self._layout.count())): 
             w = self._layout.itemAt(i).widget()
             if w is not None:
                 w.setParent(None)
                 # Alternative deletion instruction :
                 # w.deleteLater() 
+                # https://stackoverflow.com/questions/41053306/removing-a-widget-from-its-wxpython-parent
 
     def on_user_mod(self, key, val_callback, *args):
         """ Notify the model of modification by the user of a widget"""
@@ -715,8 +1039,9 @@ class Func_widget(QFrame):
         elif isinstance(wget, QComboBox):
             wget.setCurrentIndex(val)
         else:
-            raise NotImplementedError("Func_widget.model_event_slot {}".format(
-                                      wget))
+            raise NotImplementedError(
+                f"Func_widget.model_event_slot {wget}"
+            )
 
     def on_presenter(self, keys, presenter_class, wget_class):
         """ Handles creation of a parameter presenter or visibility toggling
@@ -760,17 +1085,14 @@ def atom_wget_factory(atom_type):
     elif issubclass(atom_type, fs.Fractal):
         return Atom_fractal_button
     else:
-        wget_dic = {
-            int: Atom_QLineEdit,
-            float: Atom_QLineEdit,
-            str: Atom_QLineEdit,
-            bool: Atom_QBoolComboBox,# Atom_QCheckBox,
-            mpmath.mpf: Atom_QPlainTextEdit, #Atom_QLineEdit,
-            fs.colors.Color: Atom_Color,  # Instead of QtGui.QColor
-            fs.colors.Fractal_colormap: Atom_cmap_button,
-            fs.colors.layers.Blinn_lighting: Atom_lighting_button,
-            type(None): Atom_QLineEdit
-        }
+        wget_dic = {int: Atom_QLineEdit,
+                    float: Atom_QLineEdit,
+                    str: Atom_QLineEdit,
+                    bool: Atom_QBoolComboBox,# Atom_QCheckBox,
+                    mpmath.mpf: Atom_QPlainTextEdit, #Atom_QLineEdit,
+                    fs.colors.Color: Atom_Color,
+                    fs.colors.Fractal_colormap: Atom_cmap_button,
+                    type(None): Atom_QLineEdit}
         return wget_dic[atom_type]
     
 class Atom_Edit_mixin:
@@ -849,6 +1171,7 @@ class Atom_Color(QPushButton, Atom_Edit_mixin):
         self._qcolor = None
         self.update_color(val)
         self.clicked.connect(self.on_user_event)
+        print("in Atom_Color; KIND:", self._kind)
 
     def update_color(self, color):
         """ color: QtGui.QColor or fs.colors.Color """
@@ -871,7 +1194,9 @@ class Atom_Color(QPushButton, Atom_Edit_mixin):
                 # Paint a gradient from the color with transparency to the
                 # color with no transparency (rgba "a" value set to 255)
                 gradient = QtGui.QLinearGradient(0, 0, 1, 0)
-                gradient.setCoordinateMode(QtGui.QGradient.ObjectBoundingMode)
+                gradient.setCoordinateMode(
+                    QtGui.QGradient.CoordinateMode.ObjectBoundingMode
+                )
                 gradient.setColorAt(0.0, QtGui.QColor(0, 0, 0, qcolor.alpha()))
                 gradient.setColorAt(0.1, QtGui.QColor(0, 0, 0, qcolor.alpha()))
                 gradient.setColorAt(0.9, Qt.GlobalColor.black)
@@ -1070,7 +1395,8 @@ class Qcmap_image(QWidget):
         self.setMinimumHeight(height)
         self.setMaximumHeight(height)
         self.setSizePolicy(
-            QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding
+                QSizePolicy.Policy.Minimum,
+                QSizePolicy.Policy.Expanding
         )
 
     def paintEvent(self, evt):
@@ -1086,7 +1412,7 @@ class Atom_cmap_button(Qcmap_image, Atom_Edit_mixin, Atom_Presenter_mixin):
     def __init__(self, atom_type, val, model, parent=None):
         super().__init__(parent, val)
         self._cmap = None
-        self.update_cmap(val) #copy.deepcopy(val))
+        self.update_cmap(val)
 
     def update_cmap(self, cmap):
         """ cmap: fs.color.Fractal_colormap """
@@ -1109,58 +1435,6 @@ class Atom_cmap_button(Qcmap_image, Atom_Edit_mixin, Atom_Presenter_mixin):
         self.request_presenter.emit(Colormap_presenter, Qcmap_editor)
 
 
-
-class Qlighting_image(QWidget):
-    """ Widget of a lighting image, expanding width """
-    def __init__(self, parent, cmap, minwidth=200, minheight=200):
-        super().__init__(parent)
-        self._cmap = cmap
-        self._hratio = minheight / minwidth
-        
-        self.setMinimumWidth(minwidth)
-        self.setMinimumHeight(minheight)
-        self.setSizePolicy(
-            QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding
-        )
-
-    def paintEvent(self, evt):
-        size = self.size()
-        nx, ny = size.width(), size.height()
-        QtGui.QPainter(self).drawImage(0, 0, self._cmap.output_ImageQt(nx, ny))
-
-
-
-class Atom_lighting_button(Qlighting_image, Atom_Edit_mixin,
-                           Atom_Presenter_mixin):
-    user_modified = pyqtSignal()
-    request_presenter = pyqtSignal(object, object)
-
-    def __init__(self, atom_type, val, model, parent=None):
-        super().__init__(parent, val)
-        self._lighting = None
-        self.update_lighting(val) #copy.deepcopy(val))
-
-    def update_lighting(self, lighting):
-        """ lighting: fs.color.layers.Blinn_lighting """
-        if lighting != self._lighting:
-            self._lighting = lighting
-            self.repaint()
-            # Note : we do not emit self.user_modified, this shall be done at
-            # Qcmap_editor widget level
-#            print("CMAP MODIFIED")
-
-    def value(self):
-        return self._lighting
-
-    def on_model_event(self, val):
-#        print("CMAP img model event")
-        self.update_lighting(val)
-
-    def mouseReleaseEvent(self, event):
-#        print("clicked")
-        self.request_presenter.emit(Lighting_presenter, Qcmap_editor)
-
-
 class Atom_Text_Validator(QtGui.QValidator):
     mp_dps_used = pyqtSignal(int)
 
@@ -1169,8 +1443,9 @@ class Atom_Text_Validator(QtGui.QValidator):
         self._model = model
         self._type = atom_type
         if atom_type is mpmath.ctx_mp_python.mpf:
-            self.mp_dps_used.connect(functools.partial(
-                    model.setting_modified, "dps"))
+            self.mp_dps_used.connect(
+                functools.partial(model.item_update, "dps")
+            )
 
     def validate(self, val, pos):
 #        print("validate", val, pos, type(val), self._type)
@@ -1282,7 +1557,7 @@ class IntDelegate(QStyledItemDelegate):
 class ComboDelegate(QStyledItemDelegate):
     def __init__(self, parent, options):
         """ Custom cell delegate to display / edit a combo box
-        parent :  QTableWidget
+        parent : the QTableWidget
         """
 #        print("init combo delegate", options)
         super().__init__(parent)
@@ -1348,7 +1623,6 @@ class ExprDelegate(QStyledItemDelegate):
         except (SyntaxError):
             return False
 
-#==============================================================================
 
 class Qcmap_editor(QWidget):
     """
@@ -1391,10 +1665,9 @@ class Qcmap_editor(QWidget):
         self.cmap_update_lock = False
         self.cmap_need_update = 0
         
+        # Takes a deep copy to avoid modifiying a template...
         cmap = copy.deepcopy(self._presenter.cmap)
-        # Take a deep copy to avoid modifiying a template...
-        self._model[self._presenter._mapping["Colormap_presenter"]] = cmap
-        # self._presenter.cmap = cmap
+        self._presenter["Colormap_presenter"] = cmap # or: self._model[self._presenter._mapping["Colormap_presenter"]] = cmap
         self.old_cmap = cmap
 
 
@@ -1442,18 +1715,13 @@ class Qcmap_editor(QWidget):
 
         # Setup the delegates
         self._table.setItemDelegateForColumn(0, ColorDelegate(self._table))
-        self._table.setItemDelegateForColumn(
-                1, ComboDelegate(self._table,
-                {"choices": ("Lch", "Lab")})
-        )
-        self._table.setItemDelegateForColumn(
-                2, IntDelegate(self._table,
-                {"min": 1, "max":256})
-        )
-        self._table.setItemDelegateForColumn(
-                3, ExprDelegate(self._table,
-                {"modifier": lambda expr: ("lambda x: " + expr)})
-        )
+        self._table.setItemDelegateForColumn(1, ComboDelegate(self._table,
+                {"choices": ("Lch", "Lab")}))
+        self._table.setItemDelegateForColumn(2, IntDelegate(self._table,
+                {"min": 1, "max":256}))
+        self._table.setItemDelegateForColumn(3, ExprDelegate(self._table,
+                {"modifier": lambda expr: ("lambda x: " + expr)}))
+
         self._table.setHorizontalHeaderLabels((
                 "color",
                 "kind",
@@ -1480,7 +1748,7 @@ class Qcmap_editor(QWidget):
         with QtCore.QSignalBlocker(self._table):
             n_rows = len(self._cmap.colors)
             self._table.setRowCount(n_rows)
-
+        
             # Color editor items - Note : flags not needed as last line item is
             # never frozen.
             self.populate_column(
@@ -1519,7 +1787,7 @@ class Qcmap_editor(QWidget):
             )
 
             self.freeze_row(n_rows - 1, range(1, 4))
-        self.old_cmap = self._presenter.cmap # copy.deepcopy(self._presenter.cmap)
+        self.old_cmap = copy.deepcopy(self._presenter.cmap)
 
     def match_old_val(self, val, irow, old_col_vals):
         """ Return True if the value has not been modifed """
@@ -1611,16 +1879,8 @@ class Qcmap_editor(QWidget):
             self.populate_param_box()
             self.populate_table()
 
-#==============================================================================
 
 
-class Qlighting_editor(QWidget):
-    """
-    Widget of a lighting editor : parameters & data table
-    """
-    pass
-
-#==============================================================================
 
 class QDict_viewer(QWidget):
     def __init__(self, parent, qdict):
@@ -1889,11 +2149,6 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
     editable_keys = ("x", "y", "dx")
 
     def __init__(self, parent, view_presenter):
-        
-#        sm = parent.from_register(("func",))
-#        print("DEBUG 0000a########################", sm._dict[(22, 0, 'type')], "\n\n") # Culprit !!!
-        
-        
         super().__init__(parent)
         self._parent = parent
 
@@ -1927,9 +2182,6 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         dock_widget.setWindowTitle("Image")
         dock_widget.setStyleSheet(DOCK_WIDGET_CSS)
         self.image_doc_widget = dock_widget
-        
-#        sm = parent.from_register(("func",))
-#        print("DEBUG 0000m########################", sm._dict[(22, 0, 'type')], "\n\n") 
 
         # Sets the objects being drawn
         self._rect= None
@@ -1939,26 +2191,11 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         # Sets Image
         self._qim = None
         self.set_zoom_init(try_reload=True)
-        
-#        sm = self._parent.from_register(("func",))
-#        print("DEBUG 0000n########################", sm._dict[(22, 0, 'type')], "\n\n") 
-              
-              
         self.set_im()
-        
-#        sm = parent.from_register(("func",))
-#        print("DEBUG 0000o########################", sm._dict[(22, 0, 'type')], "\n\n") # Culprit !!!
         
         # Publish / subscribe signals with the submodel
         self._model.model_event.connect(self.model_event_slot)
-        
-#        sm = parent.from_register(("func",))
-#        print("DEBUG 0000p########################", sm._dict[(22, 0, 'type')], "\n\n") 
-        
         self.on_fractal_result.connect(self.fractal_result_slot)
-        
-#        sm = parent.from_register(("func",))
-#        print("DEBUG 0000z########################", sm._dict[(22, 0, 'type')], "\n\n") 
 
 
     def on_mouse_right_press(self, event):
@@ -2042,7 +2279,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             has_skew = False
             skew_00 = skew_11 = 1.
             skew_01 = skew_10 = 0.
-        # print("SKEW params", has_skew, skew_00, skew_01, skew_10, skew_11)
+        print("SKEW params", has_skew, skew_00, skew_01, skew_10, skew_11)
         return has_skew, skew_00, skew_01, skew_10, skew_11
 
     @staticmethod
@@ -2126,7 +2363,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
          - from the saved pickled files
          - of, if not found, from the script parameters
         """
-        # print("Resetting zoom init")
+        print("Resetting zoom init")
         # parent is Fractal_MainWindow - func_wget is not initialized at this
         # point, so we use the model itself
         func_sm = self._parent.from_register(("func",))
@@ -2142,7 +2379,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         # Setting _fractal_zoom_init from script_params
         gui = self._parent._gui
         self._fractal_zoom_init = dict()
-        # print("other_parameters", self.other_parameters)
+        print("other_parameters", self.other_parameters)
         for key in (self.full_zoom_keys + self.other_parameters):
             # Mapping with func param as defined through `connect_mouse` method
             # of the gui object
@@ -2155,7 +2392,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             self._fractal_zoom_init["nx"] / self._fractal_zoom_init["xy_ratio"]
             + 0.5
         )
-        # print("_fractal_zoom_init as reloaded", self._fractal_zoom_init)
+        print("_fractal_zoom_init as reloaded", self._fractal_zoom_init)
 
 
     def set_im(self):
@@ -2163,9 +2400,6 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         This reloads the image and checks that the 
         metadata is matching the expected values from 'last_call'
         """
-#        sm = self._parent.from_register(("func",))
-#        print("DEBUG 1111a########################", sm._dict[(22, 0, 'type')], "\n\n") 
-        
         image_file = os.path.join((self._presenter["fractal"]).directory, 
                                    self._presenter["image"] + ".png")
         valid_image = True
@@ -2174,16 +2408,13 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
                 info = im.info
                 nx, ny = im.size
 
-                print("info debug:\n", info.keys(), "\n", info)
+                # print("info debug", info["debug"])
         except FileNotFoundError:
             valid_image = False
             info = dict(zip(self.zoom_keys, (None,) * len(self.zoom_keys)))
             nx = None
             ny = None
-            
-#        sm = self._parent.from_register(("func",))
-#        print("DEBUG 1111c########################", sm._dict[(22, 0, 'type')], "\n\n") 
-              
+
         # Storing the "image" zoom info 
         self._image_zoom_init = {
             k: info[k] 
@@ -2196,9 +2427,6 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
                 "precision", mpmath.mp.dps
             )
         self.validate()
-        
-#        sm = self._parent.from_register(("func",))
-#        print("DEBUG 1111e########################", sm._dict[(22, 0, 'type')], "\n\n") 
 
         for item in [self._qim, self._rect, self._rect_under]:
             if item is not None:
@@ -2208,7 +2436,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             self._qim = QGraphicsPixmapItem(
                 QtGui.QPixmap.fromImage(QtGui.QImage(image_file))
             )
-            # Antialiasing activated
+            # Antialiasing activated :
             self._qim.setTransformationMode(
                 Qt.TransformationMode.SmoothTransformation
             )
@@ -2217,9 +2445,6 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             self.fit_image()
         else:
             self._qim = None
-        
-#        sm = self._parent.from_register(("func",))
-#        print("DEBUG 1111g########################", sm._dict[(22, 0, 'type')], "\n\n") 
 
         self._rect = None
         self._rect_under = None
@@ -2255,7 +2480,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             else:
                 casted = self.cast(value, expected)
                 if casted != expected:
-                    # print("***unmatching", casted, expected)
+                    print("***unmatching", casted, expected)
                     ret = 1
         return ret
 
@@ -2385,7 +2610,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         if self.has_dps:
             keys += ("dps",)
         for key in keys:
-            # print("pushing to presenter", key, ref_zoom[key])
+            print("pushing to presenter", key, ref_zoom[key])
             self._presenter[key] = ref_zoom[key]
             
 
@@ -2817,30 +3042,27 @@ class Fractal_MainWindow(QMainWindow):
         self.build_model(gui)
         self.layout()
         self.set_menubar()
-        self.set_toolbar()
         self.setWindowTitle(f"Fractashades {fs.__version__}")
         if fs.settings.output_context["doc"] or True:
             # Needed for github build where QT_QPA_PLATFORM=offscreen
             self.setMinimumSize(1200, 744 - 24)
 
     def set_menubar(self) :
-        # The upper file menu
-        bar = self.menuBar()
-        tools = bar.addMenu("Tools")
-        clear_cache = QAction('Clear calculation cache', tools)
-        png_info = QAction('Png info', tools)
-        png_cbar = QAction('Colormap from png image', tools)
-        template_cbar = QAction('Colormap from templates', tools)
-        tools.addActions((clear_cache, png_info, png_cbar, template_cbar))
-        tools.triggered[QAction].connect(self.on_menubar)
-    
-        about = bar.addMenu("About")
-        license_txt = QAction('License', about)
-        about.addAction(license_txt)
-        about.triggered[QAction].connect(self.on_menubar)
+      bar = self.menuBar()
+      tools = bar.addMenu("Tools")
+      clear_cache = QAction('Clear calculation cache', tools)
+      png_info = QAction('Png info', tools)
+      png_cbar = QAction('Colormap from png image', tools)
+      template_cbar = QAction('Colormap from templates', tools)
+      tools.addActions((clear_cache, png_info, png_cbar, template_cbar))
+      tools.triggered[QAction].connect(self.actiontrig)
 
+      about = bar.addMenu("About")
+      license_txt = QAction('License', about)
+      about.addAction(license_txt)
+      about.triggered[QAction].connect(self.actiontrig)
 
-    def on_menubar(self, action):
+    def actiontrig(self, action):
         if action.text() == "License":
             self.show_license()
         elif action.text() == "Png info":
@@ -2851,52 +3073,6 @@ class Fractal_MainWindow(QMainWindow):
             self.cmap_from_template()
         elif action.text() == "Clear calculation cache":
             self.clear_cache()
-
-
-    def set_toolbar(self) :
-        # The upper file menu
-        self.actions_tb = actions_tb = self.addToolBar("Actions")
-        actions_tb.setStyleSheet(TOOLBAR_CSS)
-        actions_tb.setToolButtonStyle(
-                Qt.ToolButtonStyle.ToolButtonTextBesideIcon
-        )
-
-        # https://doc.qt.io/qt-6/qicon.html#fromTheme
-        script = QAction("Show script", self)
-        icon = QIcon.fromTheme(
-            "document-properties",
-            self.style().standardIcon(
-                QStyle.StandardPixmap.SP_FileDialogContentsView
-            )
-        )
-        script.setIcon(icon)
-
-        params = QAction("Show params", self)
-        params.setIcon(self.style().standardIcon(
-                QStyle.StandardPixmap.SP_FileDialogInfoView
-        ))
-
-        interrupt = QAction("Interrupt", self)
-        interrupt.setIcon(self.style().standardIcon(
-                QStyle.StandardPixmap.SP_MediaStop
-        ))
-
-        run = QAction("Run",self)
-        run.setIcon(self.style().standardIcon(
-                QStyle.StandardPixmap.SP_MediaPlay
-        ))
-
-        for action in (script, params, interrupt, run):
-            actions_tb.addAction(action)
-        
-        actions_tb.actionTriggered[QAction].connect(self.toolbtnpressed)
-
-
-    def toolbtnpressed(self, a):
-        self._model.from_register(("func",))
-
-
-
 
     def show_license(self):
         """
@@ -2924,7 +3100,7 @@ class Fractal_MainWindow(QMainWindow):
             import __main__
             script_dir = os.path.abspath(os.path.dirname(__main__.__file__))
         except NameError:
-            # print("Failed finding __main__.__file__")
+            print("Failed finding __main__.__file__")
             script_dir = None
         file_path = QFileDialog.getOpenFileName(
                 self,
@@ -2970,7 +3146,7 @@ class Fractal_MainWindow(QMainWindow):
 
     def clear_cache(self):
         func_submodel = self.from_register(("func",))
-        # print("func_submodel", func_submodel)
+        print("func_submodel", func_submodel)
         fractal = next(iter(func_submodel.getkwargs().values()))
         fractal.clean_up()
         msg = Fractal_MessageBox()
@@ -2988,9 +3164,7 @@ class Fractal_MainWindow(QMainWindow):
             Func_submodel(model, ("func",), gui._func, dps_var=gui._dps),
             ("func",)
         )
-
-        
-        # Adds the presenters
+        # Adds the presenters - Note
         mapping = {
             "fractal": ("func", gui._fractal),
             "image": ("func", gui._image),
@@ -3015,24 +3189,20 @@ class Fractal_MainWindow(QMainWindow):
         self.add_image_wget()
         self.add_func_wget()
         self.add_image_status()
-
-
+    
     def sizeHint(self):
         return QtCore.QSize(1200, 800) 
     
     def add_image_status(self):
-        self.addDockWidget(
-                Qt.DockWidgetArea.LeftDockWidgetArea,
-                self.centralWidget().image_doc_widget
-        )
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea,
+                           self.centralWidget().image_doc_widget)
 
     def add_func_wget(self):
         action_setting = (
             "image_updated", 
             self.from_register("image")._mapping["image"]
         )
-
-        func_wget = Func_widget(
+        func_wget = Action_func_widget(
             self,
             self.from_register(("func",)),
             action_setting,
@@ -3060,15 +3230,8 @@ class Fractal_MainWindow(QMainWindow):
     def add_status_bar(self):
         # the status bar need access to the fractal object, which will be
         # provided through the func model
-
-#        sm = self.from_register(("func",))
-#        print("DEBUG 8888a########################", sm._dict[(22, 0, 'type')], "\n\n") # Culprit !!!
-
         self.status_bar = Calc_status_bar(self.from_register(("func",)))
         self.setStatusBar(self.status_bar)
-
-#        sm = self.from_register(("func",))
-#        print("DEBUG 8888b########################", sm._dict[(22, 0, 'type')], "\n\n") # Culprit !!!
 
     @pyqtSlot(object)
     def func_callback(self, func_widget):
@@ -3084,13 +3247,12 @@ class Fractal_MainWindow(QMainWindow):
     def on_error_in_thread(self, exc):
         """ A simple callback when error occured in computation computation
         """
-        # print("ERROR detected in thread")
+        print("ERROR detected in thread")
         raise exc
 
     def add_image_wget(self):
         mw = Image_widget(self, self.from_register("image"))
         self.setCentralWidget(mw)
-
 
     def from_register(self, register_key):
         return self._model._register[register_key]
@@ -3105,7 +3267,7 @@ def excepthook(exc_type, exc_value, exc_traceback):
 
 
 class Fractal_GUI:
-    def __init__(self, fractal_class, fractal_func_factory=None):
+    def __init__(self, func):
         """
 Parameters
 ----------
@@ -3143,8 +3305,8 @@ parameter
         - `int`
         - `bool`
         - `mpmath.mpf` (arbitrary precision floating point)
-        - `QtGui.QColor=(0., 0., 1.)` (RGB color)
-        - `QtGui.QColor=(0., 0., 1., 0)` (RGBA color)
+        - `fs.colors.Color=(0., 0., 1.)` (RGB color)
+        - `fs.colors.Color=(0., 0., 1., 0)` (RGBA color)
         - `fs.colors.Fractal_colormap`
         - `fs.gui.separator` (used to group a set of parameters under a title)
 
@@ -3189,8 +3351,8 @@ parameter
             choices_str: typing.Literal["a", "b", "c"]="c",
             nx: int=nx,
             interior_detect: bool=interior_detect,
-            interior_color: fs.colors.Color=(0., 0., 1.),
-            transparent_color: fs.colors.Color=(0., 0., 1., 0.),
+            interior_color: QtGui.QColor=(0., 0., 1.),
+            transparent_color: QtGui.QColor=(0., 0., 1., 0.),
             probes_zmax: float=probes_zmax,
             epsilon_stationnary: float=epsilon_stationnary,
             colormap: fs.colors.Fractal_colormap=colormap
@@ -3198,15 +3360,8 @@ parameter
 
 """
         self._func = func
-        params = inspect.signature(func).parameters
-        param_names = params.keys()
+        param_names = inspect.signature(func).parameters.keys()
         param0 = next(iter(param_names))
-
-        if not issubclass(params[param0].annotation, fs.Fractal):
-            raise ValueError(
-                "Expected a fs.Fractal object as first parameter, found:\n"
-                f"{param0.__class__}"
-            )
         self._fractal = param0
 
     def connect_image(self, image_param="calc_name"):

@@ -86,7 +86,7 @@ def plot(plot_dir=None):
     pp = Postproc_batch(f, calc_name)
     pp.add_postproc("cont_iter", Continuous_iter_pp())
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
-    pp.add_postproc("div", Raw_pp("stop_reason", func="x == 1."))
+    #pp.add_postproc("div", Raw_pp("stop_reason", func="x == 1."))
     pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
     pp.add_postproc("fieldlines",
                 Fieldlines_pp(n_iter=3, swirl=0., damping_ratio=0.4))
@@ -95,10 +95,11 @@ def plot(plot_dir=None):
     pp_int = Postproc_batch(f, "interior")
     pp_int.add_postproc("attr_map", Attr_normal_pp())
     pp_int.add_postproc("attr", Attr_pp())
+    pp_int.add_postproc("div", Raw_pp("stop_reason", func="x == 0"))
 
-    plotter = fs.Fractal_plotter([pp, pp_int])  
+    plotter = fs.Fractal_plotter([pp, pp_int], final_render=True, supersampling="2x2")  
     plotter.add_layer(Bool_layer("interior", output=False))
-    plotter.add_layer(Bool_layer("div", output=False))
+    plotter.add_layer(Bool_layer("div", output=True))
     plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=False))
     plotter.add_layer(Normal_map_layer("attr_map", max_slope=90, output=False))
     plotter.add_layer(Color_layer(
@@ -125,6 +126,7 @@ def plot(plot_dir=None):
 
     # plotter["cont_iter"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
     plotter["DEM_map"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
+
     plotter["attr"].set_mask(plotter["div"], mask_color=(0.9568, 0.8039, 0.9372))
 
     # This is where we define the lighting (here 3 ccolored light sources)

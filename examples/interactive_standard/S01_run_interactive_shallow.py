@@ -14,7 +14,6 @@ import typing
 import os
 
 import numpy as np
-from PyQt6 import QtGui
 
 import fractalshades as fs
 import fractalshades.models as fsm
@@ -79,15 +78,18 @@ def plot(plot_dir):
          nx: int=nx,
          epsilon_stationnary: float=epsilon_stationnary,
          _3: fsgui.separator="Plotting parameters",
-         interior_color: QtGui.QColor=(0.1, 0.1, 0.1),
+         interior_color: fscolors.Color=(0.1, 0.1, 0.1),
          colormap: fscolors.Fractal_colormap=colormap,
          cmap_z_kind: typing.Literal["relative", "absolute"]="relative",
          zmin: float=zmin,
          zmax: float=zmax
     ):
 
+        fs.settings.working_directory = fs.Working_directory(fractal.directory)
+        fs.set_log_handlers(verbosity=2)
+
         fractal.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
-             theta_deg=theta_deg, projection="cartesian", antialiasing=False)
+             theta_deg=theta_deg, projection="cartesian")
 
         fractal.base_calc(
             calc_name=calc_name,
@@ -97,13 +99,13 @@ def plot(plot_dir):
             epsilon_stationnary=epsilon_stationnary,
         )
 
-        if fractal.res_available():
-            print("RES AVAILABLE, no compute")
-        else:
-            print("RES NOT AVAILABLE, clean-up")
-            fractal.clean_up(calc_name)
+#        if fractal.res_available():
+#            print("RES AVAILABLE, no compute")
+#        else:
+#            print("RES NOT AVAILABLE, clean-up")
+#            fractal.clean_up(calc_name)
 
-        fractal.run()
+#        fractal.run()
 
         layer_name = "continuous_iter"
 

@@ -2,7 +2,7 @@
 import os
 import typing
 import pickle
-import warnings
+#import warnings
 import logging
 import textwrap
 
@@ -304,78 +304,78 @@ directory : str
 
 
 
-    def SA_file(self): # , iref, calc_name):
-        """
-        Returns the file path to store or retrieve data arrays associated to a 
-        Series Approximation
-        """
-        return os.path.join(self.directory, "data", "SA.dat")
+#    def SA_file(self): # , iref, calc_name):
+#        """
+#        Returns the file path to store or retrieve data arrays associated to a 
+#        Series Approximation
+#        """
+#        return os.path.join(self.directory, "data", "SA.dat")
 
 
-    def save_SA(self, FP_params, SA_params, SA_kc, P, n_iter, P_err):
-        """
-        Reload arrays from a data file
-           - params = main parameters used for the calculation
-           - codes = complex_codes, int_codes, termination_codes
-           - arrays : [Z, U, stop_reason, stop_iter]
-        """
-        save_path = self.SA_file()
-        fs.utils.mkdir_p(os.path.dirname(save_path))
+#    def save_SA(self, FP_params, SA_params, SA_kc, P, n_iter, P_err):
+#        """
+#        Reload arrays from a data file
+#           - params = main parameters used for the calculation
+#           - codes = complex_codes, int_codes, termination_codes
+#           - arrays : [Z, U, stop_reason, stop_iter]
+#        """
+#        save_path = self.SA_file()
+#        fs.utils.mkdir_p(os.path.dirname(save_path))
+#
+#        with open(save_path, 'wb+') as tmpfile:
+#            logger.debug("SA computed, saving", save_path)
+#            for item in (FP_params, SA_params, SA_kc, P, n_iter, P_err):
+#                pickle.dump(item, tmpfile, pickle.HIGHEST_PROTOCOL)
 
-        with open(save_path, 'wb+') as tmpfile:
-            logger.debug("SA computed, saving", save_path)
-            for item in (FP_params, SA_params, SA_kc, P, n_iter, P_err):
-                pickle.dump(item, tmpfile, pickle.HIGHEST_PROTOCOL)
 
+#    def reload_SA(self, scan_only=False):
+#        """
+#        Reload arrays from a data file
+#           - FP_params = main parameters used for ref pt calc
+#           - SA_params = main parameters used for SA calc
+#            P, n_iter, P_err : The SA results
+#
+#        """
+#        save_path = self.SA_file()
+#        with open(save_path, 'rb') as tmpfile:
+#            FP_params = pickle.load(tmpfile)
+#            SA_params = pickle.load(tmpfile)
+#            SA_kc = pickle.load(tmpfile)
+#            if scan_only:
+#                return FP_params, SA_params, SA_kc
+#            P = pickle.load(tmpfile)
+#            n_iter = pickle.load(tmpfile)
+#            P_err = pickle.load(tmpfile)
+#        return FP_params, SA_params, SA_kc, P, n_iter, P_err
 
-    def reload_SA(self, scan_only=False):
-        """
-        Reload arrays from a data file
-           - FP_params = main parameters used for ref pt calc
-           - SA_params = main parameters used for SA calc
-            P, n_iter, P_err : The SA results
+#    def get_SA_data(self):
+#        """ return attribute or try to reload from file """
+#        if hasattr(self, "_SA_data"):
+#            return self._SA_data
+#        else:
+#            _, _, _, P, n_iter, P_err = self.reload_SA()
+#            return P, n_iter, P_err
 
-        """
-        save_path = self.SA_file()
-        with open(save_path, 'rb') as tmpfile:
-            FP_params = pickle.load(tmpfile)
-            SA_params = pickle.load(tmpfile)
-            SA_kc = pickle.load(tmpfile)
-            if scan_only:
-                return FP_params, SA_params, SA_kc
-            P = pickle.load(tmpfile)
-            n_iter = pickle.load(tmpfile)
-            P_err = pickle.load(tmpfile)
-        return FP_params, SA_params, SA_kc, P, n_iter, P_err
-
-    def get_SA_data(self):
-        """ return attribute or try to reload from file """
-        if hasattr(self, "_SA_data"):
-            return self._SA_data
-        else:
-            _, _, _, P, n_iter, P_err = self.reload_SA()
-            return P, n_iter, P_err
-
-    def SA_matching(self):
-        """
-        Test if the SA stored can be used for this calculation ie 
-           - same ref point
-           - same SA parameters
-        """
-        try:
-            (stored_FP_params, stored_SA_params, stored_kc
-             ) = self.reload_SA(scan_only=True)
-        except FileNotFoundError:
-            return False
-
-        valid_FP_params = (stored_FP_params == self.FP_params)
-        valid_SA_params = (stored_SA_params == self.SA_params)
-        valid_kc = (stored_kc == self.kc)
-        logger.debug("validate stored SA",
-                     valid_FP_params, valid_SA_params, valid_kc
-        )
-
-        return (valid_FP_params and valid_SA_params and valid_kc)
+#    def SA_matching(self):
+#        """
+#        Test if the SA stored can be used for this calculation ie 
+#           - same ref point
+#           - same SA parameters
+#        """
+#        try:
+#            (stored_FP_params, stored_SA_params, stored_kc
+#             ) = self.reload_SA(scan_only=True)
+#        except FileNotFoundError:
+#            return False
+#
+#        valid_FP_params = (stored_FP_params == self.FP_params)
+#        valid_SA_params = (stored_SA_params == self.SA_params)
+#        valid_kc = (stored_kc == self.kc)
+#        logger.debug("validate stored SA",
+#                     valid_FP_params, valid_SA_params, valid_kc
+#        )
+#
+#        return (valid_FP_params and valid_SA_params and valid_kc)
 
 #==============================================================================
 # Printing - export functions
@@ -482,10 +482,10 @@ directory : str
         holomorphic = self.holomorphic
         calc_deriv_c = self.calc_dZndc if holomorphic else self.calc_hessian
         calc_dZndz = self.calc_dZndz if holomorphic else False
-        has_SA = (
-            (self.SA_params is not None) if hasattr(self, "SA_params") 
-            else False
-        )
+#        has_SA = (
+#            (self.SA_params is not None) if hasattr(self, "SA_params") 
+#            else False
+#        )
         
         # if hasattr(self, "calc_dZndz") and self.calc_dZndz:
 
@@ -567,18 +567,18 @@ directory : str
         )
 
         # Initialise SA interpolation - legacy code
-        n_iter = 0
-        P = None
-        if has_SA:
-            warnings.warn('SA is obsolete, use BLA instead',
-                          DeprecationWarning)
-            self.get_SA(Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter,
-                        ref_order)
-            P, n_iter, _ = self.get_SA_data()
+#        n_iter = 0
+#        P = None
+#        if has_SA:
+#            warnings.warn('SA is obsolete, use BLA instead',
+#                          DeprecationWarning)
+#            self.get_SA(Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter,
+#                        ref_order)
+#            P, n_iter, _ = self.get_SA_data()
 
 
         # Initialize BLA interpolation
-        if self.BLA_params is None:
+        if self.BLA_eps is None:
             M_bla = None
             r_bla = None
             bla_len = None
@@ -586,7 +586,7 @@ directory : str
             self.set_status("Bilin. approx", "N.A.")
         else:
             self.set_status("Bilin. approx", "running")
-            eps = self.BLA_params["eps"]
+            eps = self.BLA_eps
             M_bla, r_bla, bla_len, stages_bla = self.get_BLA_tree(
                     Zn_path, eps)
             self.set_status("Bilin. approx", "completed")
@@ -604,7 +604,7 @@ directory : str
                 Zn_path, dZndc_path, dZndz_path,
                 has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
                 drift_xr, dx_xr,
-                P, kc, n_iter, M_bla, r_bla, bla_len, stages_bla,
+                kc, M_bla, r_bla, bla_len, stages_bla, # suppressed  P, n_iter
                 self._interrupted
             )
         else:
@@ -614,7 +614,7 @@ directory : str
                 Zn_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
                 has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
                 driftx_xr, drifty_xr, dx_xr,
-                P, kc, n_iter, M_bla, r_bla, bla_len, stages_bla,
+                kc, M_bla, r_bla, bla_len, stages_bla, # suppressed  P, n_iter
                 self._interrupted
             )
 
@@ -667,36 +667,36 @@ directory : str
         return True
 
 
-    def get_SA(self, Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter,
-               ref_order):
-        """
-        Check if we have a suitable SA approximation stored, 
-          - otherwise computes and stores it in a file
-        """
-        if self.SA_matching():
-            logger.debug("SA already stored")
-            return
-
-        else:            
-            SA_params = self.SA_params
-            FP_params = self.FP_params
-            kc = self.kc
-
-            SA_loop = self.SA_loop()
-            SA_cutdeg = SA_params["cutdeg"]
-            SA_err_sq = SA_params["err"] ** 2
-            SA_stop = SA_params.get("stop", -1)
-
-            if ref_order is None:
-                ref_order = 2**62 # a quite large int64
-
-            P, n_iter, P_err = numba_SA_run(
-                SA_loop, 
-                Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
-                kc, SA_cutdeg, SA_err_sq, SA_stop
-            )
-            self._SA_data = (P, n_iter, P_err)
-            self.save_SA(FP_params, SA_params, kc, P, n_iter, P_err)
+#    def get_SA(self, Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter,
+#               ref_order):
+#        """
+#        Check if we have a suitable SA approximation stored, 
+#          - otherwise computes and stores it in a file
+#        """
+#        if self.SA_matching():
+#            logger.debug("SA already stored")
+#            return
+#
+#        else:            
+#            SA_params = self.SA_params
+#            FP_params = self.FP_params
+#            kc = self.kc
+#
+#            SA_loop = self.SA_loop()
+#            SA_cutdeg = SA_params["cutdeg"]
+#            SA_err_sq = SA_params["err"] ** 2
+#            SA_stop = SA_params.get("stop", -1)
+#
+#            if ref_order is None:
+#                ref_order = 2**62 # a quite large int64
+#
+#            P, n_iter, P_err = numba_SA_run(
+#                SA_loop, 
+#                Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
+#                kc, SA_cutdeg, SA_err_sq, SA_stop
+#            )
+#            self._SA_data = (P, n_iter, P_err)
+#            self.save_SA(FP_params, SA_params, kc, P, n_iter, P_err)
 
     def get_BLA_tree(self, Zn_path, eps):
         """
@@ -1048,7 +1048,7 @@ def numba_cycles_perturb(
     Zn_path, dZndc_path, dZndz_path,
     has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
     drift_xr, dx_xr,
-    P, kc, n_iter_init, M_bla, r_bla, bla_len, stages_bla,
+    kc, M_bla, r_bla, bla_len, stages_bla, # suppressed  P, n_iter_init
     _interrupted
 ):
     """
@@ -1087,11 +1087,10 @@ def numba_cycles_perturb(
         cpt, c_xr = ref_path_c_from_pix(c_pix[ipt], dx_xr, drift_xr)
         stop_pt = stop_reason[:, ipt]
 
-        initialize(c_xr, Zpt, Z_xr, Z_xr_trigger, Upt, P, kc, dx_xr,
-                   n_iter_init)
+        initialize(c_xr, Zpt, Z_xr, Z_xr_trigger, Upt, kc, dx_xr)
 
         n_iter = iterate(
-            cpt, c_xr, Zpt, Z_xr, Z_xr_trigger, Upt, stop_pt, n_iter_init,
+            cpt, c_xr, Zpt, Z_xr, Z_xr_trigger, Upt, stop_pt, # n_iter_init,
             Zn_path, dZndc_path, dZndz_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
             refpath_ptr, out_is_xr, out_xr, M_bla, r_bla, bla_len, stages_bla
         )
@@ -1111,31 +1110,16 @@ def numba_cycles_perturb(
 
 def numba_initialize(zn, dzndc, dzndz):
     @numba.njit(fastmath=True, error_model="numpy")
-    def numba_init_impl(c_xr, Z, Z_xr, Z_xr_trigger, U, P, kc, dx_xr,
-                        n_iter_init):
+    def numba_init_impl(c_xr, Z, Z_xr, Z_xr_trigger, U, kc, dx_xr): # suppressed P, n_iter_init
+                        # n_iter_init):
         """
-        ... mostly the SA
-        Initialize 'in place' at n_iter_init :
+        Initialize 'in place'  :
             Z[zn], Z[dzndz], Z[dzndc]
         """
 #        print("enter initialize")
-        if P is None:
-            Z_xr[zn] = fsxn.to_Xrange_scalar(Z[zn])
-            if dzndc != -1:
-                Z_xr[dzndc] = fsxn.to_Xrange_scalar(Z[dzndc])
-        else:
-            # Apply the  Series approximation step
-            U[0] = n_iter_init
-            c_scaled = c_xr / kc[0]
-            Z_xr[zn] = P.__call__(c_scaled)
-            Z[zn] = fsxn.to_standard(Z_xr[zn])
-
-            if dzndc != -1:
-                P_deriv = P.deriv()
-                deriv_scale =  dx_xr[0] / kc[0]
-                Z[dzndc] = fsxn.to_standard(
-                    P_deriv.__call__(c_scaled) * deriv_scale
-                )
+        Z_xr[zn] = fsxn.to_Xrange_scalar(Z[zn])
+        if dzndc != -1:
+            Z_xr[dzndc] = fsxn.to_Xrange_scalar(Z[dzndc])
 
         if (dzndz != -1):
             Z[dzndz] = 0.
@@ -1148,7 +1132,7 @@ def numba_initialize(zn, dzndc, dzndz):
 def numba_iterate(
         max_iter, M_divergence_sq, epsilon_stationnary_sq,
         reason_max_iter, reason_M_divergence, reason_stationnary,
-        xr_detect_activated, BLA_activated, SA_activated,
+        xr_detect_activated, BLA_activated, # SA_activated,
         zn, dzndc, dzndz,
         p_iter_zn, p_iter_dzndz, p_iter_dzndc,
         calc_dzndc, calc_dzndz,
@@ -1156,7 +1140,7 @@ def numba_iterate(
 
     @numba.njit(fastmath=True, error_model="numpy")
     def numba_impl(
-        c, c_xr, Z, Z_xr, Z_xr_trigger, U, stop, n_iter,
+        c, c_xr, Z, Z_xr, Z_xr_trigger, U, stop, #n_iter,
         Zn_path, dZndc_path, dZndz_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
         refpath_ptr, out_is_xr, out_xr, M_bla, r_bla, bla_len, stages_bla
     ):
@@ -1168,7 +1152,8 @@ def numba_iterate(
         Z_xr_trigger : bolean, activated when Z_xr need to be used
         """
         # SA skipped - wrapped iteration if we reach the cycle order 
-        w_iter = n_iter
+        w_iter = 0
+        n_iter = 0
         if w_iter >= ref_order:
             w_iter = w_iter % ref_order
             
@@ -1453,7 +1438,7 @@ def numba_cycles_perturb_BS(
     Zn_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
     has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
     driftx_xr, drifty_xr, dx_xr,
-    P, kc, n_iter_init, M_bla, r_bla, bla_len, stages_bla,
+    kc, M_bla, r_bla, bla_len, stages_bla, # suppressed P, n_iter_init
     _interrupted
 ):
 
@@ -1478,7 +1463,7 @@ def numba_cycles_perturb_BS(
 
         n_iter = iterate(
             apt, bpt, a_xr, b_xr, Zpt, Z_xr, Z_xr_trigger,
-            Upt, stop_pt, n_iter_init,
+            Upt, stop_pt, # suppressed n_iter_init
             Zn_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
             has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
             refpath_ptr, out_is_xr, out_xr, M_bla, r_bla, bla_len, stages_bla
@@ -1519,7 +1504,7 @@ def numba_iterate_BS(
     @numba.njit
     def numba_impl(
         a, b, a_xr, b_xr, Z, Z_xr, Z_xr_trigger,
-        U, stop, n_iter,
+        U, stop,
         Zn_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
         has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
         refpath_ptr, out_is_xr, out_xr, M_bla, r_bla, bla_len, stages_bla
@@ -1533,7 +1518,8 @@ def numba_iterate_BS(
         """
         # print("in numba impl")
         # SA skipped - wrapped iteration if we reach the cycle order 
-        w_iter = n_iter
+        w_iter = 0
+        n_iter = 0
         if w_iter >= ref_order:
             w_iter = w_iter % ref_order
         # We know that :

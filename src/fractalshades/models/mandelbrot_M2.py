@@ -10,7 +10,7 @@ import fractalshades as fs
 import fractalshades.mpmath_utils.FP_loop as fsFP
 
 from fractalshades.postproc import Fractal_array
-from fractalshades.models.plotting_protocols import Implements
+from fractalshades.numpy_utils.expr_parser import Numpy_expr
 
 #==============================================================================
 #==============================================================================
@@ -25,7 +25,6 @@ from fractalshades.models.plotting_protocols import Implements
 #    }
 #)
 
-@Implements(base="base_calc", interior="newton_calc")
 class Mandelbrot(fs.Fractal):
 
     def __init__(self, directory: fs.Working_directory):
@@ -48,25 +47,7 @@ directory : str
         self.potential_d = 2
         self.potential_a_d = 1.
 
-    @Implements(
-        subset_params=None,
-        mandatory=("Continuous_iter",),
-        float_pp={
-            "Continuous_iter": {},
-            "DEM": {"px_snap": None},
-            "Fieldlines": {
-                "n_iter": None, "swirl": None, "damping_ratio": None
-            },  
-        },
-        normal_pp={
-            "DEM_normal": {
-                "kind": inspect.Parameter(
-                    "kind", inspect.Parameter.KEYWORD_ONLY,
-                    default="potential", annotation=["potential", "Milnor"]
-                )
-            }
-        },
-    )
+
     @fs.utils.calc_options
     def base_calc(self, *,
             calc_name: str="base_calc",
@@ -100,7 +81,7 @@ directory : str
     =====
     The following complex fields will be calculated: *zn* and its
     derivatives (*dzndz*, *dzndc*, *d2zndc2*).
-    Exit codes are *max_iter*, *divergence*, *stationnary*.
+    Exit codes are 0: *max_iter*, 1: *divergence*, 2: *stationnary*.
         """
         complex_codes = ["zn", "dzndz", "dzndc", "d2zndc2"]
         int_codes = []
@@ -159,20 +140,6 @@ directory : str
         }
 
 
-    @Implements(
-        subset_params={
-            "calc_name_key": "base", # As defined by the class decorator
-            "key": "stop_reason",
-            "func": "x != 1",
-        },
-        mandatory=list(),
-        float_pp={
-            "Attr_pp": {"scale_by_order": None},
-        },
-        normal_pp={
-            "Attr_normal_pp": {}
-        },
-    )
     @fs.utils.calc_options
     def newton_calc(self, *,
             calc_name: str = "newton_calc",
@@ -224,7 +191,7 @@ directory : str
         *order*
             The cycle order
     
-        Exit codes are *max_order*, *order_confirmed*.
+        Exit codes are 0: *max_order*, 1: *order_confirmed*.
 
     References
     ==========
@@ -396,8 +363,7 @@ directory : str
         max_iter: int,
         M_divergence: float,
         epsilon_stationnary: float,
-        SA_params=None,
-        BLA_params={"eps": 1e-6},
+        BLA_eps: float=1e-6,
         interior_detect: bool=False,
         calc_dzndc: bool=True
     ):
@@ -423,35 +389,8 @@ epsilon_stationnary : float
     A small criteria (typical range 0.01 to 0.001) used to detect earlier
     points belonging to a minibrot, based on dzndz1 value.
     If reached, the loop is exited with exit code "stationnary"
-SA_params :
-    Obsolete. This option is kept for backward-compatibility, use of Bilinear
-    Approximations is recommended instead.
-    The dictionnary of parameters for Series-Approximations :
-
-    .. list-table:: 
-       :widths: 20 80
-       :header-rows: 1
-
-       * - keys
-         - values 
-       * - cutdeg
-         - int: polynomial degree used for approximation (default: 32)
-       * - SA_err
-         - float: relative error criteria (default: 1.e-6)
-
-    if `None` (default) SA is not activated. 
-BLA_params :
-    The dictionnary of parameters for Bilinear Approximations :
-
-    .. list-table:: 
-       :widths: 20 80
-       :header-rows: 1
-
-       * - keys
-         - values
-       * - SA_err
-         - float: relative error criteria (default: 1.e-6)
-
+BLA_eps : None | float
+    Relative error criteriafor BiLinear Approximation (default: 1.e-6)
     if `None` BLA is not activated.
 interior_detect : bool
     If True, activates interior point early detection.
@@ -498,7 +437,7 @@ interior_detect : bool
         # Define the functions used for BLA approximation
         # BLA triggered ?
         BLA_activated = (
-            (BLA_params is not None)
+            (BLA_eps is not None)
             and (self.dx < fs.settings.newton_zoom_level)
         )
 
@@ -510,20 +449,16 @@ interior_detect : bool
         def _dfdc(z):
             return 1.
 
-        #----------------------------------------------------------------------
-        # Defines SA_loop via a function factory - jitted implementation
-        # SA triggered ?
-        SA_activated = (
-            (SA_params is not None) 
-            and (self.dx < fs.settings.newton_zoom_level)
-        )
-        def SA_loop():
-            @numba.njit
-            def impl(Pn, n_iter, Zn_xr, kcX):
-                # Series Approximation loop
-                # mostly: pertubation iteration applied to a polynomial
-                return Pn * (Pn + 2. * Zn_xr) + kcX
-            return impl
+#        #----------------------------------------------------------------------
+#        # Defines SA_loop via a function factory - jitted implementation
+#        # SA triggered ?
+#        def SA_loop():
+#            @numba.njit
+#            def impl(Pn, n_iter, Zn_xr, kcX):
+#                # Series Approximation loop
+#                # mostly: pertubation iteration applied to a polynomial
+#                return Pn * (Pn + 2. * Zn_xr) + kcX
+#            return impl
 
 
         def set_state():
@@ -536,7 +471,7 @@ interior_detect : bool
                 instance.calc_dZndc = calc_dzndc or BLA_activated
                 instance.dfdz = _dfdz
                 instance.dfdc = _dfdc
-                instance.SA_loop = SA_loop
+#                instance.SA_loop = SA_loop
             return impl
 
         #----------------------------------------------------------------------
@@ -567,7 +502,7 @@ interior_detect : bool
             return fs.perturbation.numba_iterate(self.
                 max_iter, M_divergence_sq, epsilon_stationnary_sq,
                 reason_max_iter, reason_M_divergence, reason_stationnary,
-                xr_detect_activated, BLA_activated, SA_activated,
+                xr_detect_activated, BLA_activated, # SA_activated,
                 zn, dzndc, dzndz,
                 p_iter_zn, p_iter_dzndz, p_iter_dzndc,
                 calc_dzndc, calc_dzndz,

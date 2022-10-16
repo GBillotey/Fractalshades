@@ -1,4 +1,4 @@
 # -*- coding: utf-8 -*-
 #from .viewer import *
 from .guimodel import Fractal_GUI
-from .model import separator
+from .model import separator, collapsible_separator

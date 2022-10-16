@@ -70,8 +70,8 @@ def plot(plot_dir):
     base_layer = "continuous_iter"
     colormap = fscolors.cmap_register["classic"]
     cmap_z_kind = "relative"
-    zmin = 0.00
-    zmax = 0.50
+    zmin = 0.0
+    zmax = 5.0
     
     shade_kind="glossy"
     field_kind="None"
@@ -86,7 +86,7 @@ def plot(plot_dir):
         fractal: fsm.Perturbation_mandelbrot=fractal,
          calc_name: str=calc_name,
 
-         _1: fsgui.separator="Zoom parameters",
+         _1: fsgui.collapsible_separator="Zoom parameters",
          x: mpmath.mpf=x,
          y: mpmath.mpf=y,
          dx: mpmath.mpf=dx,
@@ -94,19 +94,18 @@ def plot(plot_dir):
          theta_deg: float=theta_deg,
          dps: int=dps,
          nx: int=nx,
-         antialiasing: bool=False,
 
-         _2: fsgui.separator="Calculation parameters",
+         _2: fsgui.collapsible_separator="Calculation parameters",
          max_iter: int=max_iter,
          M_divergence: float=M_divergence,
          interior_detect: bool=interior_detect,
          epsilon_stationnary: float=epsilon_stationnary,
 
-         _3: fsgui.separator="Bilinear series parameters",
+         _3: fsgui.collapsible_separator="Bilinear series parameters",
          use_BLA: bool=True,
          eps: float=eps,
 
-         _4: fsgui.separator="Plotting parameters: base field",
+         _4: fsgui.collapsible_separator="Plotting parameters: base field",
          base_layer: typing.Literal[
                  "continuous_iter",
                  "distance_estimation"
@@ -116,21 +115,22 @@ def plot(plot_dir):
                  "not_diverging",
                  "dzndz_detection",
          ]="all",
-         interior_color: fscolors.Color=(0.1, 0.1, 0.1),
+         interior_color: fscolors.Color=(0.1, 0.1, 0.1, 1.0),
          colormap: fscolors.Fractal_colormap=colormap,
          invert_cmap: bool=False,
          cmap_z_kind: typing.Literal["relative", "absolute"]=cmap_z_kind,
          zmin: float=zmin,
          zmax: float=zmax,
 
-         _5: fsgui.separator="Plotting parameters: shading",
+         _5: fsgui.collapsible_separator="Plotting parameters: shading",
          shade_kind: typing.Literal["None", "standard", "glossy"]=shade_kind,
          gloss_intensity: float=10.,
          light_angle_deg: float=65.,
+         light_azimuth_deg: float=20.,
          light_color: fscolors.Color=(1.0, 1.0, 1.0),
          gloss_light_color: fscolors.Color=(1.0, 1.0, 1.0),
 
-         _6: fsgui.separator="Plotting parameters: field lines",
+         _6: fsgui.collapsible_separator="Plotting parameters: field lines",
          field_kind: typing.Literal["None", "overlay", "twin"]=field_kind,
          n_iter: int=3,
          swirl: float=0.,
@@ -147,22 +147,20 @@ def plot(plot_dir):
             xy_ratio=xy_ratio,
             theta_deg=theta_deg,
             projection="cartesian",
-            antialiasing=antialiasing
         )
 
         if use_BLA:
-            BLA_params={"eps": eps}
+            BLA_eps=eps
         else:
-            BLA_params = None
-            
+            BLA_eps=None
+
         fractal.calc_std_div(
                 calc_name=calc_name,
                 subset=None,
                 max_iter=max_iter,
                 M_divergence=M_divergence,
                 epsilon_stationnary=epsilon_stationnary,
-                SA_params=None,
-                BLA_params=BLA_params,
+                BLA_eps=BLA_eps,
                 interior_detect=interior_detect,
             )
 
@@ -255,7 +253,7 @@ def plot(plot_dir):
                     k_diffuse=0.2,
                     k_specular=gloss_intensity,
                     shininess=1400.,
-                    angles=(light_angle_deg, 20.),
+                    angles=(light_angle_deg, light_azimuth_deg),
                     coords=None,
                     color=np.array(gloss_light_color))
     

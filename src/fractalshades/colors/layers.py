@@ -911,10 +911,10 @@ class Blinn_lighting:
             half_x = np.cos(theta_LS) * np.cos(phi_half)
             half_y = np.sin(theta_LS) * np.cos(phi_half)
             half_z = np.sin(phi_half)
-            print("DEBUG phi half", phi_half * 180. / np.pi, "(", half_x, half_y, half_z, ")")
-            print("DEBUG theta_LS phi_LS", theta_LS * 180. / np.pi, phi_LS * 180. / np.pi)
-
-            print("DEBUG normal", np.mean( nz), np.mean( np.sqrt(nx**2 + ny**2)), np.mean(nz**2 + nx**2 + ny**2))
+#            print("DEBUG phi half", phi_half * 180. / np.pi, "(", half_x, half_y, half_z, ")")
+#            print("DEBUG theta_LS phi_LS", theta_LS * 180. / np.pi, phi_LS * 180. / np.pi)
+#
+#            print("DEBUG normal", np.mean( nz), np.mean( np.sqrt(nx**2 + ny**2)), np.mean(nz**2 + nx**2 + ny**2))
 
             specular_coeff = half_x * nx + half_y * ny + half_z * nz
             np.putmask(specular_coeff, specular_coeff < 0., 0.)
