@@ -85,7 +85,7 @@ def plot(plot_dir):
          zmax: float=zmax
     ):
 
-        fs.settings.working_directory = fs.Working_directory(fractal.directory)
+        fs.settings.log_directory = os.path.join(fractal.directory, "log")
         fs.set_log_handlers(verbosity=2)
 
         fractal.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,

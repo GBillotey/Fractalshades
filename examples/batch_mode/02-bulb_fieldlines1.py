@@ -13,7 +13,6 @@ The location is around the 1/3 main bulb.
 Reference:
 `fractalshades.models.Mandelbrot`
 """
-
 import os
 import numpy as np
 
@@ -55,7 +54,7 @@ def plot(plot_dir):
         calc_name=calc_name,
         subset=None,
         max_iter=5000,
-        M_divergence=100.,
+        M_divergence=2.,
         epsilon_stationnary= 0.001,
     )
 
@@ -65,22 +64,22 @@ def plot(plot_dir):
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
     pp.add_postproc(
         "fieldlines",
-        Fieldlines_pp(n_iter=2, swirl=0., damping_ratio=1.0)
+        Fieldlines_pp(n_iter=4, swirl=0.5, damping_ratio=0.5)
     )
 
-    plotter = fs.Fractal_plotter(pp)   
+    plotter = fs.Fractal_plotter(pp, final_render=False, supersampling="3x3")   
     plotter.add_layer(Bool_layer("interior", output=False))
     plotter.add_layer(Color_layer(
             "cont_iter",
             func="np.log(x)",
             colormap=colormap,
-            probes_z=[6.25, 11.25],
+            probes_z=[-0.5, 2.1],
             probes_kind="absolute",
             output=True
     ))
     plotter.add_layer(
             Grey_layer("fieldlines", func=None, output=True,
-                       probes_z=[-1, 1.])
+                       probes_z=[-0.676, .872])
     )
     plotter["cont_iter"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
     # This is the lines where we indicate that coloring is shaded or tinted

@@ -7,7 +7,7 @@ import numpy as np
 import warnings
 
 from .settings import (
-    get_figures, close, verbosity, Working_directory, working_directory
+    get_figures, close, verbosity, log_directory
 )
 from .utils import zoom_options, calc_options, interactive_options
 from .core import Fractal, Fractal_plotter, _Pillow_figure

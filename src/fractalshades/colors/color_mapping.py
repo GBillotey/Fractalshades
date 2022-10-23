@@ -1,15 +1,18 @@
 # -*- coding: utf-8 -*-
+import os
+import typing
+import enum
+
 import numpy as np
 #import matplotlib.colors
 #from matplotlib.figure import Figure
 #from matplotlib.backends.backend_agg import FigureCanvasAgg
 import numba
-
 import PIL
 import PIL.ImageQt
-import os
 
-import fractalshades.numpy_utils.expr_parser as fs_parser
+import fractalshades.numpy_utils as np_utils
+
 
 
 class Color_tools():
@@ -357,9 +360,31 @@ class Color:
             raise ValueError(f"arr shape not as expected: {arr.shape}")
         
 
+
 class Fractal_colormap:
-    def __init__(self, colors, kinds, grad_npts=32, grad_funcs="x",
-        extent="mirror"):
+
+    KIND_ENUM = enum.Enum(
+        "kind",
+        ("Lab", "Lch"),
+        module=__name__
+    )
+    kind_type = typing.Literal[KIND_ENUM]
+
+    EXTENT_ENUM = enum.Enum(
+        "extent",
+        ("clip", "mirror", "repeat"),
+        module=__name__
+    )
+    extent_type = typing.Literal[EXTENT_ENUM]
+    
+    def __init__(
+        self,
+        colors: Color,
+        kinds: kind_type,
+        grad_npts: int=12,
+        grad_funcs: np_utils.Numpy_expr="x",
+        extent: extent_type="mirror"
+    ):
         """
         Fractal_colormap, concatenates (n-1) color gradients (passing
         through n colors).
@@ -376,24 +401,22 @@ class Fractal_colormap:
             a typical value is 32.
         grad_funcs : [n-1] array of callables mapping [0, 1.] to [0., 1]
             These are passed to each gradient. Callable passed as a string
-            expression of x var
+            expression of the "x" variable
             (ie, the callable is the evaluation of "lambda x: " + expr).
-            Default to identity.
+            Default to identity ("x").
         extent : "clip" | "mirror" | "repeat"
             What to do with out-of-range values.
-            
+
         Notes
         =====
         .. note::
-            
+
             See also the colormap section of the gallery for the available
             templates.
-            
-            
         """
         self.colors = colors = np.asarray(colors)
         self.n_grads = n_grads = colors.shape[0] - 1
-        self.n_probes = n_probes = colors.shape[0]
+        self.n_probes = colors.shape[0]
 
         # Provides sensible defaults if a scalar is provided
         if isinstance(kinds, str):
@@ -411,15 +434,29 @@ class Fractal_colormap:
         # Deprecated option (not compatible with GUI editor)
         if callable(grad_funcs):
             raise ValueError("Callable grad_funcs deprecated, use string")
+        
+        self._load_internal_arrays()
+
+
+    def _load_internal_arrays(self):
+        """ To be called when one of the base array is modified """
+        n_grads = self.n_grads
+        n_probes = self.n_probes
+
+        colors = self.colors
+        grad_npts = self.grad_npts
+        grad_funcs = self.grad_funcs
+        kinds = self.kinds
 
         # Should define 2 internal arrays
         self._n_interp_colors = sum(grad_npts) - n_grads + 1
-        self._interp_colors = np.empty([self._n_interp_colors, 3],
-                                       dtype=np.float64)
+        self._interp_colors = np.empty(
+                [self._n_interp_colors, 3], dtype=np.float64
+        )
         self._probes = np.empty([n_probes], dtype=np.float32)
 
         grad_func_evals = [
-            fs_parser.func_parser(["x"], grad_funcs[i_grad])
+            np_utils.func_parser(["x"], grad_funcs[i_grad])
             for i_grad in range(n_grads)
         ]
 
@@ -433,10 +470,71 @@ class Fractal_colormap:
             self._probes[i_grad] = i_col
             i_col += (grad_npts[i_grad] - 1)
         self._probes[n_grads] = i_col # last piquet
-        
+
         # Is is it a known template ?
         self._template = None
 
+
+    def modify_item(self, attr_key, irow, value):
+        """ In place modifcation of array"""
+        getattr(self, attr_key)[irow] = value
+        self._load_internal_arrays()
+
+    @property
+    def default_kind(self):
+        return self.kinds[-1]
+
+    @property
+    def default_func(self):
+        # Default value for next line when adjusting
+        return self.grad_funcs[-1]
+
+    @property
+    def default_color(self):
+        # Default value for next line when adjusting
+        return self.colors[-1, :]
+
+    @property
+    def default_grad_npts(self):
+        # Default value for next line when adjusting
+        return self.grad_npts[-1]
+
+    def adjust_size(self, n_probes):
+        """ In place modifcation of array size"""
+        n_probes_old = self.n_probes
+        diff = n_probes - n_probes_old
+        n_grads = self.n_grads + diff
+
+        if diff < 0:
+            self.colors = self.colors[:n_probes, :]
+            self.kinds = self.kinds[:n_grads]
+            self.grad_npts = self.grad_npts[:n_grads]
+            self.grad_funcs = self.grad_funcs[:n_grads]
+        elif diff > 0:
+            self.kinds = self.kinds + [self.default_kind] * diff
+            self.grad_funcs = self.grad_funcs + [self.default_func] * diff
+            # numpy arrays:
+            self.grad_npts =  np.concatenate([
+                    self.grad_npts,
+                    self.default_grad_npts * np.ones((diff,), dtype=np.int64)],
+                axis=0
+            )
+            self.colors = np.concatenate([
+                    self.colors,
+                    np.vstack([self.default_color[np.newaxis, :]] * diff)
+                ],
+                axis=0
+            )
+
+        else:
+            # Nothing has changed...
+            return
+
+        # Store the new values !
+        self.n_probes = n_probes
+        self.n_grads = n_grads
+        self._load_internal_arrays()
+        
 
     def _repr(self):
         """ Return a string that can be used to restore the colormap
@@ -460,16 +558,56 @@ class Fractal_colormap:
 
 
     def _output(self, nx, ny):
+        nx_fi = nx
+        ny_fi = ny
+        
+        nx *= 2
+        ny *= 2
+        
         margin = 1
-        nx_im = nx - 2 * margin
-        ny_im = ny - 2 * margin
-        img = np.repeat(np.linspace(0., 1., nx_im)[:, np.newaxis],
-                        ny_im, axis=1)
+        nx_im = nx - 4 * margin
+        ny_im = ny - 4 * margin
+        arrow_size = 0.05
+        
+        img = np.repeat(
+            np.linspace(-arrow_size, 1. + arrow_size, nx_im)[:, np.newaxis],
+            ny_im, axis=1
+        )
+        i_arr = np.copy(img)
+        j_arr = np.repeat(
+            np.linspace(-arrow_size, arrow_size, ny_im)[np.newaxis, :],
+            nx_im, axis=0
+        )
+        
         img = self.colorize(img, np.linspace(0., 1., len(self._probes)))
         img = np.uint8(img * 255.999)
-        B = np.ones([nx, ny, 3], dtype=np.uint8) * 255
-        B[margin:nx - margin, margin:ny - margin, :] = img
+        self._add_arrow(img, i_arr, j_arr, arrow_size)
+        
+        # Apply LANCZOS filter
+        PIL_img = PIL.Image.fromarray(img)
+        PIL_img = PIL_img.resize(
+             size=((ny_fi - 2 * margin), (nx_fi - 2 * margin)),
+             resample=PIL.Image.LANCZOS
+        )
+        img = np.array(PIL_img)
+        
+        B = np.ones([nx_fi, ny_fi, 3], dtype=np.uint8) * 255
+        B[margin:nx_fi - margin, margin:ny_fi - margin, :] = img
         return np.swapaxes(B, 0, 1)
+    
+    @staticmethod
+    def _add_arrow(img, i_arr, j_arr, arrow_size):
+        """ Draws the shape of the extra arrow in white """
+        arr1 = (i_arr + j_arr < -arrow_size)
+        arr2 = (i_arr - j_arr < -arrow_size)
+        arr3 = (i_arr + j_arr > 1. + arrow_size)
+        arr4 = (i_arr - j_arr > 1. + arrow_size)
+        for arrloc in (arr1, arr2, arr3, arr4):
+            np.putmask(img[:, :, 0], arrloc, (255,))
+            np.putmask(img[:, :, 1], arrloc, (255,))
+            np.putmask(img[:, :, 2], arrloc, (255,))
+
+        
 
     def output_png(self, dir_path, file_name, nx, ny):
         """

@@ -73,7 +73,7 @@ def func_parser(variables, expr):
     else:
         return None
 
-class Numpy_expr():
+class Numpy_expr:
     # Note: We *could* use typing.Annotated when dropping 3.8 support
     # See https://docs.python.org/3/library/typing.html#typing.Annotated
     # https://peps.python.org/pep-0593/

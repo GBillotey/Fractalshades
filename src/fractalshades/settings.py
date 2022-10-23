@@ -72,6 +72,8 @@ Note: Severities in descending order:
 CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET
 """
 
+postproc_dtype = "float32"
+""" The float datatype used for post-processing (float32 | float64)"""
 
 def set_RAM_limit(RAM_limit_Gb):
     """

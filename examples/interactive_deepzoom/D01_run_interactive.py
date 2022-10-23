@@ -138,6 +138,10 @@ def plot(plot_dir):
          twin_intensity: float=0.1
     ):
 
+
+        fs.settings.log_directory = os.path.join(fractal.directory, "log")
+        fs.set_log_handlers(verbosity=2)
+
         fractal.zoom(
             precision=dps,
             x=x,

@@ -52,7 +52,7 @@ def plot(plot_dir):
         calc_name=calc_name,
         subset=None,
         max_iter=1000,
-        M_divergence=100.,
+        M_divergence=2.,
         epsilon_stationnary= 0.001,
     )
     # f.clean_up(calc_name) 

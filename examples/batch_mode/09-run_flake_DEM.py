@@ -74,8 +74,7 @@ def plot(directory):
             max_iter=1000000,
             M_divergence=1.e3,
             epsilon_stationnary=1.e-3,
-            SA_params=None,
-            BLA_params={"eps": 1.e-8},
+            BLA_eps=1.e-8,
             interior_detect=False
     )
 
@@ -87,7 +86,7 @@ def plot(directory):
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
     pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
     
-    plotter = fs.Fractal_plotter(pp, final_render=True, supersampling="2x2")   
+    plotter = fs.Fractal_plotter(pp, final_render=False, supersampling="2x2")   
     plotter.add_layer(Bool_layer("interior", output=False))
     plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=False))
     plotter.add_layer(Virtual_layer("potential", func=None, output=False))

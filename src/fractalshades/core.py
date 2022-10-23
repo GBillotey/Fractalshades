@@ -132,37 +132,15 @@ class Fractal_plotter:
         }
 
         # postproc_batches can be single or an enumeration
-        # At this stage it is unfreezed, waiting for a freeze_postprocs call
+        # At this stage it is unfrozen (more can be added),
+        # waiting for a register_postprocs call
         postproc_batches = postproc_batch
         if isinstance(postproc_batch, fs.postproc.Postproc_batch):
-#            print("YESSSSSSSSSS, isinstance")
             postproc_batches = [postproc_batch]
-
-#        for i, postproc_batch in enumerate(postproc_batches):
-#            if i == 0:
-#                self.postproc_batches = [postproc_batch]
-#                self.posts = copy.copy(postproc_batch.posts)
-#                self.postnames_2d = postproc_batch.postnames_2d
-#                # iterator :
-#                self.fractal = postproc_batch.fractal
-#            else:
-#                self.add_postproc_batch(postproc_batch)
-#
-#        self.chunk_slices = self.fractal.chunk_slices
-#        # layer data
-#        self.layers = []
-#        self.scalings = None # to be computed !
-#        # Plotting directory
-#        self.plot_dir = self.fractal.directory
-#
-#        # Mem mapping dtype
-#        self.post_dtype = np.float32 # TODO check this - use float64 ??
-
-
-        self._postproc_batches = postproc_batches # unfreezed 
-#        print("## in __init__, LEN", len(self._postproc_batches ))
+        self._postproc_batches = postproc_batches # unfrozen 
 
         if not(_delay_registering):
+            # freeze
             self.register_postprocs()
 
 
@@ -188,11 +166,8 @@ class Fractal_plotter:
             raise ValueError("Attempt to add a postproc_batch from a different"
                              "fractal: {} from {}".format(
                 postproc_batch.fractal, postproc_batch.calc_name))
-#        print("## ADDING, postproc_batches", postproc_batch)
         self.postproc_batches += [postproc_batch]
-#        print("## ADDING, postproc_batch.posts", postproc_batch.posts)
         self.posts.update(postproc_batch.posts)
-#        print("## ADDING, postproc_batch.postnames_2d", postproc_batch.postnames_2d)
         self.postnames_2d += postproc_batch.postnames_2d
     
     def register_postprocs(self):
@@ -201,12 +176,8 @@ class Fractal_plotter:
         instanciation but shall be before any coloring method.
         """
         postproc_batches = self._postproc_batches
-        # delattr(self, "_postproc_batches")
-
-#        print("## in register_postprocs, LEN", len(postproc_batches ))
 
         for i, postproc_batch in enumerate(postproc_batches):
-#            print("##>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<< in register_postprocs", i, postproc_batch, postproc_batch.posts)
             if i == 0:
                 self.postproc_batches = [postproc_batch]
                 self.posts = copy.copy(postproc_batch.posts)
@@ -215,7 +186,6 @@ class Fractal_plotter:
                 self.fractal = postproc_batch.fractal
             else:
                 self.add_postproc_batch(postproc_batch)
-#            print("## self.posts", self.posts)
 
         self.chunk_slices = self.fractal.chunk_slices
         # layer data
@@ -225,9 +195,8 @@ class Fractal_plotter:
         self.plot_dir = self.fractal.directory
 
         # Mem mapping dtype
-        self.post_dtype = np.float32 # TODO check this - use float64 ??
-        
-        
+        self.post_dtype = np.dtype(fs.settings.postproc_dtype)
+
 
     def add_layer(self, layer):
         """
@@ -833,7 +802,7 @@ advanced users when subclassing.
         self._interrupted = np.array([0], dtype=np.bool_)
         
         # datatypes used for raw data storing
-        self.float_postproc_type = np.float32
+        self.float_postproc_type = np.dtype(fs.settings.postproc_dtype)
         self.termination_type = np.int8
         self.int_type = np.int32
         
@@ -1403,6 +1372,7 @@ advanced users when subclassing.
             dx, center, xy_ratio, theta, projection,
             self._interrupted
         )
+    
 
     def get_cycling_dep_args(
             self, calc_name, chunk_slice,
@@ -1416,12 +1386,14 @@ advanced users when subclassing.
 
         state = self._calc_data[calc_name]["state"]
         subset = state.subset
-
         if subset is not None:
             if final:
                 # Here we need a substitution - as raw arrays not stored
                 subset = self._subset_hook[calc_name]
-            c_pix = c_pix[subset[chunk_slice]]
+            chunk_subset = subset[chunk_slice]
+            c_pix = c_pix[chunk_subset]
+        else:
+            chunk_subset = None
 
         # Initialise the result arrays
         (n_pts,) = c_pix.shape
@@ -1433,7 +1405,7 @@ advanced users when subclassing.
         stop_reason = - np.ones([1, n_pts], dtype=self.termination_type)
         stop_iter = np.zeros([1, n_pts], dtype=self.int_type)
 
-        return (c_pix, Z, U, stop_reason, stop_iter)
+        return (c_pix, Z, U, stop_reason, stop_iter), chunk_subset
 
 #==============================================================================
 
@@ -1640,7 +1612,7 @@ advanced users when subclassing.
         reason_template = np.zeros([chunks_count, 1], dtype = np.int32)
 
         for i, chunk_slice in enumerate(self.chunk_slices()):
-            subset, Z, U, stop_reason, stop_iter = self.reload_data(
+            subset, _, Z, U, stop_reason, stop_iter = self.reload_data(
                 chunk_slice, calc_name)
             # Outputs a summary of the stop iter
             has_item = (stop_iter.size != 0)
@@ -1780,16 +1752,6 @@ advanced users when subclassing.
                 open_memmap(filename=data_path[key], mode='r+')
             )
 
-#    def flush_data_mmaps(self, calc_name):
-#        """ Delete reference to existing files, forcing a flush """
-#        keys = self.SAVE_ARRS
-#        if (self._calc_data[calc_name]["state"]).subset is not None:
-#            keys = keys +  ["subset"]
-#        for key in keys:
-#            print("flush_data_mmaps", self.dat_memmap_attr(key, calc_name))
-#            delattr(self, self.dat_memmap_attr(key, calc_name))
-#            # getattr(self, self.dat_memmap_attr(key, calc_name)).flush()
-
 
     def get_data_memmap(self, calc_name, key, mode='r+'):
         # See "Development Note - Memory mapping "
@@ -1806,11 +1768,6 @@ advanced users when subclassing.
 
     def dat_memmap_attr(self, key, calc_name):
         return "_@data_mmap_" + calc_name + "_" + key
-
-#    def del_dat_memmap_attr(self, key, calc_name):
-#        attr =  self.dat_memmap_attr(self, key, calc_name)
-#        if hasattr(self, attr):
-#            delattr(self, attr)
 
 
     def update_data_mmaps(
@@ -1854,7 +1811,6 @@ advanced users when subclassing.
         """ Reload all stored raw arrays for this chunk : 
         raw_data = subset, Z, U, stop_reason, stop_iter
         """
-
         keys = self.SAVE_ARRS
         rank = self.chunk_rank(chunk_slice)
         beg, end = self.compressed_beg_end(calc_name, rank)
@@ -1874,9 +1830,17 @@ advanced users when subclassing.
             arr["subset"] = mmap[beg: end]
         else:
             arr["subset"] = None
+        
+        # Reload c_pic - Note: we are in a "not final" (aka developement)
+        # rendering ; jitter / supersampling are desactivated
+        c_pix = np.ravel(
+            self.chunk_pixel_pos(chunk_slice, jitter=False, supersampling=None)
+        )
+        if subset is not None:
+            c_pix = c_pix[arr["subset"]]
 
         return (
-            arr["subset"], arr["Z"], arr["U"], arr["stop_reason"],
+            arr["subset"], c_pix, arr["Z"], arr["U"], arr["stop_reason"],
             arr["stop_iter"]
         )
 
@@ -1895,7 +1859,8 @@ advanced users when subclassing.
             )
             return
 
-        cycle_dep_args = self.get_cycling_dep_args(calc_name, chunk_slice)
+        (cycle_dep_args, chunk_subset
+         ) = self.get_cycling_dep_args(calc_name, chunk_slice)
         cycle_indep_args = self._calc_data[calc_name]["cycle_indep_args"]
 
 #        logger.debug(f"cycle_indep_args DEBUGGGGGG\n {cycle_indep_args}")
@@ -1931,10 +1896,11 @@ advanced users when subclassing.
         supersampling = Fractal_plotter.SUPERSAMPLING_DIC[
             postproc_options["supersampling"]
         ]
-        cycle_dep_args = self.get_cycling_dep_args(
+        (cycle_dep_args, chunk_subset) = self.get_cycling_dep_args(
             calc_name, chunk_slice,
             final=True, jitter=jitter, supersampling=supersampling
         )
+        
         cycle_indep_args = self._calc_data[calc_name]["cycle_indep_args"]
         ret_code = self.numba_cycle_call(cycle_dep_args, cycle_indep_args)
 
@@ -1944,13 +1910,14 @@ advanced users when subclassing.
 
         (c_pix, Z, U, stop_reason, stop_iter) = cycle_dep_args
         
-        chunk_subset = None
-        state = self._calc_data[calc_name]["state"]
-        if state.subset is not None:
-            # Using the substitution
-            chunk_subset = self._subset_hook[calc_name][chunk_slice]
+#        chunk_subset = None
+#        state = self._calc_data[calc_name]["state"]
+#        if state.subset is not None:
+#            # Using the substitution
+#            chunk_subset = self._subset_hook[calc_name][chunk_slice]
         
-        return (chunk_subset, Z, U, stop_reason, stop_iter)
+        return (chunk_subset, c_pix, Z, U, stop_reason, stop_iter)
+        #return (chunk_subset, Z, U, stop_reason, stop_iter)
 
 
     def evaluate_data(self, calc_name, chunk_slice, postproc_options):
@@ -2098,7 +2065,6 @@ advanced users when subclassing.
         # Launching the calculation + mmap storing multithreading loop
         self.compute_rawdata_dev(calc_name, chunk_slice=None)
 
-
     def postproc(self, postproc_batch, chunk_slice, postproc_options):
         """ Computes the output of ``postproc_batch`` for chunk_slice
         Return
@@ -2108,18 +2074,20 @@ advanced users when subclassing.
         if postproc_batch.fractal is not self:
             raise ValueError("Postproc batch from a different factal provided")
         calc_name = postproc_batch.calc_name
-        
 
         ret = self.evaluate_data(calc_name, chunk_slice, postproc_options)
         if ret is None:
             raise RuntimeError("DEBUG - How to deal with this")
             return
 
-        (subset, Z, U, stop_reason, stop_iter) = ret
+        (subset, c_pix, Z, U, stop_reason, stop_iter) = ret
         codes = self._calc_data[calc_name]["saved_codes"]
         complex_dic, int_dic, termination_dic = self.codes_mapping(*codes)
 
-        postproc_batch.set_chunk_data(chunk_slice, subset, Z, U,
+        # Compute c from cpix
+        c_pt = self.get_std_cpt(c_pix)
+
+        postproc_batch.set_chunk_data(chunk_slice, subset, c_pt, Z, U,
             stop_reason, stop_iter, complex_dic, int_dic, termination_dic)
 
         # Output data
@@ -2130,13 +2098,28 @@ advanced users when subclassing.
 
         for i, postproc in enumerate(postproc_batch.posts.values()):
             val, context_update = postproc[chunk_slice]
-            # print("post array chunck slice", chunk_slice, "from", postproc)
             post_array[i, :]  = val
             postproc_batch.update_context(chunk_slice, context_update)
 
         postproc_batch.clear_chunk_data(chunk_slice)
 
         return post_array, subset
+
+
+    def get_std_cpt(self, c_pix):
+        """ Return the c complex value from c_pix """
+        n_pts, = c_pix.shape  # Z of shape [n_Z, n_pts]
+        dx = float(self.dx)
+        center = self.x + 1j * self.y
+        xy_ratio = self.xy_ratio
+        theta = self.theta_deg / 180. * np.pi # used for expmap
+        projection = getattr(self.PROJECTION_ENUM, self.projection).value
+        cpt = np.empty((n_pts,), dtype=c_pix.dtype)
+        fill1d_ref_path_c_from_pix(
+            c_pix, dx, center, xy_ratio, theta, projection, cpt
+        )
+        return cpt
+        
 
 #==============================================================================
 # GUI : "interactive options"
@@ -2349,7 +2332,7 @@ def ref_path_c_from_pix(pix, dx, center, xy_ratio, theta, projection): # TODO : 
 
     Returns
     -------
-    c, c_xr : c value as complex and as Xrange
+    c, c_xr : c value as complex # and as Xrange
     """
     # Case cartesian
     if projection == proj_cartesian:
@@ -2375,6 +2358,16 @@ def ref_path_c_from_pix(pix, dx, center, xy_ratio, theta, projection): # TODO : 
         offset = rho * (np.cos(phi) + 1j * np.sin(phi))
 
     return offset + center
+
+@numba.njit
+def fill1d_ref_path_c_from_pix(c_pix, dx, center, xy_ratio, theta, projection,
+                               c_out):
+    """ same but fills in-place a 1d vec """
+    nx = c_pix.shape[0]
+    for i in range(nx):
+        c_out[i] = ref_path_c_from_pix(
+            c_pix[i], dx, center, xy_ratio, theta, projection
+        )
 
 #        elif self.projection == "spherical":
 #            dr_sc = np.sqrt(dx_vec**2 + dy_vec**2) / max(dx, dy) * np.pi

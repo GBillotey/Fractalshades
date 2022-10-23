@@ -87,11 +87,11 @@ class Postproc_batch:
                 f"postproc.field_count bigger than 2: {postproc.field_count}"
             )
 
-    def set_chunk_data(self, chunk_slice, chunk_mask, Z, U, stop_reason,
+    def set_chunk_data(self, chunk_slice, chunk_mask, c_pt, Z, U, stop_reason,
             stop_iter, complex_dic, int_dic, termination_dic):
         # self.chunk_slice = chunk_slice
         self.raw_data[chunk_slice] = (
-            chunk_mask, Z, U, stop_reason, stop_iter,
+            chunk_mask, c_pt, Z, U, stop_reason, stop_iter,
             complex_dic, int_dic, termination_dic
         )
         self.context[chunk_slice] = dict()
@@ -122,6 +122,7 @@ class Postproc:
         """
         self.batch = None
         self._holomorphic = None
+        self.float_dt = np.dtype(fs.settings.postproc_dtype)
 
     def link_batch(self, batch):
         """
@@ -224,7 +225,7 @@ class Raw_pp(Postproc):
         key = self.key
         # (params, codes) = fractal.reload_params(calc_name)
         codes = fractal._calc_data[calc_name]["saved_codes"]
-        (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
+        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
          termination_dic) = self.raw_data[chunk_slice]
         
         kind = fractal.kind_from_code(self.key, codes)
@@ -328,26 +329,25 @@ class Continuous_iter_pp(Postproc):
     def __getitem__(self, chunk_slice):
         """  Returns the real Iteration number
         """
-        (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
+        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
          termination_dic) = self.raw_data[chunk_slice]
-
-
-        n = stop_iter[0, :]
+        # /!\ Do need a copy here, as otherwise the stored data are affected
+        # through the memory mapping:
+        n = np.copy(stop_iter[0, :])
         potential_dic = self.potential_dic
-        zn = self.get_zn(Z, complex_dic) #["zn"], :]
+        zn = self.get_zn(Z, complex_dic)
 
         if potential_dic["kind"] == "infinity":
             d = potential_dic["d"]
             a_d = potential_dic["a_d"]
             M = potential_dic["M"]
-            nu_frac = Continuous_iter_pp_infinity(zn, d, a_d, M)
-#            k = np.abs(a_d) ** (1. / (d - 1.))
-#            # k normaliszation corefficient, because the formula given
-#            # in https://en.wikipedia.org/wiki/Julia_set                    
-#            # suppose the highest order monome is normalized
-#            nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(M * k))
-#                        / np.log(d))
-#
+            (nu_frac, back_iter, delta_n, zn_orbit
+             ) = Continuous_iter_pp_infinity(c_pt, zn, d, a_d, M)
+            n += delta_n + back_iter
+
+            print("nu_frac", nu_frac.dtype, nu_frac.shape, np.max(nu_frac), np.min(nu_frac))
+            print("back_iter", back_iter)
+
         elif potential_dic["kind"] == "convergent":
             eps = potential_dic["epsilon_cv"]
             attractivity = Z[complex_dic["attractivity"]]
@@ -355,14 +355,8 @@ class Continuous_iter_pp(Postproc):
             nu_frac = Continuous_iter_pp_convergent(
                 zn, eps, attractivity, z_star
             )
-            
-#            nu_frac = + np.log(eps / np.abs(zn - z_star)  # nu frac > 0
-#                               ) / np.log(np.abs(alpha))
-#
-#        elif potential_dic["kind"] == "transcendent":
-#            # Not possible to define a proper potential for a 
-#            # transcendental fonction
-#            nu_frac = 0.
+            back_iter = 0
+            zn_orbit = None
 
         else:
             raise NotImplementedError("Potential 'kind' unsupported")
@@ -373,15 +367,18 @@ class Continuous_iter_pp(Postproc):
         # at current max_iter, so its status is undefined.
         nu_div, nu_mod = np.divmod(-nu_frac, 1.)
         nu_frac = - nu_mod
-        n = n - nu_div.astype(n.dtype) # need explicit casting to int
-
-        nu = (n - self._floor_iter) + nu_frac
-        val = nu
+#        n = n - nu_div.astype(n.dtype) # need explicit casting to int
+#
+#        nu = (n - self._floor_iter) + nu_frac
+#        val = nu
+        val = n + nu_frac
 
         context_update = {
             "potential_dic": self.potential_dic,
             "nu_frac": nu_frac,
-            "n": n
+            "n": n,
+            "back_iter": back_iter,
+            "zn_orbit": zn_orbit
         }
 
         return val, context_update
@@ -403,13 +400,14 @@ class Fieldlines_pp(Postproc):
         Parameters
         ==========
         n_iter :  int
-            the number of orbit points used for the average
+            the number of orbit points used for the averaging (usually below
+            10)
         swirl : float between -1. and 1.
             adds a random dephasing effect between each successive orbit point
         damping_ratio : float
             a geometric damping is used, damping ratio represent the ratio
             between the scaling coefficient of the last orbit point and 
-            the first orbit point. 
+            the first orbit point: damping_ratio = z_n(n_iter) / z_n(1). 
             For no damping (arithmetic mean) use 1.
 
         Notes
@@ -429,49 +427,37 @@ class Fieldlines_pp(Postproc):
         """  Returns 
         """
         nu_frac = self.ensure_context(chunk_slice, "nu_frac")
-        potential_dic = self.ensure_context(chunk_slice, "potential_dic")
-        d = potential_dic["d"]
-        a_d = potential_dic["a_d"]
+        zn_orbit = self.ensure_context(chunk_slice, "zn_orbit")
 
-        (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
+        potential_dic = self.ensure_context(chunk_slice, "potential_dic")
+#        d = potential_dic["d"]
+#        a_d = potential_dic["a_d"]
+
+        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
             termination_dic) = self.raw_data[chunk_slice]
         zn = Z[complex_dic["zn"], :]
 
         if potential_dic["kind"] == "infinity":
-            # C1-smooth phase angle for z -> a_d * z**d
-            # G. Billotey
-            k_alpha = 1. / (1. - d)       # -1.0 if N = 2
-            k_beta = - d * k_alpha        # 2.0 if N = 2
-            z_norm = zn * a_d**(-k_alpha) # the normalization coeff
-
             n_iter_fl = self.n_iter
             swirl_fl = self.swirl
-            t = [np.angle(z_norm)]
-            val = np.zeros_like(t)
-            val_max = 0
+            damping_ratio = self.damping_ratio
 
-            # Geometric serie, last term being damping_ratio * first term
-            damping = self.damping_ratio ** (1. / (n_iter_fl + 1))
-            di = 1.
-            rg = np.random.default_rng(0)
-            dphi_arr = rg.random(n_iter_fl) * swirl_fl * np.pi
-
-            for i in range(1, n_iter_fl + 1):
-                t += [d * t[i - 1]] # chained list
-                dphi = dphi_arr[i-1]
-                angle = np.sin(t[i-1] + dphi) + (
-                      k_alpha + k_beta * d**nu_frac) * (
-                      np.sin(t[i] + dphi) - np.sin(t[i-1] + dphi))
-                
-                max_angle = 1. #(1 - (k_alpha + k_beta * d**nu_frac))
-                
-                val += di * angle
-                val_max += di * max_angle
-                di *= damping
+            k_fl = np.zeros((n_iter_fl,))
+            phi_fl = np.zeros((n_iter_fl,))
             
-            val = val / val_max
+            # Geometric serie, last term being damping_ratio * first term
+            damping = damping_ratio ** (1. / (n_iter_fl + 1))
+            for i in range(n_iter_fl):
+                k_fl[i] = damping ** i
+            k_fl = k_fl / np.sum(k_fl)
 
-            del t
+            # Adding a random dephasing
+            rg = np.random.default_rng(0)
+            phi_fl = rg.random(n_iter_fl) * swirl_fl * np.pi
+
+            val = Fieldlines_pp_infinity(
+               c_pt, zn_orbit, nu_frac, n_iter_fl, k_fl, phi_fl
+            )
 
         elif potential_dic["kind"] == "convergent":
             alpha = 1. / Z[complex_dic["attractivity"]]
@@ -487,37 +473,6 @@ class Fieldlines_pp(Postproc):
 
         return val, {}
 
-#class TIA_pp(Postproc):
-#    def __init__(self, n_iter=5):
-#        """ Triangular average inequality - TODO """
-#        super().__init__()
-#        self.n_iter = n_iter
-#
-#    def __getitem__(self, chunk_slice):
-#        """  Returns 
-#        """
-#        nu_frac = self.ensure_context("nu_frac") #- 2
-#        potential_dic = self.ensure_context("potential_dic")
-#        d = potential_dic["d"]
-#        a_d = potential_dic["a_d"]
-#
-#        (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-#            termination_dic) = self.raw_data# (chunk_slice)
-#        zn = Z[complex_dic["zn"], :]
-#        c = np.ravel(self.fractal.c_chunk(chunk_slice))
-#
-#        if potential_dic["kind"] == "infinity":
-#            val = None
-#            raise NotImplementedError("TODO LIST")
-#
-#        elif potential_dic["kind"] == "convergent":
-#            raise NotImplementedError()
-#        else:
-#            raise ValueError(
-#                "Unsupported potential '{}' for field lines".format(
-#                        potential_dic["kind"]))
-#
-#        return val, {}
 
 class DEM_normal_pp(Postproc):
     field_count = 2
@@ -571,7 +526,7 @@ class DEM_normal_pp(Postproc):
         """  Returns the normal as a complex (x, y, 1) is the normal vec
         """
         potential_dic = self.ensure_context(chunk_slice, "potential_dic")
-        (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
+        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
             termination_dic) = self.raw_data[chunk_slice] # (chunk_slice)
         zn = self.get_zn(Z, complex_dic) #["zn"], :]
         
@@ -678,7 +633,7 @@ class DEM_pp(Postproc):
     def __getitem__(self, chunk_slice):
         """  Returns the DEM - """
         potential_dic = self.ensure_context(chunk_slice,"potential_dic")
-        (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
+        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
             termination_dic) = self.raw_data[chunk_slice]
 
         zn = self.get_zn(Z, complex_dic) #Z[complex_dic["zn"], :]
@@ -754,7 +709,7 @@ class Attr_normal_pp(Postproc):
     def __getitem__(self, chunk_slice):
         """  Returns the normal as a complex (x, y, 1) is the normal vec
         """
-        (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
+        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
             termination_dic) = self.raw_data[chunk_slice]
         attr = np.copy(Z[complex_dic["attractivity"], :])
         dattrdc = np.copy(Z[complex_dic["dattrdc"], :])
@@ -800,7 +755,7 @@ class Attr_pp(Postproc):
     def __getitem__(self, chunk_slice):
         """  Returns the normal as a complex (x, y, 1) is the normal vec
         """
-        (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
+        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
             termination_dic) = self.raw_data[chunk_slice]
         # Plotting the 'domed' height map for the cycle attractivity
         attr = Z[complex_dic["attractivity"], :]
@@ -964,21 +919,217 @@ class Fractal_array:
 # Numba Nogil implementations
         
 @numba.njit(nogil=True, fastmath=True)
-def Continuous_iter_pp_infinity(zn, d, a_d, M):
+def Continuous_iter_pp_infinity(c, zn, d, a_d, M):
+    # Rigorously, the continuous is a limit for n -> +inf. For lower M
+    # it might be too inacurate, but lower M are also desirable for nice 
+    # "orbit averages".
+    # We will use continuous iteration with a higher cutoff, and keep
+    # a relevant zn value as start of the orbit (some alignment is necessary)
+    M_cutoff = 1000.
+    safety_factor = 0.1
+
+    # How many iterations should we be able to safely 'jump' before reaching 
+    # the new limit M_cutoff
+    back_iter = np.log(np.log(M_cutoff) / np.log(M)) / np.log(d)
+    if back_iter <= 1 + safety_factor:
+        # No interest to use M_cutoff instead of M
+        back_iter = 0
+        M2 = M
+    else:
+        # zn can be used as orbit start, but in some case we might need to 
+        # iterate it more
+        back_iter = int(back_iter - safety_factor)
+        M2 = M_cutoff
+
+    zn2 = np.copy(zn)
+    zn_orbit = np.copy(zn)
+    npts = zn.shape[0]
+    delta_n = np.zeros((npts,), dtype=np.int32)
+
+    for i in range(npts):
+        for j in range(back_iter):
+            zn2[i] = test_iterate(zn2[i], c[i])
+        # now zn_orbit is 'back_iter' iterations backward zn2
+        # We iterate both simultaneaously until we hit the limit circle
+        # for zn2
+        count = 0
+        while (np.abs(zn2[i]) < M2) and (count < 3):
+            zn2[i] = test_iterate(zn2[i], c[i])
+            zn_orbit[i] = test_iterate(zn_orbit[i], c[i])
+            delta_n[i] += 1
+            count += 1
+
     k = np.abs(a_d) ** (1. / (d - 1.))
-    # k normaliszation corefficient, because the formula given
+    # k normalisation corefficient, because the formula given
     # in https://en.wikipedia.org/wiki/Julia_set                    
     # suppose the highest order monome is normalized
-    nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(M * k))
-                / np.log(d))
-    return nu_frac
+    nu_frac = -(np.log(np.log(np.abs(zn2 * k)) / np.log(M2 * k)) / np.log(d))
+
+    return nu_frac, back_iter, delta_n, zn_orbit
+
 
 @numba.njit(nogil=True, fastmath=True)
 def Continuous_iter_pp_convergent(zn, eps, attractivity, z_star):
     alpha = 1. / attractivity
-    nu_frac = + np.log(eps / np.abs(zn - z_star)  # nu frac > 0
-                               ) / np.log(np.abs(alpha))
+    nu_frac = np.log(eps / np.abs(zn - z_star)) / np.log(np.abs(alpha))
     return nu_frac
+
+
+@numba.njit(nogil=True, fastmath=True)
+def test_iterate(z, c):
+    return z * z + c
+
+@numba.njit(nogil=True, fastmath=True)
+def test_iterate_angle(alpha):
+    # 2 * alpha, cropped to -pi, pi
+    return (2. * alpha) # + np.pi) % (2 * np.pi) - np.pi
+
+# Catmull-Rom polynomial
+@numba.njit(nogil=True, fastmath=True)
+def cm_H0(x):
+     return 0.5 * x * (-x + x ** 2)
+ 
+@numba.njit(nogil=True, fastmath=True)
+def cm_H1(x):
+     return 0.5 * x * (1. + 4.* x - 3. * x ** 2)
+
+@numba.njit(nogil=True, fastmath=True)
+def cm_H2(x):
+     return 1. + 0.5 * x * (-5. * x + 3. * x ** 2)
+
+@numba.njit(nogil=True, fastmath=True)
+def cm_H3(x):
+     return 0.5 * x * (-1. + 2. * x - x ** 2)
+
+
+#
+@numba.njit(nogil=True, fastmath=True)
+def Fieldlines_pp_infinity(
+    c_pt, zn, nu_frac, n_iter_fl, k_fl, phi_fl
+):
+    # if potential_dic["kind"] == "infinity":
+    # C1-smooth phase angle for z -> a_d * z**d
+    # G. Billotey
+    M_cutoff = 1000.
+    # note : -1 < nu_frac <= 0. 
+
+    nvec, = zn.shape
+    orbit_z = np.empty((nvec, n_iter_fl + 3), dtype=zn.dtype)
+    orbit_angle = np.empty((nvec, n_iter_fl + 3), dtype=zn.dtype)
+    val = np.zeros((nvec), dtype=zn.dtype)
+    
+    for j in range(nvec):
+        z_loc = zn[j]
+        orbit_z[j, 0] = z_loc
+        orbit_angle[j, 0] = np.angle(z_loc)
+    
+    for i in range(n_iter_fl + 2):
+        for j in range(nvec):
+            z_loc = orbit_z[j, i]
+            if abs(z_loc) > M_cutoff:
+                orbit_z[j, i + 1] = M_cutoff + 1 # flag
+                orbit_angle[j, i + 1] = test_iterate_angle(orbit_angle[j, i])
+            else:
+                z_loc = test_iterate(orbit_z[j, i], c_pt[j])
+                orbit_z[j, i + 1] = z_loc
+                orbit_angle[j, i + 1] = np.angle(z_loc)
+    
+    # Now lets do some smoothing...
+    for j in range(nvec):
+        d = -nu_frac[j]
+        # Catmull-Rom spline weighting polynomials.
+        a0 = cm_H0(d)
+        a1 = cm_H1(d)
+        a2 = cm_H2(d)
+        a3 = cm_H3(d)
+        for i in range(n_iter_fl):
+            val_loc = (
+                a0 * np.cos(orbit_angle[j, i] + phi_fl[i])
+                + a1 * np.cos(orbit_angle[j, i + 1] + phi_fl[i])
+                + a2 * np.cos(orbit_angle[j, i + 2] + phi_fl[i])
+                + a3 * np.cos(orbit_angle[j, i + 3] + phi_fl[i])
+            ) * k_fl[i]
+            val[j] += val_loc
+
+    return val
+    
+    
+    
+    
+    
+
+    
+    
+    
+    
+    
+#    k_alpha = 1. / (1. - d)       # -1.0 if N = 2
+#    k_beta = - d * k_alpha        # 2.0 if N = 2
+#    z_norm = zn * a_d ** (-k_alpha) # the normalization coeff
+#
+#    t = [np.angle(z_norm)]
+#    z = [t]
+#    val = np.zeros_like(t)
+#    val_max = 0
+#
+#    # Geometric serie, last term being damping_ratio * first term
+#    damping = damping_ratio ** (1. / (n_iter_fl + 1))
+#    di = 1.
+#    rg = np.random.default_rng(0)
+#    dphi_arr = rg.random(n_iter_fl) * swirl_fl * np.pi
+#
+#    for i in range(1, n_iter_fl + 1):
+#        if t_vec[]
+#        t += [d * t[i - 1]] # chained list
+#        dphi = dphi_arr[i-1]
+#        angle = np.sin(t[i-1] + dphi) + (
+#              k_alpha + k_beta * d**nu_frac) * (
+#              np.sin(t[i] + dphi) - np.sin(t[i-1] + dphi))
+#        
+#        max_angle = 1. #(1 - (k_alpha + k_beta * d**nu_frac))
+#        
+#        val += di * angle
+#        val_max += di * max_angle
+#        di *= damping
+#    
+#    val = val / val_max
+#    return val
+
+def Fieldlines_pp_infinity_old(
+    zn, nu_frac, d, a_d, n_iter_fl, swirl_fl, damping_ratio
+):
+    # if potential_dic["kind"] == "infinity":
+    # C1-smooth phase angle for z -> a_d * z**d
+    # G. Billotey
+    k_alpha = 1. / (1. - d)       # -1.0 if N = 2
+    k_beta = - d * k_alpha        # 2.0 if N = 2
+    z_norm = zn * a_d ** (-k_alpha) # the normalization coeff
+
+    t = [np.angle(z_norm)]
+    val = np.zeros_like(t)
+    val_max = 0
+
+    # Geometric serie, last term being damping_ratio * first term
+    damping = damping_ratio ** (1. / (n_iter_fl + 1))
+    di = 1.
+    rg = np.random.default_rng(0)
+    dphi_arr = rg.random(n_iter_fl) * swirl_fl * np.pi
+
+    for i in range(1, n_iter_fl + 1):
+        t += [d * t[i - 1]] # chained list
+        dphi = dphi_arr[i-1]
+        angle = np.sin(t[i-1] + dphi) + (
+              k_alpha + k_beta * d**nu_frac) * (
+              np.sin(t[i] + dphi) - np.sin(t[i-1] + dphi))
+        
+        max_angle = 1. #(1 - (k_alpha + k_beta * d**nu_frac))
+        
+        val += di * angle
+        val_max += di * max_angle
+        di *= damping
+    
+    val = val / val_max
+    return val
 
 #        elif potential_dic["kind"] == "transcendent":
 #            # Not possible to define a proper potential for a 

@@ -3,8 +3,10 @@ import inspect
 import typing
 import functools
 import os
+import copy
 import pickle
 import logging
+import enum
 
 #import dataclasses
 import mpmath
@@ -17,6 +19,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtCore import pyqtSignal, pyqtSlot
 
 import fractalshades as fs
+import fractalshades.colors
 
 """
 Implementation of a GUI following a Model-View-Presenter
@@ -60,6 +63,92 @@ logger = logging.getLogger(__name__)
 
 separator = typing.TypeVar('gui_separator')
 collapsible_separator = typing.TypeVar('gui_collapsible_separator')
+
+
+
+def default_val(utype):
+    """ Returns a generic default value for a given type"""
+    if utype is int:
+        return 0
+    elif utype is float:
+        return 0.
+    elif utype is mpmath.mpf:
+        return mpmath.mpf("0.0")
+    elif utype is str:
+        return ""
+    elif utype is bool:
+        return False
+    elif utype is type(None):
+        return None
+    elif typing.get_origin(utype) is typing.Literal:
+        return typing.get_args(utype)[0] # first element of the Literal
+    elif typing.get_origin(utype) is typing.Union:
+        return default_val(typing.get_args(utype)[0]) # first def of the Union
+    else:
+        raise NotImplementedError("No default for this subtype {}".format(
+                                   utype))
+
+def can_cast(val, cast_type):
+    """ Returns True if val is a valid default value for a given type"""
+    if typing.get_origin(cast_type) is typing.Literal:
+        return (val in typing.get_args(cast_type))
+    try:
+        casted = cast_type(val)
+        return (casted == val)
+    except (ValueError, TypeError):
+        return False
+
+
+def matching_instance(val, cast_type):
+    if typing.get_origin(cast_type) is typing.Literal:
+        return False
+    else:
+        return isinstance(val, cast_type)
+
+def best_match(val, types):
+    # Best match : casting litterals
+    is_litteral = tuple(typing.get_origin(t) is typing.Literal for t in types)
+    casted = tuple(can_cast(val, t) for t in types)
+    match = is_litteral and casted
+    if any(match):
+        index = match.index(max(match))
+        return index, types[index]
+    # then instance
+    match = tuple(matching_instance(val, t) for t in types)
+    if any(match):
+        index = match.index(max(match))
+        return index, types[index]
+    # then can_cast
+    match = casted
+    if any(match):
+        index = match.index(max(match))
+        return index, types[index]
+    raise ValueError("No match for val {} and types {}".format(val, types))
+
+def type_name(naming_type):
+    if typing.get_origin(naming_type) is typing.Literal:
+        return("choice")
+    else:
+        return naming_type.__name__
+
+def typing_litteral_choices(ptype, p_name=None):
+    # where : 
+    uargs = typing.get_args(ptype)
+    choices = []
+    for item in uargs:
+        if isinstance(item, str):
+            choices += [item]
+        elif issubclass(item.__class__, enum.EnumMeta):
+            choices += [e.name for e in item] 
+        else:
+            raise ValueError(
+                f"param {p_name}: Wrong type for typing.Literal: "
+                f"{type(item)}"
+            )
+    return choices
+
+
+
 
 class Model(QtCore.QObject):
     """
@@ -150,6 +239,7 @@ class Model(QtCore.QObject):
     def model_changerequest_slot(self, keys, val):
         """ A change has been requested by  a Presenter i.e object
         not holding the data """
+        print(">>> in presenter change request slot", keys)
         if len(keys) == 0:
             # This change can be handled at main model level
             self._model[keys] = val
@@ -299,12 +389,19 @@ class Func_submodel(Submodel):
             fd[(i_param, "type_def")] = type_index #type_match
 
         elif origin is typing.Literal:
+            choices = typing_litteral_choices(ptype, p_name=None)
             fd[(i_param, "n_types")] = 0
-            fd[(i_param, "n_choices")] = len(uargs)
+            fd[(i_param, "n_choices")] = len(choices)
             fd[(i_param, "type_sel")] = 0
             fd[(i_param, "type_def")] = 0
-            fd[(i_param, "choices")] = uargs
-            fd[(i_param, "val_def")] = uargs.index(default)
+            fd[(i_param, "choices")] = choices
+            try:
+                fd[(i_param, "val_def")] = choices.index(default)
+            except ValueError:
+                raise ValueError(
+                    f"param {name}: default provided '{default}' does not "
+                    f"match the list of autorized values {choices}"
+                )
 
         elif origin is None:
             fd[(i_param, "n_types")] = 0
@@ -553,183 +650,212 @@ class Presenter(QtCore.QObject):
 
 
 class Colormap_presenter(Presenter):
-    # model_notification = pyqtSignal(object, object, object)
     
     model_changerequest = pyqtSignal(object, object)
-    
-    
-    cmap_arr_attr = ["colors", "kinds", "grad_npts", "grad_funcs"]
-    cmap_arr_roles = [Qt.ItemDataRole.BackgroundRole,
-                      Qt.ItemDataRole.DisplayRole,
-                      Qt.ItemDataRole.DisplayRole,
-                      Qt.ItemDataRole.DisplayRole] # TODO
 
-    cmap_attr =  cmap_arr_attr + ["extent"]
-    extent_choices = ["mirror", "repeat", "clip"]
-    
-    
-   # kwargs = ["colors", "kinds", "grad_npts", "grad_funcs"]
+    # Define titles
+    param_title = "Cmap parameters"
+    table_title = "Cmap data"
 
-    def __init__(self, model, mapping): #, register_key):
+    # Define columns
+    col_arr_items = ["colors", "kinds", "grad_npts", "grad_funcs"]
+    col_arr_dtypes = [
+        fs.colors.Color,
+        fs.colors.Fractal_colormap.kind_type,
+        int,
+        fs.numpy_utils.Numpy_expr
+    ]
+
+    # Last line only has the colors activated ! -> special_hook
+    special_hooks = {
+        (1, "row_ranges_func"): (lambda l: l-1),
+        (2, "row_ranges_func"): (lambda l: l-1),
+        (3, "row_ranges_func"): (lambda l: l-1)
+    }
+
+    # Define extra params
+    extra_parameters = ["extent",]
+    extent_choices = typing_litteral_choices(
+        fs.colors.Fractal_colormap.extent_type
+    )
+
+    def __init__(self, model, mapping):
         """
         Presenter for a `fractalshades.colors.Fractal_colormap` parameter
         Mapping expected : mapping = {"cmap": cmap_key}
         """
-        super().__init__(model, mapping) #, register_key)
+        print("in INIT", "Colormap_presenter")
+        super().__init__(model, mapping)
+        self.reset_old_data()
 
     @property
-    def cmap(self):
+    def data(self):  # was : cmap
         # To use as a parameter presenter, the only key should be the class
         # name (see `on_presenter` from `Func_widget`)
-        return self["Colormap_presenter"] # ie self._model[self._mapping["Colormap_presenter"]]
-
+        return self["Colormap_presenter"]
+    
+    def reset_old_data(self):
+        self.old_data = copy.deepcopy(self.data)
+    
     @property
-    def cmap_dic(self):
-        cmap = self.cmap
-        return {attr: getattr(cmap, attr) for attr in self.cmap_attr}
+    def n_rows(self):
+        return len(self.data.colors)
 
-    @staticmethod
-    def default_cmap_attr(attr):
-        if attr == "colors":
-            return [0.5, 0.5, 0.5]
-        elif attr == "kinds":
-            return "Lch"
-        elif attr == "grad_npts":
-            return 32
-        elif attr == "grad_funcs":
-            return "x"
-        else:
-            raise ValueError(attr)
+    def col_data(self, col_item):
+        """ Return the data column to be shown """
+        return getattr(self.data, col_item)
 
+    def old_col_data(self, col_item):
+        """ Return the data column to be shown """
+        return getattr(self.old_data, col_item)
 
     @pyqtSlot(object, object)
-    def cmap_user_modified_slot(self, key, val):
-
+    def data_user_modified_slot(self, key, val):
+        """ Modifies in-place the cmap """
         if key == "size":
-            cmap = self.adjust_size(val)
+            self.adjust_size(val)
         elif key == "extent":
-            cmap = self.cmap
-            cmap.extent = val
+            self.data.extent = val
         elif key == "table":
-            cmap = self.update_table(val)
+            self.update_table(val)
         else:
             raise ValueError(key)
         
+        # Record that the template has been modified
+        self.data._template = None
+
+        self.model_changerequest.emit(
+            self._mapping["Colormap_presenter"], self.data
+        )
+
+    def adjust_size(self, val):
+        """
+        Adjust in place the size of the referenced data array
+        """
+        self.data.adjust_size(val)
+
+    def update_table(self, item):
+        """
+        Modifies in-place the referenced data array
+        item : (irow, icol, item_data)
+        """
+        (irow, icol, item_data) = item
+        col_key = self.col_arr_items[icol]
+        self.data.modify_item(col_key, irow, item_data)
+
+
+class Lighting_presenter(Presenter):
+    model_changerequest = pyqtSignal(object, object)
+    
+    lighting_sources_cols = [
+        "colors", "ks_diffuse", "ks_specular", "shininesses",
+        "polar_angles", "azimuth_angles"
+    ]
+    bgr = Qt.ItemDataRole.BackgroundRole
+    dpr = Qt.ItemDataRole.DisplayRole
+    col_arr_roles = [bgr, dpr, dpr, dpr, dpr, dpr] 
+
+    lighting_attr =  ["k_ambient", "color_ambient"]
+    ambiant_intensity_type = float
+    ambiant_color_type = fs.colors.Color
+
+    def __init__(self, model, mapping):
+        """
+        Presenter for a `fractalshades.colors.Fractal_colormap` parameter
+        Mapping expected : mapping = {"cmap": cmap_key}
+        """
+        super().__init__(model, mapping)
+
+    @property
+    def lighting(self):
+        # To use as a parameter presenter, the only key should be the class
+        # name (see `on_presenter` from `Func_widget`)
+        return self["Lighting_presenter"]
+
+    @property
+    def lighting_dic(self):
+        lighting = self.lighting
+        return {attr: getattr(lighting, attr) for attr in self.lighting_attr}
+
+    @property
+    def lighting_sources_dic(self):
+        """ list of arrays """
+        return self.lighting.light_sources
+
+    @property
+    def default_ls_kwargs(self):
+        # Used for adding a new light to the table
+        newlighting_template = fs.colors.lighting_register["rough"]
+        ls = newlighting_template.light_sources[0]
+        kwargs = {
+            "k_diffuse": ls["ks_diffuse"],
+            "k_specular": ls["k_specular"],
+            "shininess": ls["shininess"],
+            "angles": ls["_angles"],
+            "color": ls["color"],
+        }
+        return kwargs
+
+    @pyqtSlot(object, object)
+    def lighting_user_modified_slot(self, key, val):
+
+        if key == "size":
+            lighting = self.adjust_size(val)
+        elif key == "k_ambient":
+            self.lighting.k_ambient = val
+        elif key == "color_ambient":
+            self.lighting.color_ambient = np.asarray(val)
+        elif key == "table":
+            cmap = self.update_update_table(val)
+        else:
+            raise ValueError(key)
+
         cmap._template = None
 
         self.model_changerequest.emit(
-                self._mapping["Colormap_presenter"], cmap
+                self._mapping["Lighting_presenter"], lighting
         )
-    
-    def adjust_size(self, val):
-        npts = self.cmap.n_probes
-        cmap_dic = self.cmap_dic
-        if val < npts:
-            for attr in self.cmap_arr_attr:
-                # Should work even for multidomentionnal ndarray (e.g., colors)
-                cmap_dic[attr] = cmap_dic[attr][:val] #, ...]
-        elif  val > npts:
-            for attr in self.cmap_arr_attr:
-                old_arr = cmap_dic[attr]
-                default = self.default_cmap_attr(attr)
-                if isinstance(old_arr, np.ndarray):
-                    old_arr = cmap_dic[attr]
-                    sh = (val,) + old_arr.shape[1:]
-                    new_arr = np.empty(sh, old_arr.dtype)
-                    new_arr[:npts, ...] = old_arr
-                    new_arr[npts:, ...] = default
-                else:
-                    new_arr = old_arr + [default] * (val - npts)
-                cmap_dic[attr] = new_arr
 
-        return fs.colors.Fractal_colormap(**cmap_dic)
-        self.build_dict()
-    
+    def adjust_size(self, val):
+        npts = self.lighting.n_ls
+        ls_dic = self.lighting_sources_dic# [row]
+
+        if val < npts:
+            # Just removes the other lightsources
+            ls_dic[:] = ls_dic[:val]
+
+        elif  val > npts:
+            self.lighting.add_light_source(**self.default_ls_kwargs)
+
+        return self.lighting
+
+
     def update_table(self, item):
         """ item : modified QTableWidgetItem """
+        # TODO: we modifiy in place, check if we should duplicate this logic
+        # for cmap events
         row, col = item.row(), item.column()
-        role = self.cmap_arr_roles[col]
-        kwarg_key = self.cmap_arr_attr[col]
 
-        cmap_dic = self.cmap_dic
+        row_ls_dic = self.lighting_sources_dic[row]
 
-
-        modified_kwarg = cmap_dic[kwarg_key]
+        col_key = self.lighting_sources_cols[col]
+        role = self.col_arr_roles[col]
         data = item.data(role)
-        if col == 0:
-            modified_kwarg[row] = [data.redF(), data.greenF(), data.blueF()]
-        else:
-            modified_kwarg[row] = data
 
-        cmap_dic[kwarg_key] = modified_kwarg
-        return fs.colors.Fractal_colormap(**cmap_dic)
+        if col_key == "colors": # colors
+            row_ls_dic["color"] = np.asarray(
+                    [data.redF(), data.greenF(), data.blueF()]
+            )
+        elif col_key in ["ks_diffuse", "ks_specular"]:
+            ls_key = col_key[0] + col_key[2:]
+            row_ls_dic[ls_key] = data
+        elif col_key == "shininesses":
+            row_ls_dic["shininess"] = data
+        elif col_key == "polar_angles":
+            row_ls_dic["angles"] = (data, row_ls_dic["angles"][1])
+        elif col_key == "azimuth_angles":
+            row_ls_dic["angles"] = (row_ls_dic["angles"][0], data)
 
-
-
-def default_val(utype):
-    """ Returns a generic default value for a given type"""
-    if utype is int:
-        return 0
-    elif utype is float:
-        return 0.
-    elif utype is mpmath.mpf:
-        return mpmath.mpf("0.0")
-    elif utype is str:
-        return ""
-    elif utype is bool:
-        return False
-    elif utype is type(None):
-        return None
-    elif typing.get_origin(utype) is typing.Literal:
-        return typing.get_args(utype)[0] # first element of the Literal
-    elif typing.get_origin(utype) is typing.Union:
-        return default_val(typing.get_args(utype)[0]) # first def of the Union
-    else:
-        raise NotImplementedError("No default for this subtype {}".format(
-                                   utype))
-
-def can_cast(val, cast_type):
-    """ Returns True if val is a valid default value for a given type"""
-    if typing.get_origin(cast_type) is typing.Literal:
-        return (val in typing.get_args(cast_type))
-    try:
-        casted = cast_type(val)
-        return (casted == val)
-    except (ValueError, TypeError):
-        return False
-
-
-def matching_instance(val, cast_type):
-    if typing.get_origin(cast_type) is typing.Literal:
-        return False
-    else:
-        return isinstance(val, cast_type)
-
-def best_match(val, types):
-    # Best match : casting litterals
-    is_litteral = tuple(typing.get_origin(t) is typing.Literal for t in types)
-    casted = tuple(can_cast(val, t) for t in types)
-    match = is_litteral and casted
-    if any(match):
-        index = match.index(max(match))
-        return index, types[index]
-    # then instance
-    match = tuple(matching_instance(val, t) for t in types)
-    if any(match):
-        index = match.index(max(match))
-        return index, types[index]
-    # then can_cast
-    match = casted
-    if any(match):
-        index = match.index(max(match))
-        return index, types[index]
-    raise ValueError("No match for val {} and types {}".format(val, types))
-
-def type_name(naming_type):
-    if typing.get_origin(naming_type) is typing.Literal:
-        return("choice")
-    else:
-        return naming_type.__name__
-
+        return self.lighting
 
 

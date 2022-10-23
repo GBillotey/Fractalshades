@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import logging
+
 import numpy as np
+import numba
 #from numpy.lib.format import open_memmap
 #import matplotlib.colors
 #from matplotlib.figure import Figure
@@ -826,7 +828,7 @@ def _2d_CIELab_to_XYZ(Lab, nx, ny):
     
 
 class Blinn_lighting:
-    def __init__(self, k_Ambient, color_ambient):
+    def __init__(self, k_ambient, color_ambient):
         """
         This class holds the properties for the scene lightsources. Its
         instances can be passed as a parameter to `Color_layer.shade`.
@@ -841,7 +843,7 @@ class Blinn_lighting:
         """
         # ref : https://en.wikipedia.org/wiki/Blinn%E2%80%93Phong_reflection_model
         # http://www.codinglabs.net/article_physically_based_rendering_cook_torrance.aspx
-        self.k_Ambient = k_Ambient
+        self.k_ambient = k_ambient
         self.color_ambient = np.asarray(color_ambient)
         self.light_sources = []
 
@@ -883,7 +885,7 @@ class Blinn_lighting:
     def shade(self, rgb, normal):
         nx, ny, _ = rgb.shape
         XYZ = _2d_rgb_to_XYZ(rgb, nx, ny)
-        XYZ_shaded = XYZ * self.k_Ambient * self.color_ambient
+        XYZ_shaded = XYZ * self.k_ambient * self.color_ambient
         for ls in self.light_sources:
             XYZ_shaded += self.partial_shade(ls, XYZ, normal)
         return _2d_XYZ_to_rgb(XYZ_shaded, nx, ny)
@@ -911,10 +913,6 @@ class Blinn_lighting:
             half_x = np.cos(theta_LS) * np.cos(phi_half)
             half_y = np.sin(theta_LS) * np.cos(phi_half)
             half_z = np.sin(phi_half)
-#            print("DEBUG phi half", phi_half * 180. / np.pi, "(", half_x, half_y, half_z, ")")
-#            print("DEBUG theta_LS phi_LS", theta_LS * 180. / np.pi, phi_LS * 180. / np.pi)
-#
-#            print("DEBUG normal", np.mean( nz), np.mean( np.sqrt(nx**2 + ny**2)), np.mean(nz**2 + nx**2 + ny**2))
 
             specular_coeff = half_x * nx + half_y * ny + half_z * nz
             np.putmask(specular_coeff, specular_coeff < 0., 0.)
@@ -929,8 +927,54 @@ class Blinn_lighting:
                     + ls["k_specular"] * specular[:, :, np.newaxis]  * XYZ_sp)
 
         return res * ls["color"]
+    
+    def _output(self, nx, ny):
+        """ Return a RGB uint8 array of shape (nx, ny, 3)
+        """
+        margin = 1
+        nx_im = nx - 2 * margin
+        ny_im = ny - 2 * margin
 
-        
+        normal = np.empty((nx_im, ny_im), dtype=np.complex128)
+        rgb = 0.5 * np.ones((nx_im, ny_im, 3), dtype=np.float64)
+        _Blinn_lighting_sphere_fill_normal_vec(0.75, normal)
+        img = self.shade(rgb, normal)
+        img = np.uint8(img * 255.999)
+
+        B = np.ones([nx, ny, 3], dtype=np.uint8) * 255
+        B[margin:nx - margin, margin:ny - margin, :] = img
+        return np.flip(np.swapaxes(B, 0, 1), axis=0)
+    
+    @property
+    def n_ls(self):
+        """" Current number of lightsources """
+        return len(self.light_sources)
+
+
+@numba.njit
+def _Blinn_lighting_sphere_fill_normal_vec(kr, normal):
+    # Fills in-place the Open-GL normal map field for a sphere
+    # kr scalar, 0 < kr < 1 (usually ~ 0.75)
+    # normal: 2d vec
+    (nx_im, ny_im) = normal.shape
+    center_x = nx_im / 2.
+    center_y = ny_im / 2.
+    r_sphe = min(center_x, center_y) * kr
+
+    for i in range(nx_im):
+        for j in range(ny_im):
+            ipix = (i - center_x) / r_sphe
+            jpix = (j - center_y) / r_sphe
+            rloc = np.hypot(ipix, jpix)
+            if rloc > 1.:
+                # Flat surface
+                normal[i, j] = 0.
+            else:
+                phi = np.arctan2(jpix, ipix)
+                alpha = np.arcsin(rloc) # 0 where r=0, pi/2 where r=1
+                normal[i, j] = np.sin(alpha) * np.exp(1j * phi)
+
+
 class Overlay_mode:
     def __init__(self, mode, **mode_options):
         """

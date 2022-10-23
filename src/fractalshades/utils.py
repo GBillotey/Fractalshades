@@ -4,6 +4,7 @@ import errno
 import functools
 import copy
 import inspect
+import collections.abc
 
 
 def mkdir_p(path):
@@ -31,6 +32,25 @@ def dic_flatten(nested_dic, key_prefix="", sep="@"):
         # Simple key-value
         res[key_prefix] = nested_dic
     return res
+
+class Protected_mapping(collections.abc.MutableMapping):
+    def __init__(self, dic):
+        self._dict = dic
+    
+    def __getitem__(self, key):
+        return copy.deepcopy(self._dict[key])
+
+    def __iter__(self):
+        return iter(self._dict)
+
+    def __len__(self):
+        return len(self._dict)
+
+    def __setitem__(self, key, value):
+        raise RuntimeError("Attempt to modify a Protected_mapping")
+
+    def __delitem__(self, key):
+        raise RuntimeError("Attempt to modify a Protected_mapping")
 
 
 def exec_no_output(func, *args, **kwargs):
