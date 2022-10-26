@@ -828,7 +828,7 @@ def _2d_CIELab_to_XYZ(Lab, nx, ny):
     
 
 class Blinn_lighting:
-    def __init__(self, k_ambient, color_ambient):
+    def __init__(self, k_ambient, color_ambient, **light_sources):
         """
         This class holds the properties for the scene lightsources. Its
         instances can be passed as a parameter to `Color_layer.shade`.
@@ -847,37 +847,40 @@ class Blinn_lighting:
         self.color_ambient = np.asarray(color_ambient)
         self.light_sources = []
 
-    def add_light_source(self, k_diffuse, k_specular, shininess,
-                         angles, coords=None, color=np.array([1., 1., 1.]),
-                         material_specular_color=None):
+        for ls in light_sources.values():
+            self.add_light_source(**ls)
+
+
+    def add_light_source(
+        self, k_diffuse, k_specular, shininess, polar_angle, azimuth_angle,
+        color=np.array([1., 1., 1.]), material_specular_color=None
+    ):
         """
         Adds a lightsource to the scene
         
         Parameters
         ==========
-        k_diffuse : 3-uplet float
+        k_diffuse: 3-uplet float
             diffuse lighting coefficients, as RGB
-        k_specular : 3-uplet float
+        k_specular: 3-uplet float
             diffuse lighting pourcentage, as RGB
-        shininess : float
+        shininess: float
             Phong exponent for specular model
-        angles : 2-uplet float
-            angles (theta, phi) of light source at infinity, in degree
-            theta = 0 : aligned to x
-            phi = 0 : normal to z (= in xy plane) 
-        coords : 2-uplet float
-            position of lightsource from image center,
-            in pourcentage of current image
-            (if None (default), source is at infinity ; 
-            if non-null, LS_angle has no effect)
+        polar_angle: float
+            angle (theta) of light source direction, in degree
+            theta = 0 if incoming light is in xOz plane
+        azimuth_angle: float
+            angle (phi) of light source direction, in degree
+            phi = 0 if incoming light is in xOy plane
         """
+        angles = (polar_angle, azimuth_angle)
         self.light_sources += [{
             "k_diffuse": np.asarray(k_diffuse),
             "k_specular": np.asarray(k_specular),
             "shininess": shininess,
-            "_angles": angles, 
-            "angles": tuple(a * np.pi / 180. for a in angles),
-            "coords": coords,
+            "polar_angle": polar_angle,
+            "azimuth_angle": azimuth_angle,
+            "angles_radian": tuple(a * np.pi / 180. for a in angles),
             "color": np.asarray(color),
             "material_specular_color": material_specular_color
         }]
@@ -891,7 +894,7 @@ class Blinn_lighting:
         return _2d_XYZ_to_rgb(XYZ_shaded, nx, ny)
 
     def partial_shade(self, ls, XYZ, normal):
-        theta_LS, phi_LS = ls['angles']
+        theta_LS, phi_LS = ls['angles_radian']
 
         # Light source coordinates
         LSx = np.cos(theta_LS) * np.cos(phi_LS)
@@ -944,11 +947,121 @@ class Blinn_lighting:
         B = np.ones([nx, ny, 3], dtype=np.uint8) * 255
         B[margin:nx - margin, margin:ny - margin, :] = img
         return np.flip(np.swapaxes(B, 0, 1), axis=0)
+
+
+    def output_ImageQt(self, nx, ny):
+#https://stackoverflow.com/questions/34697559/pil-image-to-qpixmap-conversion-issue
+        B = self._output(nx, ny)
+        return PIL.ImageQt.ImageQt(PIL.Image.fromarray(B))
+
+
+#    @property
+#    def n_ls(self):
+#        """" Current number of lightsources """
+#        return len(self.light_sources)
     
+    #----------- methods for GUI interaction
     @property
-    def n_ls(self):
-        """" Current number of lightsources """
+    def n_rows(self):
         return len(self.light_sources)
+
+    def modify_item(self, col_key, irow, value):
+        """ In place modification of lightsource irow """
+        print("In OBJECT modify_item", col_key, irow, value, type(value))
+
+        if col_key == "color":
+            self.light_sources[irow][col_key] = np.asarray(value)
+        # Keep aligned the angles in radian
+        else:
+            self.light_sources[irow][col_key] = float(value)
+            if col_key == "polar_angle":
+                self.light_sources[irow]["angles_radian"] = (
+                    float(value) * np.pi / 180.,
+                    self.light_sources[irow]["angles_radian"][1]
+                )
+            if col_key == "azimuth_angle":
+                self.light_sources[irow]["angles_radian"] = (
+                    self.light_sources[irow]["angles_radian"][0],
+                    float(value) * np.pi / 180.,
+                )
+
+
+    def col_data(self, col_key):
+        """ Returns a column of the expected field """
+        ret = []
+        for ls in self.light_sources:
+            ret += [ls[col_key]]
+#            if col_key in["color", "k_diffuse", "k_specular", "shininess"]:
+#                ret += [ls[col_key]]
+#            elif col_key == "polar_angle":
+#                ret += [ls["angles"][0]]
+#            elif col_key == "azimuth_angle":
+#                ret += [ls["angles"][1]]
+#            else:
+#                raise ValueError(col_key)
+        return ret
+
+    @property
+    def default_ls_kwargs(self):
+        return {
+            "k_diffuse": 1.8,
+            "k_specular": 2.0,
+            "shininess": 15.,
+            "polar_angle": 50.,
+            "azimuth_angle": 20.,
+            "color": np.array([1.0, 1.0, 0.95])
+        }
+
+    def adjust_size(self, n_ls):
+        """ Adjust the number of lightsources to n_ls"""
+        n_ls_old = self.n_rows
+        diff = n_ls - n_ls_old
+        if diff < 0:
+            del self.light_sources[diff:]
+        else:
+            for _ in range(diff):
+                self.add_light_source(**self.default_ls_kwargs)
+
+    def script_repr(self):
+        """ Return a string that can be used to restore the colormap
+        """
+        k_ambient_str = repr(self.k_ambient)
+        color_ambient_str = np.array2string(self.color_ambient, separator=', ')
+        lightings_str = ""
+        for ils, ls in enumerate(self.light_sources):
+            k_diffuse = ls["k_diffuse"]
+            k_specular = ls["k_specular"]
+            shininess = ls["shininess"]
+            polar_angle = ls["polar_angle"]
+            azimuth_angle = ls["azimuth_angle"]
+            ls_color_str = np.array2string(ls["color"], separator=', ')
+            matcolor = ls["material_specular_color"]
+            ls_matcolor_str = (
+                None if matcolor is None
+                else np.array2string(matcolor, separator=', ')
+            )
+#            if matcolor is None:
+#                ls_matcolor_str = "None"
+#            else:
+#                ls_matcolor_str = np.array2string(matcolor, separator=', ')
+            lightings_str += (
+                f"    ls{ils}={{\n        "
+                f"'k_diffuse': {k_diffuse},\n        "
+                f"'k_specular': {k_specular},\n        "
+                f"'shininess': {shininess},\n        "
+                f"'polar_angle': {polar_angle},\n        "
+                f"'azimuth_angle': {azimuth_angle},\n        "
+                f"'color': {ls_color_str},\n        "
+                f"'material_specular_color': {ls_matcolor_str}\n"
+                "    },\n"
+            )
+        return (
+            "fs.colors.layers.Blinn_lighting(\n"
+            "    k_ambient={},\n"
+            "    color_ambient={},\n"
+            "{})"
+        ).format(k_ambient_str, color_ambient_str, lightings_str)
+
 
 
 @numba.njit

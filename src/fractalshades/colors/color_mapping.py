@@ -474,11 +474,21 @@ class Fractal_colormap:
         # Is is it a known template ?
         self._template = None
 
+    #~~~~~~~~~~~~~~ GUI interaction methods
+    @property
+    def n_rows(self):
+        return len(self.colors)
 
-    def modify_item(self, attr_key, irow, value):
-        """ In place modifcation of array"""
-        getattr(self, attr_key)[irow] = value
+    def modify_item(self, col_key, irow, value):
+        """ In place modifcation of cmap """
+#        print("in color.Colormap modify_item", col_key, irow, value, type(value))
+        print("In OBJECT modify_item", col_key, irow, value, type(value))
+        getattr(self, col_key)[irow] = value
         self._load_internal_arrays()
+
+    def col_data(self, col_key):
+        """ Returns a column of the expected field """
+        return getattr(self, col_key)
 
     @property
     def default_kind(self):
@@ -525,7 +535,6 @@ class Fractal_colormap:
                 ],
                 axis=0
             )
-
         else:
             # Nothing has changed...
             return
@@ -536,7 +545,7 @@ class Fractal_colormap:
         self._load_internal_arrays()
         
 
-    def _repr(self):
+    def script_repr(self):
         """ Return a string that can be used to restore the colormap
         """
         if hasattr(self, "_template") and self._template is not None:

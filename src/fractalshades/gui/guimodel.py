@@ -301,8 +301,10 @@ if __name__ == "__main__":
 """
 
 def script_repr(obj):
-    if isinstance(obj, (fs.Fractal, fs.colors.Fractal_colormap)):
-        return obj._repr()
+    if hasattr(obj, "script_repr"):
+        return obj.script_repr()
+#    if isinstance(obj, (fs.Fractal, fs.colors.Fractal_colormap)):
+#        return obj._repr()
     return repr(obj)
 
 
@@ -766,86 +768,6 @@ class Collapsible_Param_Box(Param_Box):
         anim.start()
 
 
-
-#class CollapsibleBox(QtWidgets.QWidget):
-#    def __init__(self, title="", parent=None):
-#        super().__init__(parent)
-#
-#        self.toggle_button = QtWidgets.QToolButton(
-#            text=title, checkable=True, checked=False
-#        )
-#        self.toggle_button.setStyleSheet("QToolButton { border: none; }")
-#        self.toggle_button.setToolButtonStyle(
-#            QtCore.Qt.ToolButtonTextBesideIcon
-#        )
-#        self.toggle_button.setArrowType(QtCore.Qt.RightArrow)
-#        self.toggle_button.pressed.connect(self.on_pressed)
-#
-#        self.toggle_animation = QtCore.QParallelAnimationGroup(self)
-#
-#        self.content_area = QtWidgets.QScrollArea(
-#            maximumHeight=0, minimumHeight=0
-#        )
-#        self.content_area.setSizePolicy(
-#            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-#           #  QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
-#        )
-#        self.content_area.setFrameShape(QtWidgets.QFrame.NoFrame)
-#
-#        lay = QtWidgets.QVBoxLayout(self)
-#        lay.setSpacing(0)
-#        lay.setContentsMargins(0, 0, 0, 0)
-#        lay.addWidget(self.toggle_button)
-#        lay.addWidget(self.content_area)
-#
-#        self.toggle_animation.addAnimation(
-#            QtCore.QPropertyAnimation(self, b"minimumHeight")
-#        )
-#        self.toggle_animation.addAnimation(
-#            QtCore.QPropertyAnimation(self, b"maximumHeight")
-#        )
-#        self.toggle_animation.addAnimation(
-#            QtCore.QPropertyAnimation(self.content_area, b"maximumHeight")
-#        )
-#
-#    @QtCore.pyqtSlot()
-#    def on_pressed(self):
-#        checked = self.toggle_button.isChecked()
-#        self.toggle_button.setArrowType(
-#            QtCore.Qt.DownArrow if not checked else QtCore.Qt.RightArrow
-#        )
-#        self.toggle_animation.setDirection(
-#            QtCore.QAbstractAnimation.Forward
-#            if not checked
-#            else QtCore.QAbstractAnimation.Backward
-#        )
-#        self.toggle_animation.start()
-#
-#    def setContentLayout(self, layout):
-#        """ lay = QtWidgets.QVBoxLayout() """
-#        lay = self.content_area.layout()
-#        del lay
-#        self.content_area.setLayout(layout)
-#        collapsed_height = (
-#            self.sizeHint().height() - self.content_area.maximumHeight()
-#        )
-#        content_height = layout.sizeHint().height()
-#        for i in range(self.toggle_animation.animationCount()):
-#            animation = self.toggle_animation.animationAt(i)
-#            animation.setDuration(500)
-#            animation.setStartValue(collapsed_height)
-#            animation.setEndValue(collapsed_height + content_height)
-#
-#        content_animation = self.toggle_animation.animationAt(
-#            self.toggle_animation.animationCount() - 1
-#        )
-#        content_animation.setDuration(500)
-#        content_animation.setStartValue(0)
-#        content_animation.setEndValue(content_height)
-
-
-
-
 class Func_widget(QFrame):
     # Signal to inform the model that a parameter has been modified by the 
     # user.
@@ -919,7 +841,6 @@ class Func_widget(QFrame):
         self._layout.setColumnStretch(2, 0)
 
 
-
     def layout_separator(self, i_param, layout, layout_row):
         """ Adds a separator to the main layout - Returns a handle to the
         separator area sublayout """
@@ -952,14 +873,6 @@ class Func_widget(QFrame):
         name_label.setFont(myFont)
         layout.addWidget(name_label, layout_row, 0, 1, 1)
 
-        # Adds a check-box for default value
-#        if fd[(i_param, "has_def")]:
-#            is_default = self._widgets[(i_param, "is_def")] = QCheckBox()
-#            is_default.setChecked(fd[(i_param, "is_def")])
-#            is_default.stateChanged.connect(functools.partial(
-#                self.on_user_mod, (i_param, "is_def"), is_default.isChecked))
-#            layout.addWidget(is_default, layout_row, 1, 1, 1)
-
         # Handles Union types
         qs = QStackedWidget()
         qs.setSizePolicy(
@@ -969,7 +882,7 @@ class Func_widget(QFrame):
         n_uargs = fd[(i_param, "n_types")]
         if n_uargs == 0:
             utype = fd[(i_param, 0, "type")]
-#            print("utype", utype)
+
             utype_label = QLabel(type_name(utype))
             layout.addWidget(utype_label, layout_row, 2, 1, 1)
             self.layout_uarg(qs, i_param, 0)
@@ -985,7 +898,6 @@ class Func_widget(QFrame):
             ))
             # Connect to the QS
             utypes_combo.currentIndexChanged[int].connect(qs.setCurrentIndex)
-            # utypes_combo.activated.connect(qs.setCurrentIndex)
 
             self._layout.addWidget(utypes_combo, layout_row, 2, 1, 1)
             for utype in range(n_uargs):
@@ -1006,10 +918,9 @@ class Func_widget(QFrame):
         utype = fd[(i_param, i_union, "type")]
 
         uval = fd[(i_param, i_union, "val")]
-#            print("UVAL", uval)
         atom_wget = atom_wget_factory(utype)(utype, uval, self._model)
         self._widgets[(i_param, i_union, "val")] = atom_wget
-#            print("atom_wget", atom_wget, type(atom_wget))
+
         atom_wget.user_modified.connect(functools.partial(
                 self.on_user_mod, (i_param, i_union, "val"),
                 atom_wget.value))
@@ -1029,7 +940,7 @@ class Func_widget(QFrame):
                 w.setParent(None)
                 # Alternative deletion instruction :
                 # w.deleteLater() 
-                # https://stackoverflow.com/questions/41053306/removing-a-widget-from-its-wxpython-parent
+# https://stackoverflow.com/questions/41053306/removing-a-widget-from-its-wxpython-parent
 
     def on_user_mod(self, key, val_callback, *args):
         """ Notify the model of modification by the user of a widget"""
@@ -1412,11 +1323,12 @@ class Atom_fractal_button(QPushButton, Atom_Edit_mixin):
         pass
 
 
-class Qcmap_image(QWidget):
-    """ Widget of a cmap image, expanding width """
-    def __init__(self, parent, cmap, minwidth=200, height=20):
+class Qobject_image(QWidget):
+    """ Widget of an object implementing "output_ImageQt" image,
+    fixed height and  expanding width """
+    def __init__(self, parent, img_object, minwidth=200, height=20):
         super().__init__(parent)
-        self._cmap = cmap
+        self._object = img_object
         self.setMinimumWidth(minwidth)
         self.setMinimumHeight(height)
         self.setMaximumHeight(height)
@@ -1428,27 +1340,48 @@ class Qcmap_image(QWidget):
     def paintEvent(self, evt):
         size = self.size()
         nx, ny = size.width(), size.height()
-        QtGui.QPainter(self).drawImage(0, 0, self._cmap.output_ImageQt(nx, ny))
+        QtGui.QPainter(self).drawImage(0, 0, self._object.output_ImageQt(nx, ny))
 
 
-class Atom_cmap_button(Qcmap_image, Atom_Edit_mixin, Atom_Presenter_mixin):
+#class Qlighting_image(QWidget):
+#    """ Widget of a lighting, expanding width """
+#    def __init__(self, parent, lighting, minwidth=200, height=20):
+#        super().__init__(parent)
+#        self._lighting = lighting
+#        self.setMinimumWidth(minwidth)
+#        self.setMinimumHeight(height)
+#        self.setMaximumHeight(height)
+#        self.setSizePolicy(
+#                QSizePolicy.Policy.Minimum,
+#                QSizePolicy.Policy.Expanding
+#        )
+#
+#    def paintEvent(self, evt):
+#        size = self.size()
+#        nx, ny = size.width(), size.height()
+#        QtGui.QPainter(self).drawImage(
+#            0, 0, self._lighting.output_ImageQt(nx, ny)
+#        )
+
+
+class Atom_cmap_button(Qobject_image, Atom_Edit_mixin, Atom_Presenter_mixin):
     user_modified = pyqtSignal()
     request_presenter = pyqtSignal(object, object)
 
     def __init__(self, atom_type, val, model, parent=None):
         super().__init__(parent, val)
-        self._cmap = None
+        self._object = None
         self.update_cmap(val)
 
     def update_cmap(self, cmap):
         """ cmap: fs.color.Fractal_colormap """
-        self._cmap = cmap
+        self._object = cmap
         self.repaint()
         # Note : we do not emit self.user_modified, this shall be done at
         # Qcmap_editor widget level
 
     def value(self):
-        return self._cmap
+        return self._object
 
     def on_model_event(self, val):
         print("Atom_cmap_button", "on_model_event")
@@ -1458,25 +1391,25 @@ class Atom_cmap_button(Qcmap_image, Atom_Edit_mixin, Atom_Presenter_mixin):
         self.request_presenter.emit(Colormap_presenter, Qcmap_editor)
 
 
-class Atom_lighting_button(Qcmap_image, Atom_Edit_mixin, Atom_Presenter_mixin):
+class Atom_lighting_button(Qobject_image, Atom_Edit_mixin, Atom_Presenter_mixin):
     user_modified = pyqtSignal()
     request_presenter = pyqtSignal(object, object)
 
     def __init__(self, atom_type, val, model, parent=None):
         super().__init__(parent, val)
-        self._lighting = None
+        self._object = None
         self.update_lighting(val)
 
-    def update_lighting(self, cmap):
+    def update_lighting(self, lighting):
         """ cmap: fs.color.Fractal_colormap """
-        if cmap != self._cmap:
-            self._cmap = cmap
+        if lighting != self._object:
+            self._object = lighting
             self.repaint()
             # Note : we do not emit self.user_modified, this shall be done at
             # Qcmap_editor widget level
 
     def value(self):
-        return self._lighting
+        return self._object
 
     def on_model_event(self, val):
         self.update_lighting(val)
@@ -1484,8 +1417,6 @@ class Atom_lighting_button(Qcmap_image, Atom_Edit_mixin, Atom_Presenter_mixin):
     def mouseReleaseEvent(self, event):
         self.request_presenter.emit(Lighting_presenter, Qlighting_editor)
 
-class Qlighting_editor:
-    pass
 
 class Atom_Text_Validator(QtGui.QValidator):
     mp_dps_used = pyqtSignal(int)
@@ -1608,6 +1539,49 @@ class IntDelegate(QStyledItemDelegate):
         return (val >= self.min_val and val <= self.max_val)
 
 
+class FloatDelegate(QStyledItemDelegate):
+    def __init__(self, parent, options):
+        """ Custom cell delegate to display / edit a float
+        parent : the QTableWidget
+        """
+        super().__init__(parent)
+#        self.min_val = options["min"]
+#        self.max_val = options["max"]
+
+    def createEditor(self, parent, option, index):
+        editor = QLineEdit(parent)
+        editor.setFrame(False)
+        return editor
+
+    def setEditorData(self, editor, index):
+        """
+        index: PyQt5.QtCore.QModelIndex
+        """
+        val = index.data(Qt.ItemDataRole.DisplayRole)
+        editor.setText(val)
+
+    def setModelData(self, editor, model, index):
+        """ save int val to the model"""
+        val = editor.text()
+        model.setData(index, val, Qt.ItemDataRole.DisplayRole)
+        if self.validate(index):
+            color = QtGui.QColor("#646464")
+        else:
+            color = QtGui.QColor("red")
+        model.setData(index, color, Qt.ItemDataRole.BackgroundRole)
+
+    def updateEditorGeometry(self, editor, option, index):
+        editor.setGeometry(option.rect)
+
+    def validate(self, index):
+        val = index.data(Qt.ItemDataRole.DisplayRole)
+        try:
+            val = float(val)
+        except (TypeError, ValueError):
+            return False
+        return True # (val >= self.min_val and val <= self.max_val)
+
+
 class ComboDelegate(QStyledItemDelegate):
     def __init__(self, parent, options):
         """ Custom cell delegate to display / edit a combo box
@@ -1680,6 +1654,50 @@ class ExprDelegate(QStyledItemDelegate):
             return False
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Array Editors
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+class Atom_QSpinBox(QSpinBox, Atom_Edit_mixin):
+
+    user_modified = pyqtSignal()
+
+    def __init__(self, atom_type, val, model, parent=None):
+        """ SpinBox wich request a user explicit validation when text modified
+        Dedicated to the nrow chooser"""
+        super().__init__(str(val), parent)
+        self._type = atom_type
+        self.textChanged[str].connect(self.validate)
+        self.editingFinished.connect(self.on_user_event)
+        self.setValidator(Atom_Text_Validator(atom_type, model))
+        self.setStyleSheet(PARAM_LINE_EDIT_CSS.format(
+                       "#25272C"))
+        if atom_type is type(None):
+            self.setReadOnly(True)
+
+    def value(self):
+        if self._type is type(None):
+            return None
+        return self._type(self.text()) 
+
+    def on_user_event(self):
+        self.user_modified.emit()
+    
+    def on_model_event(self, val):
+        self.setText(str(val))
+        self.validate(self.text(), acceptable_color="#25272C")
+
+    def validate(self, text, acceptable_color="#c8c8c8"):
+        validator = self.validator()
+        if validator is not None:
+            ret, _, _ = validator.validate(text, self.pos())
+            if ret == QtGui.QValidator.State.Acceptable:
+                self.setStyleSheet(PARAM_LINE_EDIT_CSS.format(
+                       acceptable_color))
+            else:
+                self.setStyleSheet(PARAM_LINE_EDIT_CSS.format(
+                       "#dc4646"))
+
+
 class Base_array_editor(QWidget):
     """
     Base widget for editors which feature a data table and a parameter panel
@@ -1719,7 +1737,7 @@ class Base_array_editor(QWidget):
         self._model = data_presenter._model
         self._mapping = data_presenter._mapping
         self._presenter = data_presenter
-        
+
         # Bypass machinery for efficient table update
         self.data_update_lock = True
         
@@ -1761,6 +1779,13 @@ class Base_array_editor(QWidget):
             if item_type is int:
                 delegates.append(IntDelegate)
                 delegates_options.append({"min": 1, "max":256})
+                roles.append(dpr)
+                val_funcs.append(lambda v: str(v))
+                row_ranges_func.append(lambda l: l)
+
+            elif item_type is float:
+                delegates.append(FloatDelegate)
+                delegates_options.append(None)#{"min": 1, "max":256})
                 roles.append(dpr)
                 val_funcs.append(lambda v: str(v))
                 row_ranges_func.append(lambda l: l)
@@ -1836,6 +1861,10 @@ class Base_array_editor(QWidget):
 
     def populate_param_box(self):
         self._wget_n.setRange(self.min_row, self.max_row)
+#        print("in populate_param_box")
+#        print(self._presenter)
+#        print(self._presenter.__class__)
+#        print(self._presenter.__dict__)
         self._wget_n.setValue(self._presenter.n_rows)
 
 
@@ -1866,8 +1895,9 @@ class Base_array_editor(QWidget):
         h_header.setSectionResizeMode(
                 QtWidgets.QHeaderView.ResizeMode.ResizeToContents
         )
+        print("setSectionResizeMode", self.n_cols)
         h_header.setSectionResizeMode(
-            3, QtWidgets.QHeaderView.ResizeMode.Stretch
+            self.n_cols - 1, QtWidgets.QHeaderView.ResizeMode.Stretch # was: 3
         )
         self._table.verticalHeader().setSectionResizeMode(
             QtWidgets.QHeaderView.ResizeMode.ResizeToContents
@@ -1888,8 +1918,10 @@ class Base_array_editor(QWidget):
             self._table.setRowCount(n_rows)
 
             n_cols = self.n_cols
+#            print("populate_table, nrows, ncols", n_rows, n_cols)
             for icol in range(n_cols):
                 col_item = self.col_arr_items[icol]
+#                print("col_item", icol, col_item)
                 self.populate_column(
                     col=icol,
                     row_range=range(self.row_ranges_func[icol](n_rows)),
@@ -1903,6 +1935,7 @@ class Base_array_editor(QWidget):
     def populate_column(self, col, row_range, role, tab, old_tab,
                         val_func, flags=None):
         for irow in row_range:
+#            print("in populate_column", irow, row_range)
             val = tab[irow]
             # to speed up we have to explicitely track the modifications
             if self.match_old_val(val, irow, old_tab):
@@ -1933,6 +1966,8 @@ class Base_array_editor(QWidget):
         if isinstance(val, (np.ndarray)):
             # special case of RGB cells
             return np.all(val == old_val)
+#        print("val", val, type(val))
+#        print("old_val", old_val, type(old_val))
         return val == old_val
 
 
@@ -2012,7 +2047,7 @@ class Base_array_editor(QWidget):
                 val = tab[irow]
                 if not(self.match_old_val(val, irow, old_tab)):
                     counter += 1
-                    print("change", irow, icol, val)
+#                    print("change", irow, icol, val)
         return counter
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2047,7 +2082,7 @@ class Qcmap_editor(Base_array_editor):
         # Other add-hoc items :
         self._wget_extent = QComboBox(self)
         self._wget_extent.addItems(self.extent_choices)
-        self._preview = Qcmap_image(self, self._cmap)
+        self._preview = Qobject_image(self, self._cmap)
 
         param_layout.addWidget(self._wget_n)
         param_layout.addWidget(self._wget_extent)
@@ -2060,7 +2095,7 @@ class Qcmap_editor(Base_array_editor):
         super().populate_param_box()
         val_extent = self.extent_choices.index(self._cmap.extent)
         self._wget_extent.setCurrentIndex(val_extent)
-        self._preview._cmap = self._cmap
+        self._preview._object = self._cmap
         self._preview.repaint()
 
     def populate_table(self):
@@ -2077,60 +2112,114 @@ class Qcmap_editor(Base_array_editor):
             self._table.setItem(row, icol, freezed_item)
 
 
+#class Color_picker(Atom_Color):
+#    """ Same as a Atom_Color but with """
 
 
-#
-#def Qlighting_editor():
-#    """
-#    Widget of a cmap editor : parameters & data table
-#    """
-#    lighting_user_modified = pyqtSignal(object, object)
-#    
-#    std_flags = (Qt.ItemFlag.ItemIsSelectable
-#                 | Qt.ItemFlag.ItemIsEnabled
-#                 | Qt.ItemFlag.ItemIsEditable)
-#    unvalidated_flags = (Qt.ItemFlag.ItemIsEnabled
-#                         | Qt.ItemFlag.ItemIsEditable)
-#    locked_flags = (Qt.ItemFlag.ItemIsEnabled)
-#
-#    cmap_table_attr = [ "colors","kinds", "grad_npts", "grad_funcs"]
-#    
-#
-#    def __init__(self, parent, lighting_presenter):
-#        super().__init__(parent)        
-#        self._model = lighting_presenter._model
-#        self._mapping = cmap_presenter._mapping
-#        self._presenter = cmap_presenter
-#        self.extent_choices = self._presenter.extent_choices
-#
-#        layout = QVBoxLayout()
-#        layout.addWidget(self.add_param_box())
-#        layout.addWidget(self.add_table_box(), stretch=1)
-#        self.setLayout(layout)
-#
-#        self._wget_n.valueChanged.connect(functools.partial(
-#                self.event_filter, "size"))
-#        self._wget_extent.currentTextChanged.connect(functools.partial(
-#                self.event_filter, "extent"))
-#        self._table.itemChanged.connect(functools.partial(
-#                self.event_filter, "table"))
-#
-#        self.cmap_user_modified.connect(cmap_presenter.cmap_user_modified_slot)
-#        self._model.model_event.connect(self.model_event_slot)
-#        
-#        # Machinery for efficient table update
-#        self.cmap_update_lock = False
-#        self.cmap_need_update = 0
-#        
-#        # Takes a deep copy to avoid modifiying a template...
-#        cmap = copy.deepcopy(self._presenter.cmap)
-#        self._presenter["Colormap_presenter"] = cmap
-#        self.old_cmap = cmap
-#
-#
-#    @property
-#    def _cmap(self):
-#        return self._presenter.data
+class Qlighting_editor(Base_array_editor):
+    """
+    Widget of a cmap editor : parameters & data table
+    """
+    data_user_modified = pyqtSignal(object, object)
+    min_row = 1
+
+    def __init__(self, parent, lighting_presenter):
+
+        super().__init__(parent, lighting_presenter)
+
+        for wg, source in {
+                self._wget_k_ambient: "k_ambient",
+                self._wget_color_ambient:"color_ambient"
+        }.items():
+            wg.user_modified.connect(
+                functools.partial(self.on_user_mod, source, wg.value)
+            )
+#        self._wget_k_ambient.user_modified.connect(
+#            functools.partial(self.on_user_mod, "k_ambient")
+#        )
+#        self._wget_color_ambient.user_modified.connect(
+#            functools.partial(self.on_user_mod, "color_ambient", atom_wget.value)
+#        )
+#        atom_wget.user_modified.connect(functools.partial(
+#                self.on_user_mod, "k_ambient",
+#                atom_wget.value)
+#        )
+
+    @property
+    def _lighting(self):
+        return self._presenter.data
+
+    def add_param_box(self):
+        """ Customize base class layout """
+        param_box = super().add_param_box() #param_box_base_items()
+        
+        param_layout = QGridLayout(self)
+        # .addWidget(QWidget *widget,
+        # int fromRow, int fromColumn, int rowSpan, int columnSpan,
+        # Qt::Alignment alignment = Qt::Alignment()
+        # )
+        param_box.setLayout(param_layout)
+
+        myFont = QtGui.QFont()
+        myFont.setWeight(QtGui.QFont.Weight.ExtraBold)
+
+        k_ambient_label = QLabel("Ambiant strength:")
+        color_ambient_label = QLabel("Ambiant color:")
+        n_label = QLabel("Lights count:")
+        for lbl in (k_ambient_label, color_ambient_label, n_label):
+            lbl.setFont(myFont)
+
+        # Other add-hoc items :
+        self._preview = Qobject_image(self, self._lighting, height=80)
+        self._wget_k_ambient = Atom_QLineEdit(
+            self._presenter.ambiant_intensity_type, self._lighting.k_ambient,
+            model=None , parent=self
+        )
+        self._wget_color_ambient = Atom_Color(
+            self._presenter.ambiant_color_type, self._lighting.color_ambient,
+            model=None , parent=self
+        )
+        # labels
+        param_layout.addWidget(k_ambient_label, 0, 0, 1, 1)
+        param_layout.addWidget(color_ambient_label, 1, 0, 1, 1)
+        param_layout.addWidget(n_label, 2, 0, 1, 1)
+        # wgets
+        param_layout.addWidget(self._preview, 3, 0, 1, 2)
+        param_layout.addWidget(self._wget_k_ambient, 0, 1, 1, 1)
+        param_layout.addWidget(self._wget_color_ambient, 1, 1, 1, 1)
+        param_layout.addWidget(self._wget_n, 2, 1, 1, 1)
+
+        self.populate_param_box()
+        return param_box
+
+    def populate_param_box(self):
+        super().populate_param_box()
+        self._wget_k_ambient.setText(str(self._lighting.k_ambient))
+        self._wget_color_ambient.update_color(self._lighting.color_ambient)
+        self._preview._object = self._lighting
+        self._preview.repaint()
+
+
+    def on_user_mod(self, source, val_callback):
+        """ Notify of modification by the user of a Atom widget"""
+        val = val_callback()
+        self.event_filter(source, val)
+        if source == "k_ambient":
+            self._wget_k_ambient.on_model_event(val)
+
+#    def populate_table(self):
+#        """ Customizing the table with a frozen last row... """
+#        super().populate_table()
+#        with QtCore.QSignalBlocker(self._table):
+#            self.freeze_row(self.n_rows - 1, range(1, 4))
+
+#    def freeze_row(self, row, col_range):
+#        for icol in col_range:
+#            # https://forum.qt.io/topic/3489/solved-how-enable-editing-to-qtablewidgetitem/2
+#            freezed_item = QTableWidgetItem()
+#            freezed_item.setFlags(self.locked_flags)
+#            self._table.setItem(row, icol, freezed_item)
+
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -3094,7 +3183,7 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
     def add_cmap_box(self):
         cmap_layout = QHBoxLayout()
         
-        self._preview = Qcmap_image(self, self._cmap)
+        self._preview = Qobject_image(self, self._cmap)
         cmap_layout = QHBoxLayout()
         cmap_layout.addWidget(self._preview, stretch=1)
 
@@ -3166,7 +3255,7 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
             grad_funcs='x',
             extent='mirror'
         )
-        new_cmap = Qcmap_image(self, self._cmap)
+        new_cmap = Qobject_image(self, self._cmap)
         containing_layout = self._preview.parent().layout()
         containing_layout.replaceWidget(self._preview, new_cmap)
         self._preview = new_cmap
@@ -3229,7 +3318,7 @@ class Fractal_cmap_choser(QDialog):
         
         self.cmap_name = cmap_name = self.cmap_list[0]
         cmap0 = fs.colors.cmap_register[cmap_name]
-        self.cmap = cmap = Qcmap_image(self, cmap0, minwidth=400, height=20)
+        self.cmap = cmap = Qobject_image(self, cmap0, minwidth=400, height=20)
 
         push = QPushButton("Push to parameter")
         push.clicked.connect(self.push_to_param)
@@ -3280,7 +3369,7 @@ class Fractal_cmap_choser(QDialog):
 
     def on_combo_event(self, event):
         self.cmap_name = event
-        new_cmap = Qcmap_image(self, fs.colors.cmap_register[event],
+        new_cmap = Qobject_image(self, fs.colors.cmap_register[event],
                                 minwidth=400, height=20)
         self.layout.replaceWidget(self.cmap, new_cmap)
         self.cmap = new_cmap

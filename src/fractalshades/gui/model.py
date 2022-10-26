@@ -614,7 +614,7 @@ class Func_submodel(Submodel):
         else:
             raise ValueError("Untracked key {}".format(key))
         
-
+#------------------------------------------------------------------------------
 
 class Presenter(QtCore.QObject):
     """
@@ -647,9 +647,57 @@ class Presenter(QtCore.QObject):
         # oldval = self[key]
         self.model_changerequest.emit(self._mapping[key], val)
 
+#------------------------------------------------------------------------------
 
+class Array_presenter_mixin:
+    """ Mixin for presenters displaying a class instance with tabular data
+    presented class shall implement the following interface
+      - n_rows property
+      - col_data(self, col_key)
+      - adjust_size(val)
+      - modify_item(col_key, irow, item_data)
+    """
+    #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    @property
+    def data(self):
+        # To use as a parameter presenter, the only key should be the class
+        # name (see `on_presenter` from `Func_widget`)
+        return self[self.__class__.__name__]
 
-class Colormap_presenter(Presenter):
+    @property
+    def n_rows(self):
+        return self.data.n_rows
+
+    def reset_old_data(self):
+        self.old_data = copy.deepcopy(self.data)
+
+    def col_data(self, col_key):
+        """ Return the data column to be shown """
+        return self.data.col_data(col_key)
+
+    def old_col_data(self, col_key):
+        """ Return the data column to be shown """
+        return self.old_data.col_data(col_key)
+    
+    def adjust_size(self, new_size):
+        """
+        Adjust in place the size of the referenced data array
+        """
+        self.data.adjust_size(new_size)
+
+    def update_table(self, item):
+        """
+        Modifies in-place the referenced data array
+        item : (irow, icol, item_data)
+        """
+        (irow, icol, item_data) = item
+        col_key = self.col_arr_items[icol]
+        self.data.modify_item(col_key, irow, item_data)
+    #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#------------------------------------------------------------------------------
+
+class Colormap_presenter(Presenter, Array_presenter_mixin):
     
     model_changerequest = pyqtSignal(object, object)
 
@@ -682,32 +730,11 @@ class Colormap_presenter(Presenter):
     def __init__(self, model, mapping):
         """
         Presenter for a `fractalshades.colors.Fractal_colormap` parameter
-        Mapping expected : mapping = {"cmap": cmap_key}
+        Mapping expected : mapping = {"Colormap_presenter": cmap_key}
         """
-        print("in INIT", "Colormap_presenter")
         super().__init__(model, mapping)
         self.reset_old_data()
 
-    @property
-    def data(self):  # was : cmap
-        # To use as a parameter presenter, the only key should be the class
-        # name (see `on_presenter` from `Func_widget`)
-        return self["Colormap_presenter"]
-    
-    def reset_old_data(self):
-        self.old_data = copy.deepcopy(self.data)
-    
-    @property
-    def n_rows(self):
-        return len(self.data.colors)
-
-    def col_data(self, col_item):
-        """ Return the data column to be shown """
-        return getattr(self.data, col_item)
-
-    def old_col_data(self, col_item):
-        """ Return the data column to be shown """
-        return getattr(self.old_data, col_item)
 
     @pyqtSlot(object, object)
     def data_user_modified_slot(self, key, val):
@@ -720,142 +747,69 @@ class Colormap_presenter(Presenter):
             self.update_table(val)
         else:
             raise ValueError(key)
+
+        # Record that the template has been modified
+        self.data._template = None
+        self.model_changerequest.emit(
+            self._mapping["Colormap_presenter"], self.data
+        )
+
+#------------------------------------------------------------------------------
+
+class Lighting_presenter(Presenter, Array_presenter_mixin):
+
+    model_changerequest = pyqtSignal(object, object)
+
+    # Define titles
+    param_title = "Ambient parameters"
+    table_title = "Light sources data"
+
+    # Define columns
+    col_arr_items = [
+        "color", "k_diffuse", "k_specular", "shininess",
+        "polar_angle", "azimuth_angle"
+    ]
+    col_arr_dtypes = [
+        fs.colors.Color, float, float, float,
+        float, float
+    ]
+
+    # No special hook
+    special_hooks = {}
+
+    # Define extra params
+    extra_parameters = ["k_ambient", "color_ambient"]
+    ambiant_intensity_type = float
+    ambiant_color_type = fs.colors.Color
+
+
+    def __init__(self, model, mapping):
+        """
+        Presenter for a `fractalshades.colors.layers.Blinn_lighting` parameter
+        Mapping expected : mapping = {"Lighting_presenter": lighting_key}
+        """
+        super().__init__(model, mapping)
+        self.reset_old_data()
+
+    @pyqtSlot(object, object)
+    def data_user_modified_slot(self, key, val):
+        """ Modifies in-place the lighting """
+        if key == "size":
+            self.adjust_size(val)
+        elif key == "k_ambient":
+            self.data.k_ambient = float(val)
+        elif key == "color_ambient":
+            self.data.color_ambient = np.asarray(val)
+        elif key == "table":
+            self.update_table(val)
+        else:
+            raise ValueError(key)
         
         # Record that the template has been modified
         self.data._template = None
 
         self.model_changerequest.emit(
-            self._mapping["Colormap_presenter"], self.data
+            self._mapping["Lighting_presenter"], self.data
         )
 
-    def adjust_size(self, val):
-        """
-        Adjust in place the size of the referenced data array
-        """
-        self.data.adjust_size(val)
-
-    def update_table(self, item):
-        """
-        Modifies in-place the referenced data array
-        item : (irow, icol, item_data)
-        """
-        (irow, icol, item_data) = item
-        col_key = self.col_arr_items[icol]
-        self.data.modify_item(col_key, irow, item_data)
-
-
-class Lighting_presenter(Presenter):
-    model_changerequest = pyqtSignal(object, object)
-    
-    lighting_sources_cols = [
-        "colors", "ks_diffuse", "ks_specular", "shininesses",
-        "polar_angles", "azimuth_angles"
-    ]
-    bgr = Qt.ItemDataRole.BackgroundRole
-    dpr = Qt.ItemDataRole.DisplayRole
-    col_arr_roles = [bgr, dpr, dpr, dpr, dpr, dpr] 
-
-    lighting_attr =  ["k_ambient", "color_ambient"]
-    ambiant_intensity_type = float
-    ambiant_color_type = fs.colors.Color
-
-    def __init__(self, model, mapping):
-        """
-        Presenter for a `fractalshades.colors.Fractal_colormap` parameter
-        Mapping expected : mapping = {"cmap": cmap_key}
-        """
-        super().__init__(model, mapping)
-
-    @property
-    def lighting(self):
-        # To use as a parameter presenter, the only key should be the class
-        # name (see `on_presenter` from `Func_widget`)
-        return self["Lighting_presenter"]
-
-    @property
-    def lighting_dic(self):
-        lighting = self.lighting
-        return {attr: getattr(lighting, attr) for attr in self.lighting_attr}
-
-    @property
-    def lighting_sources_dic(self):
-        """ list of arrays """
-        return self.lighting.light_sources
-
-    @property
-    def default_ls_kwargs(self):
-        # Used for adding a new light to the table
-        newlighting_template = fs.colors.lighting_register["rough"]
-        ls = newlighting_template.light_sources[0]
-        kwargs = {
-            "k_diffuse": ls["ks_diffuse"],
-            "k_specular": ls["k_specular"],
-            "shininess": ls["shininess"],
-            "angles": ls["_angles"],
-            "color": ls["color"],
-        }
-        return kwargs
-
-    @pyqtSlot(object, object)
-    def lighting_user_modified_slot(self, key, val):
-
-        if key == "size":
-            lighting = self.adjust_size(val)
-        elif key == "k_ambient":
-            self.lighting.k_ambient = val
-        elif key == "color_ambient":
-            self.lighting.color_ambient = np.asarray(val)
-        elif key == "table":
-            cmap = self.update_update_table(val)
-        else:
-            raise ValueError(key)
-
-        cmap._template = None
-
-        self.model_changerequest.emit(
-                self._mapping["Lighting_presenter"], lighting
-        )
-
-    def adjust_size(self, val):
-        npts = self.lighting.n_ls
-        ls_dic = self.lighting_sources_dic# [row]
-
-        if val < npts:
-            # Just removes the other lightsources
-            ls_dic[:] = ls_dic[:val]
-
-        elif  val > npts:
-            self.lighting.add_light_source(**self.default_ls_kwargs)
-
-        return self.lighting
-
-
-    def update_table(self, item):
-        """ item : modified QTableWidgetItem """
-        # TODO: we modifiy in place, check if we should duplicate this logic
-        # for cmap events
-        row, col = item.row(), item.column()
-
-        row_ls_dic = self.lighting_sources_dic[row]
-
-        col_key = self.lighting_sources_cols[col]
-        role = self.col_arr_roles[col]
-        data = item.data(role)
-
-        if col_key == "colors": # colors
-            row_ls_dic["color"] = np.asarray(
-                    [data.redF(), data.greenF(), data.blueF()]
-            )
-        elif col_key in ["ks_diffuse", "ks_specular"]:
-            ls_key = col_key[0] + col_key[2:]
-            row_ls_dic[ls_key] = data
-        elif col_key == "shininesses":
-            row_ls_dic["shininess"] = data
-        elif col_key == "polar_angles":
-            row_ls_dic["angles"] = (data, row_ls_dic["angles"][1])
-        elif col_key == "azimuth_angles":
-            row_ls_dic["angles"] = (row_ls_dic["angles"][0], data)
-
-        return self.lighting
-
-
+#------------------------------------------------------------------------------
