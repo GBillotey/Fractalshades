@@ -164,8 +164,6 @@ QGroupBox::title{{
 }}
 """
 
-
-
 # QLineEdit
 PARAM_LINE_EDIT_CSS = """
 QLineEdit {{
@@ -198,21 +196,22 @@ QComboBox:item:selected {
 }
 """
 
-#CHECK_BOX_CSS = """
-#QCheckBox:indicator {
-#    border: 2px solid #25272C;
-#    background: #646464;
+## QSpinBox
+SPINBOX_CSS = """
+QSpinBox{{
+    background-color : {0};
+}}
+"""
+
+#QSpinBox#spin {
+#margin-left: 20px;  /* make room for the arrows */
+#margin-right: 20px;  /* make room for the arrows */
+#width: 20px;
+#
+#border: 2 solid #515151;
+#background-color: #434343;
 #}
-#QCheckBox:indicator:pressed {
-#    background: #df4848;
-#}
-#QCheckBox:indicator:checked {
-#    background: #25272C;
-#}
-#QCheckBox:indicator:checked:pressed {
-#    background: #df4848;
-#}
-#"""
+
 CHECK_BOX_CSS = """
 QCheckBox:indicator {
     border: 2px solid #25272C;
@@ -949,10 +948,8 @@ class Func_widget(QFrame):
 
     def model_event_slot(self, keys, val):
         """ Handles modification of widget triggered from model """
-        print(">> Func_widget model_event_slot", keys)
         # Does the event impact one of my child widgets ? otherwise, return
         if keys[:-1] != self._func_keys:
-            print("* exit, not my business")
             return # This is not for this Func_widget
         key = keys[-1]
         try:
@@ -964,12 +961,12 @@ class Func_widget(QFrame):
         # Check first Atom_Mixin
         if isinstance(wget, Atom_Edit_mixin):
             wget.on_model_event(val)
-        elif isinstance(wget, QCheckBox):
-            print("* LEGACY")
-            wget.setChecked(val) # Legacy (default value toggle button)
-        elif isinstance(wget, QComboBox):
-            print("* LEGACY")
-            wget.setCurrentIndex(val) # Legacy (default value toggle button)
+#        elif isinstance(wget, QCheckBox):
+#            print("* LEGACY")
+#            wget.setChecked(val) # Legacy (default value toggle button)
+#        elif isinstance(wget, QComboBox):
+#            print("* LEGACY")
+#            wget.setCurrentIndex(val) # Legacy (default value toggle button)
         else:
             raise NotImplementedError(
                 f"Func_widget.model_event_slot {wget}"
@@ -1009,13 +1006,16 @@ class Func_widget(QFrame):
             dock_widget = self.presenters[register_key]
             toggle = not(dock_widget.isVisible())
             dock_widget.setVisible(toggle)
-
+            if toggle:
+                dock_widget.raise_()
 
 def atom_wget_factory(atom_type):
     if typing.get_origin(atom_type) is typing.Literal:
         return Atom_QComboBox
     elif issubclass(atom_type, fs.Fractal):
         return Atom_fractal_button
+    elif issubclass(atom_type, fs.numpy_utils.Numpy_expr):
+        return Atom_QLineEdit
     else:
         wget_dic = {
             int: Atom_QLineEdit,
@@ -1047,7 +1047,6 @@ class Atom_QCheckBox(QCheckBox, Atom_Edit_mixin):
         self.setChecked(val)
         self._type = atom_type
         self.stateChanged.connect(self.on_user_event)
-        # self.setStyleSheet(CHECK_BOX_CSS)
 
     def value(self):
         return self.isChecked()
@@ -1107,7 +1106,7 @@ class Atom_Color(QPushButton, Atom_Edit_mixin):
         self._qcolor = None
         self.update_color(val)
         self.clicked.connect(self.on_user_event)
-        print("in Atom_Color; KIND:", self._kind)
+#        print("in Atom_Color; KIND:", self._kind)
 
     def update_color(self, color):
         """ color: QtGui.QColor or fs.colors.Color """
@@ -1168,8 +1167,7 @@ class Atom_Color(QPushButton, Atom_Edit_mixin):
             self.update_color(old_col)
 
     def on_model_event(self, val):
-        self.update_color(val) #QtGui.QColor(*list(
-                #int(channel * 255) for channel in val)))
+        self.update_color(val)
 
 
 class Atom_QLineEdit(QLineEdit, Atom_Edit_mixin): 
@@ -1180,20 +1178,22 @@ class Atom_QLineEdit(QLineEdit, Atom_Edit_mixin):
         self._type = atom_type
         self.textChanged[str].connect(self.validate)
         self.editingFinished.connect(self.on_user_event)
-        self.setValidator(Atom_Text_Validator(atom_type, model))
-        self.setStyleSheet(PARAM_LINE_EDIT_CSS.format(
-                       "#25272C"))
+        self.setValidator(Atom_Text_Validator(atom_type, val))
+        self.setStyleSheet(PARAM_LINE_EDIT_CSS.format("#25272C"))
         if atom_type is type(None):
             self.setReadOnly(True)
+        self.validate(self.text(), acceptable_color="#25272C")
 
     def value(self):
         if self._type is type(None):
             return None
+        elif issubclass(self._type, fs.numpy_utils.Numpy_expr):
+            return self.text()
         return self._type(self.text()) 
 
     def on_user_event(self):
         self.user_modified.emit()
-    
+
     def on_model_event(self, val):
         self.setText(str(val))
         self.validate(self.text(), acceptable_color="#25272C")
@@ -1212,6 +1212,8 @@ class Atom_QLineEdit(QLineEdit, Atom_Edit_mixin):
 
 class Atom_QPlainTextEdit(QPlainTextEdit, Atom_Edit_mixin):
     user_modified = pyqtSignal()
+    # TODO could use this to update mode dps in line with x, y text 
+    mp_dps_used = pyqtSignal(int)  
 
     def __init__(self, atom_type, val, model, parent=None):
         super().__init__(str(val), parent)
@@ -1220,11 +1222,11 @@ class Atom_QPlainTextEdit(QPlainTextEdit, Atom_Edit_mixin):
         # Wrapping parameters
         self.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth) 
         self.setWordWrapMode(QtGui.QTextOption.WrapMode.WrapAnywhere)
-        self.setStyleSheet(PLAIN_TEXT_EDIT_CSS.format(
-                       "#25272C"))
-        
+        self.setStyleSheet(PLAIN_TEXT_EDIT_CSS.format("#25272C"))
+
+        self._validator = Atom_Text_Validator(atom_type, val)
+
         # signals / slots
-        self._validator = Atom_Text_Validator(atom_type, model)
         self.textChanged.connect(self.validate)
 
     def value(self):
@@ -1293,7 +1295,7 @@ class Atom_QComboBox(QComboBox, Atom_Edit_mixin, NoWheel_mixin):
         self.installEventFilter(self)
 
         self._type = atom_type
-        self._choices = typing_litteral_choices(atom_type) #typing.get_args(atom_type)
+        self._choices = typing_litteral_choices(atom_type)
         self.currentTextChanged.connect(self.on_user_event)
         self.addItems(str(c) for c in self._choices)
         self.setCurrentIndex(val)
@@ -1341,27 +1343,6 @@ class Qobject_image(QWidget):
         size = self.size()
         nx, ny = size.width(), size.height()
         QtGui.QPainter(self).drawImage(0, 0, self._object.output_ImageQt(nx, ny))
-
-
-#class Qlighting_image(QWidget):
-#    """ Widget of a lighting, expanding width """
-#    def __init__(self, parent, lighting, minwidth=200, height=20):
-#        super().__init__(parent)
-#        self._lighting = lighting
-#        self.setMinimumWidth(minwidth)
-#        self.setMinimumHeight(height)
-#        self.setMaximumHeight(height)
-#        self.setSizePolicy(
-#                QSizePolicy.Policy.Minimum,
-#                QSizePolicy.Policy.Expanding
-#        )
-#
-#    def paintEvent(self, evt):
-#        size = self.size()
-#        nx, ny = size.width(), size.height()
-#        QtGui.QPainter(self).drawImage(
-#            0, 0, self._lighting.output_ImageQt(nx, ny)
-#        )
 
 
 class Atom_cmap_button(Qobject_image, Atom_Edit_mixin, Atom_Presenter_mixin):
@@ -1419,23 +1400,29 @@ class Atom_lighting_button(Qobject_image, Atom_Edit_mixin, Atom_Presenter_mixin)
 
 
 class Atom_Text_Validator(QtGui.QValidator):
-    mp_dps_used = pyqtSignal(int)
 
-    def __init__(self, atom_type, model):
+    def __init__(self, atom_type, val):
         super().__init__()
-        self._model = model
+#        self._val = val
         self._type = atom_type
-        if atom_type is mpmath.ctx_mp_python.mpf:
-            self.mp_dps_used.connect(
-                functools.partial(model.item_update, "dps")
-            )
+
+        if issubclass(atom_type, fs.numpy_utils.Numpy_expr):
+            # The only way to keep track of the variables : keep those of
+            # the provided default (the type will not hold this info)
+            self._variables = copy.deepcopy(val.variables)
 
     def validate(self, val, pos):
-#        print("validate", val, pos, type(val), self._type)
         valid = {True: QtGui.QValidator.State.Acceptable,
                  False: QtGui.QValidator.State.Intermediate}
         if self._type is type(None):
             return (valid[val == "None"], val, pos)
+        if issubclass(self._type, fs.numpy_utils.Numpy_expr):
+            # print("IN validate fs.numpy_utils.Numpy_expr", self._type.validates_expr(variables=self._variables, expr=val))
+            return (
+                valid[self._type.validates_expr(self._variables, val)],
+                val,
+                pos
+            )
         try:
             casted = self._type(val)
         except ValueError:
@@ -1657,45 +1644,34 @@ class ExprDelegate(QStyledItemDelegate):
 # Array Editors
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-class Atom_QSpinBox(QSpinBox, Atom_Edit_mixin):
+class Table_QSpinBox(QSpinBox, Atom_Edit_mixin):
 
     user_modified = pyqtSignal()
 
     def __init__(self, atom_type, val, model, parent=None):
-        """ SpinBox wich request a user explicit validation when text modified
+        """ SpinBox wich request a user explicit validation is when text is
+        modified (event editingFinished) before sending the new val.
         Dedicated to the nrow chooser"""
-        super().__init__(str(val), parent)
-        self._type = atom_type
-        self.textChanged[str].connect(self.validate)
-        self.editingFinished.connect(self.on_user_event)
-        self.setValidator(Atom_Text_Validator(atom_type, model))
-        self.setStyleSheet(PARAM_LINE_EDIT_CSS.format(
-                       "#25272C"))
-        if atom_type is type(None):
-            self.setReadOnly(True)
+        super().__init__(parent)
+        assert atom_type == int
+        self._type = int
+        self.editingFinished.connect(self.on_edit_finished)
+        self.setStyleSheet(SPINBOX_CSS.format("#25272C"))
 
-    def value(self):
-        if self._type is type(None):
-            return None
-        return self._type(self.text()) 
+    def keyPressEvent(self, evt):
+        self.setStyleSheet(SPINBOX_CSS.format("#c8c8c8"))
+        super().keyPressEvent(evt)
 
-    def on_user_event(self):
+    def stepBy(self, int_steps):
+        super().stepBy(int_steps)
         self.user_modified.emit()
-    
+
+    def on_edit_finished(self):
+        self.setStyleSheet(SPINBOX_CSS.format("#25272C"))
+        self.user_modified.emit()
+
     def on_model_event(self, val):
         self.setText(str(val))
-        self.validate(self.text(), acceptable_color="#25272C")
-
-    def validate(self, text, acceptable_color="#c8c8c8"):
-        validator = self.validator()
-        if validator is not None:
-            ret, _, _ = validator.validate(text, self.pos())
-            if ret == QtGui.QValidator.State.Acceptable:
-                self.setStyleSheet(PARAM_LINE_EDIT_CSS.format(
-                       acceptable_color))
-            else:
-                self.setStyleSheet(PARAM_LINE_EDIT_CSS.format(
-                       "#dc4646"))
 
 
 class Base_array_editor(QWidget):
@@ -1745,9 +1721,9 @@ class Base_array_editor(QWidget):
         layout.addWidget(self.add_param_box())
         layout.addWidget(self.add_table_box(), stretch=1)
         self.setLayout(layout)
-        
-        self._wget_n.valueChanged.connect(
-            functools.partial(self.event_filter, "size")
+
+        self._wget_n.user_modified.connect(
+            functools.partial(self.on_ncol_mod, self._wget_n.value)
         )
         self._table.itemChanged.connect(
             functools.partial(self.event_filter, "table")
@@ -1760,6 +1736,11 @@ class Base_array_editor(QWidget):
 
         self.data_update_lock = False
         
+    def on_ncol_mod(self, val_callback):
+        """ Notify of modification by the user of col number """
+        val = val_callback()
+        self.event_filter("size", val)
+
 
     def build_delegates(self, special_hooks):
         """ Builds the GUI implementation for each column based on data type
@@ -1785,7 +1766,7 @@ class Base_array_editor(QWidget):
 
             elif item_type is float:
                 delegates.append(FloatDelegate)
-                delegates_options.append(None)#{"min": 1, "max":256})
+                delegates_options.append(None)
                 roles.append(dpr)
                 val_funcs.append(lambda v: str(v))
                 row_ranges_func.append(lambda l: l)
@@ -1854,19 +1835,16 @@ class Base_array_editor(QWidget):
         # Note: derived classes should implement the detailed layout
         param_box = QGroupBox(self.param_title)
         # Widget for the number of lines
-        self._wget_n = QSpinBox(self)
+        self._wget_n = Table_QSpinBox(
+            atom_type=int, val=self._presenter.n_rows,
+            model=None, parent=self
+        ) # 
         self._wget_n.setRange(self.min_row, self.max_row)
         return param_box
-    
 
     def populate_param_box(self):
         self._wget_n.setRange(self.min_row, self.max_row)
-#        print("in populate_param_box")
-#        print(self._presenter)
-#        print(self._presenter.__class__)
-#        print(self._presenter.__dict__)
         self._wget_n.setValue(self._presenter.n_rows)
-
 
     def add_table_box(self):
         table_box = QGroupBox(self.table_title)
@@ -1918,10 +1896,8 @@ class Base_array_editor(QWidget):
             self._table.setRowCount(n_rows)
 
             n_cols = self.n_cols
-#            print("populate_table, nrows, ncols", n_rows, n_cols)
             for icol in range(n_cols):
                 col_item = self.col_arr_items[icol]
-#                print("col_item", icol, col_item)
                 self.populate_column(
                     col=icol,
                     row_range=range(self.row_ranges_func[icol](n_rows)),
@@ -1935,7 +1911,6 @@ class Base_array_editor(QWidget):
     def populate_column(self, col, row_range, role, tab, old_tab,
                         val_func, flags=None):
         for irow in row_range:
-#            print("in populate_column", irow, row_range)
             val = tab[irow]
             # to speed up we have to explicitely track the modifications
             if self.match_old_val(val, irow, old_tab):
@@ -1952,7 +1927,6 @@ class Base_array_editor(QWidget):
 
     def match_old_val(self, val, irow, old_tab):
         """ Return True if the value has not been modifed """
-        # print("in match_old_val", irow, val)
         if self.data_update_lock:
             return False
         if irow >= (len(old_tab) - 1):
@@ -1966,8 +1940,6 @@ class Base_array_editor(QWidget):
         if isinstance(val, (np.ndarray)):
             # special case of RGB cells
             return np.all(val == old_val)
-#        print("val", val, type(val))
-#        print("old_val", old_val, type(old_val))
         return val == old_val
 
 
@@ -2047,7 +2019,6 @@ class Base_array_editor(QWidget):
                 val = tab[irow]
                 if not(self.match_old_val(val, irow, old_tab)):
                     counter += 1
-#                    print("change", irow, icol, val)
         return counter
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2112,10 +2083,6 @@ class Qcmap_editor(Base_array_editor):
             self._table.setItem(row, icol, freezed_item)
 
 
-#class Color_picker(Atom_Color):
-#    """ Same as a Atom_Color but with """
-
-
 class Qlighting_editor(Base_array_editor):
     """
     Widget of a cmap editor : parameters & data table
@@ -2134,16 +2101,6 @@ class Qlighting_editor(Base_array_editor):
             wg.user_modified.connect(
                 functools.partial(self.on_user_mod, source, wg.value)
             )
-#        self._wget_k_ambient.user_modified.connect(
-#            functools.partial(self.on_user_mod, "k_ambient")
-#        )
-#        self._wget_color_ambient.user_modified.connect(
-#            functools.partial(self.on_user_mod, "color_ambient", atom_wget.value)
-#        )
-#        atom_wget.user_modified.connect(functools.partial(
-#                self.on_user_mod, "k_ambient",
-#                atom_wget.value)
-#        )
 
     @property
     def _lighting(self):
@@ -2154,10 +2111,6 @@ class Qlighting_editor(Base_array_editor):
         param_box = super().add_param_box() #param_box_base_items()
         
         param_layout = QGridLayout(self)
-        # .addWidget(QWidget *widget,
-        # int fromRow, int fromColumn, int rowSpan, int columnSpan,
-        # Qt::Alignment alignment = Qt::Alignment()
-        # )
         param_box.setLayout(param_layout)
 
         myFont = QtGui.QFont()
@@ -2206,19 +2159,6 @@ class Qlighting_editor(Base_array_editor):
         self.event_filter(source, val)
         if source == "k_ambient":
             self._wget_k_ambient.on_model_event(val)
-
-#    def populate_table(self):
-#        """ Customizing the table with a frozen last row... """
-#        super().populate_table()
-#        with QtCore.QSignalBlocker(self._table):
-#            self.freeze_row(self.n_rows - 1, range(1, 4))
-
-#    def freeze_row(self, row, col_range):
-#        for icol in col_range:
-#            # https://forum.qt.io/topic/3489/solved-how-enable-editing-to-qtablewidgetitem/2
-#            freezed_item = QTableWidgetItem()
-#            freezed_item.setFlags(self.locked_flags)
-#            self._table.setItem(row, icol, freezed_item)
 
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2620,7 +2560,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             has_skew = False
             skew_00 = skew_11 = 1.
             skew_01 = skew_10 = 0.
-        print("SKEW params", has_skew, skew_00, skew_01, skew_10, skew_11)
+        # print("SKEW params", has_skew, skew_00, skew_01, skew_10, skew_11)
         return has_skew, skew_00, skew_01, skew_10, skew_11
 
     @staticmethod
@@ -2720,7 +2660,6 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         # Setting _fractal_zoom_init from script_params
         gui = self._parent._gui
         self._fractal_zoom_init = dict()
-#        print("other_parameters", self.other_parameters)
         for key in (self.full_zoom_keys + self.other_parameters):
             # Mapping with func param as defined through `connect_mouse` method
             # of the gui object
@@ -2733,7 +2672,6 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             self._fractal_zoom_init["nx"] / self._fractal_zoom_init["xy_ratio"]
             + 0.5
         )
-#        print("_fractal_zoom_init as reloaded", self._fractal_zoom_init)
 
 
     def set_im(self):
@@ -2921,7 +2859,6 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
                 ref_zoom["x"] += off_x
                 ref_zoom["y"] += off_y
 
-                # TODO: /!\ Do we have an issue with dx + skew ?
                 ref_zoom["dx"] = dx_pix * pix
 
                 #  mpf -> str (back)
@@ -3155,11 +3092,8 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
         
         cmap_params_index = dict()
         for i_param, (name, param) in enumerate(sign.parameters.items()):
-#            print(i_param, name, param.annotation)
             if param.annotation is fs.colors.Fractal_colormap:
                 cmap_params_index[name] = i_param
-        
-#        print(len(cmap_params_index), cmap_params_index)
 
         if len(cmap_params_index) == 0:
             raise RuntimeError("No fs.colors.Fractal_colormap parameter")

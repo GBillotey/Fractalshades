@@ -979,10 +979,10 @@ def Continuous_iter_pp_convergent(zn, eps, attractivity, z_star):
 def test_iterate(z, c):
     return z * z + c
 
-@numba.njit(nogil=True, fastmath=True)
-def test_iterate_angle(alpha):
-    # 2 * alpha, cropped to -pi, pi
-    return (2. * alpha) # + np.pi) % (2 * np.pi) - np.pi
+#@numba.njit(nogil=True, fastmath=True)
+#def test_iterate_angle(alpha):
+#    # 2 * alpha, cropped to -pi, pi
+#    return (2. * alpha) # + np.pi) % (2 * np.pi) - np.pi
 
 # Catmull-Rom polynomial
 @numba.njit(nogil=True, fastmath=True)
@@ -1027,8 +1027,10 @@ def Fieldlines_pp_infinity(
         for j in range(nvec):
             z_loc = orbit_z[j, i]
             if abs(z_loc) > M_cutoff:
-                orbit_z[j, i + 1] = M_cutoff + 1 # flag
-                orbit_angle[j, i + 1] = test_iterate_angle(orbit_angle[j, i])
+                z_loc = np.exp(orbit_angle[j, i] * 1j) * M_cutoff
+                z_loc = test_iterate(z_loc, 0.)
+                orbit_z[j, i + 1] = z_loc # flag
+                orbit_angle[j, i + 1] = np.angle(z_loc)
             else:
                 z_loc = test_iterate(orbit_z[j, i], c_pt[j])
                 orbit_z[j, i + 1] = z_loc

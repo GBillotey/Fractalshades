@@ -79,7 +79,7 @@ def plot(plot_dir):
     ))
     plotter.add_layer(
             Grey_layer("fieldlines", func=None, output=True,
-                       probes_z=[-0.676, .872])
+                       probes_z=[-1.0, 1.0])
     )
     plotter["cont_iter"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
     # This is the lines where we indicate that coloring is shaded or tinted

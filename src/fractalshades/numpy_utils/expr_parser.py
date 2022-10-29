@@ -55,6 +55,7 @@ def acceptable_expr(expr, safe_vars):
 
     return inner(expr)
 
+
 def func_parser(variables, expr):
     """
     variables : array of strings, eg: ["x"], ["x1", "x2", "x3"], ["x", "y"]
@@ -67,9 +68,17 @@ def func_parser(variables, expr):
         if len(var) > 2:
             raise ValueError("Variable {} is more than 2 chars".format(var))
     expr = "lambda " + ", ".join(variables) + ": " + expr
-    e = ast.parse(expr, mode="eval")
+
+    try:
+        e = ast.parse(expr, mode="eval")
+    except SyntaxError:
+        return None
+
     if acceptable_expr(e, safe_vars=variables): #, safe_attrs=safe_attrs):
-        return eval(expr)
+        try:
+            return eval(expr)
+        except SyntaxError:
+            return None
     else:
         return None
 
@@ -78,12 +87,38 @@ class Numpy_expr:
     # See https://docs.python.org/3/library/typing.html#typing.Annotated
     # https://peps.python.org/pep-0593/
     # T1 = Annotated[Func_expr, Vars("x", "y")]
+
     def __init__(self, variables, expr):
+        f"""
+        Parameters:
+        -----------
+        variables: str or str[]
+            The list of variables used in expr. The length of vraiables should 
+            be at most 2, e.g, "x", "x1", "x2", "y" "z", "xy".
+            (If only one string is provided, it is converted to a 1-item [])
+        expr: str
+            The numerical expression to be evaluated. The standard operations 
+            (+, -, *, /, **) are accepted, and a subset of numpy
+            functions: {SAFE_ATTRS}.
+        """
+        if isinstance(variables, str):
+            variables = [variables]
         self.variables = variables
         self.expr = expr
 
     def validates(self):
+        """
+        Returns True if the Numpy_expr is valid
+        """
         return func_parser(variables=self.variables, expr=self) is not None
+    
+    @staticmethod
+    def validates_expr(variables, expr):
+        """ static version"""
+        return func_parser(variables=variables, expr=expr) is not None
+    
+    def __str__(self):
+        return self.expr
 
 
 class Vars:

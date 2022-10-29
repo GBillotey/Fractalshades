@@ -111,15 +111,19 @@ def plot(directory):
         k_diffuse=0.2,
         k_specular=300.,
         shininess=1400.,
-        angles=(75., 20.),
-        coords=None,
+        polar_angle=75.,
+        azimuth_angle=20.,
+#        angles=(75., 20.),
+#        coords=None,
         color=np.array([0.9, 0.9, 1.5]))
     light.add_light_source(
         k_diffuse=2.8,
         k_specular=2.,
         shininess=400.,
-        angles=(75., 20.),
-        coords=None,
+        polar_angle=75.,
+        azimuth_angle=20.,
+#        angles=(75., 20.),
+#        coords=None,
         color=np.array([1., 1., 1.]))
     plotter["DEM"].shade(plotter["DEM_map"], light)
 

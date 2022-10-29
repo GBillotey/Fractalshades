@@ -248,8 +248,8 @@ def plot(plot_dir):
                 k_diffuse=0.8,
                 k_specular=.0,
                 shininess=350.,
-                angles=(light_angle_deg, 20.),
-                coords=None,
+                polar_angle=light_angle_deg,
+                azimuth_angle=20.,
                 color=np.array(light_color))
     
             if shade_kind == "glossy":
@@ -257,8 +257,8 @@ def plot(plot_dir):
                     k_diffuse=0.2,
                     k_specular=gloss_intensity,
                     shininess=1400.,
-                    angles=(light_angle_deg, light_azimuth_deg),
-                    coords=None,
+                    polar_angle=light_angle_deg,
+                    azimuth_angle=light_azimuth_deg,
                     color=np.array(gloss_light_color))
     
             plotter[base_layer].shade(plotter["DEM_map"], light)

@@ -224,6 +224,7 @@ class Model(QtCore.QObject):
     def item_update(self, alias_name, setting_val):
         """ Updates a model item from its alias name - new value
         """
+#        print("ITEM UPDATES", alias_name, setting_val)
         self.submodel_changerequest.emit(
             self._alias[alias_name], setting_val
         )
@@ -239,7 +240,7 @@ class Model(QtCore.QObject):
     def model_changerequest_slot(self, keys, val):
         """ A change has been requested by  a Presenter i.e object
         not holding the data """
-        print(">>> in presenter change request slot", keys)
+#        print(">>> in presenter change request slot", keys)
         if len(keys) == 0:
             # This change can be handled at main model level
             self._model[keys] = val

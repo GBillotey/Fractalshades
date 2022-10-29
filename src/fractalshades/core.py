@@ -2109,8 +2109,9 @@ advanced users when subclassing.
     def get_std_cpt(self, c_pix):
         """ Return the c complex value from c_pix """
         n_pts, = c_pix.shape  # Z of shape [n_Z, n_pts]
+        # Explicit casting to complex / float
         dx = float(self.dx)
-        center = self.x + 1j * self.y
+        center = complex(self.x + 1j * self.y)
         xy_ratio = self.xy_ratio
         theta = self.theta_deg / 180. * np.pi # used for expmap
         projection = getattr(self.PROJECTION_ENUM, self.projection).value
