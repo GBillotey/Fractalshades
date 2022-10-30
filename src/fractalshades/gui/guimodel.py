@@ -213,9 +213,8 @@ QSpinBox{{
 #}
 
 CHECK_BOX_CSS = """
-QCheckBox:indicator {
-    border: 2px solid #25272C;
-    background: #646464;
+QCheckBox::indicator:unchecked {
+    border: 1px solid #25272c;
 }
 """
 
@@ -225,6 +224,7 @@ selection-background-color: #646464;
 }
 QTableView::item::selected {
   border: 2px solid red;
+  border-radius: 2px;
 }
 """
 
@@ -1047,6 +1047,7 @@ class Atom_QCheckBox(QCheckBox, Atom_Edit_mixin):
         self.setChecked(val)
         self._type = atom_type
         self.stateChanged.connect(self.on_user_event)
+        self.setStyleSheet(CHECK_BOX_CSS)
 
     def value(self):
         return self.isChecked()
