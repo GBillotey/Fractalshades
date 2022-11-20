@@ -82,9 +82,10 @@ def _store_kwargs(indentifier):
         def wrapper(self, *args, **kwargs):
             # bind arguments, ommiting self
             if len(args) > 0:
-                raise TypeError(("{0:} should only accept keyword-arguments ; "
-                    + "given positionnal: {1:}").format(
-                            method.__name__, args))
+                raise TypeError(
+                    ("{0:} should only accept keyword-arguments ; "
+                    + "given positionnal: {1:}").format(method.__name__, args)
+                )
             ba = inspect.signature(method).bind_partial(**kwargs)
             ba.apply_defaults()
             kwargs_dic = dict(ba.arguments)

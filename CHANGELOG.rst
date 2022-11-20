@@ -1,11 +1,48 @@
 Changelog
 *********
 
-Rev 0.5.6
+Rev 1.0.0
 ~~~~~~~~~
-- `supersampling` and `jitter` parameters added to Plotter class
-- 'antialiasing' parameter from zoom method deprecated
+This revision is a major refactoring of the code, with optimised
+high-resolution rendering options. Several non backward-compatible changes
+habe been introduced.
+If you use the GUI pre-made scripts available in the documentation section,
+you will need to update them (i.e., download) as scripts running with 0.5.x
+are not compatible with version 1.x.y onwards.
 
+- Fractal_plotter now implements `supersampling` and `jitter` parameters
+- 'antialiasing' parameter from zoom method deprecated: use Fractal_plotter
+  `supersampling` options instead
+- `BLA_params` dict-like parameter replaced by a float parameter:
+   `BLA_eps`
+- in add_light_source method from Blin_lighting class:
+      - float 2-uplet parameters 'angles' replaced by 2 float parameters 
+        `polar_angle`, `azimuth_angle`
+      - `coords` parameter removed
+- Fractal class: data files `.params` renamed `.fingerprint`
+- `run` method from Fractal removed. One consequence: to clean-up stored
+  calculation files, one shall now use  `clean_up` method before
+  any calculation methd call (previously it was to be used before `run` call)
+- in Color_layer, parameter `probes_kind` suppressed, all probes are now
+  "absolute".
+- Normal map layer: A correction of the "max slope" calculation may impact
+  shaded renderings (especially glossy), usually a smaller slope angle is now
+  to be used to achieve similar result (e.g. 45. -> 30.).
+- Normal map layer: A correction of the "max slope" calculation may impact
+  shaded renderings (especially glossy), usually a smaller slope angle is now
+  to be used to achieve similar result (e.g. 45. -> 30.).
+- Color types: now use a dedicated type fscolors.Color instead of QtGui.QColor:
+  this allows running in batch mode for systems without pyQt6 installed
+
+Several changes also implemented in the GUI:
+- Collapsible paramters groups (main panel) to ease access to parameters
+- Dedicated editor for lighting effect
+- Dedicated editor for Fractals
+- Parameter "function" can now be passed (as string)
+
+Due to the high number of changes deployed, it is expected that bugfix-revision
+will need to be issued, please report any unexpected behavior at:
+https://github.com/GBillotey/Fractalshades/issues
 
 Rev 0.5.6
 ~~~~~~~~~

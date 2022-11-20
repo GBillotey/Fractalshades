@@ -56,7 +56,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         shutil.rmtree(data_dir)
 
 
-    @test_config.no_stdout
+    # @test_config.no_stdout
     def test_M2_E20(self):
         """
         Testing all datatype options, 5e-20 test case."""
@@ -87,12 +87,16 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 
                 plotter = fs.Fractal_plotter(pp)   
                 plotter.add_layer(Bool_layer("interior", output=False))
-                plotter.add_layer(Normal_map_layer("DEM_map", max_slope=45, output=True))
+                plotter.add_layer(Normal_map_layer(
+                        "DEM_map", max_slope=30., output=True
+                ))
                 plotter.add_layer(Color_layer(
                         layer_name,
                         func=lambda x: np.log(x),
                         colormap=self.colormap,
-                        probes_z=[0., 0.15],
+                        # min: 6.196169853210449
+                        # max: 6.755995750427246
+                        probes_z=[6.196169853210449, 6.280143737792969],
                         probes_kind="relative",
                         output=True))
                 plotter[layer_name].set_mask(plotter["interior"],
@@ -103,16 +107,16 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                     k_diffuse=1.05,
                     k_specular=.0,
                     shininess=350.,
-                    angles=(50., 50.),
-                    coords=None,
+                    polar_angle=50.,
+                    azimuth_angle=50.,
                     color=np.array([1.0, 1.0, 0.9])
                 )
                 light.add_light_source(
                     k_diffuse=0.,
                     k_specular=1.5,
                     shininess=350.,
-                    angles=(50., 40.),
-                    coords=None,
+                    polar_angle=50.,
+                    azimuth_angle=40.,
                     color=np.array([1.0, 1.0, 0.9]),
                     material_specular_color=np.array([1.0, 1.0, 1.0])
                 )
@@ -140,17 +144,17 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         fs.settings.enable_multiprocessing = True
         fs.settings.inspect_calc = True
 
-        for BLA_params in [{"eps": 1.e-6}, None]:
-            with self.subTest(BLA_params=BLA_params):
-                if BLA_params is None:
+        for BLA_eps in [1.e-6, None]:
+            with self.subTest(BLA_eps=BLA_eps):
+                if BLA_eps is None:
                     calc_name = "noBLA"
                 else:
-                    calc_name = str(BLA_params["eps"]) + "BLA"
+                    calc_name = str(BLA_eps) + "BLA"
 
                 layer_name = test_name + "_potential_" + calc_name
 
                 m = self.calc(x, y, dx, precision, nx, test_name,
-                         calc_name, BLA_params=BLA_params)
+                         calc_name, BLA_eps=BLA_eps)
                 pp = Postproc_batch(m, calc_name)
                 pp.add_postproc(layer_name, Continuous_iter_pp())
                 pp.add_postproc("interior", Raw_pp("stop_reason",
@@ -239,7 +243,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
         layer_name = test_name + "_potential_" + calc_name
         m = self.calc(x, y, dx, precision, nx, test_name,
-                 calc_name, glitch_max_attempt=10,
+                 calc_name,
                  calc_fast=False, xy_ratio=1., max_iter=max_iter)
         pp = Postproc_batch(m, calc_name)
         pp.add_postproc(layer_name, Continuous_iter_pp())
@@ -320,7 +324,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         
         layer_name = test_name + "_potential_" + calc_name
         m = self.calc(x, y, dx, precision, nx, test_name,
-                 calc_name, glitch_max_attempt=10)
+                 calc_name)
         pp = Postproc_batch(m, calc_name)
         pp.add_postproc(layer_name, Continuous_iter_pp())
         pp.add_postproc("interior", Raw_pp("stop_reason",
@@ -329,7 +333,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         
         plotter = fs.Fractal_plotter(pp)   
         plotter.add_layer(Bool_layer("interior", output=False))
-        plotter.add_layer(Normal_map_layer("DEM_map", max_slope=45, output=True))
+        plotter.add_layer(Normal_map_layer("DEM_map", max_slope=30, output=True))
         # As divref glitch correction implies some random,
         # we test with absolute z range
         plotter.add_layer(Color_layer(
@@ -347,16 +351,18 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
             k_diffuse=1.3,
             k_specular=25.0,
             shininess=150.,
-            angles=(30., 50.),
-            coords=None,
+            polar_angle=30.,
+            azimuth_angle=50.,
+            # angles=(30., 50.),
             color=np.array([1.0, 1.0, 1.0]),
             )
         light.add_light_source(
             k_diffuse=0.0,
             k_specular=3.0,
             shininess=150.,
-            angles=(30., 50.),
-            coords=None,
+            polar_angle=30.,
+            azimuth_angle=50.,
+#            angles=(30., 50.),
             color=np.array([1.0, 1.0, 1.0]),
             material_specular_color=np.array([1.0, 1.0, 1.0])
             )
@@ -366,6 +372,54 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         self.layer = plotter[layer_name]
         self.test_name = test_name
         self.check_current_layer(0.15)
+
+    @test_config.no_stdout
+    def test_supersampling(self):
+        """
+        Testing basic supersampling rendering
+        """
+        test_name = self.test_supersampling.__name__
+        calc_name = "2-2"
+
+        x = '-1.36768994867991128'
+        y = '0.00949048853859240532'
+        dx = '2.477633848347765e-8'
+        precision = 18
+        nx = 600
+
+        colormap = fscolors.cmap_register["classic"]
+        
+        
+        layer_name = test_name + "_potential_" + calc_name
+        m = self.calc(x, y, dx, precision, nx, test_name,
+                 calc_name)
+        pp = Postproc_batch(m, calc_name)
+        pp.add_postproc(layer_name, Continuous_iter_pp())
+        pp.add_postproc("interior", Raw_pp("stop_reason",
+                               func=lambda x: np.isin(x, [0, 2])))
+        pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
+        
+        plotter = fs.Fractal_plotter(
+                pp, supersampling="3x3", final_render=True
+        )
+        plotter.add_layer(Bool_layer("interior", output=False))
+
+        plotter.add_layer(Color_layer(
+                layer_name,
+                func=lambda x: np.log(x),
+                colormap=colormap,
+                probes_z=[7.2278738, 7.8332758],
+                probes_kind="absolute",
+                output=True))
+        plotter[layer_name].set_mask(
+                plotter["interior"], mask_color=(0., 0., 0.)
+        )
+        plotter.plot()
+
+        self.layer = plotter[layer_name]
+        self.test_name = test_name
+        self.check_current_layer(0.05)
+
 
     @test_config.no_stdout
     def test_glitch_divref5(self):
@@ -394,7 +448,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         
         layer_name = test_name + "_potential_" + calc_name
         m = self.calc(x, y, dx, precision, nx, test_name,
-                 calc_name, glitch_max_attempt=10)
+                 calc_name)
         pp = Postproc_batch(m, calc_name)
         pp.add_postproc(layer_name, Continuous_iter_pp())
         pp.add_postproc("interior", Raw_pp("stop_reason",
@@ -488,7 +542,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
         layer_name = test_name + "_potential_" + calc_name
         m = self.calc(x, y, dx, precision, nx, test_name,
-                 calc_name, glitch_max_attempt=10,# SA_params=SA_params,
+                 calc_name, 
                  calc_fast=True, xy_ratio=16/9.)
         pp = Postproc_batch(m, calc_name)
         pp.add_postproc(layer_name, Continuous_iter_pp())
@@ -660,10 +714,9 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
 
     def calc(self, x, y, dx, precision, nx, test_name, calc_name,
-            interior_detect=False, antialiasing=False, xy_ratio=1.0,
-            BLA_params={"eps": 1.e-6},
-            glitch_max_attempt=1, calc_fast=False, max_iter=50000):
-        
+            interior_detect=False, xy_ratio=1.0,
+            BLA_eps=1.e-6, calc_fast=False, max_iter=50000):
+
         test_dir = os.path.join(self.perturb_dir, test_name)
         mandelbrot = fsmodels.Perturbation_mandelbrot(test_dir)
         mandelbrot.zoom(
@@ -674,8 +727,9 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
              nx=nx,
              xy_ratio=xy_ratio,
              theta_deg=0.,
-             projection="cartesian",
-             antialiasing=antialiasing)
+             projection="cartesian"
+        )
+        mandelbrot.clean_up(calc_name)
 
         if calc_fast: 
             mandelbrot.calc_std_div(
@@ -685,7 +739,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 M_divergence=1.e3,
                 epsilon_stationnary=1.e-3,
                 interior_detect=False,
-                BLA_params=BLA_params,
+                BLA_eps=BLA_eps,
                 calc_dzndc=False
             )
         else:
@@ -696,10 +750,11 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 M_divergence=1.e3,
                 epsilon_stationnary=1.e-3,
                 interior_detect=interior_detect,
-                BLA_params=BLA_params)
+                BLA_eps=BLA_eps
+            )
 
-        mandelbrot.clean_up(calc_name)
-        mandelbrot.run()
+
+        # mandelbrot.run()
         return mandelbrot
 
     def check_current_layer(self, err_max=0.01):
@@ -725,6 +780,7 @@ if __name__ == "__main__":
         suite = unittest.TestSuite()
         # suite.addTest(Test_Perturbation_mandelbrot("test_glitch_dyn"))
         # suite.addTest(Test_Perturbation_mandelbrot("test_ultradeep_interior_detect"))
-        suite.addTest(Test_Perturbation_mandelbrot("test_glitch_divref"))
+        suite.addTest(Test_Perturbation_mandelbrot("test_supersampling"))
+        suite.addTest(Test_Perturbation_mandelbrot("test_M2_E20"))
         runner.run(suite)
 

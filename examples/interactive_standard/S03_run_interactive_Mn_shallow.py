@@ -80,7 +80,7 @@ def plot(plot_dir):
          nx: int=nx,
          epsilon_stationnary: float=epsilon_stationnary,
          _3: fsgui.separator="Plotting parameters",
-         interior_color: QtGui.QColor=(0.1, 0.1, 0.1),
+         interior_color: fscolors.Color=(0.1, 0.1, 0.1),#QtGui.QColor=(0.1, 0.1, 0.1),
          colormap: fscolors.Fractal_colormap=colormap,
          cmap_z_kind: typing.Literal["relative", "absolute"]="relative",
          zmin: float=zmin,
@@ -88,7 +88,7 @@ def plot(plot_dir):
     ):
 
         fractal.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
-             theta_deg=0., projection="cartesian", antialiasing=False)
+             theta_deg=theta_deg, projection="cartesian")
 
         fractal.base_calc(
             calc_name=calc_name,
@@ -98,13 +98,13 @@ def plot(plot_dir):
             epsilon_stationnary=epsilon_stationnary,
         )
 
-        if fractal.res_available():
-            print("RES AVAILABLE, no compute")
-        else:
-            print("RES NOT AVAILABLE, clean-up")
-            fractal.clean_up(calc_name)
+#        if fractal.res_available():
+#            print("RES AVAILABLE, no compute")
+#        else:
+#            print("RES NOT AVAILABLE, clean-up")
+#            fractal.clean_up(calc_name)
 
-        fractal.run()
+#        fractal.run()
 
         layer_name = "continuous_iter"
 
@@ -122,7 +122,6 @@ def plot(plot_dir):
                 func=lambda x: np.log(x),
                 colormap=colormap,
                 probes_z=[zmin, zmax],
-                probes_kind="relative",
                 output=True))
         plotter[layer_name].set_mask(plotter["interior"],
                                      mask_color=interior_color)
@@ -132,8 +131,8 @@ def plot(plot_dir):
             k_diffuse=1.05,
             k_specular=20.,
             shininess=50.,
-            angles=(50., 20.),
-            coords=None,
+            polar_angle=50.,
+            azimuth_angle=20.,
             color=np.array([1.0, 1.0, 0.9]))
 
         plotter[layer_name].shade(plotter["DEM_map"], light)

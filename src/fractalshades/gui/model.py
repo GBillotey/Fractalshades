@@ -126,8 +126,13 @@ def best_match(val, types):
     raise ValueError("No match for val {} and types {}".format(val, types))
 
 def type_name(naming_type):
+    """ The type as displayed in the GUI """
     if typing.get_origin(naming_type) is typing.Literal:
-        return("choice")
+        return "choice"
+    elif issubclass(naming_type, fs.Fractal):
+            return "Fractal"
+#    elif issubclass(naming_type, fs.core.Fractal_choser):
+#            return "Fractal_choice"
     else:
         return naming_type.__name__
 
@@ -240,7 +245,7 @@ class Model(QtCore.QObject):
     def model_changerequest_slot(self, keys, val):
         """ A change has been requested by  a Presenter i.e object
         not holding the data """
-#        print(">>> in presenter change request slot", keys)
+        print(">>> in MAIN model change request slot", keys)
         if len(keys) == 0:
             # This change can be handled at main model level
             self._model[keys] = val
@@ -291,39 +296,35 @@ class Func_submodel(Submodel):
         self.model_notification.connect(self._model.model_notified_slot)
         # Bindings for dps
         if dps_var is not None:
-            print("dps_var", dps_var)
-            self.connect_dps(dps_var)
+#            print("dps_var", dps_var)
+#            self.connect_dps(dps_var)
+            self.connect_alias(dps_var, "dps")
     
-    def connect_dps(self, dps_var):
-        """
-        Register this var as the dps event listener at model level
+#    def connect_dps(self, dps_var):
+#        """
+#        Register this var as the dps event listener at model level
+#        """
+#        sign = inspect.signature(self._func)
+#        for i_param, (name, param) in enumerate(sign.parameters.items()):
+##            print(name, param)
+#            if name == dps_var:
+#                if typing.get_origin(param.annotation) is not None:
+#                    raise ValueError("Unexpected type for math.dps: {}".format(
+#                            typing.get_origin(param.annotation)))
+#                key = (i_param, 0, "val")
+##                print("setting dps listener",key )
+#                self._model.set_alias("dps", self._keys + tuple([key]))
+#                return
+#        raise ValueError("Parameter for dps not found", dps_var)
+
+    def get_key(self, pname, return_ptype=False):
+        """ returns the model key associated with a func parameter
+        
+        
         """
         sign = inspect.signature(self._func)
         for i_param, (name, param) in enumerate(sign.parameters.items()):
-#            print(name, param)
-            if name == dps_var:
-                if typing.get_origin(param.annotation) is not None:
-                    raise ValueError("Unexpected type for math.dps: {}".format(
-                            typing.get_origin(param.annotation)))
-                key = (i_param, 0, "val")
-#                print("setting dps listener",key )
-                self._model.set_alias("dps", self._keys + tuple([key]))
-                return
-        raise ValueError("Parameter for dps not found", dps_var)
-
-
-    def connect_alias(self, func_var, alias): # Refactoring
-        """
-        Connect a model alias to a func parameter,
-        thus providing a setter hook.
-        func_var: str
-            parameter name
-        alias: str
-            model alias
-        """
-        sign = inspect.signature(self._func)
-        for i_param, (name, param) in enumerate(sign.parameters.items()):
-            if name == func_var:
+            if name == pname:
                 if typing.get_origin(param.annotation) is not None:
                     # Union / Litteral not accepted
                     raise ValueError(
@@ -331,9 +332,40 @@ class Func_submodel(Submodel):
                         typing.get_origin(param.annotation))
                     )
                 key = (i_param, 0, "val")
-                self._model.set_alias(alias, self._keys + tuple([key]))
-                return
-        raise ValueError(f"Parameter for {func_var} not found")
+                if return_ptype:
+                    ptype = param.annotation
+                    return key, ptype
+                else:
+                    return key
+
+
+    def connect_alias(self, func_var, alias):
+        """
+        Connects a model alias to a func parameter, thus providing a more
+        convenient setter hook.
+        func_var: str
+            parameter name
+        alias: str
+            model alias
+        """
+        key = self.get_key(func_var)
+        if key is None:
+            raise ValueError(f"Parameter for {func_var} not found")
+        self._model.set_alias(alias, self._keys + tuple([key]))
+        
+#        sign = inspect.signature(self._func)
+#        for i_param, (name, param) in enumerate(sign.parameters.items()):
+#            if name == func_var:
+#                if typing.get_origin(param.annotation) is not None:
+#                    # Union / Litteral not accepted
+#                    raise ValueError(
+#                        "Cannot connect alias to this origin type: {}".format(
+#                        typing.get_origin(param.annotation))
+#                    )
+#                key = (i_param, 0, "val")
+#                self._model.set_alias(alias, self._keys + tuple([key]))
+#                return
+#        raise ValueError(f"Parameter for {func_var} not found")
 
 
     def build_dict(self):
@@ -388,7 +420,6 @@ class Func_submodel(Submodel):
             )
             fd[(i_param, "type_sel")] = type_index
             fd[(i_param, "type_def")] = type_index #type_match
-
         elif origin is typing.Literal:
             choices = typing_litteral_choices(ptype, p_name=None)
             fd[(i_param, "n_types")] = 0
@@ -403,13 +434,11 @@ class Func_submodel(Submodel):
                     f"param {name}: default provided '{default}' does not "
                     f"match the list of autorized values {choices}"
                 )
-
         elif origin is None:
             fd[(i_param, "n_types")] = 0
             fd[(i_param, "n_choices")] = 0
             fd[(i_param, "type_sel")] = 0
             fd[(i_param, "type_def")] = 0
-
         else:
             raise ValueError("Unsupported type origin: {}".format(origin))
 
@@ -474,8 +503,8 @@ class Func_submodel(Submodel):
 
     @property
     def param0(self):
-        """ Return the value of the first parameter - which should be, the
-        Fractal object
+        """ Return the value of the first parameter
+        -> Which by contract, should be the Fractal object
         """
         return next(iter(self.getkwargs().values()))
 
@@ -484,32 +513,28 @@ class Func_submodel(Submodel):
         """
         return os.path.join(self.param0.directory, "gui", "params.pickle")
 
-
     def save_func_dict(self):
         """ Save the calling parameters - except unpickable parameters
         - main Fractal object
         - gui-separators
         """
-        print("*** saving kwargs")
         fd = self._dict.copy()
-
         unpickables = []
+
         for key, val in fd.items():
+            # We filter parameters : if any of the possible type is 
+            # unpickable, we add it to the unpickables
             if isinstance(key, tuple) and len(key) == 3:
-                # We filter parameters : if any of the possible type is 
-                # unpickable, we remove
+                # Note: len = 3 pre-filters already on (`type`, `val`)
                 if key[2] == "type":
-                    if inspect.isclass(val) and issubclass(val, fs.Fractal):
-                        # This is a Fractal instance, usually only first param
-                        unpickables += [key[0]]
                     if (
                         isinstance(val, typing.TypeVar)
-                        and (val.__name__
-                             in ("gui_separator", "gui_collapsible_separator")
+                        and (
+                            val.__name__
+                            in ("gui_separator", "gui_collapsible_separator")
                         )
                     ):
-                        # This is a gui separator, not something the user may
-                        # modify
+                        # This is a gui separator
                         unpickables += [key[0]]
 
         for key in list(fd.keys()): # copy through list as we modify on the fly
@@ -553,8 +578,9 @@ class Func_submodel(Submodel):
             self.setkwarg(key, val)
             # Emit a model modification for the presenter that might be
             # tracking
-            self.model_notification.emit(self._keys + tuple([key]),
-                                         oldval, val)
+            self.model_notification.emit(
+                    self._keys + tuple([key]), oldval, val
+            )
 
     def getsource(self):
         """ Returns the function source code """
@@ -567,14 +593,14 @@ class Func_submodel(Submodel):
 
     @pyqtSlot(object, object)
     def func_user_modified_slot(self, key, val):
-        #  print("in submodel, widget_modified", key, val)
         if isinstance(key, str):
             # Accessing directly a kwarg by its name
-            # TODO: should be only nparams
+            # TODO: should be only one of existing params ??
             self[key] = val
             return
         elif not(isinstance(key, tuple)):
             raise ValueError("Untracked key{}".format(key))
+
         # From here we are dealing with a 'tuple' key ie directly pointing
         # at the data structure
         keylen = len(key)
@@ -812,5 +838,95 @@ class Lighting_presenter(Presenter, Array_presenter_mixin):
         self.model_changerequest.emit(
             self._mapping["Lighting_presenter"], self.data
         )
+        # Or alternatively : self["Lighting_presenter"] = self.data
 
 #------------------------------------------------------------------------------
+
+class Fractal_presenter(Presenter):
+
+    model_changerequest = pyqtSignal(object, object)
+
+    def __init__(self, model, mapping):
+        """
+        Presenter for a `fractalshades.colors.Fractal_colormap` parameter
+        Mapping expected : mapping = {"Fractal_presenter": fractal_key}
+        """
+        super().__init__(model, mapping)
+
+    @property
+    def data(self):
+        # This return the fractal as stored in the main model
+        # To use as a parameter presenter, the only key should be the class
+        # name (see `on_presenter` from `Func_widget`)
+        return self["Fractal_presenter"]
+
+    @property
+    def data_init_kwargs(self):
+        # The kwargs from __init__ signature - (note: excluding self)
+        return self.data.init_kwargs
+    
+    @property
+    def data_init_signature(self):
+        # The signature from __init__
+        return self.data.init_signature()
+
+    @property
+    def data_class(self):
+        return self.data.__class__
+
+    @pyqtSlot(object, object)
+    def data_user_modified_slot(self, key, val):
+        """ Modifies in-place the fractal"""
+        if not(key in self.data_init_kwargs):
+            raise ValueError(f"Unexpected key in Fractal_presenter: {key}")
+        self.on_init_paramchange(key, val)
+
+
+    def on_init_paramchange(self, key, val):
+        """ Re-generate the fractal object
+        """
+        print("** Fractal_presenter, re-generating fractal object", key, val)
+        old_kwargs = self.data_init_kwargs
+
+        if old_kwargs[key] != val:
+            new_kwargs = copy.deepcopy(old_kwargs)
+            new_kwargs[key] = val
+            new_frac = self.data_class(**new_kwargs)
+            self.model_changerequest.emit(
+                self._mapping["Fractal_presenter"], new_frac
+            )
+            
+    def reset_zoom_parameters(self, gui, reset_listing):
+        """ Provides defaults values for the main GUI image-binded parameter
+        """
+        default_mapping = {
+            "x": "0.0",   # might be mpf, keep as str
+            "y": "0.0",   # might be mpf, keep as str
+            "dx": "10.0", # might be mpf, keep as str
+            "theta_deg": 0.0,
+            "xy_ratio": 1.0,
+            "dps": 12,
+            "has_skew": False
+        }
+
+        for key in reset_listing:
+            print("key", key)
+            if key == "dps":
+                if gui._dps is None:
+                    continue
+            pname = getattr(gui, "_" + key)
+            print("pname", pname)
+
+            func_sm = self._model.from_register(("func",))
+
+            pkey, ptype = func_sm.get_key(pname, return_ptype=True)
+            model_keys = func_sm._keys +  (pkey,)
+            print("model_keys", model_keys)
+
+            if key in default_mapping.keys():
+                val = default_mapping[key]
+                if ptype in [float, int]:
+                    val = ptype(val)
+                print("EMIT", model_keys, val, type(val))
+                self.model_changerequest.emit(model_keys, val)
+

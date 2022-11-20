@@ -37,7 +37,8 @@ directory : str
 
 
     @fs.utils.zoom_options
-    def zoom(self, *,
+    def zoom(
+             self, *,
              precision: int,
              x: mpmath.mpf,
              y: mpmath.mpf,
@@ -51,7 +52,7 @@ directory : str
              skew_01: float=0.,
              skew_10: float=0.,
              skew_11: float=1.
-        ):
+    ):
         """
         Define and stores as class-attributes the zoom parameters for the next
         calculation.

@@ -7,7 +7,7 @@ import fractalshades.utils as fsutils
 
 
 class Mandelbrot_N(fs.Fractal):
-    def __init__(self, directory, exponent):
+    def __init__(self, directory: str, exponent: int):
         """
 A standard power-N Mandelbrot Fractal set implementation.
 
@@ -22,6 +22,8 @@ directory : str
     Path for the working base directory
         """
         super().__init__(directory)
+        self.exponent = exponent # Needed for serialization
+
         # default values used for postprocessing (potential)
         self.potential_kind = "infinity"
         self.potential_d = exponent
@@ -66,10 +68,17 @@ Exit codes are *max_iter*, *divergence*, *stationnary*.
         complex_codes = ["zn", "dzndz", "dzndc"]
         int_codes = []
         stop_codes = ["max_iter", "divergence", "stationnary"]
-        self.codes = (complex_codes, int_codes, stop_codes)
-        self.init_data_types(np.complex128)
 
-        self.potential_M = M_divergence
+        def set_state():
+            def impl(instance):
+                instance.codes = (complex_codes, int_codes, stop_codes)
+                instance.complex_type = np.complex128
+                instance.potential_M = M_divergence
+            return impl
+#        self.codes = (complex_codes, int_codes, stop_codes)
+#        self.init_data_types(np.complex128)
+#
+#        self.potential_M = M_divergence
 
         def initialize():
             @numba.njit
@@ -77,7 +86,7 @@ Exit codes are *max_iter*, *divergence*, *stationnary*.
                 # Not much to do here
                 pass
             return numba_init_impl
-        self.initialize = initialize
+#        self.initialize = initialize
 
         def iterate():
             Mdiv_sq = self.M_divergence ** 2
@@ -113,6 +122,10 @@ Exit codes are *max_iter*, *divergence*, *stationnary*.
                 return n_iter
 
             return numba_impl
-        self.iterate = iterate
-
+#        self.iterate = iterate
+        return {
+            "set_state": set_state,
+            "initialize": initialize,
+            "iterate": iterate
+        }
 

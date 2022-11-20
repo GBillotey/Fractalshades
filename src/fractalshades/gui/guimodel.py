@@ -8,6 +8,7 @@ import traceback
 import copy
 import datetime
 import time
+import logging
 # import textwrap
 #import pprint
 import pickle
@@ -93,16 +94,18 @@ from fractalshades.gui.model import (
     Func_submodel,
     Colormap_presenter,
     Lighting_presenter,
+    Fractal_presenter,
     Presenter,
     type_name,
     typing_litteral_choices,
     separator,
     collapsible_separator
 )
-
 from fractalshades.gui.QCodeEditor import Fractal_code_editor
-
 import fractalshades.numpy_utils.expr_parser as fs_parser
+
+
+logger = logging.getLogger(__name__)
 
 
 # Setting allocation limit for QImageReader - to allow displaying larger image
@@ -203,14 +206,6 @@ QSpinBox{{
 }}
 """
 
-#QSpinBox#spin {
-#margin-left: 20px;  /* make room for the arrows */
-#margin-right: 20px;  /* make room for the arrows */
-#width: 20px;
-#
-#border: 2 solid #515151;
-#background-color: #434343;
-#}
 
 CHECK_BOX_CSS = """
 QCheckBox::indicator:unchecked {
@@ -343,7 +338,6 @@ class _Pixmap_figure:
     def save_png(self, im_path):
         self.img.save(im_path, format="PNG")
 
-
 class Calc_status_bar(QStatusBar):
     
     def __init__(self, func_model):
@@ -470,10 +464,7 @@ class Action_func_widget(QFrame):
         param_box = QGroupBox("Parameters")
         param_layout = QVBoxLayout()
         param_scrollarea = QScrollArea(self)
-#        param_scrollarea.setSizePolicy(
-#            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-#            # QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
-#        )
+
         param_scrollarea.setWidget(self._param_widget)
         param_scrollarea.setWidgetResizable(True)
 
@@ -646,10 +637,11 @@ class Param_Box(QWidget):
         box_layout.setSpacing(0)
         box_layout.setContentsMargins(0, 0, 0, 0)
         
-        self.make_label(title)
-        self.make_content_area()
+        if title != "":
+            self.make_label(title)
+            box_layout.addWidget(self.label)
 
-        box_layout.addWidget(self.label)
+        self.make_content_area()
         box_layout.addWidget(self.content_area)
         
 
@@ -675,6 +667,8 @@ class Param_Box(QWidget):
     def resizeEvent(self, evt):
         super().resizeEvent(evt)
         self.synchro_size_evt.emit()
+
+
 
 
 class Clickable_QLabel(QLabel):
@@ -796,9 +790,13 @@ class Func_widget(QFrame):
         fd = self._submodel._dict
 
         synchro = self.synchro = Layout_col_synchronizer(cols=(0, 2))
-        current_layout = self._layout
+
+        box = Param_Box("", self)
+        synchro.add_parambox(box)
+        self._layout.addWidget(box, 0, 0, 1, 4)
+        current_layout = box.gridLayout # self._layout
         current_layout_row = 0
-        main_layout_row = 0
+        main_layout_row = 1
 
         for i_param in range(fd["n_params"]):
             uni_typed = (fd[(i_param, "n_types")] == 0)
@@ -824,12 +822,13 @@ class Func_widget(QFrame):
                 main_layout_row += 1
 
             else:
-                # adding a parameter editor to the current block layout, or
-                # directly the main layout
+                # adding a parameter editor to the current block layout,
+                # or directly the main layout box
                 self.layout_param(i_param, current_layout, current_layout_row)
                 current_layout_row += 1
                 if (current_layout is self._layout):
-                    main_layout_row += 1
+                    raise ValueError()
+                    # main_layout_row += 1
 
         # adds a spacer at bottom
         self._layout.setRowStretch(main_layout_row, 1)
@@ -881,7 +880,6 @@ class Func_widget(QFrame):
         n_uargs = fd[(i_param, "n_types")]
         if n_uargs == 0:
             utype = fd[(i_param, 0, "type")]
-
             utype_label = QLabel(type_name(utype))
             layout.addWidget(utype_label, layout_row, 2, 1, 1)
             self.layout_uarg(qs, i_param, 0)
@@ -928,8 +926,8 @@ class Func_widget(QFrame):
         if isinstance(atom_wget, Atom_Presenter_mixin):
             atom_wget.request_presenter.connect(functools.partial(
                 self.on_presenter, (i_param, i_union, "val")))
-            
-    
+
+
     def reset_layout(self):
         """ Delete every item in self._layout """
         raise RuntimeError("Shall never be called ?")
@@ -1012,7 +1010,7 @@ class Func_widget(QFrame):
 def atom_wget_factory(atom_type):
     if typing.get_origin(atom_type) is typing.Literal:
         return Atom_QComboBox
-    elif issubclass(atom_type, fs.Fractal):
+    elif issubclass(atom_type, fs.Fractal): 
         return Atom_fractal_button
     elif issubclass(atom_type, fs.numpy_utils.Numpy_expr):
         return Atom_QLineEdit
@@ -1055,8 +1053,9 @@ class Atom_QCheckBox(QCheckBox, Atom_Edit_mixin):
     def on_user_event(self):
         self.user_modified.emit()
 
-    def on_model_event(self, val):
-        self.setChecked(val)
+    def on_model_event(self, val):    
+        with QtCore.QSignalBlocker(self):
+            self.setChecked(val)
 
 
 class NoWheel_mixin:
@@ -1089,8 +1088,9 @@ class Atom_QBoolComboBox(QComboBox, Atom_Edit_mixin, NoWheel_mixin):
     def on_user_event(self):
         self.user_modified.emit()
 
-    def on_model_event(self, val):
-        self.setCurrentIndex(self._values.index(val))
+    def on_model_event(self, val):    
+        with QtCore.QSignalBlocker(self):
+            self.setCurrentIndex(self._values.index(val))
 
 
 class Atom_Color(QPushButton, Atom_Edit_mixin):
@@ -1168,7 +1168,8 @@ class Atom_Color(QPushButton, Atom_Edit_mixin):
             self.update_color(old_col)
 
     def on_model_event(self, val):
-        self.update_color(val)
+        with QtCore.QSignalBlocker(self):
+            self.update_color(val)
 
 
 class Atom_QLineEdit(QLineEdit, Atom_Edit_mixin): 
@@ -1195,9 +1196,10 @@ class Atom_QLineEdit(QLineEdit, Atom_Edit_mixin):
     def on_user_event(self):
         self.user_modified.emit()
 
-    def on_model_event(self, val):
-        self.setText(str(val))
-        self.validate(self.text(), acceptable_color="#25272C")
+    def on_model_event(self, val): 
+        with QtCore.QSignalBlocker(self):
+            self.setText(str(val))
+            self.validate(self.text(), acceptable_color="#25272C")
 
     def validate(self, text, acceptable_color="#c8c8c8"):
         validator = self.validator()
@@ -1234,12 +1236,13 @@ class Atom_QPlainTextEdit(QPlainTextEdit, Atom_Edit_mixin):
         return self.toPlainText()
 
     def on_model_event(self, val):
-        str_val = val
-        if str_val != self.toPlainText():
-            # Signals shall be blocked to avoid an infinite event loop.
-            with QtCore.QSignalBlocker(self):
-                self.setPlainText(str_val)
-        self.validate(from_user=False)
+        with QtCore.QSignalBlocker(self):
+            str_val = val
+            if str_val != self.toPlainText():
+                # Signals shall be blocked to avoid an infinite event loop.
+                with QtCore.QSignalBlocker(self):
+                    self.setPlainText(str_val)
+            self.validate(from_user=False)
 
     def validate(self, from_user=True):
         """ Sets background color according to the text validation
@@ -1308,15 +1311,18 @@ class Atom_QComboBox(QComboBox, Atom_Edit_mixin, NoWheel_mixin):
         self.user_modified.emit()
 
     def on_model_event(self, val):
-        self.setCurrentIndex(val)
+        with QtCore.QSignalBlocker(self):
+            self.setCurrentIndex(val)
 
 
-class Atom_fractal_button(QPushButton, Atom_Edit_mixin):
+class Atom_fractal_button(QPushButton, Atom_Edit_mixin, Atom_Presenter_mixin):
     user_modified = pyqtSignal()
+    request_presenter = pyqtSignal(object, object)
 
     def __init__(self, atom_type, val, model, parent=None):
         super().__init__(parent)
         self._fractal = val
+        self.setText(self.value().__class__.__name__)
 
     def value(self):
         return self._fractal
@@ -1324,6 +1330,9 @@ class Atom_fractal_button(QPushButton, Atom_Edit_mixin):
     def on_model_event(self, val):
         print("Atom_fractal_button, FRACTAL modified !!!")
         pass
+
+    def mouseReleaseEvent(self, event):
+        self.request_presenter.emit(Fractal_presenter, Fractal_editor)
 
 
 class Qobject_image(QWidget):
@@ -1366,8 +1375,9 @@ class Atom_cmap_button(Qobject_image, Atom_Edit_mixin, Atom_Presenter_mixin):
         return self._object
 
     def on_model_event(self, val):
-        print("Atom_cmap_button", "on_model_event")
-        self.update_cmap(val)
+        print("Atom_cmap_button", "on_model_event")    
+        with QtCore.QSignalBlocker(self):
+            self.update_cmap(val)
 
     def mouseReleaseEvent(self, event):
         self.request_presenter.emit(Colormap_presenter, Qcmap_editor)
@@ -1394,7 +1404,8 @@ class Atom_lighting_button(Qobject_image, Atom_Edit_mixin, Atom_Presenter_mixin)
         return self._object
 
     def on_model_event(self, val):
-        self.update_lighting(val)
+        with QtCore.QSignalBlocker(self):
+            self.update_lighting(val)
 
     def mouseReleaseEvent(self, event):
         self.request_presenter.emit(Lighting_presenter, Qlighting_editor)
@@ -1826,7 +1837,7 @@ class Base_array_editor(QWidget):
     @property
     def n_rows(self):
         return self._presenter.n_rows
-    
+
     @property
     def presenter_classname(self):
         # e.g., "Colormap_presenter"
@@ -1874,7 +1885,7 @@ class Base_array_editor(QWidget):
         h_header.setSectionResizeMode(
                 QtWidgets.QHeaderView.ResizeMode.ResizeToContents
         )
-        print("setSectionResizeMode", self.n_cols)
+        # print("setSectionResizeMode", self.n_cols)
         h_header.setSectionResizeMode(
             self.n_cols - 1, QtWidgets.QHeaderView.ResizeMode.Stretch # was: 3
         )
@@ -2163,6 +2174,171 @@ class Qlighting_editor(Base_array_editor):
 
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#class Directory_editor(QWidget):
+#    def __init__(self, parent, str_path):
+#        super().__init__(parent) # Flags ??
+#        self.str_path = str_path
+#        self.layout()
+#
+#    def layout(self):
+#        """ Layout for a directory chooser """
+#        layout = QHBoxLayout(self)
+#        
+#        path_txt = QLineEdit(self.str_path)
+#        push = QPushButton("...")
+#        push.clicked.connect(self.on_click)
+#        
+#        layout.add(path_txt)
+#        layout.add(push)
+#        self.setLayout(layout)
+#
+#    def on_click(self, evt):
+#        print("clicked button")
+
+
+class Fractal_editor(QWidget):
+    """
+    Widget for a Fractal parameter
+    """
+    data_user_modified = pyqtSignal(object, object)
+
+    def __init__(self, parent, data_presenter):
+        super().__init__(parent)
+
+        # Model pointers
+        self._model = data_presenter._model
+        self._mapping = data_presenter._mapping
+        self._presenter = data_presenter
+
+        layout = QVBoxLayout()
+        f_name = self.f_name = QLineEdit()
+        self.populate_fname()
+        param_box = self.param_box = QGroupBox("Fractal parameters")
+        param_box.setStyleSheet(GROUP_BOX_CSS.format("#32363F"))
+
+        self.populate_param_box()
+
+        layout.addWidget(f_name)
+        layout.addWidget(param_box)
+        layout.addStretch()
+        self.setLayout(layout)
+        
+        self.data_user_modified.connect(
+            data_presenter.data_user_modified_slot
+        )
+        self._model.model_event.connect(self.model_event_slot)
+
+
+    def populate_fname(self):
+        """ Just a reminder of the fractal class """
+        self.f_name.setText(self._presenter.data_class.__name__)
+
+    def populate_param_box(self):
+        """ Editor for each parameter """
+        wgets = self._wgets = {}
+        
+        param_layout = QGridLayout()
+        data_init_kwargs = self._presenter.data_init_kwargs
+        sgn = self._presenter.data_init_signature
+
+        for i_param, (pname, param) in enumerate(sgn.parameters.items()):
+            # Adds the paramter name
+            name_label = QLabel(pname)
+            myFont = QtGui.QFont()
+            myFont.setWeight(QtGui.QFont.Weight.ExtraBold)
+            name_label.setFont(myFont)
+            param_layout.addWidget(name_label, i_param, 0, 1, 1)
+
+            # Adds the paramter value
+            val = data_init_kwargs[pname]
+            ptype = param.annotation
+            if typing.get_origin(ptype) is typing.Union:
+                raise NotImplementedError(
+                    "Union type not supported in GUI for Fractal __init__ "
+                    f"parameter: {pname}"
+                )
+            wget = wgets[pname] = self.get_wget(pname, ptype, val)
+            param_layout.addWidget(wget, i_param, 1, 1, 1)
+
+            # Adds the paramter type
+            type_label = QLabel(type_name(ptype))
+            param_layout.addWidget(type_label, i_param, 2, 1, 1)
+            param_layout.setRowStretch(i_param, 0) # extend at bottom
+        
+        self.param_box.setLayout(param_layout)
+
+        # Middle column is allocated  all the strech space
+        param_layout.setColumnStretch(0, 0)
+        param_layout.setColumnStretch(1, 1)
+        param_layout.setColumnStretch(2, 0)
+        # param_layout.setRowStretch(-1, 1) # extend at bottom
+    
+    def update_param_box(self, new_fractal):
+        """ Updates the individual wget editors according to the new fractal"""
+        for pname, wget in self._wgets.items():
+            if pname == "directory":
+                continue
+            wget_val = getattr(new_fractal, pname)
+            print("Updating wget", pname, wget_val)
+            wget.on_model_event(wget_val)
+        
+    
+    def get_wget(self, pname, ptype, val):
+        if pname == "directory":
+            # Directory is read-only
+            wget = QLabel(val)
+            wget.setWordWrap(True)
+            wget.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
+            )
+        else:
+            wget = atom_wget_factory(ptype)(ptype, val, None)
+            wget.user_modified.connect(functools.partial(
+                self.on_user_mod, pname, wget.value
+            ))
+        return wget
+
+    def on_user_mod(self, pname, val_callback):
+        """ Notify the model of modification by the user of a widget"""
+        val = val_callback()
+        print("Parameter modified:", pname, val)
+        self._wgets[pname].on_model_event(val)
+        self.data_user_modified.emit(pname, val)
+#        self._presenter.
+
+    def model_event_slot(self, keys, val):
+        if keys == self._presenter._mapping["Fractal_presenter"]:
+            print("****** Fractal object has been modified !!!")
+            self.update_param_box(val)
+            # Asks user to rester zoom parameters 
+            msgBox = QMessageBox()
+            msgBox.setIcon(QMessageBox.Icon.Question)
+            msgBox.setText(
+                    "Fractal object parameters have been updated, "
+                    "reset zoom to default values ?"
+            )
+            msgBox.setWindowTitle("Zoom reset Dialog")
+            msgBox.setStandardButtons(
+                QMessageBox.StandardButton.Ok
+                | QMessageBox.StandardButton.Cancel
+            )
+            user_ret = msgBox.exec()
+            if user_ret == QMessageBox.StandardButton.Ok:
+                self.reset_zoom_parameters()
+            # msgBox.buttonClicked.connect(msgButtonClick)
+
+    def reset_zoom_parameters(self):
+        """ Reset the zoom parameters to default """
+        gui = getmainwindow(self)._gui
+
+        full_zoom_keys = Image_widget.full_zoom_keys
+        other_parameters = tuple(gui.other_parameters)
+        reset_listing = (full_zoom_keys + other_parameters)
+
+        self._presenter.reset_zoom_parameters(gui, reset_listing)
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 class QDict_viewer(QWidget):
     def __init__(self, parent, qdict):
@@ -2295,7 +2471,7 @@ class Zoomable_Drawer_mixin:
     def on_wheel(self, event):
         """
         - Updates the zoom
-        - Send the current zoom vlue to `pos_tracker` if exists 
+        - Send the current zoom value to `pos_tracker` if exists 
         """
         if self._qim is not None:
             view = self._view
@@ -2760,7 +2936,11 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             else:
                 casted = self.cast(value, expected)
                 if casted != expected:
-                    print("***unmatching", casted, expected)
+                    logger.warning(
+                        f"GUI Unmatching image parameter for {key}:\n"
+                        f"  {casted} -> {expected}"
+                    )
+                    # print("***unmatching", casted, expected)
                     ret = 1
         return ret
 
@@ -2895,14 +3075,13 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
 
     def draw_object(self):
         """ Draws the selection rectangle """
-        
         if len(self._object_pos) != 1:
             raise RuntimeError(f"Invalid drawing {self._object_pos}")
-        
+
         (pos0,) = self._object_pos
         pos1 = self._object_drag
 
-        # Enforce the correct ratioand angle
+        # Enforce the correct rotation angle
         topleft, bottomRight = self.selection_corners(pos0, pos1)
         rotation = self.selection_rotation()
 
@@ -2936,7 +3115,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         topleft = QtCore.QPointF(pos0.x() - diffx0, pos0.y() - diffy0)
         bottomRight = QtCore.QPointF(pos0.x() + diffx0, pos0.y() + diffy0)
         return topleft, bottomRight
-    
+
     def selection_rotation(self):
         """ The rotation angle """
         theta_diff_deg = (
@@ -2947,7 +3126,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
 
     def model_event_slot(self, keys, val):
         """ A model item has been modified - will it impact the widget ? """
-        # Find the mathching "mapping" - None if no match
+        # Find the matching "mapping" - None if no match
         mapped = next((k for k, v in self._mapping.items() if v == keys), None)
         if mapped in ["image", "fractal"]:
             self.set_zoom_init()
@@ -2956,8 +3135,9 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             pass
         else:
             if mapped is not None:
-                raise NotImplementedError("Mapping event not implemented: " 
-                                          + "{}".format(mapped))
+                raise NotImplementedError(
+                    "Mapping event not implemented: {}".format(mapped)
+                )
 
 
 #==============================================================================
@@ -3289,8 +3469,10 @@ class Fractal_cmap_choser(QDialog):
             i_param = next(iter(cmap_params_index.values()))
         else:
             params = list(cmap_params_index.keys())
-            param, ok = QInputDialog.getItem(self, "Select parameter", 
-                "available parameters", params, 0, False)
+            param, ok = QInputDialog.getItem(
+                self, "Select parameter", 
+                "available parameters", params, 0, False
+            )
             if ok and param:
                  i_param = cmap_params_index[param]
             else:

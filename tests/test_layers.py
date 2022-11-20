@@ -55,8 +55,11 @@ class Test_layers(unittest.TestCase):
         dx = 5.
         nx = 600
         cls.f = f = fsm.Mandelbrot(layer_dir)
+        f.clean_up(cls.calc_name)
+
         f.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
-               theta_deg=0., projection="cartesian", antialiasing=False)
+               theta_deg=0., projection="cartesian")
+    
         f.base_calc(
             calc_name=cls.calc_name,
             subset=None,
@@ -64,7 +67,7 @@ class Test_layers(unittest.TestCase):
             M_divergence=100.,
             epsilon_stationnary= 0.001,
             )
-        f.clean_up(cls.calc_name)
+        
         #f.run()
         
         cls.colormap = fscolors.Fractal_colormap(
@@ -209,7 +212,7 @@ class Test_layers(unittest.TestCase):
 
         plotter = fs.Fractal_plotter(pp)   
         plotter.add_layer(Bool_layer("interior", output=False))
-        plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=True))
+        plotter.add_layer(Normal_map_layer("DEM_map", max_slope=38, output=True))
         plotter.add_layer(Color_layer(
                 layer_name,
                 func="np.log(x)",
@@ -227,23 +230,32 @@ class Test_layers(unittest.TestCase):
             k_diffuse=0.2,
             k_specular=10.,
             shininess=400.,
-            angles=(-135., 20.),
-            coords=None,
-            color=np.array([0.05, 0.05, 1.0]))
+#            angles=(-135., 20.),
+            polar_angle=-135.,
+            azimuth_angle=20.,
+#            coords=None,
+            color=np.array([0.05, 0.05, 1.0])
+        )
         light.add_light_source(
             k_diffuse=0.2,
             k_specular=10.,
             shininess=400.,
-            angles=(135., 20.),
-            coords=None,
-            color=np.array([0.5, 0.5, .4]))
+#            angles=(135., 20.),
+            polar_angle=135.,
+            azimuth_angle=20.,
+#            coords=None,
+            color=np.array([0.5, 0.5, .4])
+        )
         light.add_light_source(
             k_diffuse=1.3,
             k_specular=0.,
             shininess=0.,
-            angles=(90., 40.),
-            coords=None,
-            color=np.array([1.0, 1.0, 1.0]))
+#            angles=(90., 40.),
+            polar_angle=90.,
+            azimuth_angle=40.,
+#            coords=None,
+            color=np.array([1.0, 1.0, 1.0])
+        )
         plotter[layer_name].shade(plotter["DEM_map"], light)
 
         plotter.plot()
@@ -303,8 +315,10 @@ class Test_layers(unittest.TestCase):
         pp0.add_postproc(layer_name, Continuous_iter_pp())
         pp0.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
         pp0.add_postproc("div", Raw_pp("stop_reason", func="x == 1."))
-        pp0.add_postproc("fieldlines",
-                Fieldlines_pp(n_iter=4, swirl=0., damping_ratio=0.1))
+        pp0.add_postproc(
+                "fieldlines",
+                Fieldlines_pp(n_iter=4, swirl=0.2, damping_ratio=0.3)
+        )
 
         pp = Postproc_batch(f, interior_calc_name)
         pp.add_postproc("attr_map", Attr_normal_pp())
@@ -318,7 +332,7 @@ class Test_layers(unittest.TestCase):
                 func="np.log(x)",
                 colormap=self.colormap,
                 probes_z=[1.0511069297790527, 3.3979762077331546], # 0..0.4
-                probes_kind="relative",
+                # probes_kind="relative",
                 output=True))
         plotter.add_layer(Color_layer(
                 "attr",
@@ -328,40 +342,44 @@ class Test_layers(unittest.TestCase):
                 probes_kind="relative",
                 output=True))
         
-        plotter.add_layer(Virtual_layer("fieldlines", func="x-2.2", output=False))
-        plotter[layer_name].set_twin_field(plotter["fieldlines"], 0.1925)
+        plotter.add_layer(Virtual_layer("fieldlines", func="x * 0.8 ", output=False))
+        plotter[layer_name].set_twin_field(plotter["fieldlines"], 0.65)#1925)
 
-        plotter.add_layer(Normal_map_layer("attr_map", max_slope=90, output=True))
-        plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=True))
+        plotter.add_layer(Normal_map_layer("attr_map", max_slope=45, output=True))
+        plotter.add_layer(Normal_map_layer("DEM_map", max_slope=38, output=True))
 
         light = Blinn_lighting(0.15, np.array([1., 1., 1.]))
         light.add_light_source(
             k_diffuse=0.8,
             k_specular=40.,
             shininess=400.,
-            angles=(-40., 25.),
-            coords=None,
+            # angles=(-40., 25.),
+            polar_angle=-40.,
+            azimuth_angle=25.,
             color=np.array([1.0, 1.0, 0.8]))
         light.add_light_source(
             k_diffuse=0.1,
             k_specular=4.,
             shininess=400.,
-            angles=(110., 25.),
-            coords=None,
+            polar_angle=110.,
+            azimuth_angle=25.,
+            # angles=(110., 25.),
             color=np.array([1.0, 0.0, 0.0]))
         light.add_light_source(
             k_diffuse=0.1,
             k_specular=3.,
             shininess=400.,
-            angles=(130., 25.),
-            coords=None,
+            # angles=(130., 25.),
+            polar_angle=130.,
+            azimuth_angle=25.,
             color=np.array([0.0, 1.0, 0.0]))
         light.add_light_source(
             k_diffuse=0.1,
             k_specular=40.,
             shininess=400.,
-            angles=(150., 25.),
-            coords=None,
+            # angles=(150., 25.),
+            polar_angle=150.,
+            azimuth_angle=25.,
             color=np.array([0.0, 0.0, 1.0]))
         plotter["attr"].shade(plotter["attr_map"], light)
         plotter["attr"].set_mask(plotter["div"],
@@ -374,7 +392,7 @@ class Test_layers(unittest.TestCase):
 
         plotter.plot()
         self.layer = plotter[layer_name]
-        self.check_current_layer()
+        self.check_current_layer(0.10)
 
     @test_config.no_stdout
     def test_overlay2(self):
@@ -389,18 +407,20 @@ class Test_layers(unittest.TestCase):
                 pp.add_postproc(layer_name, Continuous_iter_pp())
                 pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
                 pp.add_postproc("fieldlines",
-                        Fieldlines_pp(n_iter=4, swirl=0., damping_ratio=0.1))
-        
+                        Fieldlines_pp(n_iter=4, swirl=0., damping_ratio=0.1)
+                )
+
                 plotter = fs.Fractal_plotter(pp)   
                 plotter.add_layer(Bool_layer("interior", output=False))
                 plotter.add_layer(Color_layer(
                         layer_name,
                         func="np.log(x)",
                         colormap=self.colormap,
-                        probes_z=[0., 0.4],
+                        probes_z=[1.5241847038269043, 4.321159839630127],
                         probes_kind="relative",
-                        output=True))
-                plotter.add_layer(Grey_layer("fieldlines", func=None, output=True))
+                        output=True)
+                )
+                plotter.add_layer(Grey_layer("fieldlines", func="1.1 * (x )", output=True))
         
                 plotter[layer_name].set_mask(plotter["interior"],
                                              mask_color=(0., 0., 0.))
@@ -475,8 +495,8 @@ if __name__ == "__main__":
         runner.run(test_config.suite([Test_layers]))
     else:
         suite = unittest.TestSuite()
-        # suite.addTest(Test_layers("test_light_source"))
+        suite.addTest(Test_layers("test_light_source"))
         # suite.addTest(Test_layers("test_twin"))
         suite.addTest(Test_layers("test_overlay1"))
-        # suite.addTest(Test_layers("test_overlay2"))
+        suite.addTest(Test_layers("test_overlay2"))
         runner.run(suite)

@@ -69,12 +69,12 @@ def plot(plot_dir):
     
     base_layer = "continuous_iter"
     colormap = fscolors.cmap_register["classic"]
-    cmap_z_kind = "relative"
+    lighting = fscolors.lighting_register["glossy"]
+
     zmin = 0.0
     zmax = 5.0
-    
-    shade_kind="glossy"
-    field_kind="None"
+
+    field_kind="overlay"
 
     # Set to True to enable multi-threading
     settings.enable_multithreading = True
@@ -84,63 +84,81 @@ def plot(plot_dir):
     
     def func(
         fractal: fsm.Perturbation_mandelbrot=fractal,
-         calc_name: str=calc_name,
+        calc_name: str=calc_name,
 
-         _1: fsgui.collapsible_separator="Zoom parameters",
-         x: mpmath.mpf=x,
-         y: mpmath.mpf=y,
-         dx: mpmath.mpf=dx,
-         xy_ratio: float=xy_ratio,
-         theta_deg: float=theta_deg,
-         dps: int=dps,
-         nx: int=nx,
+        _1: fsgui.collapsible_separator="Zoom parameters",
+        x: mpmath.mpf=x,
+        y: mpmath.mpf=y,
+        dx: mpmath.mpf=dx,
+        xy_ratio: float=xy_ratio,
+        theta_deg: float=theta_deg,
+        dps: int=dps,
+        nx: int=nx,
 
-         _2: fsgui.collapsible_separator="Calculation parameters",
-         max_iter: int=max_iter,
-         M_divergence: float=M_divergence,
-         interior_detect: bool=interior_detect,
-         epsilon_stationnary: float=epsilon_stationnary,
+        _2: fsgui.collapsible_separator="Calculation parameters",
+        max_iter: int=max_iter,
+        M_divergence: float=M_divergence,
+        interior_detect: bool=interior_detect,
+        epsilon_stationnary: float=epsilon_stationnary,
 
-         _3: fsgui.collapsible_separator="Bilinear series parameters",
-         use_BLA: bool=True,
-         eps: float=eps,
+        _3: fsgui.collapsible_separator="Bilinear series parameters",
+        use_BLA: bool=True,
+        eps: float=eps,
 
-         _4: fsgui.collapsible_separator="Plotting parameters: base field",
-         base_layer: typing.Literal[
+        _4: fsgui.collapsible_separator="Plotting parameters: base field",
+        base_layer: typing.Literal[
                  "continuous_iter",
                  "distance_estimation"
-         ]=base_layer,
-         interior_mask: typing.Literal[
+        ]=base_layer,
+        interior_mask: typing.Literal[
                  "all",
                  "not_diverging",
                  "dzndz_detection",
-         ]="all",
-         interior_color: fscolors.Color=(0.1, 0.1, 0.1, 1.0),
-         colormap: fscolors.Fractal_colormap=colormap,
-         invert_cmap: bool=False,
-         cmap_z_kind: typing.Literal["relative", "absolute"]=cmap_z_kind,
-         zmin: float=zmin,
-         zmax: float=zmax,
+        ]="all",
+        colormap: fscolors.Fractal_colormap=colormap,
+        invert_cmap: bool=False,
+        zmin: float=zmin,
+        zmax: float=zmax,
 
-         _5: fsgui.collapsible_separator="Plotting parameters: shading",
-         shade_kind: typing.Literal["None", "standard", "glossy"]=shade_kind,
-         gloss_intensity: float=10.,
-         light_angle_deg: float=65.,
-         light_azimuth_deg: float=20.,
-         light_color: fscolors.Color=(1.0, 1.0, 1.0),
-         gloss_light_color: fscolors.Color=(1.0, 1.0, 1.0),
+        _5: fsgui.collapsible_separator="Plotting parameters: shading",
+        has_shading: bool=False,
+        lighting: fscolors.Blinn_lighting=lighting,
+        max_slope: float = 60.,
 
-         _6: fsgui.collapsible_separator="Plotting parameters: field lines",
-         field_kind: typing.Literal["None", "overlay", "twin"]=field_kind,
-         n_iter: int=3,
-         swirl: float=0.,
-         damping_ratio: float=0.8,
-         twin_intensity: float=0.1
+        _6: fsgui.collapsible_separator="Plotting parameters: field lines",
+        has_fieldlines: bool=False,
+        field_kind: typing.Literal["overlay", "twin"]=field_kind,
+        n_iter: int = 3,
+        swirl: float = 0.,
+        damping_ratio: float = 0.8,
+        twin_intensity: float = 0.1,
+        
+        _7: fsgui.collapsible_separator="Interior points",
+        interior_color: fscolors.Color=(0.1, 0.1, 0.1, 1.0),
+
+#        _8: fsgui.collapsible_separator="Blender output: Heightmap",
+#        has_heightmap: bool=False,
+
+        _8: fsgui.collapsible_separator="High-quality rendering options",
+        final_render: bool=False,
+        supersampling: fs.core.supersampling_type = "None",
+        jitter: bool = False,
+        reload: bool = False,
+
+        _9: fsgui.collapsible_separator="General settings",
+        log_verbosity: typing.Literal[fs.log.verbosity_enum
+                                      ]="debug @ console + log",
+        enable_multithreading: bool = True,
+        inspect_calc: bool = False,
+        
+        
     ):
 
 
         fs.settings.log_directory = os.path.join(fractal.directory, "log")
-        fs.set_log_handlers(verbosity=2)
+        fs.set_log_handlers(verbosity=log_verbosity)
+        fs.settings.enable_multithreading = enable_multithreading
+        fs.settings.inspect_calc = inspect_calc
 
         fractal.zoom(
             precision=dps,
@@ -153,10 +171,7 @@ def plot(plot_dir):
             projection="cartesian",
         )
 
-        if use_BLA:
-            BLA_eps=eps
-        else:
-            BLA_eps=None
+        BLA_eps = eps if use_BLA else None
 
         fractal.calc_std_div(
                 calc_name=calc_name,
@@ -168,27 +183,23 @@ def plot(plot_dir):
                 interior_detect=interior_detect,
             )
 
-#        if fractal.res_available():
-#            print("RES AVAILABLE, no compute")
-#        else:
-#            print("RES NOT AVAILABLE, clean-up")
-#            fractal.clean_up(calc_name)
-
-#        fractal.run()
 
         pp = Postproc_batch(fractal, calc_name)
         
         if base_layer == "continuous_iter":
             pp.add_postproc(base_layer, Continuous_iter_pp())
+
         elif base_layer == "distance_estimation":
             pp.add_postproc("continuous_iter", Continuous_iter_pp())
             pp.add_postproc(base_layer, DEM_pp())
 
-        if field_kind != "None":
+        if has_fieldlines:
             pp.add_postproc(
                 "fieldlines",
                 Fieldlines_pp(n_iter, swirl, damping_ratio)
             )
+        else:
+            field_kind = "None"
 
         interior_func = {
             "all": lambda x: x != 1,
@@ -197,10 +208,16 @@ def plot(plot_dir):
         }[interior_mask]
         pp.add_postproc("interior", Raw_pp("stop_reason", func=interior_func))
 
-        if shade_kind != "None":
+        if has_shading:
             pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
 
-        plotter = fs.Fractal_plotter(pp)
+        plotter = fs.Fractal_plotter(
+            pp,
+            final_render=final_render,
+            supersampling=supersampling,
+            jitter=jitter,
+            reload=reload
+        )
 
         plotter.add_layer(Bool_layer("interior", output=False))
 
@@ -213,9 +230,9 @@ def plot(plot_dir):
                     "fieldlines", func=None, output=False
             ))
 
-        if shade_kind != "None":
+        if has_shading:
             plotter.add_layer(Normal_map_layer(
-                "DEM_map", max_slope=60, output=True
+                "DEM_map", max_slope=max_slope, output=True
             ))
 
         if base_layer != 'continuous_iter':
@@ -229,7 +246,6 @@ def plot(plot_dir):
                 func=lambda x: sign * np.log(x),
                 colormap=colormap,
                 probes_z=[zmin, zmax],
-                probes_kind=cmap_z_kind,
                 output=True))
         plotter[base_layer].set_mask(
             plotter["interior"], mask_color=interior_color
@@ -242,26 +258,8 @@ def plot(plot_dir):
             overlay_mode = Overlay_mode("tint_or_shade", pegtop=1.0)
             plotter[base_layer].overlay(plotter["fieldlines"], overlay_mode)
 
-        if shade_kind != "None":
-            light = Blinn_lighting(0.4, np.array([1., 1., 1.]))
-            light.add_light_source(
-                k_diffuse=0.8,
-                k_specular=.0,
-                shininess=350.,
-                polar_angle=light_angle_deg,
-                azimuth_angle=20.,
-                color=np.array(light_color))
-    
-            if shade_kind == "glossy":
-                light.add_light_source(
-                    k_diffuse=0.2,
-                    k_specular=gloss_intensity,
-                    shininess=1400.,
-                    polar_angle=light_angle_deg,
-                    azimuth_angle=light_azimuth_deg,
-                    color=np.array(gloss_light_color))
-    
-            plotter[base_layer].shade(plotter["DEM_map"], light)
+        if has_shading:
+            plotter[base_layer].shade(plotter["DEM_map"], lighting)
 
         plotter.plot()
         

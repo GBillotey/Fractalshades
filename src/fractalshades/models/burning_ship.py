@@ -56,6 +56,9 @@ def ddiffabsdx(X, x):
         else:
             return 1.
 
+
+
+
 class Burning_ship(fs.Fractal):
     def __init__(self, directory):
         """

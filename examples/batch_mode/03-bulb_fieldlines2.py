@@ -44,17 +44,6 @@ def plot(plot_dir):
     nx = 2400
     calc_name="mandelbrot"
     colormap = fscolors.cmap_register["classic"]
-    colormap = fs.colors.Fractal_colormap(
-        colors=[
-     [0.81176472, 0.03137255, 0.12941177],
-     [1.        , 1.        , 1.        ],
-     [0.        , 0.12941177, 0.32549021]
-     ],
-        kinds=['Lch', 'Lch', 'Lch'],
-        grad_npts=[3, 3, 3],
-        grad_funcs=['x', 'x', 'x'],
-        extent='mirror'
-    )
 
     # Run the calculation
     f = fsm.Mandelbrot(plot_dir)
@@ -64,37 +53,36 @@ def plot(plot_dir):
         calc_name=calc_name,
         subset=None,
         max_iter=5000,
-        M_divergence=2.,
+        M_divergence=100.,
         epsilon_stationnary= 0.001,
     )
     # f.clean_up(calc_name)
 
 
     # Plot the image
+    # Plot the image
     pp = Postproc_batch(f, calc_name)
     pp.add_postproc("cont_iter", Continuous_iter_pp())
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
     pp.add_postproc("fieldlines",
-                Fieldlines_pp(n_iter=4, swirl=0., damping_ratio=0.))
+                Fieldlines_pp(n_iter=3, swirl=0., damping_ratio=0.2))
 
-    plotter = fs.Fractal_plotter(pp)   
+    plotter = fs.Fractal_plotter(pp)
     plotter.add_layer(Bool_layer("interior", output=False))
     plotter.add_layer(Color_layer(
-            "fieldlines",
-            func=None, #"np.log(x)",
+            "cont_iter",
+            func="np.log(x)",
             colormap=colormap,
-            probes_z=[-0.5933420658111572, 1.0],
+            probes_z=[0.4, 2.4],
             probes_kind="absolute",
             output=True
     ))
-    plotter.add_layer(
-        Virtual_layer("fieldlines", func=None, output=False)
-    )
-    plotter["fieldlines"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
+    plotter.add_layer(Virtual_layer("fieldlines", func=None, output=False))
+    plotter["cont_iter"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
 
     # This is the line where we indicate that coloring is a combination of
     # "Continuous iteration" and "fieldines values"
-#    plotter["cont_iter"].set_twin_field(plotter["fieldlines"], 2.)
+    plotter["cont_iter"].set_twin_field(plotter["fieldlines"], -0.4)
     plotter.plot()
 
 

@@ -10,6 +10,7 @@ import time
 import types
 import typing
 import enum
+import inspect
 
 import numpy as np
 from numpy.lib.format import open_memmap
@@ -52,25 +53,52 @@ class _Pillow_figure:
         im.save(im_path, format="png", pnginfo=self.pnginfo)
 
 
-class Fractal_plotter:
-    
-    SUPERSAMPLING_DIC = {
-        "2x2": 2,
-        "3x3": 3,
-        "4x4": 4,
-        "5x5": 5,
-        "6x6": 6,
-        "7x7": 7,
-        "None": None
-    }
+#SUPERSAMPLING_DIC = {
+#    "2x2": 2,
+#    "3x3": 3,
+#    "4x4": 4,
+#    "5x5": 5,
+#    "6x6": 6,
+#    "7x7": 7,
+#    "None": None
+#}
+#
+#class supersampling_type(enum.Enum):
+#    "2x2": 2,
+#    "3x3": 3,
+#    "4x4": 4,
+#    "5x5": 5,
+#    "6x6": 6,
+#    "7x7": 7,
+#    "None": None
 
-    supersampling_type = typing.Literal[
-        enum.Enum(
-            "supersampling_type",
-            list(SUPERSAMPLING_DIC.keys()),
-            module=__name__
-        )
-    ]
+SUPERSAMPLING_DIC = {
+    "2x2": 2,
+    "3x3": 3,
+    "4x4": 4,
+    "5x5": 5,
+    "6x6": 6,
+    "7x7": 7,
+    "None": None
+}
+
+SUPERSAMPLING_ENUM = enum.Enum(
+    "SUPERSAMPLING_ENUM",
+    list(SUPERSAMPLING_DIC.keys()),# ,
+    module=__name__
+)
+
+supersampling_type = typing.Literal[SUPERSAMPLING_ENUM]
+#    enum.Enum(
+#        "supersampling_type",
+#        list(SUPERSAMPLING_DIC.keys())# ,
+#        #module=__name__
+#    )
+#]
+
+
+
+class Fractal_plotter:
 
     def  __init__(self,
         postproc_batch,
@@ -316,9 +344,7 @@ class Fractal_plotter:
     def supersampling(self):
         """ Will really implement antialiasing ? """
         if self.postproc_options["final_render"]:
-            return self.SUPERSAMPLING_DIC[
-                    self.postproc_options["supersampling"]
-            ]
+            return SUPERSAMPLING_DIC[self.postproc_options["supersampling"]]
         # Note: implicitely None by default...
 
     @Multithreading_iterator(
@@ -674,7 +700,16 @@ class _Null_status_wget:
     def update_status(self, key, str_val):
         """ Update the text status
         """
+        print("******   IN _Null_status_wget", key, str_val)
         self._status[key]["str_val"] = str_val
+
+
+PROJECTION_ENUM = enum.Enum(
+    "PROJECTION_ENUM",
+    ("cartesian", "spherical", "expmap"),
+    module=__name__
+)
+projection_type = typing.Literal[PROJECTION_ENUM]
 
 
 class Fractal:
@@ -693,15 +728,7 @@ class Fractal:
         "stop_iter"
     ]
 
-    PROJECTION_ENUM = enum.Enum(
-        "projection",
-        ("cartesian", "spherical", "expmap"),
-        module=__name__
-    )
-    projection_type = typing.Literal[PROJECTION_ENUM]
-
-
-    USER_INTERRUPTED = 1
+    USER_INTERRUPTED = 1 # return code for a user-interrupted computation
 
     def __init__(self, directory: str):
         """
@@ -797,6 +824,7 @@ advanced users when subclassing.
 
         The string identifiers are stored in ``codes`` attributes.
 """
+        print("IN INIT Fractal")
         self.directory = directory
         self.subset = None
         self._interrupted = np.array([0], dtype=np.bool_)
@@ -805,9 +833,33 @@ advanced users when subclassing.
         self.float_postproc_type = np.dtype(fs.settings.postproc_dtype)
         self.termination_type = np.int8
         self.int_type = np.int32
-        
+
         # Default listener
         self._status_wget = _Null_status_wget(self)
+
+    @property
+    def init_kwargs(self):
+        """ Return a dict of parameters used during __init__ call"""
+        init_kwargs = {}
+        for (
+            p_name, param
+        ) in inspect.signature(self.__init__).parameters.items():
+            # By contract, __init__ params shall be stored as instance attrib.
+            # ('Fractal' interface)
+            init_kwargs[p_name] = getattr(self, p_name)
+        return init_kwargs
+
+    def init_signature(self):
+        return inspect.signature(self.__init__)
+
+    def __reduce__(self):
+        """ Serialisation of a Fractal object. The fractal state (zoom, calc)
+        is dropped and shall be re-instated externally if need be.
+        """
+        # print("IN REDUCE Fractal")
+        vals = tuple(self.init_kwargs.values())
+        # print("self.__class__, vals", self.__class__, vals)
+        return (self.__class__, vals)
 
 
     def _repr(self):
@@ -851,13 +903,18 @@ advanced users when subclassing.
         """
         # Safeguard in case the GUI inputs were strings
         if isinstance(x, str) or isinstance(y, str) or isinstance(dx, str):
-            raise RuntimeError("Float expected")
+            raise RuntimeError("Float expected for x, y, dx")
 
     def new_status(self, wget):
         """ Return a dictionnary that can hold the current progress status """
         self._status_wget = wget
         status = {
-            "Tiles": {
+            "Calc tiles": {
+                "val": 0,
+                "str_val": "- / -",
+                "last_log": 0.  # time of last logged change in seconds
+            },
+            "Plot tiles": {
                 "val": 0,
                 "str_val": "- / -",
                 "last_log": 0.  # time of last logged change in seconds
@@ -869,27 +926,27 @@ advanced users when subclassing.
         """ Just a simple text status """
         self._status_wget.update_status(key, str_val)
         if bool_log:
-            logger.info(f"{key}: {str_val}")
+            logger.debug(f"Status update {key}: {str_val}")
 
-    def incr_tiles_status(self):
+    def incr_tiles_status(self, which="Calc tiles"):
         """ Dealing with more complex status : 
         Increase by 1 the number of computed tiles reported in status bar
         """
         dic = self._status_wget._status
-        curr_val = dic["Tiles"]["val"] + 1
-        dic["Tiles"]["val"] = curr_val
+        curr_val = dic[which]["val"] + 1
+        dic[which]["val"] = curr_val
 
-        prev_event = dic["Tiles"]["last_log"]
+        prev_event = dic[which]["last_log"]
         curr_time = time.time()
         time_diff = curr_time - prev_event
 
         ntiles = self.chunks_count
         bool_log = ((time_diff > 1) or (curr_val == 1) or (curr_val == ntiles))
         if bool_log:
-            dic["Tiles"]["last_log"] = curr_time
+            dic[which]["last_log"] = curr_time
 
-        str_val = str(dic["Tiles"]["val"]) + " / " + str(ntiles)
-        self.set_status("Tiles", str_val, bool_log)
+        str_val = str(dic[which]["val"]) + " / " + str(ntiles)
+        self.set_status(which, str_val, bool_log)
 
 
     @property
@@ -946,7 +1003,7 @@ advanced users when subclassing.
         patterns = (
              calc_name + "_*.arr",
              calc_name + ".report",
-             calc_name + ".params",
+             calc_name + ".fingerprint",
              "ref_pt.dat",
              "SA.dat"
         )
@@ -1087,7 +1144,6 @@ advanced users when subclassing.
 
         if chunk_slice is not None:
             (ix, ixx, iy, iyy) = chunk_slice
-        
 
         if subset is not None:
             if chunk_slice is None:
@@ -1095,7 +1151,6 @@ advanced users when subclassing.
             else:
                 subset_pts = np.count_nonzero(subset[chunk_slice])
                 return subset_pts
-
         else:
             if chunk_slice is None:
                 return self.nx * self.ny
@@ -1154,11 +1209,13 @@ advanced users when subclassing.
             rg = np.random.default_rng(0)
             rand_x = rg.random(dx_vec.shape, dtype=data_type)
             rand_y = rg.random(dy_vec.shape, dtype=data_type)
-            dx_vec += (0.5 - rand_x) * 0.5 / (nx - 1) * jitter
-            dy_vec += (0.5 - rand_y) * 0.5 / (ny - 1) * jitter
+            jitter_x = (0.5 - rand_x) * 0.5 / (nx - 1) * jitter
+            jitter_y = (0.5 - rand_y) * 0.5 / (ny - 1) * jitter
             if supersampling is not None:
-                dx_vec /= supersampling
-                dy_vec /= supersampling
+                jitter_x /= supersampling
+                jitter_y /= supersampling
+            dx_vec += jitter_x
+            dy_vec += jitter_y
 
         dy_vec /= self.xy_ratio
 
@@ -1203,8 +1260,8 @@ advanced users when subclassing.
         expected_fp = fs.utils.dic_flatten(state.fingerprint)
         
         if log:
-            logger.debug(f"flatten_fp:\n {flatten_fp}")
-            logger.debug(f"expected_fp:\n {expected_fp}")
+            logger.debug(f"fingerprint_matching flatten_fp:\n {flatten_fp}")
+            logger.debug(f"fingerprint_matching expected_fp:\n {expected_fp}")
 
         # We currently do not have special keys to handle
         # (Note: The software version and calculation info are now only added
@@ -1294,11 +1351,13 @@ advanced users when subclassing.
             "state": state,
             "cycle_indep_args": cycle_indep_args,
             "saved_codes": saved_codes,
+            "init_kwargs": self.init_kwargs
         }
 
         # Takes a 'fingerprint' of the calculation parameters
         fp_items = (
-            "calc_class", "calc_callable", "calc_kwargs", "zoom_kwargs"
+            "calc_class", "calc_callable", "calc_kwargs", "zoom_kwargs",
+            "init_kwargs"
         )
         state.fingerprint = {
             k: self._calc_data[calc_name][k] for k in fp_items
@@ -1364,7 +1423,7 @@ advanced users when subclassing.
         center = self.x + 1j * self.y
         xy_ratio = self.xy_ratio
         theta = self.theta_deg / 180. * np.pi # used for expmap
-        projection = getattr(self.PROJECTION_ENUM, self.projection).value
+        projection = getattr(PROJECTION_ENUM, self.projection).value
         # was : self.PROJECTION_ENUM[self.projection]
 
         return (
@@ -1411,7 +1470,7 @@ advanced users when subclassing.
 
     def add_subset_hook(self, f_array, calc_name_to):
         """ Create a namespace for a hook that shall be filled during
-        on-the fly computation
+        on-the fly computation - used for final calculations with subset on. 
            Hook structure:  dict 
            hook[calcname_to] = [f_array_dat, supersampling_k, mmap]
         """
@@ -1862,8 +1921,6 @@ advanced users when subclassing.
         (cycle_dep_args, chunk_subset
          ) = self.get_cycling_dep_args(calc_name, chunk_slice)
         cycle_indep_args = self._calc_data[calc_name]["cycle_indep_args"]
-
-#        logger.debug(f"cycle_indep_args DEBUGGGGGG\n {cycle_indep_args}")
         
         ret_code = self.numba_cycle_call(cycle_dep_args, cycle_indep_args)
         (c_pix, Z, U, stop_reason, stop_iter) = cycle_dep_args
@@ -1876,12 +1933,16 @@ advanced users when subclassing.
         self.update_data_mmaps(
                 calc_name, chunk_slice, Z, U, stop_reason, stop_iter
         )
+        
+        self.incr_tiles_status(which="Calc tiles")
 
 
     def reload_rawdata_dev(self, calc_name, chunk_slice):
         """ In dev mode we follow a 2-step approach : here the reload step
         """
+        # print(f"reload_rawdata_dev ${calc_name} ${chunk_slice}")
         if self.res_available(calc_name, chunk_slice):
+            self.incr_tiles_status(which="Plot tiles")
             return self.reload_data(chunk_slice, calc_name)
         else:
             raise RuntimeError(f"Results unavailable for {calc_name}")
@@ -1893,31 +1954,23 @@ advanced users when subclassing.
         # - do not save raw data arrays to avoid too much disk usage (e.g.,
         #   in case of supersampling...)
         jitter = float(postproc_options["jitter"]) # casting to float
-        supersampling = Fractal_plotter.SUPERSAMPLING_DIC[
-            postproc_options["supersampling"]
-        ]
+        supersampling = SUPERSAMPLING_DIC[postproc_options["supersampling"]]
         (cycle_dep_args, chunk_subset) = self.get_cycling_dep_args(
             calc_name, chunk_slice,
             final=True, jitter=jitter, supersampling=supersampling
         )
-        
+
         cycle_indep_args = self._calc_data[calc_name]["cycle_indep_args"]
         ret_code = self.numba_cycle_call(cycle_dep_args, cycle_indep_args)
+
+        self.incr_tiles_status(which="Plot tiles")
 
         if ret_code == self.USER_INTERRUPTED:
             logger.error("Interruption signal received")
             return
 
         (c_pix, Z, U, stop_reason, stop_iter) = cycle_dep_args
-        
-#        chunk_subset = None
-#        state = self._calc_data[calc_name]["state"]
-#        if state.subset is not None:
-#            # Using the substitution
-#            chunk_subset = self._subset_hook[calc_name][chunk_slice]
-        
         return (chunk_subset, c_pix, Z, U, stop_reason, stop_iter)
-        #return (chunk_subset, Z, U, stop_reason, stop_iter)
 
 
     def evaluate_data(self, calc_name, chunk_slice, postproc_options):
@@ -2055,11 +2108,9 @@ advanced users when subclassing.
         # Note: at this point res_available(calc_name) IS True, however
         # mmaps might not have been created.
         if self._calc_data[calc_name]["need_new_mmap"]:
-            # logger.debug("***calc_raw need_new_mmap")
             self.init_report_mmap(calc_name)
             self.init_data_mmaps(calc_name)
         else:
-            # logger.debug("***calc_raw DO NOT need_new_mmap")
             self.open_data_mmaps(calc_name)
 
         # Launching the calculation + mmap storing multithreading loop
@@ -2074,6 +2125,9 @@ advanced users when subclassing.
         if postproc_batch.fractal is not self:
             raise ValueError("Postproc batch from a different factal provided")
         calc_name = postproc_batch.calc_name
+        
+        if postproc_options["final_render"]:
+            self.set_status("Calc tiles", "No [final]", bool_log=True)
 
         ret = self.evaluate_data(calc_name, chunk_slice, postproc_options)
         if ret is None:
@@ -2114,7 +2168,7 @@ advanced users when subclassing.
         center = complex(self.x + 1j * self.y)
         xy_ratio = self.xy_ratio
         theta = self.theta_deg / 180. * np.pi # used for expmap
-        projection = getattr(self.PROJECTION_ENUM, self.projection).value
+        projection = getattr(PROJECTION_ENUM, self.projection).value
         cpt = np.empty((n_pts,), dtype=c_pix.dtype)
         fill1d_ref_path_c_from_pix(
             c_pix, dx, center, xy_ratio, theta, projection, cpt
@@ -2136,7 +2190,6 @@ coords = {{
 }}
 """
         return res_str
-
 
 
 #==============================================================================
@@ -2211,7 +2264,7 @@ class _Subset_temporary_array:
 
     def save_array(self, chunk_slice, ret):
         """ Compute on the fly the boolean array & save it in memory mapping"""
-        (subset, Z, U, stop_reason, stop_iter) = ret
+        (subset, c_pix, Z, U, stop_reason, stop_iter) = ret
         f = self.fractal
 
         if subset  is not None:
@@ -2261,7 +2314,7 @@ def numba_cycles(
     """ Run the standard cycles
     """
     npts = c_pix.size
-    
+
     for ipt in range(npts):
         Zpt = Z[:, ipt]
         Upt = U[:, ipt]
@@ -2281,9 +2334,9 @@ def numba_cycles(
     return 0
 
 
-proj_cartesian = Fractal.PROJECTION_ENUM.cartesian.value
-proj_spherical = Fractal.PROJECTION_ENUM.spherical.value
-proj_expmap = Fractal.PROJECTION_ENUM.expmap.value
+proj_cartesian = PROJECTION_ENUM.cartesian.value
+proj_spherical = PROJECTION_ENUM.spherical.value
+proj_expmap = PROJECTION_ENUM.expmap.value
 
 @numba.njit
 def apply_skew_2d(skew, arrx, arry):

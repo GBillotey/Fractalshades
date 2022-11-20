@@ -4,6 +4,8 @@ import datetime
 import logging
 import sys
 import textwrap
+import typing
+import enum
 
 import fractalshades as fs
 # Default log levels
@@ -17,10 +19,39 @@ import fractalshades as fs
 # Log attributes
 # https://docs.python.org/2/library/logging.html#logrecord-attributes
 
-def set_log_handlers(verbosity):
-    """
+verbosity_list = (
+    "warn @ console",
+    "warn + info @ console",
+    "debug @ console + log",
+    "debug2 @ console + log",
+)
 
+verbosity_enum =  enum.Enum(
+    "verbosity_enum",
+    verbosity_list,
+    module=__name__
+)
+
+
+def set_log_handlers(verbosity: typing.Literal[verbosity_enum]):
     """
+    Sets the verbosity level for logging
+    
+    Parameters:
+    -----------
+    verbosity: str
+      - "warn @ console" only warnings printed in the console
+      - "warn + info @ console" warnings and info printed in the console
+      - "debug @ console + log" warnings, info and debug level in 
+        the console ; starts a new log file and also outputs to it
+      - "debug2 @ console + log" same as above with even lower priority
+        messages written in log file. 
+    """
+    if isinstance(verbosity, str):
+        _verbosity = getattr(verbosity_enum, verbosity).value
+    elif isinstance(verbosity, int):
+        _verbosity = verbosity # Legacy: still accept int
+
     logger = logging.getLogger("fractalshades")
 
     # Remove previous handlers
@@ -28,16 +59,17 @@ def set_log_handlers(verbosity):
     for handler in logger.handlers[:]:
         logger.removeHandler(handler)
 
-    # Sets verbosity level
+    # Verbosity level mapping for console handler
     verbosity_mapping = {
         0: logging.WARNING,
         1: logging.INFO,
         2: logging.DEBUG,
+        3: logging.DEBUG,
     }
-    logger.setLevel(verbosity_mapping[verbosity])
+    logger.setLevel(verbosity_mapping[_verbosity])
 
     # create Console handler with a higher log level
-    if verbosity <= 0:
+    if _verbosity <= 0:
         ch = logging.StreamHandler(sys.stderr)
         ch.setLevel(logging.WARNING)
     else:
@@ -51,7 +83,7 @@ def set_log_handlers(verbosity):
 
 
     # create File handler 
-    if verbosity >= 2:
+    if _verbosity >= 2:
         if fs.settings.log_directory is None:
             file_logger_warning = True
         else:
@@ -68,7 +100,7 @@ def set_log_handlers(verbosity):
 
             fh = logging.FileHandler(file_config)
             fh.setLevel(logging.DEBUG)
-            if verbosity == 3:
+            if _verbosity == 3:
                 fh.setLevel(logging.NOTSET)
             fh_formatter = logging.Formatter(
                 "%(asctime)s - %(levelname)s - %(filename)s: %(funcName)s\n  "

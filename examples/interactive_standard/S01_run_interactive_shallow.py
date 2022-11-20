@@ -52,6 +52,7 @@ def plot(plot_dir):
     epsilon_stationnary = 0.0001
     
     colormap = fscolors.cmap_register["classic"]
+    lighting = fscolors.lighting_register["glossy"]
 
     zmin = 0.3
     zmax = 0.6
@@ -86,7 +87,7 @@ def plot(plot_dir):
     ):
 
         fs.settings.log_directory = os.path.join(fractal.directory, "log")
-        fs.set_log_handlers(verbosity=2)
+        fs.set_log_handlers(verbosity=3)
 
         fractal.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
              theta_deg=theta_deg, projection="cartesian")
@@ -123,7 +124,6 @@ def plot(plot_dir):
                 func=lambda x: np.log(x),
                 colormap=colormap,
                 probes_z=[zmin, zmax],
-                probes_kind="relative",
                 output=True))
         plotter[layer_name].set_mask(plotter["interior"],
                                      mask_color=interior_color)
@@ -133,8 +133,8 @@ def plot(plot_dir):
             k_diffuse=1.05,
             k_specular=20.,
             shininess=50.,
-            angles=(50., 20.),
-            coords=None,
+            polar_angle=50.,
+            azimuth_angle=20.,
             color=np.array([1.0, 1.0, 0.9]))
 
         plotter[layer_name].shade(plotter["DEM_map"], light)

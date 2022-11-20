@@ -39,13 +39,17 @@ Parameters
 ==========
 directory : str
     Path for the working base directory
-        """
+"""
         super().__init__(directory)
         # Default values used for postprocessing (potential)
         self.potential_kind = "infinity"
         self.potential_d = 2
         self.potential_a_d = 1.
 
+        @numba.njit
+        def _zn_iterate(zn, c):
+            return zn * zn + c
+        self.zn_iterate = _zn_iterate
 
     @fs.utils.calc_options
     def base_calc(self, *,
@@ -62,7 +66,7 @@ directory : str
     ==========
     calc_name : str
          The string identifier for this calculation
-    subset : `fractalshades.postproc.Fractal_array`
+    subset : Optional `fractalshades.postproc.Fractal_array`
         A boolean array-like, where False no calculation is performed
         If `None`, all points are calculated. Defaults to `None`.
     max_iter : int
@@ -81,7 +85,7 @@ directory : str
     The following complex fields will be calculated: *zn* and its
     derivatives (*dzndz*, *dzndc*, *d2zndc2*).
     Exit codes are 0: *max_iter*, 1: *divergence*, 2: *stationnary*.
-        """
+"""
         complex_codes = ["zn", "dzndz", "dzndc", "d2zndc2"]
         int_codes = []
         stop_codes = ["max_iter", "divergence", "stationnary"]
@@ -259,7 +263,7 @@ directory : str
                             dzrdz = 2. * dzrdz * zr
                             dzrdc = 2 * dzrdc * zr + 1.
                             zr = zr**2 + c
-    
+
                         delta = (zr - z0_loop) / (dzrdz - 1.)
                         newton_cv = (np.abs(delta) < eps_newton_cv)
                         zz = z0_loop - delta
@@ -448,18 +452,6 @@ interior_detect : bool
         def _dfdc(z):
             return 1.
 
-#        #----------------------------------------------------------------------
-#        # Defines SA_loop via a function factory - jitted implementation
-#        # SA triggered ?
-#        def SA_loop():
-#            @numba.njit
-#            def impl(Pn, n_iter, Zn_xr, kcX):
-#                # Series Approximation loop
-#                # mostly: pertubation iteration applied to a polynomial
-#                return Pn * (Pn + 2. * Zn_xr) + kcX
-#            return impl
-
-
         def set_state():
             def impl(instance):
                 instance.complex_type = np.complex128
@@ -470,7 +462,6 @@ interior_detect : bool
                 instance.calc_dZndc = calc_dzndc or BLA_activated
                 instance.dfdz = _dfdz
                 instance.dfdc = _dfdc
-#                instance.SA_loop = SA_loop
             return impl
 
         #----------------------------------------------------------------------
@@ -501,12 +492,12 @@ interior_detect : bool
             return fs.perturbation.numba_iterate(self.
                 max_iter, M_divergence_sq, epsilon_stationnary_sq,
                 reason_max_iter, reason_M_divergence, reason_stationnary,
-                xr_detect_activated, BLA_activated, # SA_activated,
+                xr_detect_activated, BLA_activated,
                 zn, dzndc, dzndz,
                 p_iter_zn, p_iter_dzndz, p_iter_dzndc,
                 calc_dzndc, calc_dzndz,
             )
-        
+
         return {
             "set_state": set_state,
             "initialize": initialize,

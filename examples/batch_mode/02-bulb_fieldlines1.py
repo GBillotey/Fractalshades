@@ -54,7 +54,7 @@ def plot(plot_dir):
         calc_name=calc_name,
         subset=None,
         max_iter=5000,
-        M_divergence=2.,
+        M_divergence=100.,
         epsilon_stationnary= 0.001,
     )
 
@@ -64,7 +64,7 @@ def plot(plot_dir):
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
     pp.add_postproc(
         "fieldlines",
-        Fieldlines_pp(n_iter=4, swirl=0.5, damping_ratio=0.5)
+        Fieldlines_pp(n_iter=4, swirl=0., damping_ratio=1.0)
     )
 
     plotter = fs.Fractal_plotter(pp, final_render=False, supersampling="3x3")   

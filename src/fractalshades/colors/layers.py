@@ -327,8 +327,7 @@ class Virtual_layer:
 class Color_layer(Virtual_layer):
     default_mask_color = (0., 0., 0.)
 
-    def __init__(self, postname, func, colormap, probes_z=[0, 1],
-                 probes_kind="absolute", output=True):
+    def __init__(self, postname, func, colormap, probes_z=[0, 1], output=True):
         """
         A colored layer.
         
@@ -341,11 +340,8 @@ class Color_layer(Virtual_layer):
         colormap : fractalshades.colors.Fractal_colormap
             a colormap
         probes_z : 2-floats list
-            The preprocessing affine rescaling. If [0., 1.] and probes_kind is 
-            `relative` (default) the minimum value of the field will be mapped
-            to 0. and the maximum to 1.
-        probes_kind : "relative" | "absolute"
-            Deprecated. All probe values passed as "absolute"
+            probes_z = (z_min, zmax) ; the z_min value of the field will be
+            mapped to 0. and zmax to 1.
         output : bool
             passed to `Virtual_layer` constructor
         """
@@ -355,7 +351,6 @@ class Color_layer(Virtual_layer):
         # - float masked
         self.colormap = colormap
         self.probe_z = np.asarray(probes_z)
-        self.probes_kind = probes_kind
         # Init all modifiers to empty list
         self._modifiers = []
         self._twin_field = None
