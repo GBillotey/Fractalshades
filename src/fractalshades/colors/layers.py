@@ -217,13 +217,20 @@ class Virtual_layer:
         
         if field_count == 1:
             arr = np.empty((nx, ny), dtype)
-            arr[:] = plotter.get_2d_arr(post_index, chunk_slice)
+            ret = plotter.get_2d_arr(post_index, chunk_slice)
+            if ret is None:
+                return None
+            arr[:] = ret # plotter.get_2d_arr(post_index, chunk_slice)
     
         elif field_count == 2:
             (post_index_x, post_index_y) = post_index
             arr = np.empty((2, nx, ny), dtype)
-            arr[0, :] = plotter.get_2d_arr(post_index_x, chunk_slice)
-            arr[1, :] = plotter.get_2d_arr(post_index_y, chunk_slice)
+            ret0 = plotter.get_2d_arr(post_index_x, chunk_slice)
+            ret1 = plotter.get_2d_arr(post_index_y, chunk_slice)
+            if (ret0 is None) or (ret1 is None):
+                return None
+            arr[0, :] = ret0
+            arr[1, :] = ret1
 
 #            mmap[rank:rank+2, ix:ixx, iy:iyy]
             
@@ -233,6 +240,9 @@ class Virtual_layer:
         """ Update the overall min - max according to what is found in this 
          chunk_slice  """
         arr = self[chunk_slice]
+#        if arr is None or arr.shape == (): # Interrupted calculation
+#            return
+
         # If a user-mapping is defined, apply it
         if self.func is not None:
             arr = self.func(arr)
@@ -242,6 +252,8 @@ class Virtual_layer:
             n_fields = 1
         elif len(sh) == 3:
             n_fields = arr.shape[0]
+        else:
+            raise ValueError(f"arr shape: {sh}")
         
         if n_fields == 1: # standard case
             min_chunk = self.nanmin_with_mask(arr, chunk_slice)
@@ -433,6 +445,9 @@ class Color_layer(Virtual_layer):
         """ private - Return the image for this chunk"""
         # 1) The "base" image
         arr = self[chunk_slice]
+#        if arr is None or arr.shape == (): # Interrupted calculation
+#            return
+        
         # If a user-mapping is defined, apply it
         if self.func is not None:
             arr = self.func(arr)
@@ -597,6 +612,9 @@ class Grey_layer(Virtual_layer):
         """ Return the image for this chunk"""
         # 1) The "base" image
         arr = self[chunk_slice]
+#        if arr is None or arr.shape == (): # Interrupted calculation
+#            return
+        
         # If a user-mapping is defined, apply it
         if self.func is not None:
             arr = self.func(arr)
@@ -733,7 +751,8 @@ class Normal_map_layer(Color_layer):
         """ Return the image for this chunk"""
         # 1) The "base" image
         arr = self[chunk_slice]
-        
+#        if arr is None or arr.shape == (): # Interrupted calculation
+#            return
 
 #        print('crop bool', arr, arr.shape, arr.dtype, arr[0:100])
 #        rgb = np.uint8(rgb * 255)
@@ -800,6 +819,9 @@ class Bool_layer(Virtual_layer):
         """ Return the image for this bool layer chunk"""
         # 1) The "base" image
         arr = self[chunk_slice]
+#        if arr is None or arr.shape == (): # Interrupted calculation
+#            return
+
         crop_mask = PIL.Image.fromarray(self.np2PIL(arr))
         return crop_mask
 

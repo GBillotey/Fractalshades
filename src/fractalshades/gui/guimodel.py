@@ -2726,7 +2726,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
 
     @staticmethod
     def skew_from_ref_zoom(ref_zoom):
-        """ Return teh skew params or default value if no skew stored """
+        """ Return the skew params or default value if no skew stored """
         try:
             has_skew = ref_zoom["has_skew"] 
             skew_00 = ref_zoom["skew_00"] 

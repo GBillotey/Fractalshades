@@ -83,7 +83,7 @@ def plot(plot_dir):
     fractal = fsm.Perturbation_mandelbrot(directory)
     
     def func(
-        fractal: fsm.Perturbation_mandelbrot=fractal,
+        fractal: fs.Fractal=fractal,
         calc_name: str=calc_name,
 
         _1: fsgui.collapsible_separator="Zoom parameters",

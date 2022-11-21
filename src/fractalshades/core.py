@@ -367,6 +367,7 @@ class Fractal_plotter:
                     self.push_reloaded(
                         chunk_slice, layer=layer, im=self._im[i], ilayer=i
                     )
+                f.incr_tiles_status(which="Plot tiles")
                 self.incr_tiles_status(chunk_slice)
                 return
 
@@ -382,13 +383,16 @@ class Fractal_plotter:
         raw_arr = np.empty(shape=arr_shp, dtype=self.post_dtype)
 
         batch_first_post = 0 # index of the first post for the current batch
+        is_ok = 0
         for batch in self.postproc_batches:
             # Do the real job
-            self.fill_raw_arr(
+            is_ok += self.fill_raw_arr(
                 raw_arr, chunk_slice, batch, batch_first_post
             )
             # Just count index
             batch_first_post += len(batch.posts)
+        if is_ok != 0:
+            return
 
         self._raw_arr[chunk_slice] = raw_arr
 
@@ -413,14 +417,18 @@ class Fractal_plotter:
         """
         f = self.fractal
         inc = batch_first_post
-        post_array, subset = f.postproc(
-            batch, chunk_slice, self.postproc_options
-        )
-        arr_1d = f.reshape1d(post_array, subset, chunk_slice,
-                             self.supersampling)
-        n_posts, _ = arr_1d.shape
+        ret = f.postproc(batch, chunk_slice, self.postproc_options)
+        if ret is None:
+            # Interrupted calculation
+            return 1
 
+        post_array, subset = ret
+        arr_1d = f.reshape1d(
+            post_array, subset, chunk_slice,self.supersampling
+        )
+        n_posts, _ = arr_1d.shape
         raw_arr[inc: (inc + n_posts), :] = arr_1d
+        return 0 # OK
 
 
     def incr_tiles_status(self, chunk_slice):
@@ -453,7 +461,8 @@ class Fractal_plotter:
         try:
             arr = self._raw_arr[chunk_slice][post_index, :]
         except KeyError:
-            raise ValueError("Data requested for an unexpected chunk")
+            return None
+            # raise ValueError("Data requested for an unexpected chunk")
 
         (ix, ixx, iy, iyy) = chunk_slice
         nx, ny = ixx - ix, iyy - iy
@@ -650,6 +659,8 @@ class Fractal_plotter:
         crop_slice = (ix, ny-iyy, ixx, ny-iy)
         # Key: Calling get_2d_arr
         paste_crop = layer.crop(chunk_slice)
+        if paste_crop is None:
+            return
         
         if self.supersampling:
             # Here, we should apply a resizig filter
@@ -1910,12 +1921,19 @@ advanced users when subclassing.
     def compute_rawdata_dev(self, calc_name, chunk_slice):
         """ In dev mode we follow a 2-step approach : here the compute step
         """
+        if self.is_interrupted():
+            logger.debug(
+                "Interrupted - skipping calc for:\n"
+                f"  {calc_name} ; {chunk_slice}"
+            )
+            return
 
         if self.res_available(calc_name, chunk_slice):
             logger.debug(
                 "Result already available - skipping calc for:\n"
                 f"  {calc_name} ; {chunk_slice}"
             )
+            self.incr_tiles_status(which="Calc tiles")
             return
 
         (cycle_dep_args, chunk_subset
@@ -1923,18 +1941,18 @@ advanced users when subclassing.
         cycle_indep_args = self._calc_data[calc_name]["cycle_indep_args"]
         
         ret_code = self.numba_cycle_call(cycle_dep_args, cycle_indep_args)
-        (c_pix, Z, U, stop_reason, stop_iter) = cycle_dep_args
-
         if ret_code == self.USER_INTERRUPTED:
-            logger.error("Interruption signal received")
+            logger.warning("Interruption signal received")
             return
 
+        (c_pix, Z, U, stop_reason, stop_iter) = cycle_dep_args
         self.update_report_mmap(calc_name, chunk_slice, stop_reason)
         self.update_data_mmaps(
                 calc_name, chunk_slice, Z, U, stop_reason, stop_iter
         )
-        
         self.incr_tiles_status(which="Calc tiles")
+
+
 
 
     def reload_rawdata_dev(self, calc_name, chunk_slice):
@@ -1945,6 +1963,9 @@ advanced users when subclassing.
             self.incr_tiles_status(which="Plot tiles")
             return self.reload_data(chunk_slice, calc_name)
         else:
+            # Interrupted calculation ?
+            if self.res_available(calc_name, None):
+                return None
             raise RuntimeError(f"Results unavailable for {calc_name}")
 
 
@@ -2122,6 +2143,9 @@ advanced users when subclassing.
           post_array of shape(nposts, chunk_n_pts)
           subset
         """
+#        if self.is_interrupted():
+#            return None
+
         if postproc_batch.fractal is not self:
             raise ValueError("Postproc batch from a different factal provided")
         calc_name = postproc_batch.calc_name
@@ -2131,8 +2155,8 @@ advanced users when subclassing.
 
         ret = self.evaluate_data(calc_name, chunk_slice, postproc_options)
         if ret is None:
-            raise RuntimeError("DEBUG - How to deal with this")
-            return
+            # Unexpected interruption
+            return None
 
         (subset, c_pix, Z, U, stop_reason, stop_iter) = ret
         codes = self._calc_data[calc_name]["saved_codes"]
