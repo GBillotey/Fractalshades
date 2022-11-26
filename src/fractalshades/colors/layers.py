@@ -971,11 +971,6 @@ class Blinn_lighting:
         B = self._output(nx, ny)
         return PIL.ImageQt.ImageQt(PIL.Image.fromarray(B))
 
-
-#    @property
-#    def n_ls(self):
-#        """" Current number of lightsources """
-#        return len(self.light_sources)
     
     #----------- methods for GUI interaction
     @property
@@ -984,8 +979,6 @@ class Blinn_lighting:
 
     def modify_item(self, col_key, irow, value):
         """ In place modification of lightsource irow """
-        print("In OBJECT modify_item", col_key, irow, value, type(value))
-
         if col_key == "color":
             self.light_sources[irow][col_key] = np.asarray(value)
         # Keep aligned the angles in radian
@@ -1008,14 +1001,7 @@ class Blinn_lighting:
         ret = []
         for ls in self.light_sources:
             ret += [ls[col_key]]
-#            if col_key in["color", "k_diffuse", "k_specular", "shininess"]:
-#                ret += [ls[col_key]]
-#            elif col_key == "polar_angle":
-#                ret += [ls["angles"][0]]
-#            elif col_key == "azimuth_angle":
-#                ret += [ls["angles"][1]]
-#            else:
-#                raise ValueError(col_key)
+
         return ret
 
     @property
@@ -1039,7 +1025,7 @@ class Blinn_lighting:
             for _ in range(diff):
                 self.add_light_source(**self.default_ls_kwargs)
 
-    def script_repr(self):
+    def script_repr(self, indent=0):
         """ Return a string that can be used to restore the colormap
         """
         k_ambient_str = repr(self.k_ambient)
@@ -1057,10 +1043,7 @@ class Blinn_lighting:
                 None if matcolor is None
                 else np.array2string(matcolor, separator=', ')
             )
-#            if matcolor is None:
-#                ls_matcolor_str = "None"
-#            else:
-#                ls_matcolor_str = np.array2string(matcolor, separator=', ')
+
             lightings_str += (
                 f"    ls{ils}={{\n        "
                 f"'k_diffuse': {k_diffuse},\n        "
@@ -1072,12 +1055,16 @@ class Blinn_lighting:
                 f"'material_specular_color': {ls_matcolor_str}\n"
                 "    },\n"
             )
-        return (
+        ret =  (
             "fs.colors.layers.Blinn_lighting(\n"
             "    k_ambient={},\n"
             "    color_ambient={},\n"
             "{})"
         ).format(k_ambient_str, color_ambient_str, lightings_str)
+
+        shift = " " * (4 * (indent + 1))
+        ret.replace("\n", "\n" + shift)
+        return ret
 
 
 
@@ -1207,11 +1194,6 @@ class Overlay_mode:
         crop = np.array(overlay.crop(chunk_slice))
         shade = Virtual_layer.PIL2np(crop) / 255.
         shade = shade[:, :, np.newaxis]
-
-        # shade = overlay[chunk_slice][:, :, np.newaxis]
-#        if np.any(shade > 1.):
-#            print(np.max(shade), np.min(shade))
-#            raise ValueError()
         
         nx, ny, _ = rgb.shape
         XYZ = _2d_rgb_to_XYZ(rgb, nx, ny)

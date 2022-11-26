@@ -34,6 +34,9 @@ def dic_flatten(nested_dic, key_prefix="", sep="@"):
     return res
 
 class Protected_mapping(collections.abc.MutableMapping):
+    """
+    A read-only dictionnary.
+    """
     def __init__(self, dic):
         self._dict = dic
     

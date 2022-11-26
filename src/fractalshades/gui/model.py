@@ -322,7 +322,11 @@ class Func_submodel(Submodel):
         
         
         """
-        sign = inspect.signature(self._func)
+        
+        # sign = inspect.signature(self._func)
+        sign = fs.gui.guitemplates.signature(self._func)
+        
+        
         for i_param, (name, param) in enumerate(sign.parameters.items()):
             if name == pname:
                 if typing.get_origin(param.annotation) is not None:
@@ -386,7 +390,8 @@ class Func_submodel(Submodel):
             (iparam, i_union, 'val') the value (*)
         """
         fd = self._dict #= dict()
-        sign = inspect.signature(self._func)
+#        sign = inspect.signature(self._func)
+        sign = fs.gui.guitemplates.signature(self._func)
         fd["n_params"] = len(sign.parameters.items())
         for i_param, (name, param) in enumerate(sign.parameters.items()):
             self.insert_param(i_param, name, param)
@@ -584,7 +589,8 @@ class Func_submodel(Submodel):
 
     def getsource(self):
         """ Returns the function source code """
-        return inspect.getsource(self._func)
+        # return inspect.getsource(self._func)
+        return fs.gui.guitemplates.getsource(self._func)
 
     def model_event_slot(self, keys, val):
         if keys[:-1] != self._keys:

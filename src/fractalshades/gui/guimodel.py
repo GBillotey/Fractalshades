@@ -294,12 +294,12 @@ if __name__ == "__main__":
     plot(plot_dir)
 """
 
-def script_repr(obj):
-    if hasattr(obj, "script_repr"):
-        return obj.script_repr()
-#    if isinstance(obj, (fs.Fractal, fs.colors.Fractal_colormap)):
-#        return obj._repr()
-    return repr(obj)
+#def script_repr(obj): # MOVED
+#    if hasattr(obj, "script_repr"):
+#        return obj.script_repr()
+##    if isinstance(obj, (fs.Fractal, fs.colors.Fractal_colormap)):
+##        return obj._repr()
+#    return repr(obj)
 
 
 def getapp():
@@ -2764,6 +2764,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
     def method_kwargs(self, f, m_name):
         """ Collect the additionnal parameters that might be needed"""
         f = getattr(f, m_name)
+        # Note: use inspect for a fractal GUI-method 
         sign = inspect.signature(f)
 
         add_params = dict()
@@ -3269,7 +3270,10 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
 
     def push_to_param(self):
         """ Try to push to a colormap param if there is one """
-        sign = inspect.signature(self.parent()._gui._func)
+        # sign = inspect.signature(self.parent()._gui._func)
+        sign = fs.gui.guitemplates.getsignature(
+                self.parent()._gui._func
+        )
         
         cmap_params_index = dict()
         for i_param, (name, param) in enumerate(sign.parameters.items()):
@@ -3455,7 +3459,10 @@ class Fractal_cmap_choser(QDialog):
 
     def push_to_param(self):
         """ Try to push to a colormap param if there is one """
-        sign = inspect.signature(self.parent()._gui._func)
+#        sign = inspect.signature(self.parent()._gui._func)
+        sign = fs.gui.guitemplates.getsignature(
+                self.parent()._gui._func
+        )
         
         cmap_params_index = dict()
         for i_param, (name, param) in enumerate(sign.parameters.items()):
@@ -3730,17 +3737,18 @@ class Fractal_GUI:
         """
 Parameters
 ----------
-func : callable with signature (`fractalshades.Fractal`, ``**kwargs`` ). 
+func : callable with signature (`fs.Fractal`, ``**kwargs`` ). 
     The function definition shall provide 'type hints' that will be used by the
     the GUI to select / customize the appropriate editor.
     Each parameter will be displayed interactively and will be editable.
     The editor might be a simple text box, or for more complex objects
     a full pop-up or a dockable window.
-    
-    One exception is the first parameter, which must be a
-    `fractalshades.Fractal` object and
-    will not be editable (it is not possible to change the fractal type during
-    a GUI-session)
+
+    The first parameter shall be a `fractalshades.Fractal` object, and its name
+    shall be "fractal".
+    It is also partially editable: the parameters from
+    the __init__ method will be user-tunable (it is not possible to change
+    the fractal type or the base directory during a GUI interactive session)
 
 Notes
 -----     
@@ -3749,8 +3757,8 @@ Theses notes give further details regarding the definition of the `func`
 parameter
 
 .. note::
-    
-    Regarding ``Type hints`` in python, for a full specification, please see
+
+    Regarding ``Type hints`` in Python, for a full specification, please see
     PEP_484_. For a simplified introduction to type hints, see PEP_483_.
     Fractalshades only support a subset of these, details below.
 
@@ -3766,12 +3774,15 @@ parameter
         - `mpmath.mpf` (arbitrary precision floating point)
         - `fs.colors.Color=(0., 0., 1.)` (RGB color)
         - `fs.colors.Color=(0., 0., 1., 0)` (RGBA color)
+        - `fs.Fractal` subclasses
         - `fs.colors.Fractal_colormap`
+        - `fs.colors.Blinn_lighting`
         - `fs.gui.separator` (used to group a set of parameters under a title)
+        - `fs.gui.collapsible_separator` (same as above, collapsible)
 
-    A parameter that the user will choose among a list of discrete values can
+    A parameter that the user will chose among a list of discrete values can
     be represented by a `typing.Literal` :
-    
+
     ::
 
         listed: typing.Literal["a", "b", "c", 1, None]="c"
@@ -3781,11 +3792,10 @@ parameter
     those authorized be available):
     
     ::
-        
+
         typing.Union[int, float, str]
         typing.Optional[float]
-        
-        
+
 .. note::
     
     An example of a valid ``func`` parameter signature is show below:
@@ -3819,9 +3829,19 @@ parameter
 
 """
         self._func = func
-        param_names = inspect.signature(func).parameters.keys()
+        sign = fs.gui.guitemplates.signature(func)
+        param_names = sign.parameters.keys()
         param0 = next(iter(param_names))
         self._fractal = param0
+
+        if param0 != "fractal":
+            raise ValueError(
+                f"Expected a first parameters named fractal, found: {param0}"
+            )
+
+        if isinstance(func, fs.gui.guitemplates.GUItemplate):
+            self.connect_image(**func.connect_image_params)
+            self.connect_mouse(**func.connect_mouse_params)
 
     def connect_image(self, image_param="calc_name"):
         """

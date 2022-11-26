@@ -2,6 +2,7 @@
 import os
 import typing
 import enum
+import pprint
 
 import numpy as np
 #import matplotlib.colors
@@ -482,7 +483,7 @@ class Fractal_colormap:
     def modify_item(self, col_key, irow, value):
         """ In place modifcation of cmap """
 #        print("in color.Colormap modify_item", col_key, irow, value, type(value))
-        print("In OBJECT modify_item", col_key, irow, value, type(value))
+#        print("In OBJECT modify_item", col_key, irow, value, type(value))
         getattr(self, col_key)[irow] = value
         self._load_internal_arrays()
 
@@ -520,6 +521,7 @@ class Fractal_colormap:
             self.kinds = self.kinds[:n_grads]
             self.grad_npts = self.grad_npts[:n_grads]
             self.grad_funcs = self.grad_funcs[:n_grads]
+
         elif diff > 0:
             self.kinds = self.kinds + [self.default_kind] * diff
             self.grad_funcs = self.grad_funcs + [self.default_func] * diff
@@ -545,23 +547,35 @@ class Fractal_colormap:
         self._load_internal_arrays()
         
 
-    def script_repr(self):
+    def script_repr(self, indent):
         """ Return a string that can be used to restore the colormap
         """
+        shift = " " * (4 * (indent + 1))
+        shift_arr = " " * (4 * (indent + 2))
+
         if hasattr(self, "_template") and self._template is not None:
             return f"fs.colors.cmap_register[\"{self._template}\"]"
+
         colors_str = np.array2string(self.colors, separator=', ')
-        kinds_str = repr(self.kinds)# np.array2string(self.kinds, separator=', ')
+        colors_str = colors_str.replace("\n", "\n" + shift_arr)
+
+        kinds_str = pprint.pformat(self.kinds, compact=True) # repr(self.kinds)
+        kinds_str = kinds_str.replace("\n", "\n" + shift_arr)
+
         grad_npts_str = np.array2string(self.grad_npts, separator=', ')
-        grad_funcs_str = repr(self.grad_funcs)# np.array2string(self.grad_funcs, separator=', ')
+        grad_npts_str = grad_npts_str.replace("\n", "\n" + shift_arr)
+
+        grad_funcs_str = pprint.pformat(self.grad_funcs, compact=True) # repr(self.grad_funcs)
+        grad_funcs_str = grad_funcs_str.replace("\n", "\n" + shift_arr)
+
         extent_str = self.extent
         return (
             "fs.colors.Fractal_colormap(\n"
-            "    colors={},\n"
-            "    kinds={},\n"
-            "    grad_npts={},\n"
-            "    grad_funcs={},\n"
-            "    extent=\'{}\'\n)"
+            f"{shift}colors={{}},\n"
+            f"{shift}kinds={{}},\n"
+            f"{shift}grad_npts={{}},\n"
+            f"{shift}grad_funcs={{}},\n"
+            f"{shift}extent=\'{{}}\'\n)"
         ).format(colors_str, kinds_str, grad_npts_str, grad_funcs_str,
                  extent_str)
 
@@ -642,9 +656,11 @@ class Fractal_colormap:
         # linear interpolation in sorted color array
         indices = np.searchsorted(np.arange(self._n_interp_colors), z)
         alpha = indices - z
-        search_colors = np.vstack([self._interp_colors[0, :],
-                                   self._interp_colors,
-                                   self._interp_colors[-1, :]])
+        search_colors = np.vstack([
+            self._interp_colors[0, :],
+            self._interp_colors,
+            self._interp_colors[-1, :]
+        ])
         z_colors = (alpha[:, np.newaxis] * search_colors[indices, :] + 
              (1.-alpha[:, np.newaxis]) * search_colors[indices + 1, :])
         return np.reshape(z_colors, [nx, ny, 3])  

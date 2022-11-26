@@ -873,13 +873,21 @@ advanced users when subclassing.
         return (self.__class__, vals)
 
 
-    def _repr(self):
-        # String used to generate a new instance in GUI-generated scripts
-        return (
-            "fsm."
-            + self.__class__.__name__
-            + "(plot_dir)"
-        )
+#    def script_repr(self, ):
+#        init_kwargs = self.init_kwargs
+#        
+#        return (
+#            "fsm."
+#            + self.__class__.__name__
+#            + "(plot_dir)"
+#        )    
+#    def _repr(self):
+#        # String used to generate a new instance in GUI-generated scripts
+#        return (
+#            "fsm."
+#            + self.__class__.__name__
+#            + "(plot_dir)"
+#        )
 
     @fs.utils.zoom_options
     def zoom(self, *,
