@@ -28,9 +28,19 @@ directory : str
         self.potential_kind = "infinity"
         self.potential_d = exponent
         self.potential_a_d = 1.
+        
+        self.holomorphic = False
+        self.implements_fieldlines = True
+        self.implements_newton = False
+        
+        @numba.njit
+        def _zn_iterate(zn, c):
+            return zn ** exponent + c
+        self.zn_iterate = _zn_iterate
+
 
     @fsutils.calc_options
-    def base_calc(self, *,
+    def calc_std_div(self, *,
             calc_name: str,
             subset,
             max_iter: int,

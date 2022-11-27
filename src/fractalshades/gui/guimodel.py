@@ -89,6 +89,10 @@ from PyQt6.QtWidgets import (
 
 import fractalshades as fs
 import fractalshades.colors
+from fractalshades.gui import (
+    separator,
+    collapsible_separator
+)
 from fractalshades.gui.model import (
     Model,
     Func_submodel,
@@ -98,8 +102,6 @@ from fractalshades.gui.model import (
     Presenter,
     type_name,
     typing_litteral_choices,
-    separator,
-    collapsible_separator
 )
 from fractalshades.gui.QCodeEditor import Fractal_code_editor
 import fractalshades.numpy_utils.expr_parser as fs_parser
@@ -542,10 +544,10 @@ class Action_func_widget(QFrame):
     def show_func_params(self):
         sm = self._submodel
         ce = Fractal_code_editor(self)
-        str_args = "\n".join(
-            [(k + " = " + script_repr(v)) for (k, v) in sm.getkwargs().items()]
-        )
-        ce.set_text(str_args)
+        str_assign = fs.gui.guitemplates.script_assignments(sm.getkwargs())
+        
+        
+        ce.set_text(str_assign)
         ce.setWindowTitle("Parameters")
         ce.show() # exec()
 
@@ -559,7 +561,7 @@ class Action_func_widget(QFrame):
     def show_script(self):
         sm = self._submodel
         func_params_str = "\n".join(
-            [(k + " = " + script_repr(v)) for (k, v) in sm.getkwargs().items()]
+            [(k + " = " + fs.gui.guitemplates.script_repr(v)) for (k, v) in sm.getkwargs().items()]
         )
         # Indent once
         func_params_str = "    " + "\n    ".join(
@@ -865,6 +867,7 @@ class Func_widget(QFrame):
         fd = self._submodel._dict
         
         name = fd[(i_param, "name")]
+        print("in layout_param FOR", name)
         name_label = QLabel(name)
         myFont = QtGui.QFont()
         myFont.setWeight(QtGui.QFont.Weight.ExtraBold)
@@ -913,8 +916,8 @@ class Func_widget(QFrame):
         fd = self._submodel._dict
         # n_uargs = fd[(i_param, "n_types")]
         utype = fd[(i_param, i_union, "type")]
-
         uval = fd[(i_param, i_union, "val")]
+        print("in layout_uarg", i_param, i_union, utype, type(uval), uval) # fd[(22, 0, "val")]
         atom_wget = atom_wget_factory(utype)(utype, uval, self._model)
         self._widgets[(i_param, i_union, "val")] = atom_wget
 
@@ -959,12 +962,6 @@ class Func_widget(QFrame):
         # Check first Atom_Mixin
         if isinstance(wget, Atom_Edit_mixin):
             wget.on_model_event(val)
-#        elif isinstance(wget, QCheckBox):
-#            print("* LEGACY")
-#            wget.setChecked(val) # Legacy (default value toggle button)
-#        elif isinstance(wget, QComboBox):
-#            print("* LEGACY")
-#            wget.setCurrentIndex(val) # Legacy (default value toggle button)
         else:
             raise NotImplementedError(
                 f"Func_widget.model_event_slot {wget}"
@@ -1190,8 +1187,13 @@ class Atom_QLineEdit(QLineEdit, Atom_Edit_mixin):
         if self._type is type(None):
             return None
         elif issubclass(self._type, fs.numpy_utils.Numpy_expr):
-            return self.text()
-        return self._type(self.text()) 
+            # We return a Nump_expr, the variables are those of the default
+            # value, as stored in the validator
+            variables = self.validator()._variables
+            text = self.text()
+            print("RETURN A fs.numpy_utils.Numpy_expr", variables, text)
+            return self._type(variables, text)
+        return self._type(self.text())
 
     def on_user_event(self):
         self.user_modified.emit()
@@ -1421,6 +1423,7 @@ class Atom_Text_Validator(QtGui.QValidator):
         if issubclass(atom_type, fs.numpy_utils.Numpy_expr):
             # The only way to keep track of the variables : keep those of
             # the provided default (the type will not hold this info)
+            print("VAL", val)
             self._variables = copy.deepcopy(val.variables)
 
     def validate(self, val, pos):
@@ -3271,7 +3274,7 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
     def push_to_param(self):
         """ Try to push to a colormap param if there is one """
         # sign = inspect.signature(self.parent()._gui._func)
-        sign = fs.gui.guitemplates.getsignature(
+        sign = fs.gui.guitemplates.signature(
                 self.parent()._gui._func
         )
         
@@ -3340,12 +3343,11 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
                 cancel = True # zoom is invalid
 
         if cancel:
-#            print("INVALID _object_pos")
             self.cancel_drawing_line()
             if dclick:
                 self.fit_image()
             return
-        
+
         self.validated_object_pos = self._object_pos
         self.update_cmap()
         
@@ -3460,7 +3462,7 @@ class Fractal_cmap_choser(QDialog):
     def push_to_param(self):
         """ Try to push to a colormap param if there is one """
 #        sign = inspect.signature(self.parent()._gui._func)
-        sign = fs.gui.guitemplates.getsignature(
+        sign = fs.gui.guitemplates.signature(
                 self.parent()._gui._func
         )
         
@@ -3774,6 +3776,7 @@ parameter
         - `mpmath.mpf` (arbitrary precision floating point)
         - `fs.colors.Color=(0., 0., 1.)` (RGB color)
         - `fs.colors.Color=(0., 0., 1., 0)` (RGBA color)
+        - `fs.numpy_utils.Numpy_expr` (defines a numpy function from string)
         - `fs.Fractal` subclasses
         - `fs.colors.Fractal_colormap`
         - `fs.colors.Blinn_lighting`
@@ -3814,7 +3817,7 @@ parameter
             dx: mpmath.mpf=dx,
             xy_ratio: float=xy_ratio,
             dps: int= dps,
-            _2: fsgui.separator="Calculation parameters",
+            _2: fsgui.collapsible_separator="Calculation parameters",
             max_iter: int=max_iter,
             optional_float: typing.Optional[float]=3.14159,
             choices_str: typing.Literal["a", "b", "c"]="c",
@@ -3825,6 +3828,9 @@ parameter
             probes_zmax: float=probes_zmax,
             epsilon_stationnary: float=epsilon_stationnary,
             colormap: fs.colors.Fractal_colormap=colormap
+            func: fs.numpy_utils.Numpy_expr = (
+                fs.numpy_utils.Numpy_expr("x", "np.log(x)")
+            ),
         ):
 
 """

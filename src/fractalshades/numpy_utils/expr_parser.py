@@ -86,7 +86,7 @@ class Numpy_expr:
     # Note: We *could* use typing.Annotated when dropping 3.8 support
     # See https://docs.python.org/3/library/typing.html#typing.Annotated
     # https://peps.python.org/pep-0593/
-    # T1 = Annotated[Func_expr, Vars("x", "y")]
+    # T1 = Annotated[Numpy_expr, Vars("x", "y")]
 
     def __init__(self, variables, expr):
         f"""
@@ -105,24 +105,48 @@ class Numpy_expr:
             variables = [variables]
         self.variables = variables
         self.expr = expr
+        self._func = func_parser(variables, expr) 
 
     def validates(self):
         """
         Returns True if the Numpy_expr is valid
         """
-        return func_parser(variables=self.variables, expr=self) is not None
-    
+        return self._func is not None
+
     @staticmethod
     def validates_expr(variables, expr):
-        """ static version"""
+        """ Static version - used in GUI validation """
         return func_parser(variables=variables, expr=expr) is not None
     
     def __str__(self):
         return self.expr
 
+    def __call__(self, *args):
+        if self._func is None:
+            return args
+        return self._func(*args)
+
+    @property
+    def init_kwargs(self):
+        """ Return a dict of parameters used during __init__ call"""
+        init_kwargs = {
+            "variables": self.variables,
+            "expr": self.expr,
+        }
+        return init_kwargs
+
+    def __reduce__(self):
+        """ Serialisation of a Numpy_expr object.
+        """
+        print("IN REDUCE Numpy_expr")
+        vals = tuple(self.init_kwargs.values())
+        print("self.__class__, vals", self.__class__, vals)
+        return (self.__class__, vals)
+
 
 class Vars:
-    # to be used with Numpy_expr, see note above
+    # Could be used with Numpy_expr, see note above
+    # (typing.Annotated new in Python 3.9)
     def __init__(self, *args):
         self.args = args
 
@@ -148,7 +172,8 @@ if __name__ == "__main__":
 #    f = safe_eval(e)
 #    print(f)
 #    print(f(1))
-    expr = Numpy_expr("np.sin(x)")
+    expr = Numpy_expr("x", "np.sin(x)")
     print(isinstance(expr, str))
     print(isinstance(expr, Numpy_expr))
-    expr.type_check(["y",])
+    print(expr(0.))
+

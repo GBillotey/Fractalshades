@@ -1104,7 +1104,8 @@ class Overlay_mode:
                 the kind of overlay  applied
                 
                 - alpha_composite :
-                    alpha-compositing of 2 color layers (its is
+                    alpha-compositing of 2 color layers (a Bool_layer may be
+                    provided as optionnal parameter, otherwise its is
                     the mask of the upper layer which will be considered for
                     compositing)
                 - tint_or_shade : 
@@ -1115,9 +1116,14 @@ class Overlay_mode:
 
         Other Parameters
         ----------------
-        ref_white: 3-uplet float
+        ref_white: 3-uplet float, Optionnal
             reference white light RGB coeff for ``mode`` "tint_or_shade"
              Default to CIE LAB constants Illuminant D65
+        alpha_mask: `Bool_layer`, Optionnal
+            Boolean array used for compositing, for alpha_composite mode
+            Defaults to the mask of the upper layer
+        inverse_mask: bool, Optionnal
+            if True, inverse the mask
         """
         self.mode = mode
         self.mode_options = mode_options
@@ -1130,19 +1136,33 @@ class Overlay_mode:
 
     def alpha_composite(self, rgb, overlay, chunk_slice):
         """ Paste a "masked layer" over a standard layer
-        layer should be a colored layer with a mask 
-        The base layer should not have a mask as otherwise it could be applied
-        later in postprocessing
+        layer should be a colored layer with a mask, or the mask provided
+        separately
+        Note: The base layer shall not have a mask: otherwise it will be
+        applied later in postprocessing destroying the intended effect.
         """
         if not isinstance(overlay, Color_layer):
             raise ValueError("{} not allowed for alpha compositing".format(
                              type(overlay).__name__ ))
+
+        opt = self.mode_options
+
         # For alpha compositing, we obviously need an alpha channel
-        if overlay.mask is None:
-            raise ValueError("alpha_composite called with non-masked overlay "
-                             "layer")
-        # This is safer than using the A-channel from the image
-        mask_arr = overlay.mask[0][chunk_slice][:, :, np.newaxis]
+        if "alpha_mask" in opt.keys():
+            mask_arr = opt["alpha_mask"][chunk_slice][:, :, np.newaxis]
+        else:
+            if overlay.mask is None:
+                raise ValueError(
+                    "alpha_composite called with non-masked overlay "
+                    "layer - Add a mask to overlay layer or provide the "
+                    "mask separately through alpha_mask parameter."
+            )
+            # This is safer than using the A-channel from the image
+            mask_arr = overlay.mask[0][chunk_slice][:, :, np.newaxis]
+
+        inverse_mask = opt.get("inverse_mask", False)
+        if inverse_mask:
+            mask_arr = ~mask_arr 
 
         nx, ny, _ = rgb.shape
         XYZ = _2d_rgb_to_XYZ(rgb, nx, ny)

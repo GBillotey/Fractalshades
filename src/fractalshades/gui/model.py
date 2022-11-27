@@ -20,6 +20,7 @@ from PyQt6.QtCore import pyqtSignal, pyqtSlot
 
 import fractalshades as fs
 import fractalshades.colors
+import fractalshades.gui.guitemplates
 
 """
 Implementation of a GUI following a Model-View-Presenter
@@ -61,10 +62,9 @@ Note on the datatype:
 
 logger = logging.getLogger(__name__)
 
-separator = typing.TypeVar('gui_separator')
-collapsible_separator = typing.TypeVar('gui_collapsible_separator')
-
-
+# MOVED TO __init__
+#separator = typing.TypeVar('gui_separator')
+#collapsible_separator = typing.TypeVar('gui_collapsible_separator')
 
 def default_val(utype):
     """ Returns a generic default value for a given type"""
@@ -151,8 +151,6 @@ def typing_litteral_choices(ptype, p_name=None):
                 f"{type(item)}"
             )
     return choices
-
-
 
 
 class Model(QtCore.QObject):
@@ -280,6 +278,9 @@ class Submodel(QtCore.QObject):
         self.model_notification.emit(self._keys + tuple([key]), oldval, val)  
 
 
+
+
+
 class Func_submodel(Submodel):
     # key, oldval, newval signal
     model_notification = pyqtSignal(object, object, object)
@@ -296,37 +297,14 @@ class Func_submodel(Submodel):
         self.model_notification.connect(self._model.model_notified_slot)
         # Bindings for dps
         if dps_var is not None:
-#            print("dps_var", dps_var)
-#            self.connect_dps(dps_var)
             self.connect_alias(dps_var, "dps")
-    
-#    def connect_dps(self, dps_var):
-#        """
-#        Register this var as the dps event listener at model level
-#        """
-#        sign = inspect.signature(self._func)
-#        for i_param, (name, param) in enumerate(sign.parameters.items()):
-##            print(name, param)
-#            if name == dps_var:
-#                if typing.get_origin(param.annotation) is not None:
-#                    raise ValueError("Unexpected type for math.dps: {}".format(
-#                            typing.get_origin(param.annotation)))
-#                key = (i_param, 0, "val")
-##                print("setting dps listener",key )
-#                self._model.set_alias("dps", self._keys + tuple([key]))
-#                return
-#        raise ValueError("Parameter for dps not found", dps_var)
+
 
     def get_key(self, pname, return_ptype=False):
         """ returns the model key associated with a func parameter
-        
-        
         """
-        
-        # sign = inspect.signature(self._func)
         sign = fs.gui.guitemplates.signature(self._func)
-        
-        
+
         for i_param, (name, param) in enumerate(sign.parameters.items()):
             if name == pname:
                 if typing.get_origin(param.annotation) is not None:
@@ -356,20 +334,6 @@ class Func_submodel(Submodel):
         if key is None:
             raise ValueError(f"Parameter for {func_var} not found")
         self._model.set_alias(alias, self._keys + tuple([key]))
-        
-#        sign = inspect.signature(self._func)
-#        for i_param, (name, param) in enumerate(sign.parameters.items()):
-#            if name == func_var:
-#                if typing.get_origin(param.annotation) is not None:
-#                    # Union / Litteral not accepted
-#                    raise ValueError(
-#                        "Cannot connect alias to this origin type: {}".format(
-#                        typing.get_origin(param.annotation))
-#                    )
-#                key = (i_param, 0, "val")
-#                self._model.set_alias(alias, self._keys + tuple([key]))
-#                return
-#        raise ValueError(f"Parameter for {func_var} not found")
 
 
     def build_dict(self):
@@ -404,6 +368,7 @@ class Func_submodel(Submodel):
         fd = self._dict
         fd[(i_param, "name")] = name
         default = param.default
+        print(">>>DEFAULT", i_param, name, type(default), default) # # fd[(22, 0, "val")]
         ptype = param.annotation
         uargs = typing.get_args(ptype)
         origin = typing.get_origin(ptype)
@@ -460,7 +425,7 @@ class Func_submodel(Submodel):
         """
         fd = self._dict
         fd[(i_param, i_union, "type")] = utype
-        fd[(i_param, i_union, "type")] = utype #.__name__
+#        fd[(i_param, i_union, "type")] = utype #.__name__
 
         if ((fd[(i_param, "n_types")] > 0)
                 and (i_union != fd[(i_param, "type_def")])):
@@ -486,8 +451,14 @@ class Func_submodel(Submodel):
             else:
                 choices = fd[(iparam, "choices")]
                 iparam_val = choices[fd[(iparam, iunion, "val")]]
-                
             kwargs[iparam_name] = iparam_val
+
+        # For a GUItemplate we shall consider the kwargs modified
+        # by the partials
+        if hasattr(self._func, "partial_vals"):
+            for k, v in self._func.partial_vals.items():
+                kwargs[k] = v
+
         return kwargs
 
     def setkwarg(self, kwarg, val):

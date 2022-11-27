@@ -46,13 +46,17 @@ directory : str
         self.potential_d = 2
         self.potential_a_d = 1.
 
+        self.holomorphic = False
+        self.implements_fieldlines = True
+        self.implements_newton = True
+
         @numba.njit
         def _zn_iterate(zn, c):
             return zn * zn + c
         self.zn_iterate = _zn_iterate
 
     @fs.utils.calc_options
-    def base_calc(self, *,
+    def calc_std_div(self, *,
             calc_name: str="base_calc",
             subset: Optional[Fractal_array] = None,
             max_iter: int=10000,

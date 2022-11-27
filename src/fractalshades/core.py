@@ -1023,6 +1023,7 @@ advanced users when subclassing.
              calc_name + "_*.arr",
              calc_name + ".report",
              calc_name + ".fingerprint",
+             "*._img", # ._img files are tagged by the output layer name
              "ref_pt.dat",
              "SA.dat"
         )
@@ -1228,8 +1229,9 @@ advanced users when subclassing.
             rg = np.random.default_rng(0)
             rand_x = rg.random(dx_vec.shape, dtype=data_type)
             rand_y = rg.random(dy_vec.shape, dtype=data_type)
-            jitter_x = (0.5 - rand_x) * 0.5 / (nx - 1) * jitter
-            jitter_y = (0.5 - rand_y) * 0.5 / (ny - 1) * jitter
+            k = 0.7071067811865476
+            jitter_x = (0.5 - rand_x) * k / (nx - 1) * jitter
+            jitter_y = (0.5 - rand_y) * k / (ny - 1) * jitter
             if supersampling is not None:
                 jitter_x /= supersampling
                 jitter_y /= supersampling

@@ -15,7 +15,7 @@ import typing
 import os
 
 import numpy as np
-from PyQt6 import QtGui
+#from PyQt6 import QtGui
 
 import fractalshades as fs
 import fractalshades.models as fsm
@@ -82,7 +82,7 @@ def plot(plot_dir):
          nx: int=nx,
          _3: fsgui.separator="Plotting parameters",
          M_divergence: float=M_divergence,
-         interior_color: QtGui.QColor=interior_color,
+         interior_color: fs.colors.Color=interior_color,
          colormap: fscolors.Fractal_colormap=colormap,
          cmap_z_kind: typing.Literal["relative", "absolute"]=cmap_z_kind,
          zmin: float=zmin,
@@ -91,7 +91,7 @@ def plot(plot_dir):
 
 
         fractal.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
-             theta_deg=theta_deg, projection="cartesian", antialiasing=False)
+             theta_deg=theta_deg, projection="cartesian")
 
         fractal.base_calc(
             calc_name=calc_name,

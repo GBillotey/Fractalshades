@@ -26,7 +26,7 @@ import typing
 import os
 
 import numpy as np
-from PyQt6 import QtGui
+#from PyQt6 import QtGui
 
 import fractalshades as fs
 import fractalshades.models as fsm
@@ -114,7 +114,7 @@ def plot(plot_dir):
                  "continuous_iter",
                  "distance_estimation"
          ]=base_layer,
-         interior_color: QtGui.QColor=(0.1, 0.1, 0.1),
+         interior_color: fscolors.Color=(0.1, 0.1, 0.1),
          colormap: fscolors.Fractal_colormap=colormap,
          invert_cmap: bool=False,
          DEM_min: float=1.e-6,
@@ -126,13 +126,13 @@ def plot(plot_dir):
          shade_kind: typing.Literal["None", "standard", "glossy"]=shade_kind,
          gloss_intensity: float=10.,
          light_angle_deg: float=65.,
-         light_color: QtGui.QColor=(1.0, 1.0, 1.0),
-         gloss_light_color: QtGui.QColor=(1.0, 1.0, 1.0),
+         light_color: fscolors.Color=(1.0, 1.0, 1.0), # QtGui.QColor=(1.0, 1.0, 1.0),
+         gloss_light_color: fscolors.Color=(1.0, 1.0, 1.0),
     ):
 
 
         fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
-             theta_deg=theta_deg, projection="cartesian", antialiasing=False,
+             theta_deg=theta_deg, projection="cartesian",
              has_skew=has_skew, skew_00=skew_00, skew_01=skew_01,
              skew_10=skew_10, skew_11=skew_11
         )
@@ -142,7 +142,7 @@ def plot(plot_dir):
             subset=None,
             max_iter=max_iter,
             M_divergence=1.e3,
-            BLA_params={"eps": eps},
+            BLA_eps=eps,
         )
 
         if fractal.res_available():

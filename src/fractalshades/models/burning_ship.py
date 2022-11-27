@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+import typing
+import enum
+
 import numpy as np
 import mpmath
 import numba
@@ -57,12 +60,26 @@ def ddiffabsdx(X, x):
             return 1.
 
 
+BS_flavor_list = (
+    "Burning ship",
+    "Perpendicular burning ship",
+    "Shark fin",
+)
 
+BS_flavor_enum =  enum.Enum(
+    "BS_flavor_enum",
+    BS_flavor_list,
+    module=__name__
+)
 
 class Burning_ship(fs.Fractal):
-    def __init__(self, directory):
+    def __init__(
+        self,
+        directory: str,
+        flavor: typing.Literal[BS_flavor_enum]= "Burning ship"
+    ):
         """
-A standard Burning Ship Fractal (power 2). 
+A Burning Ship Fractal (power 2). The basic equation a detailed below:
 
 .. math::
 
@@ -78,16 +95,37 @@ where:
     z_n &= x_n + i y_n \\\\
     c &= a + i b
 
+Several variants (`flavor` parameter) are implemented with small differences in
+the iteration formula ; among them
+
+perpendicular" variant of the Burning Ship Fractal.
+
+.. math::
+
+    x_0 &= 0 \\\\
+    y_0 &= 0 \\\\
+    x_{n+1} &= x_n^2 - y_n^2 + a \\\\
+    y_{n+1} &= 2 x_n |y_n| - b
+
+
 Parameters
 ==========
 directory : str
     Path for the working base directory
+flavor : str
+    Several variants are implemented, 
+    
         """
         super().__init__(directory)
+        self.flavor = flavor
+
         # default values used for postprocessing (potential)
         self.potential_kind = "infinity"
         self.potential_d = 2
         self.potential_a_d = 1.
+
+        self.implements_fieldlines = False
+        self.implements_newton = False
 
     @fs.utils.calc_options
     def base_calc(self, *,
@@ -122,10 +160,13 @@ Exit codes are *max_iter*, *divergence*.
         complex_codes = ["xn", "yn", "dxnda", "dxndb", "dynda", "dyndb"]
         int_codes = []
         stop_codes = ["max_iter", "divergence", "stationnary"]
-        self.codes = (complex_codes, int_codes, stop_codes)
-        self.init_data_types(np.float64)
-
-        self.potential_M = M_divergence
+        
+        def set_state():
+            def impl(instance):
+                instance.codes = (complex_codes, int_codes, stop_codes)
+                instance.complex_type = np.complex128
+                instance.potential_M = M_divergence
+            return impl
 
         def initialize():
             @numba.njit
@@ -138,9 +179,12 @@ Exit codes are *max_iter*, *divergence*.
         def iterate():
             Mdiv_sq = self.M_divergence ** 2
             max_iter = self.max_iter
+            flavor_int = getattr(BS_flavor_enum, self.flavor).value
 
+            
             @numba.njit
             def numba_impl(Z, U, c, stop_reason, n_iter):
+                # Basic Burning ship
                 while True:
                     n_iter += 1
 
@@ -157,13 +201,26 @@ Exit codes are *max_iter*, *divergence*.
                     dYdA = Z[4]
                     dYdB = Z[5]
 
-                    Z[0] = X ** 2 - Y ** 2 + a
-                    Z[1] = 2. * np.abs(X * Y) - b
-                    # Jacobian
-                    Z[2] = 2 * (X * dXdA - Y * dYdA) + 1.
-                    Z[3] = 2 * (X * dXdB - Y * dYdB)
-                    Z[4] = 2 * (np.abs(X) * sgn(Y) * dYdA + sgn(X) * dXdA * np.abs(Y))
-                    Z[5] = 2 * (np.abs(X) * sgn(Y) * dYdB + sgn(X) * dXdB * np.abs(Y)) - 1.
+                    if flavor_int == 0:
+                        # Standard BS implementation
+                        Z[0] = X ** 2 - Y ** 2 + a
+                        Z[1] = 2. * np.abs(X * Y) - b
+                        # Jacobian
+                        Z[2] = 2 * (X * dXdA - Y * dYdA) + 1.
+                        Z[3] = 2 * (X * dXdB - Y * dYdB)
+                        Z[4] = 2 * (np.abs(X) * sgn(Y) * dYdA + sgn(X) * dXdA * np.abs(Y))
+                        Z[5] = 2 * (np.abs(X) * sgn(Y) * dYdB + sgn(X) * dXdB * np.abs(Y)) - 1.
+
+                    elif flavor_int == 1:
+                        # Perpendicular BS implementation
+                        Z[0] = X ** 2 - Y ** 2 + a
+                        Z[1] = 2. * X * np.abs(Y) - b
+                        # Jacobian
+                        Z[2] = 2 * (X * dXdA - Y * dYdA) + 1.
+                        Z[3] = 2 * (X * dXdB - Y * dYdB)
+                        Z[4] = 2 * (X * sgn(Y) * dYdA + dXdA * np.abs(Y))
+                        Z[5] = 2 * (X * sgn(Y) * dYdB + dXdB * np.abs(Y)) - 1.
+                        
 
                     if Z[0] ** 2 + Z[1] ** 2 > Mdiv_sq:
                         stop_reason[0] = 1
@@ -173,11 +230,137 @@ Exit codes are *max_iter*, *divergence*.
                 return n_iter
 
             return numba_impl
+
         self.iterate = iterate
 
     @fs.utils.interactive_options
     def coords(self, x, y, pix, dps):
         return super().coords(x, y, pix, dps)
+
+#
+#
+#class Perpendicular_burning_ship(fs.Fractal):
+#    def __init__(self, directory):
+#        """
+#The so-called "perpendicular" variant of the Burning Ship Fractal. 
+#
+#.. math::
+#
+#    x_0 &= 0 \\\\
+#    y_0 &= 0 \\\\
+#    x_{n+1} &= x_n^2 - y_n^2 + a \\\\
+#    y_{n+1} &= 2 x_n |y_n| - b
+#
+#where:
+#
+#.. math::
+#
+#    z_n &= x_n + i y_n \\\\
+#    c &= a + i b
+#
+#Parameters
+#==========
+#directory : str
+#    Path for the working base directory
+#        """
+#        super().__init__(directory)
+#        # default values used for postprocessing (potential)
+#        self.potential_kind = "infinity"
+#        self.potential_d = 2
+#        self.potential_a_d = 1.
+#
+#    @fs.utils.calc_options
+#    def base_calc(self, *,
+#            calc_name: str,
+#            subset,
+#            max_iter: int,
+#            M_divergence: float,
+#):
+#        """
+#Basic iterations for Perpendicular Burning ship set.
+#
+#Parameters
+#==========
+#calc_name : str
+#     The string identifier for this calculation
+#subset : `fractalshades.postproc.Fractal_array`
+#    A boolean array-like, where False no calculation is performed
+#    If `None`, all points are calculated. Defaults to `None`.
+#max_iter : int
+#    the maximum iteration number. If reached, the loop is exited with
+#    exit code "max_iter".
+#M_divergence : float
+#    The diverging radius. If reached, the loop is exited with exit code
+#    "divergence"
+#
+#Notes
+#=====
+#The following complex fields will be calculated: *xn* *yn* and its
+#derivatives (*dxnda*, *dxndb*, *dynda*, *dyndb*).
+#Exit codes are *max_iter*, *divergence*.
+#"""
+#        complex_codes = ["xn", "yn", "dxnda", "dxndb", "dynda", "dyndb"]
+#        int_codes = []
+#        stop_codes = ["max_iter", "divergence", "stationnary"]
+#        self.codes = (complex_codes, int_codes, stop_codes)
+#        self.init_data_types(np.float64)
+#
+#        self.potential_M = M_divergence
+#
+#        def initialize():
+#            @numba.njit
+#            def numba_init_impl(Z, U, c):
+#                # Not much to do here
+#                pass
+#            return numba_init_impl
+#        self.initialize = initialize
+#
+#        def iterate():
+#            Mdiv_sq = self.M_divergence ** 2
+#            max_iter = self.max_iter
+#
+#            @numba.njit
+#            def numba_impl(Z, U, c, stop_reason, n_iter):
+#                while True:
+#                    n_iter += 1
+#
+#                    if n_iter >= max_iter:
+#                        stop_reason[0] = 0
+#                        break
+#
+#                    a = c.real
+#                    b = c.imag
+#                    X = Z[0]
+#                    Y = Z[1]
+#                    dXdA = Z[2]
+#                    dXdB = Z[3]
+#                    dYdA = Z[4]
+#                    dYdB = Z[5]
+#
+#                    Z[0] = X ** 2 - Y ** 2 + a
+#                    Z[1] = 2. * X * np.abs(Y) - b
+#                    # Jacobian
+#                    Z[2] = 2 * (X * dXdA - Y * dYdA) + 1.
+#                    Z[3] = 2 * (X * dXdB - Y * dYdB)
+#                    Z[4] = 2 * (X * sgn(Y) * dYdA + dXdA * np.abs(Y))
+#                    Z[5] = 2 * (X * sgn(Y) * dYdB + dXdB * np.abs(Y)) - 1.
+#
+#                    if Z[0] ** 2 + Z[1] ** 2 > Mdiv_sq:
+#                        stop_reason[0] = 1
+#                        break
+#
+#                # End of while loop
+#                return n_iter
+#
+#            return numba_impl
+#        self.iterate = iterate
+#
+#    @fs.utils.interactive_options
+#    def coords(self, x, y, pix, dps):
+#        return super().coords(x, y, pix, dps)
+
+
+
 
 #==============================================================================
 #==============================================================================
@@ -666,125 +849,125 @@ quick_skew_estimate = {{
 #==============================================================================
 #==============================================================================
 
-class Perpendicular_burning_ship(fs.Fractal):
-    def __init__(self, directory):
-        """
-The so-called "perpendicular" variant of the Burning Ship Fractal. 
-
-.. math::
-
-    x_0 &= 0 \\\\
-    y_0 &= 0 \\\\
-    x_{n+1} &= x_n^2 - y_n^2 + a \\\\
-    y_{n+1} &= 2 x_n |y_n| - b
-
-where:
-
-.. math::
-
-    z_n &= x_n + i y_n \\\\
-    c &= a + i b
-
-Parameters
-==========
-directory : str
-    Path for the working base directory
-        """
-        super().__init__(directory)
-        # default values used for postprocessing (potential)
-        self.potential_kind = "infinity"
-        self.potential_d = 2
-        self.potential_a_d = 1.
-
-    @fs.utils.calc_options
-    def base_calc(self, *,
-            calc_name: str,
-            subset,
-            max_iter: int,
-            M_divergence: float,
-):
-        """
-Basic iterations for Perpendicular Burning ship set.
-
-Parameters
-==========
-calc_name : str
-     The string identifier for this calculation
-subset : `fractalshades.postproc.Fractal_array`
-    A boolean array-like, where False no calculation is performed
-    If `None`, all points are calculated. Defaults to `None`.
-max_iter : int
-    the maximum iteration number. If reached, the loop is exited with
-    exit code "max_iter".
-M_divergence : float
-    The diverging radius. If reached, the loop is exited with exit code
-    "divergence"
-
-Notes
-=====
-The following complex fields will be calculated: *xn* *yn* and its
-derivatives (*dxnda*, *dxndb*, *dynda*, *dyndb*).
-Exit codes are *max_iter*, *divergence*.
-"""
-        complex_codes = ["xn", "yn", "dxnda", "dxndb", "dynda", "dyndb"]
-        int_codes = []
-        stop_codes = ["max_iter", "divergence", "stationnary"]
-        self.codes = (complex_codes, int_codes, stop_codes)
-        self.init_data_types(np.float64)
-
-        self.potential_M = M_divergence
-
-        def initialize():
-            @numba.njit
-            def numba_init_impl(Z, U, c):
-                # Not much to do here
-                pass
-            return numba_init_impl
-        self.initialize = initialize
-
-        def iterate():
-            Mdiv_sq = self.M_divergence ** 2
-            max_iter = self.max_iter
-
-            @numba.njit
-            def numba_impl(Z, U, c, stop_reason, n_iter):
-                while True:
-                    n_iter += 1
-
-                    if n_iter >= max_iter:
-                        stop_reason[0] = 0
-                        break
-
-                    a = c.real
-                    b = c.imag
-                    X = Z[0]
-                    Y = Z[1]
-                    dXdA = Z[2]
-                    dXdB = Z[3]
-                    dYdA = Z[4]
-                    dYdB = Z[5]
-
-                    Z[0] = X ** 2 - Y ** 2 + a
-                    Z[1] = 2. * X * np.abs(Y) - b
-                    # Jacobian
-                    Z[2] = 2 * (X * dXdA - Y * dYdA) + 1.
-                    Z[3] = 2 * (X * dXdB - Y * dYdB)
-                    Z[4] = 2 * (X * sgn(Y) * dYdA + dXdA * np.abs(Y))
-                    Z[5] = 2 * (X * sgn(Y) * dYdB + dXdB * np.abs(Y)) - 1.
-
-                    if Z[0] ** 2 + Z[1] ** 2 > Mdiv_sq:
-                        stop_reason[0] = 1
-                        break
-
-                # End of while loop
-                return n_iter
-
-            return numba_impl
-        self.iterate = iterate
-
-    @fs.utils.interactive_options
-    def coords(self, x, y, pix, dps):
-        return super().coords(x, y, pix, dps)
+#class Perpendicular_burning_ship(fs.Fractal):
+#    def __init__(self, directory):
+#        """
+#The so-called "perpendicular" variant of the Burning Ship Fractal. 
+#
+#.. math::
+#
+#    x_0 &= 0 \\\\
+#    y_0 &= 0 \\\\
+#    x_{n+1} &= x_n^2 - y_n^2 + a \\\\
+#    y_{n+1} &= 2 x_n |y_n| - b
+#
+#where:
+#
+#.. math::
+#
+#    z_n &= x_n + i y_n \\\\
+#    c &= a + i b
+#
+#Parameters
+#==========
+#directory : str
+#    Path for the working base directory
+#        """
+#        super().__init__(directory)
+#        # default values used for postprocessing (potential)
+#        self.potential_kind = "infinity"
+#        self.potential_d = 2
+#        self.potential_a_d = 1.
+#
+#    @fs.utils.calc_options
+#    def base_calc(self, *,
+#            calc_name: str,
+#            subset,
+#            max_iter: int,
+#            M_divergence: float,
+#):
+#        """
+#Basic iterations for Perpendicular Burning ship set.
+#
+#Parameters
+#==========
+#calc_name : str
+#     The string identifier for this calculation
+#subset : `fractalshades.postproc.Fractal_array`
+#    A boolean array-like, where False no calculation is performed
+#    If `None`, all points are calculated. Defaults to `None`.
+#max_iter : int
+#    the maximum iteration number. If reached, the loop is exited with
+#    exit code "max_iter".
+#M_divergence : float
+#    The diverging radius. If reached, the loop is exited with exit code
+#    "divergence"
+#
+#Notes
+#=====
+#The following complex fields will be calculated: *xn* *yn* and its
+#derivatives (*dxnda*, *dxndb*, *dynda*, *dyndb*).
+#Exit codes are *max_iter*, *divergence*.
+#"""
+#        complex_codes = ["xn", "yn", "dxnda", "dxndb", "dynda", "dyndb"]
+#        int_codes = []
+#        stop_codes = ["max_iter", "divergence", "stationnary"]
+#        self.codes = (complex_codes, int_codes, stop_codes)
+#        self.init_data_types(np.float64)
+#
+#        self.potential_M = M_divergence
+#
+#        def initialize():
+#            @numba.njit
+#            def numba_init_impl(Z, U, c):
+#                # Not much to do here
+#                pass
+#            return numba_init_impl
+#        self.initialize = initialize
+#
+#        def iterate():
+#            Mdiv_sq = self.M_divergence ** 2
+#            max_iter = self.max_iter
+#
+#            @numba.njit
+#            def numba_impl(Z, U, c, stop_reason, n_iter):
+#                while True:
+#                    n_iter += 1
+#
+#                    if n_iter >= max_iter:
+#                        stop_reason[0] = 0
+#                        break
+#
+#                    a = c.real
+#                    b = c.imag
+#                    X = Z[0]
+#                    Y = Z[1]
+#                    dXdA = Z[2]
+#                    dXdB = Z[3]
+#                    dYdA = Z[4]
+#                    dYdB = Z[5]
+#
+#                    Z[0] = X ** 2 - Y ** 2 + a
+#                    Z[1] = 2. * X * np.abs(Y) - b
+#                    # Jacobian
+#                    Z[2] = 2 * (X * dXdA - Y * dYdA) + 1.
+#                    Z[3] = 2 * (X * dXdB - Y * dYdB)
+#                    Z[4] = 2 * (X * sgn(Y) * dYdA + dXdA * np.abs(Y))
+#                    Z[5] = 2 * (X * sgn(Y) * dYdB + dXdB * np.abs(Y)) - 1.
+#
+#                    if Z[0] ** 2 + Z[1] ** 2 > Mdiv_sq:
+#                        stop_reason[0] = 1
+#                        break
+#
+#                # End of while loop
+#                return n_iter
+#
+#            return numba_impl
+#        self.iterate = iterate
+#
+#    @fs.utils.interactive_options
+#    def coords(self, x, y, pix, dps):
+#        return super().coords(x, y, pix, dps)
 
 #==============================================================================
         
