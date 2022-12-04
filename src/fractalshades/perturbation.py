@@ -77,7 +77,9 @@ directory : str
         projection : "cartesian"
             Kind of projection used (only "cartesian" supported)
         has_skew : bool
-            If True, unskew the view base on skew coefficients skew_ii
+            If True, unskew the view base on skew coefficients skew_ij
+        skew_ij : float
+            Components of the local skw matrix, ij = 00, 01, 10, 11
         """
         mpmath.mp.dps = precision # in base 10 digit 
         
@@ -1036,16 +1038,9 @@ def numba_cycles_perturb(
     n_iter:
         current iteration
     """
-#    print("enter numba_cycles_perturb")
-
     nz, npts = Z.shape
     Z_xr = Xr_template.repeat(nz)
     Z_xr_trigger = np.ones((nz,), dtype=np.bool_)
-
-#    ref_orbit_len = Zn_path.shape[0]
-#    first_invalid_index = min(ref_orbit_len, ref_div_iter, ref_order)
-#    print("****first invalid", first_invalid_index, "min of", ref_orbit_len, ref_div_iter, ref_order)
-
 
     for ipt in range(npts):
 
@@ -1070,11 +1065,6 @@ def numba_cycles_perturb(
 
         if _interrupted[0]:
             return USER_INTERRUPTED
-#        print("exit", ipt)
-        
-#        print("###############################################################")
-    
-#    print("exit numba_cycles_perturb")
 
     return 0
 
@@ -1103,7 +1093,7 @@ def numba_initialize(zn, dzndc, dzndz):
 def numba_iterate(
         max_iter, M_divergence_sq, epsilon_stationnary_sq,
         reason_max_iter, reason_M_divergence, reason_stationnary,
-        xr_detect_activated, BLA_activated, # SA_activated,
+        xr_detect_activated, BLA_activated,
         zn, dzndc, dzndz,
         p_iter_zn, p_iter_dzndz, p_iter_dzndc,
         calc_dzndc, calc_dzndz,

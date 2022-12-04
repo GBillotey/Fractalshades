@@ -227,7 +227,6 @@ class Model(QtCore.QObject):
     def item_update(self, alias_name, setting_val):
         """ Updates a model item from its alias name - new value
         """
-#        print("ITEM UPDATES", alias_name, setting_val)
         self.submodel_changerequest.emit(
             self._alias[alias_name], setting_val
         )
@@ -243,7 +242,6 @@ class Model(QtCore.QObject):
     def model_changerequest_slot(self, keys, val):
         """ A change has been requested by  a Presenter i.e object
         not holding the data """
-        print(">>> in MAIN model change request slot", keys)
         if len(keys) == 0:
             # This change can be handled at main model level
             self._model[keys] = val
@@ -368,7 +366,6 @@ class Func_submodel(Submodel):
         fd = self._dict
         fd[(i_param, "name")] = name
         default = param.default
-        print(">>>DEFAULT", i_param, name, type(default), default) # # fd[(22, 0, "val")]
         ptype = param.annotation
         uargs = typing.get_args(ptype)
         origin = typing.get_origin(ptype)
@@ -526,7 +523,6 @@ class Func_submodel(Submodel):
 
     def load_func_dict(self):
         """ Reload parameters stored from last call """
-        print("*** load kwargs")
         with open(self.save_func_path(), 'rb') as param_file:
             fd = pickle.load(param_file)
         
@@ -562,6 +558,21 @@ class Func_submodel(Submodel):
         """ Returns the function source code """
         # return inspect.getsource(self._func)
         return fs.gui.guitemplates.getsource(self._func)
+    
+    def getscript(self):
+        """ Returns a script that can be run """
+        kwargs = self.getkwargs()
+        source = self.getsource()
+
+        try:
+            funcname = self._func.__name__
+        except AttributeError: # func may also be a callable class instance
+            funcname = self._func.__class__.__name__
+
+        script = fractalshades.gui.guitemplates.script(
+                source, kwargs, funcname
+        )
+        return script
 
     def model_event_slot(self, keys, val):
         if keys[:-1] != self._keys:
@@ -572,7 +583,7 @@ class Func_submodel(Submodel):
     def func_user_modified_slot(self, key, val):
         if isinstance(key, str):
             # Accessing directly a kwarg by its name
-            # TODO: should be only one of existing params ??
+            # TODO: we could probably filter on existing params
             self[key] = val
             return
         elif not(isinstance(key, tuple)):
@@ -637,11 +648,10 @@ class Presenter(QtCore.QObject):
     """
     model_changerequest = pyqtSignal(object, object)
 
-    def __init__(self, model, mapping): #, register_key):
+    def __init__(self, model, mapping):
         super().__init__()
         self._model = model
         self._mapping = mapping
-        # self._model.to_register(register_key, self) # refactoring
         self.model_changerequest.connect(self._model.model_changerequest_slot)
 
     def __getitem__(self, key):
@@ -661,7 +671,6 @@ class Array_presenter_mixin:
       - adjust_size(val)
       - modify_item(col_key, irow, item_data)
     """
-    #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     @property
     def data(self):
         # To use as a parameter presenter, the only key should be the class
@@ -697,7 +706,6 @@ class Array_presenter_mixin:
         (irow, icol, item_data) = item
         col_key = self.col_arr_items[icol]
         self.data.modify_item(col_key, irow, item_data)
-    #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 #------------------------------------------------------------------------------
 
@@ -847,6 +855,20 @@ class Fractal_presenter(Presenter):
         # The signature from __init__
         return self.data.init_signature()
 
+    def data_init_ptype(self, pname):
+        init_signature = self.data.init_signature()
+        return init_signature.parameters[pname].annotation
+
+    def get_wget_val(self, pname, val):
+        """ Manage the value -> int mapping in case the wget is a Combobox with
+        multiple choices """
+        ptype = self.data_init_ptype(pname)
+        origin = typing.get_origin(ptype)
+        if origin is typing.Literal and not(type(val) is int):
+            choices = typing_litteral_choices(ptype, p_name=pname)
+            val = choices.index(val)
+        return val
+
     @property
     def data_class(self):
         return self.data.__class__
@@ -854,15 +876,24 @@ class Fractal_presenter(Presenter):
     @pyqtSlot(object, object)
     def data_user_modified_slot(self, key, val):
         """ Modifies in-place the fractal"""
-        if not(key in self.data_init_kwargs):
+        init_kwargs = self.data_init_kwargs
+        if not(key in init_kwargs):
             raise ValueError(f"Unexpected key in Fractal_presenter: {key}")
+
+        # Here val is choices.index(val) for choices.
+        # We shall emit choices[val] in this case
+        ptype = self.data_init_ptype(key)
+        origin = typing.get_origin(ptype)
+        if origin is typing.Literal:
+            choices = typing_litteral_choices(ptype, p_name=key)
+            val = choices[val]
+
         self.on_init_paramchange(key, val)
 
 
     def on_init_paramchange(self, key, val):
         """ Re-generate the fractal object
         """
-        print("** Fractal_presenter, re-generating fractal object", key, val)
         old_kwargs = self.data_init_kwargs
 
         if old_kwargs[key] != val:
@@ -887,23 +918,19 @@ class Fractal_presenter(Presenter):
         }
 
         for key in reset_listing:
-            print("key", key)
             if key == "dps":
                 if gui._dps is None:
                     continue
             pname = getattr(gui, "_" + key)
-            print("pname", pname)
 
             func_sm = self._model.from_register(("func",))
 
             pkey, ptype = func_sm.get_key(pname, return_ptype=True)
             model_keys = func_sm._keys +  (pkey,)
-            print("model_keys", model_keys)
 
             if key in default_mapping.keys():
                 val = default_mapping[key]
                 if ptype in [float, int]:
                     val = ptype(val)
-                print("EMIT", model_keys, val, type(val))
                 self.model_changerequest.emit(model_keys, val)
 

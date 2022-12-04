@@ -76,7 +76,6 @@ class Virtual_layer:
         self.postname = postname
         self.min = np.inf     # neutral value for np.nanmin
         self.max = -np.inf    # neutral value for np.nanmax
-#        self._scaling_defined = False # tracker
         self._func_arg = func # kept for the record
         self.func = self.parse_func(func)
         self.output = output
@@ -193,25 +192,6 @@ class Virtual_layer:
         if ssg is not None:
             nx *= ssg
             ny *= ssg
-
-#        postname = self.postname
-
-#        try:
-#            field_count = 1
-#            post_index = list(plotter.postnames).index(postname)
-#
-#        except ValueError:
-#            # Could happen that we need 2 fields (e.g., normal map...)
-#            if postname not in self.plotter.postnames_2d:
-#                raise ValueError("postname not found: {}".format(postname))
-#            post_index_x = list(self.plotter.postnames).index(postname + "_x")
-#            post_index_y = list(self.plotter.postnames).index(postname + "_y")
-#            if post_index_y != post_index_x + 1:
-#                raise ValueError(
-#                    "x y coords not contiguous for postname: {}".format(
-#                        postname)
-#                )
-#            field_count = 2
         
         field_count, post_index = self.get_postproc_index()
         
@@ -220,7 +200,7 @@ class Virtual_layer:
             ret = plotter.get_2d_arr(post_index, chunk_slice)
             if ret is None:
                 return None
-            arr[:] = ret # plotter.get_2d_arr(post_index, chunk_slice)
+            arr[:] = ret
     
         elif field_count == 2:
             (post_index_x, post_index_y) = post_index
@@ -231,8 +211,6 @@ class Virtual_layer:
                 return None
             arr[0, :] = ret0
             arr[1, :] = ret1
-
-#            mmap[rank:rank+2, ix:ixx, iy:iyy]
             
         return arr
 
@@ -271,7 +249,7 @@ class Virtual_layer:
 
         else:
             raise ValueError(n_fields)
-#        self._scaling_defined = True
+
 
     def nanmin_with_mask(self, arr, chunk_slice):
         """ nanmin but disregarding the masked vals (if layer has a mask)"""
@@ -455,29 +433,12 @@ class Color_layer(Virtual_layer):
         # is there a twin-field ? If yes we add it here, before colormaping
         if self._twin_field is not None:
             twin_layer, scale = self._twin_field
-#            if not twin_layer._scaling_defined:
-#                raise RuntimeError("Twin layer should be computed before")
             k = scale 
-#            * (self.max - self.min
-#                         ) / (twin_layer.max - twin_layer.min)
             twin_func = twin_layer.func
             if twin_func is None:
                 arr += k * twin_layer[chunk_slice]
             else:
                 arr += k * twin_func(twin_layer[chunk_slice])
-
-        # colorize from colormap 
-        # taking into account probes for scaling
-#        if self.probes_kind == "relative":
-#            logger.warning("probes kind relative option is deprecated"
-#                           "and will have no effect - Use absolute scaling")
-#
-#            probes = self.probe_z #(self.probe_z * self.max
-#                      # + (1. - self.probe_z) * self.min)
-#        elif self.probes_kind == "absolute":
-#            probes = self.probe_z
-#        else:
-#            raise ValueError(self.probes_kind, "not in [relative, absolute]")
 
         probes = self.probe_z
         rgb = self.colormap.colorize(arr, probes)
@@ -581,6 +542,7 @@ class Grey_layer(Virtual_layer):
             The preprocessing affine rescaling. If [min, max] the minimum value
             of the field will be mapped
             to 0. and the maximum to 1.
+        
         output : bool
             passed to `Virtual_layer` constructor
         """

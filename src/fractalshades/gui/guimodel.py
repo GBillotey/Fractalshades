@@ -239,71 +239,6 @@ background: #646464;
 }
 """
 
-
-script_header = """# -*- coding: utf-8 -*-
-\"""============================================================================
-Auto-generated from fractalshades GUI.
-Save to `<file>.py` and run as a python script:
-    > python <file>.py
-============================================================================\"""
-import os
-import typing
-
-import numpy as np
-import mpmath
-from PyQt6 import QtGui
-
-import fractalshades as fs
-import fractalshades.models as fsm
-import fractalshades.gui as fsgui
-import fractalshades.colors as fscolors
-
-from fractalshades.postproc import (
-    Postproc_batch,
-    Continuous_iter_pp,
-    DEM_normal_pp,
-    Fieldlines_pp,
-    DEM_pp,
-    Raw_pp,
-)
-from fractalshades.colors.layers import (
-    Color_layer,
-    Bool_layer,
-    Normal_map_layer,
-    Grey_layer,
-    Virtual_layer,
-    Blinn_lighting,
-    Overlay_mode
-)
-
-def plot(plot_dir):"""
-
-def script_title_sep(title, indent=0):
-    sep_line = " " * 4 * indent + "#" + ">" * (78 - 4 * indent) + "\n"
-    return (
-        "\n\n"
-        + sep_line
-        + " " * 4 * indent + "# " + title + "\n"
-        + sep_line
-    )
-
-script_footer = """
-if __name__ == "__main__":
-    # Some magic to get the directory for plotting: with a name that matches
-    # the file 
-    realpath = os.path.realpath(__file__)
-    plot_dir = os.path.splitext(realpath)[0]
-    plot(plot_dir)
-"""
-
-#def script_repr(obj): # MOVED
-#    if hasattr(obj, "script_repr"):
-#        return obj.script_repr()
-##    if isinstance(obj, (fs.Fractal, fs.colors.Fractal_colormap)):
-##        return obj._repr()
-#    return repr(obj)
-
-
 def getapp():
     app = QtCore.QCoreApplication.instance()
     if app is None:
@@ -350,7 +285,6 @@ class Calc_status_bar(QStatusBar):
         self.timer.timeout.connect(self.on_time_incr)
         self.reset_status()
         self.layout()
-        print("debug2 status", self._layout)
 
     def reset_status(self):
         """ Reset the properties of the status according to the fractal
@@ -509,7 +443,6 @@ class Action_func_widget(QFrame):
 
     def load_calling_kwargs(self):
         """ Reload parameters stored from last call """
-        print("*** load kwargs")
         with open(self.kwargs_path(), 'rb') as param_file:
             return pickle.load(param_file)
 
@@ -559,33 +492,9 @@ class Action_func_widget(QFrame):
 #        ce.exec()
 
     def show_script(self):
+        """ Display the script in GUI """
         sm = self._submodel
-        func_params_str = "\n".join(
-            [(k + " = " + fs.gui.guitemplates.script_repr(v)) for (k, v) in sm.getkwargs().items()]
-        )
-        # Indent once
-        func_params_str = "    " + "\n    ".join(
-            l for l in func_params_str.splitlines()
-        )
-        func_source_str = sm.getsource()
-        call_str = ",\n        ".join(
-            k for k in sm.getkwargs().keys()
-        )
-        call_str = "    func(" + call_str + "\n    )\n"
-
-        script = (
-            script_header
-            + script_title_sep("Parameters", 1)
-            + func_params_str
-            + script_title_sep("Plotting function", 1)
-            + func_source_str
-            + script_title_sep("Plotting call", 1)
-            + call_str
-            + script_title_sep("Footer", 0)
-            + script_footer
-            + "\n"
-        )
-        print("debug, script:\n", script)
+        script = sm.getscript()
         ce = Fractal_code_editor()
         ce.set_text(script)
         ce.setWindowTitle("Script")
@@ -867,7 +776,6 @@ class Func_widget(QFrame):
         fd = self._submodel._dict
         
         name = fd[(i_param, "name")]
-        print("in layout_param FOR", name)
         name_label = QLabel(name)
         myFont = QtGui.QFont()
         myFont.setWeight(QtGui.QFont.Weight.ExtraBold)
@@ -917,13 +825,13 @@ class Func_widget(QFrame):
         # n_uargs = fd[(i_param, "n_types")]
         utype = fd[(i_param, i_union, "type")]
         uval = fd[(i_param, i_union, "val")]
-        print("in layout_uarg", i_param, i_union, utype, type(uval), uval) # fd[(22, 0, "val")]
         atom_wget = atom_wget_factory(utype)(utype, uval, self._model)
         self._widgets[(i_param, i_union, "val")] = atom_wget
 
         atom_wget.user_modified.connect(functools.partial(
                 self.on_user_mod, (i_param, i_union, "val"),
-                atom_wget.value))
+                atom_wget.value)
+        )
         qs.addWidget(atom_wget)
         
         if isinstance(atom_wget, Atom_Presenter_mixin):
@@ -1104,7 +1012,6 @@ class Atom_Color(QPushButton, Atom_Edit_mixin):
         self._qcolor = None
         self.update_color(val)
         self.clicked.connect(self.on_user_event)
-#        print("in Atom_Color; KIND:", self._kind)
 
     def update_color(self, color):
         """ color: QtGui.QColor or fs.colors.Color """
@@ -1186,13 +1093,14 @@ class Atom_QLineEdit(QLineEdit, Atom_Edit_mixin):
     def value(self):
         if self._type is type(None):
             return None
+
         elif issubclass(self._type, fs.numpy_utils.Numpy_expr):
             # We return a Nump_expr, the variables are those of the default
             # value, as stored in the validator
             variables = self.validator()._variables
             text = self.text()
-            print("RETURN A fs.numpy_utils.Numpy_expr", variables, text)
             return self._type(variables, text)
+
         return self._type(self.text())
 
     def on_user_event(self):
@@ -1330,7 +1238,6 @@ class Atom_fractal_button(QPushButton, Atom_Edit_mixin, Atom_Presenter_mixin):
         return self._fractal
 
     def on_model_event(self, val):
-        print("Atom_fractal_button, FRACTAL modified !!!")
         pass
 
     def mouseReleaseEvent(self, event):
@@ -1377,7 +1284,6 @@ class Atom_cmap_button(Qobject_image, Atom_Edit_mixin, Atom_Presenter_mixin):
         return self._object
 
     def on_model_event(self, val):
-        print("Atom_cmap_button", "on_model_event")    
         with QtCore.QSignalBlocker(self):
             self.update_cmap(val)
 
@@ -1417,13 +1323,11 @@ class Atom_Text_Validator(QtGui.QValidator):
 
     def __init__(self, atom_type, val):
         super().__init__()
-#        self._val = val
         self._type = atom_type
 
         if issubclass(atom_type, fs.numpy_utils.Numpy_expr):
             # The only way to keep track of the variables : keep those of
             # the provided default (the type will not hold this info)
-            print("VAL", val)
             self._variables = copy.deepcopy(val.variables)
 
     def validate(self, val, pos):
@@ -1432,7 +1336,6 @@ class Atom_Text_Validator(QtGui.QValidator):
         if self._type is type(None):
             return (valid[val == "None"], val, pos)
         if issubclass(self._type, fs.numpy_utils.Numpy_expr):
-            # print("IN validate fs.numpy_utils.Numpy_expr", self._type.validates_expr(variables=self._variables, expr=val))
             return (
                 valid[self._type.validates_expr(self._variables, val)],
                 val,
@@ -1888,7 +1791,6 @@ class Base_array_editor(QWidget):
         h_header.setSectionResizeMode(
                 QtWidgets.QHeaderView.ResizeMode.ResizeToContents
         )
-        # print("setSectionResizeMode", self.n_cols)
         h_header.setSectionResizeMode(
             self.n_cols - 1, QtWidgets.QHeaderView.ResizeMode.Stretch # was: 3
         )
@@ -2175,29 +2077,7 @@ class Qlighting_editor(Base_array_editor):
         if source == "k_ambient":
             self._wget_k_ambient.on_model_event(val)
 
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#class Directory_editor(QWidget):
-#    def __init__(self, parent, str_path):
-#        super().__init__(parent) # Flags ??
-#        self.str_path = str_path
-#        self.layout()
-#
-#    def layout(self):
-#        """ Layout for a directory chooser """
-#        layout = QHBoxLayout(self)
-#        
-#        path_txt = QLineEdit(self.str_path)
-#        push = QPushButton("...")
-#        push.clicked.connect(self.on_click)
-#        
-#        layout.add(path_txt)
-#        layout.add(push)
-#        self.setLayout(layout)
-#
-#    def on_click(self, evt):
-#        print("clicked button")
-
+#==============================================================================
 
 class Fractal_editor(QWidget):
     """
@@ -2281,8 +2161,10 @@ class Fractal_editor(QWidget):
         for pname, wget in self._wgets.items():
             if pname == "directory":
                 continue
-            wget_val = getattr(new_fractal, pname)
-            print("Updating wget", pname, wget_val)
+            val = getattr(new_fractal, pname)
+            wget_val = self._presenter.get_wget_val(pname, val)
+
+            
             wget.on_model_event(wget_val)
         
     
@@ -2295,6 +2177,11 @@ class Fractal_editor(QWidget):
                 Qt.TextInteractionFlag.TextSelectableByMouse
             )
         else:
+            origin = typing.get_origin(ptype)
+            if origin is typing.Literal:
+                choices = typing_litteral_choices(ptype, p_name=None)
+                val = choices.index(val)
+            # manage the droplist choice case
             wget = atom_wget_factory(ptype)(ptype, val, None)
             wget.user_modified.connect(functools.partial(
                 self.on_user_mod, pname, wget.value
@@ -2303,15 +2190,14 @@ class Fractal_editor(QWidget):
 
     def on_user_mod(self, pname, val_callback):
         """ Notify the model of modification by the user of a widget"""
-        val = val_callback()
-        print("Parameter modified:", pname, val)
-        self._wgets[pname].on_model_event(val)
-        self.data_user_modified.emit(pname, val)
-#        self._presenter.
+        val = wget_val = val_callback()
+        wget_val = self._presenter.get_wget_val(pname, val)
+        self._wgets[pname].on_model_event(wget_val)
+        self.data_user_modified.emit(pname, wget_val)
+
 
     def model_event_slot(self, keys, val):
         if keys == self._presenter._mapping["Fractal_presenter"]:
-            print("****** Fractal object has been modified !!!")
             self.update_param_box(val)
             # Asks user to rester zoom parameters 
             msgBox = QMessageBox()
@@ -2399,7 +2285,6 @@ class Zoomable_Drawer_mixin:
     """
     def __init__(self):
         """ Initiate a GaphicsScene """
-#        print("in Zoomable_Drawer_mixin")
         # sets graphics scene and view
         self._scene = QGraphicsScene()
         self._group = QGraphicsItemGroup()
@@ -2464,11 +2349,9 @@ class Zoomable_Drawer_mixin:
         return False
 
     def on_enter(self, event):
-#        print("enter")
         return False
 
     def on_leave(self, event):
-#        print("leave")
         return False
 
     def on_wheel(self, event):
@@ -2550,7 +2433,6 @@ class Zoomable_Drawer_mixin:
             return True
 
         else:
-            # print("Uncatched mouse event", event.type())
             return False
 
     def on_mouse_left_press(self, event):
@@ -2740,7 +2622,6 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
             has_skew = False
             skew_00 = skew_11 = 1.
             skew_01 = skew_10 = 0.
-        # print("SKEW params", has_skew, skew_00, skew_01, skew_10, skew_11)
         return has_skew, skew_00, skew_01, skew_10, skew_11
 
     @staticmethod
@@ -2825,7 +2706,6 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
          - from the saved pickled files
          - of, if not found, from the script parameters
         """
-        print("Resetting zoom init")
         # parent is Fractal_MainWindow - func_wget is not initialized at this
         # point, so we use the model itself
         func_sm = self._parent.from_register(("func",))
@@ -2868,7 +2748,6 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
                 info = im.info
                 nx, ny = im.size
 
-                # print("info debug", info["debug"])
         except FileNotFoundError:
             valid_image = False
             info = dict(zip(self.zoom_keys, (None,) * len(self.zoom_keys)))
@@ -2944,7 +2823,6 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
                         f"GUI Unmatching image parameter for {key}:\n"
                         f"  {casted} -> {expected}"
                     )
-                    # print("***unmatching", casted, expected)
                     ret = 1
         return ret
 
@@ -3073,7 +2951,6 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         if self.has_dps:
             keys += ("dps",)
         for key in keys:
-            print("pushing to presenter", key, ref_zoom[key])
             self._presenter[key] = ref_zoom[key]
             
 
@@ -3568,7 +3445,6 @@ class Fractal_MainWindow(QMainWindow):
             import __main__
             script_dir = os.path.abspath(os.path.dirname(__main__.__file__))
         except NameError:
-            print("Failed finding __main__.__file__")
             script_dir = None
         file_path = QFileDialog.getOpenFileName(
                 self,
@@ -3614,7 +3490,6 @@ class Fractal_MainWindow(QMainWindow):
 
     def clear_cache(self):
         func_submodel = self.from_register(("func",))
-        print("func_submodel", func_submodel)
         fractal = next(iter(func_submodel.getkwargs().values()))
         fractal.clean_up()
         msg = Fractal_MessageBox()
@@ -3715,7 +3590,6 @@ class Fractal_MainWindow(QMainWindow):
     def on_error_in_thread(self, exc):
         """ A simple callback when error occured in computation computation
         """
-        print("ERROR detected in thread")
         raise exc
 
     def add_image_wget(self):

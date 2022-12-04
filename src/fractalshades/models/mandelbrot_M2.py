@@ -7,22 +7,8 @@ import numba
 
 import fractalshades as fs
 import fractalshades.mpmath_utils.FP_loop as fsFP
-
 from fractalshades.postproc import Fractal_array
-from fractalshades.numpy_utils.expr_parser import Numpy_expr
 
-#==============================================================================
-#==============================================================================
-#@plotting_protocols(
-#    calculations={
-#        "base": ("base_calc", None),
-#        "interior": ("newton_calc", {"key": "stop_reason", "func": "x != 1"})
-#    },
-#    postprocs={
-#        "base": (),
-#        "interior": ()
-#    }
-#)
 
 class Mandelbrot(fs.Fractal):
 
@@ -41,27 +27,40 @@ directory : str
     Path for the working base directory
 """
         super().__init__(directory)
+
         # Default values used for postprocessing (potential)
         self.potential_kind = "infinity"
         self.potential_d = 2
         self.potential_a_d = 1.
+        # Minimum M for valid potential estimation
+        self.potential_M_cutoff = 1000.
 
-        self.holomorphic = False
+        # GUI 'badges'
+        self.holomorphic = True
         self.implements_fieldlines = True
         self.implements_newton = True
+        self.implements_Milnor = True
+        self.implements_interior_detection = True
 
+        # Orbit 'on the fly' calculation
         @numba.njit
         def _zn_iterate(zn, c):
             return zn * zn + c
         self.zn_iterate = _zn_iterate
 
+        self.zn_iterate = _zn_iterate
+
+
     @fs.utils.calc_options
     def calc_std_div(self, *,
-            calc_name: str="base_calc",
+            calc_name: str = "base_calc",
             subset: Optional[Fractal_array] = None,
-            max_iter: int=10000,
-            M_divergence: float=1000.,
-            epsilon_stationnary: float=0.01,
+            max_iter: int = 10000,
+            M_divergence: float = 1000.,
+            epsilon_stationnary: float = 0.01,
+            calc_d2zndz2: bool = False,
+            calc_orbit: bool = False,
+            backshift: int = 0
     ):
         """
     Basic iterations for Mandelbrot standard set (power 2).
@@ -83,14 +82,44 @@ directory : str
         A small criteria (typical range 0.01 to 0.001) used to detect earlier
         points belonging to a minibrot, based on dzndz1 value.
         If reached, the loop is exited with exit code "stationnary"
+    interior_detect : bool
+        If True, activates interior point early detection.
+        This will trigger the additional computation of *dzndz*, so will be
+        efficient only when a mini fills a significant part of the view.
+    calc_d2zndz2:
+        If True, activates the additional computation of *d2zndz2*, needed 
+        only for the alternative normal map shading 'Milnor'.
+    calc_orbit: bool
+        If True, stores the value of an orbit point @ exit - orbit_shift
+    backshift: int (> 0)
+        The number of iteration backward for the stored orbit starting point
 
     Notes
     =====
     The following complex fields will be calculated: *zn* and its
-    derivatives (*dzndz*, *dzndc*, *d2zndc2*).
+    derivatives (*dzndc*, *d2zndc2*[optionnal], *dzndz* [optionnal]).
+    If calc_orbit is activated, *zn_orbit* will also be stored
     Exit codes are 0: *max_iter*, 1: *divergence*, 2: *stationnary*.
 """
-        complex_codes = ["zn", "dzndz", "dzndc", "d2zndc2"]
+        complex_codes = ["zn", "dzndz", "dzndc"]
+        zn = 0
+        dzndz = 1
+        dzndc = 2
+
+        # Optionnal output fields
+        icode = 3
+        d2zndc2 = -1 
+        if calc_d2zndz2:
+            complex_codes += ["d2zndc2"]
+            d2zndc2 = icode
+            icode += 1
+
+        i_znorbit = -1
+        if calc_orbit:
+            complex_codes += ["zn_orbit"]
+            i_znorbit = icode
+            icode += 1
+
         int_codes = []
         stop_codes = ["max_iter", "divergence", "stationnary"]
 
@@ -99,6 +128,10 @@ directory : str
                 instance.codes = (complex_codes, int_codes, stop_codes)
                 instance.complex_type = np.complex128
                 instance.potential_M = M_divergence
+                if calc_orbit:
+                    instance.backshift = backshift
+                else:
+                    instance.backshift = None
             return impl
 
         def initialize():
@@ -108,37 +141,43 @@ directory : str
                 pass
             return numba_impl
 
+
+        Mdiv_sq = M_divergence ** 2
+        epscv_sq = epsilon_stationnary ** 2
+
+        @numba.njit
+        def iterate_once(c, Z, U, stop_reason, n_iter):
+            if n_iter >= max_iter:
+                stop_reason[0] = 0
+                return 1
+
+            if calc_d2zndz2:
+               Z[d2zndc2] = 2 * (Z[d2zndc2] * Z[zn] + Z[dzndc] ** 2)
+
+            Z[dzndc] = 2 * Z[dzndc] * Z[zn] + 1.
+            Z[dzndz] = 2 * Z[dzndz] * Z[zn] 
+            Z[zn] = Z[zn] ** 2 + c
+
+            if n_iter == 1:
+                Z[dzndz] = 1.
+
+            if Z[zn].real ** 2 + Z[zn].imag ** 2 > Mdiv_sq:
+                stop_reason[0] = 1
+                return 1
+
+            if Z[dzndz].real ** 2 + Z[dzndz].imag ** 2 < epscv_sq:
+                stop_reason[0] = 2
+                return 1
+
+            return 0
+
+        zn_iterate = self.zn_iterate
+
         def iterate():
-            Mdiv_sq = self.M_divergence ** 2
-            epscv_sq = self.epsilon_stationnary ** 2
-            max_iter = self.max_iter
-            @numba.njit
-            def numba_impl(Z, U, c, stop_reason, n_iter):
-                while True:
-                    n_iter += 1
-
-                    if n_iter >= max_iter:
-                        stop_reason[0] = 0
-                        break
-
-                    Z[3] = 2 * (Z[3] * Z[0] + Z[2]**2)
-                    Z[2] = 2 * Z[2] * Z[0] + 1.
-                    Z[1] = 2 * Z[1] * Z[0] 
-                    Z[0] = Z[0]**2 + c
-                    if n_iter == 1:
-                        Z[1] = 1.
-
-                    if Z[0].real**2 + Z[0].imag ** 2 > Mdiv_sq:
-                        stop_reason[0] = 1
-                        break
-
-                    if Z[1].real**2 + Z[1].imag ** 2 < epscv_sq:
-                        stop_reason[0] = 2
-                        break
-
-                # End of while loop
-                return n_iter
-            return numba_impl
+            return fs.core.numba_iterate(
+                calc_orbit, i_znorbit, backshift, zn,
+                iterate_once, zn_iterate
+            )
 
         return {
             "set_state": set_state,
@@ -163,7 +202,7 @@ directory : str
     ==========
     calc_name : str
          The string identifier for this calculation
-    subset : 
+    subset : Optional `fractalshades.postproc.Fractal_array`
         A boolean array-like, where False no calculation is performed
         If `None`, all points are calculated. Defaults to `None`.
     known_orders : None | int list 
@@ -212,6 +251,17 @@ directory : str
         int_codes = ["order"]
         stop_codes = ["max_order", "order_confirmed"]
 
+        izr = 0
+        idzrdz = 1 # attractivity
+        idzrdc = 2
+        id2zrdzdc = 3 # dattrdc
+        i_partial = 4
+        i_zn = 5
+        iorder = 0
+
+        reason_max_order = 1
+        reason_order_confirmed = 2
+
         def set_state():
             def impl(instance):
                 instance.codes = (complex_codes, int_codes, stop_codes)
@@ -222,79 +272,26 @@ directory : str
         def initialize():
             @numba.njit
             def numba_init_impl(Z, U, c):
-                Z[4] = 1.e6 # bigger than any reasonnable np.abs(zn)
+                Z[4] = 1.e6 # Partial, bigger than any reasonnable np.abs(zn)
             return numba_init_impl
 
+        zn_iterate = self.zn_iterate
+        
+        @numba.njit
+        def iterate_newton_search(d2zrdzdc, dzrdc, dzrdz, zr, c):
+            d2zrdzdc = 2 * (d2zrdzdc * zr + dzrdz * dzrdc)
+            dzrdz = 2. * dzrdz * zr
+            dzrdc = 2 * dzrdc * zr + 1.
+            zr = zr * zr + c
+            return (d2zrdzdc, dzrdc, dzrdz, zr)
+
         def iterate():
-            @numba.njit
-            def numba_impl(Z, U, c, stop_reason, n_iter):
-                while True:
-                    n_iter += 1
-
-                    if n_iter > max_order:
-                        stop_reason[0] = 0
-                        break
-
-                    # If n is not a 'partial' for this point it cannot be the 
-                    # cycle order : early exit
-                    Z[5] = Z[5]**2 + c
-                    m = np.abs(Z[5])
-                    if m < Z[4].real:
-                        Z[4] = m # Cannot assign to the real part 
-                    else:
-                        continue
-
-                    # Early exit if n it is not a multiple of one of the
-                    # known_orders (provided by the user)
-                    if known_orders is not None:
-                        valid = False
-                        for order in known_orders:
-                            if  n_iter % order == 0:
-                                valid = True
-                        if not valid:
-                            continue
-    
-                    z0_loop = Z[0]
-                    dz0dc_loop = Z[2]
-    
-                    for i_newton in range(max_newton):
-                        zr = z0_loop
-                        dzrdz = zr * 0. + 1.
-                        d2zrdzdc = dzrdz * 0. # == 1. hence : constant wrt c...
-                        dzrdc = dz0dc_loop
-                        for i in range(n_iter):
-                            d2zrdzdc = 2 * (d2zrdzdc * zr + dzrdz * dzrdc)
-                            dzrdz = 2. * dzrdz * zr
-                            dzrdc = 2 * dzrdc * zr + 1.
-                            zr = zr**2 + c
-
-                        delta = (zr - z0_loop) / (dzrdz - 1.)
-                        newton_cv = (np.abs(delta) < eps_newton_cv)
-                        zz = z0_loop - delta
-                        dz0dc_loop = dz0dc_loop - (
-                                     (dzrdc - dz0dc_loop) / (dzrdz - 1.) -
-                                     (zr - z0_loop) * d2zrdzdc / (dzrdz - 1.)**2)
-                        z0_loop = zz
-                        if newton_cv:
-                            break
-    
-                    # We have a candidate but is it the good one ?
-                    is_confirmed = (np.abs(dzrdz) <= 1.) & newton_cv
-                    if not(is_confirmed): # not found, early exit
-                        continue
-    
-                    Z[0] = zr
-                    Z[1] = dzrdz # attr (cycle attractivity)
-                    Z[2] = dzrdc
-                    Z[3] = d2zrdzdc # dattrdc
-                    U[0] = n_iter
-                    stop_reason[0] = 1
-                    break
-
-                # End of while loop
-                return n_iter
-
-            return numba_impl
+            return fs.core.numba_Newton(
+                known_orders, max_order, max_newton, eps_newton_cv,
+                reason_max_order, reason_order_confirmed,
+                izr, idzrdz, idzrdc,  id2zrdzdc, i_partial,  i_zn, iorder,
+                zn_iterate, iterate_newton_search
+            )
         
         return {
             "set_state": set_state,
@@ -493,7 +490,7 @@ interior_detect : bool
             Z[dzndc] = 2. * ((ref_zn + Z[zn]) * Z[dzndc] + ref_dzndc * Z[zn])
 
         def iterate():
-            return fs.perturbation.numba_iterate(self.
+            return fs.perturbation.numba_iterate(
                 max_iter, M_divergence_sq, epsilon_stationnary_sq,
                 reason_max_iter, reason_M_divergence, reason_stationnary,
                 xr_detect_activated, BLA_activated,

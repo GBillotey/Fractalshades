@@ -20,6 +20,8 @@ are not compatible with version 1.x.y onwards.
         `polar_angle`, `azimuth_angle`
       - `coords` parameter removed
 - Fractal class: data files `.params` renamed `.fingerprint`
+- Fieldlines_pp class: implementation entirely rewritten, parameter
+  `damping_ratio` `endpoint_k`
 - `run` method from Fractal removed. One consequence: to clean-up stored
   calculation files, one shall now use  `clean_up` method before
   any calculation methd call (previously it was to be used before `run` call)

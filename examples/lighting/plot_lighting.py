@@ -45,8 +45,10 @@ def plot_lighting(lighting_identifier, plot_dir, nx=600, ny=600):
     fs.utils.mkdir_p(plot_dir)
 
     if fs.settings.output_context["doc"]:
-        tag_dict = {"Software": "fractalshades " + fs.__version__,
-                    "lighting example": lighting_identifier}
+        tag_dict = {
+            "Software": "fractalshades " + fs.__version__,
+            "lighting example": lighting_identifier
+        }
         pnginfo = PngImagePlugin.PngInfo()
         for k, v in tag_dict.items():
             pnginfo.add_text(k, str(v))

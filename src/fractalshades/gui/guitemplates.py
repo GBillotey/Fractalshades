@@ -7,17 +7,12 @@ The following are implemented:
 import inspect
 import typing
 import os
-import sys
-#import ast
 import textwrap
-#import pprint
-import numbers
 
 import numpy as np
-#from PyQt6 import QtGui
+import mpmath
 
 import fractalshades as fs
-# import fractalshades.models as fsm
 import fractalshades.settings
 import fractalshades.colors
 import fractalshades.gui
@@ -33,6 +28,7 @@ from fractalshades.postproc import (
     Attr_normal_pp,
     Fractal_array,
 )
+
 from fractalshades.colors.layers import (
     Color_layer,
     Bool_layer,
@@ -42,15 +38,101 @@ from fractalshades.colors.layers import (
     Overlay_mode,
     Blinn_lighting
 )
+from fractalshades.utils import Code_writer
 
+
+script_header = f"""# -*- coding: utf-8 -*-
+\"""============================================================================
+Auto-generated from fractalshades GUI, version {fs.__version__}.
+Save to `<file>.py` and run as a python script:
+    > python <file>.py
+============================================================================\"""
+import os
+import typing
+
+import numpy as np
 import mpmath
+from PyQt6 import QtGui
 
+import fractalshades
+import fractalshades as fs
+import fractalshades.models as fsm
+import fractalshades.gui as fsgui
+import fractalshades.colors as fscolors
+
+from fractalshades.postproc import (
+    Postproc_batch,
+    Continuous_iter_pp,
+    DEM_normal_pp,
+    Fieldlines_pp,
+    DEM_pp,
+    Raw_pp,
+    Attr_pp,
+    Attr_normal_pp,
+    Fractal_array
+)
+from fractalshades.colors.layers import (
+    Color_layer,
+    Bool_layer,
+    Normal_map_layer,
+    Grey_layer,
+    Virtual_layer,
+    Blinn_lighting,
+    Overlay_mode
+)
+
+def plot(plot_dir):"""
+
+script_footer = """
+if __name__ == "__main__":
+    # Sets `plot_dir` to the local directory where is saved this script, and
+    # run the script
+    realpath = os.path.realpath(__file__)
+    plot_dir = os.path.splitext(realpath)[0]
+    plot(plot_dir)
+"""
+
+def script_title_sep(title, indent=0):
+    """ Return a script comment line with the given title """
+    sep_line = " " * 4 * indent + "#" + ">" * (78 - 4 * indent) + "\n"
+    return (
+        "\n\n"
+        + sep_line
+        + " " * 4 * indent + "# " + title + "\n"
+        + sep_line
+    )
+
+
+def script(source, kwargs, funcname):
+    """ Writes source code for this script """
+    func_params_str = script_assignments(kwargs, indent=1)
+    source = (" " * 4) + source.replace("\n", "\n" + " " * 4)
+    call_str = ",\n        ".join(k + " = " + k for k in kwargs.keys())
+    call_str = f"    {funcname}(" + call_str + "\n    )\n"
+
+    script = (
+        script_header
+        + script_title_sep("Parameters", 1)
+        + func_params_str
+        + script_title_sep("Plotting function", 1)
+        + source
+        + script_title_sep("Plotting call", 1)
+        + call_str
+        + script_title_sep("Footer", 0)
+        + script_footer
+        + "\n"
+    )
+
+    print("debug, script:\n", script)
+    return script
 
 def script_repr(obj, indent=0):
     """ Simple alias for Code_writer.var_tocode :
         string source code for an object
     """
-    return Code_writer.var_tocode(obj, indent)
+    shift = " " * (4 * indent)
+    code = Code_writer.var_tocode(obj)
+    return shift + code.replace("\n", "\n" + shift)
 
 def script_assignments(kwargs, indent=0):
     """ The parameter assignement part of the overall script:
@@ -62,218 +144,29 @@ def script_assignments(kwargs, indent=0):
     ret = "\n".join(
             [(k + " = " + script_repr(v)) for (k, v) in kwargs.items()]
     )
-    ret.replace("\n", "\n" + shift)
+    ret = shift + ret.replace("\n", "\n" + shift)
     return ret
 
-    
+
 def getsource(callable_):
     """ Return the source code for this callable
     """
     if hasattr(callable_, "getsource"):
         return callable_.getsource()
     else:
-        # Default: use inspect
-        return inspect.getsource(callable_)
+        # Default: use inspect - use dedent to get consistent indentation level
+        return textwrap.dedent(inspect.getsource(callable_))
 
 
 def signature(callable_):
     """ Return the signature for this callable
     """
-#    print("***********IN SIGNATURE", type(callable_), hasattr(callable_, "signature"))
     if hasattr(callable_, "signature"):
         print(list(callable_.signature().parameters.keys()))
         return callable_.signature()
     else:
         return inspect.signature(callable_)
 
-
-class Code_writer:
-    """
-    A set of static methods allowing to write Python source code
-    """
-
-    @staticmethod
-    def var_tocode(var, indent=0):
-        """
-        Returns a string of python source code to serialize the variable var.
-
-        Parameters
-        ----------
-        var: object
-            The parameter to reconstruct. Supported types:
-                None
-                Numbers (int, float, bool)
-                Dict
-                list
-                Class
-        indent: int
-            The current indentation level
-        """
-        shift = " " * (4 * indent)
-        
-        if var is None:
-            return "None"
-        if isinstance(var, numbers.Number):
-            return repr(var)
-        if isinstance(var, str):
-            return f'"{var}"'
-        if isinstance(var, mpmath.mpf):
-            return repr(var)
-        if isinstance(var, dict):
-            shift_inc = shift + " " * 4
-            ret = (shift_inc).join([
-                f"{Code_writer.var_tocode(k, indent+1)}: "
-                f"{Code_writer.var_tocode(v, indent+1)},\n"
-                for (k, v) in var.items()
-            ])
-            ret = f"{{\n{shift_inc}{ret}{shift}}}" # {{ for \{ in f-string
-            return ret
-        if isinstance(var, list):
-            shift_inc = shift + " " * 4
-            ret = (shift_inc).join([
-                f"{Code_writer.var_tocode(v, indent+1)},\n"
-                for v in var
-            ])
-            ret = f"[\n{shift_inc}{ret}{shift}]" # {{ for \{ in f-string
-            return ret
-        if isinstance(var, tuple):
-            shift_inc = shift + " " * 4
-            ret = (shift_inc).join([
-                f"{Code_writer.var_tocode(v, indent+1)},\n"
-                for v in var
-            ])
-            ret = f"(\n{shift_inc}{ret}{shift})" # {{ for \{ in f-string
-            return ret
-
-        if inspect.isclass(var):
-            ret = f"{Code_writer.fullname(var)}"
-            return ret
-
-        if hasattr(var, "script_repr"):
-            # Complex object: check first if has a dedicated script_repr
-            # implementation
-            return var.script_repr(indent)
-
-        if hasattr(var, "init_kwargs"):
-            # Complex object: defauts implementation serialize by calling the 
-            # __init__ method
-            return Code_writer.instance_tocode(var, indent)
-
-        else:
-            raise NotImplementedError(var)
-
-
-    @staticmethod
-    def fullname(class_):
-        """ returns the fullname of a class """
-        module = class_.__module__
-        if module == 'builtins':
-            return class_.__qualname__ # avoid outputs like 'builtins.str'
-        return module + '.' + class_.__qualname__
-
-
-    @staticmethod
-    def instance_tocode(obj, indent=0):
-        """ Unserialize by calling init method
-        """
-        shift = " " * (4 * indent)
-        fullname = Code_writer.fullname(obj.__class__)
-        kwargs = obj.init_kwargs
-        kwargs_code = Code_writer.func_args(kwargs, indent + 1)
-        str_call_init = f"{shift}{fullname}(\n{kwargs_code}{shift})"
-        return str_call_init
-
-
-    @staticmethod
-    def write_assignment(varname, value, indent=0):
-        """
-        %varname = %value
-        """
-        shift = " " * (4 * indent)
-
-        try:
-            var_str = Code_writer.var_tocode(value, indent)
-        except NotImplementedError: # rethrow with hopefully better descr
-            raise NotImplementedError(varname, value)
-        str_assignment = f"{shift}{varname} = {var_str}\n"
-        return str_assignment
-
-
-
-#    @staticmethod
-#    def write_fractal(var, indent=0):
-#        shift = "\n" + " " * (4 * indent)
-#        fractal_class = write_fractal.__class__
-#        init_dic = 
-#        s = inspect.signature(fractal_class.__init__)
-        
-
-#    @staticmethod
-#    def write_func(funcname, impl, indent=0):
-#        """
-#        def funcname():
-#            do stuff
-#        """
-#        shift = "\n" + " " * (4 * indent)
-#        ret = textwrap.dedent(inspect.getsource(impl))
-#        
-#        # changing the name
-#        beg = ret.find("(")
-#        ret = f"def {funcname}{ret[beg:]}\n"
-#
-#        # Apply the indentation
-#        ret = shift.join(l for l in ret.splitlines())
-#        return shift + ret
-
-
-#    @staticmethod
-#    def call_func(funcname, kwargs, indent=0):
-#        """
-#        funcname(
-#           key1=value1,
-#           key2=value2,
-#           ...
-#        ):
-#        """
-#        shift = " " * (4 * indent)
-#        func_args = Code_writer.func_args(kwargs, indent + 1)
-#        str_call_func = f"{shift}ret = {funcname}(\n{func_args}{shift})"
-#        return str_call_func
-
-#    @staticmethod
-#    def call_func(funcname, func_args, indent=0):
-#        """
-#        funcname(func_args)
-#        """
-#        shift = " " * (4 * indent)
-#        shift_arg = " " * (4 * (indent+1))
-#        func_args = func_args.replace(", ", ",")
-#        func_args = (
-#            shift_arg
-#            + (",\n" + shift_arg).join(func_args.split(","))
-#            + "\n"
-#        )
-#        
-#        str_call_func = f"{shift}ret = {funcname}(\n{func_args}{shift})"
-#        return str_call_func
-
-    @staticmethod
-    def func_args(kwargs, indent=0):
-        """
-           key1=value1,
-           key2=value2,
-        """
-        shift = " " * (4 * indent)
-        try:
-            ret = shift.join([
-                f"{k}={Code_writer.var_tocode(v)},\n"
-                for (k, v) in kwargs.items()
-            ])
-        except NotImplementedError:
-            etype, evalue, etraceback = sys.exc_info()
-            raise  NotImplementedError(f"{evalue}  raised from {kwargs}")
-
-        return shift + ret
 
 
 
@@ -283,6 +176,7 @@ class GUItemplate:
     def __init__(self, fractal):
         self.tuned_defaults = {}
         self.tuned_annotations = {}
+        self.tuned_annotations_str = {}
         self.partial_vals = {}
         self.set_default("fractal", fractal)
 
@@ -290,9 +184,22 @@ class GUItemplate:
         """ Change the default for param pname to tuned_annotations"""
         self.tuned_defaults[pname] = value
         
-    def set_annotation(self, pname, tuned_annotations):
-        """ Change the annotation for param pname to tuned_annotations"""
+    def set_annotation(self, pname, tuned_annotations, annot_str):
+        """ Change the annotation for param pname to tuned_annotations
+
+        Parameters:
+        -----------
+        pname: str
+            The name of the parameter to be modified
+        tuned_annotations: annotation
+            The modified annotation for this parameter
+            https://docs.python.org/3/glossary.html#term-annotation
+        annot_str: str
+            string for this annotation (used for source code generation)
+            for instance if annotation is `float`, just use "float"
+        """
         self.tuned_annotations[pname] = tuned_annotations
+        self.tuned_annotations_str[pname] = annot_str
 
     def make_partial(self, pname, val):
         """ Remove the parameter from the signature (hence from the
@@ -302,6 +209,8 @@ class GUItemplate:
 
     def signature(self):
         """
+        Signature used as a base for the GUI-display
+        
         Returns:
         --------
         sgn, taking into account
@@ -309,7 +218,6 @@ class GUItemplate:
             - params with modified annotation (through set_annotation)
             - params suppressed as a result of partial
         """
-        print("in GUItemplate signature")
         base_sgn = inspect.signature(self.__call__)
         my_defaults = self.tuned_defaults
         my_annots = self.tuned_annotations
@@ -346,16 +254,18 @@ class GUItemplate:
         return sgn
 
     def getsource(self):
+        """ Returns the source code defining the function
+        """
         base_source = textwrap.dedent(inspect.getsource(self.__call__))
         func_name, func_params, func_body = self.split_source(base_source)
         
         my_defaults = self.tuned_defaults
-        my_annots = self.tuned_annotations
+        my_annots = self.tuned_annotations_str
         my_vals = self.partial_vals 
         
         # func name: changed from __call__ to the name of the class (mimics
         # a python function)
-        func_name = f"def {self.__class__.__name__}:" 
+        func_name = f"def {self.__class__.__name__}(" 
 
         # func parameters:
         str_params = ""
@@ -366,13 +276,12 @@ class GUItemplate:
             decl, val = v.split("=") # dec -> <pname: annotation> / val -> <val>
 
             if p_name in my_defaults.keys():
-                val = " " + Code_writer.var_tocode(my_defaults[p_name]) + ",\n"
+                val = " " + Code_writer.var_tocode(my_defaults[p_name]) + ","
             elif p_name in my_vals.keys():
-                val = " " + Code_writer.var_tocode(my_vals[p_name]) + ",\n"
+                val = " " + Code_writer.var_tocode(my_vals[p_name]) + ","
             elif p_name in my_annots.keys():
-                decl = p_name + ": " +  Code_writer.var_tocode(
-                        my_annots[p_name]
-                )
+                decl = "    \n" + p_name + ": " +  my_annots[p_name]
+                val = val + ","
             else:
                 val = val + ","
             v = decl + "=" + val
@@ -466,12 +375,14 @@ class GUItemplate:
                 param_beg = ic
             
         func_name = source[:name_ic]
-        print("body_ic2", body_ic)
         func_body = source[body_ic:]
         
-        return func_name, func_params, func_body
-        
+        # Drop everything from the body before the ")" - avoid a potential 
+        # ",," if the original params source code ends with ","
+        incipit = func_body.find(")")
+        func_body = func_body[incipit:]
 
+        return func_name, func_params, func_body
 
 
 class deepzooming(GUItemplate):
@@ -496,7 +407,6 @@ class deepzooming(GUItemplate):
 
     def __call__(
         self,
-
         fractal: fs.Fractal=None,
         calc_name: str="deepzoom",
     
@@ -548,7 +458,7 @@ class deepzooming(GUItemplate):
         field_kind: typing.Literal["overlay", "twin"]="overlay",
         n_iter: int = 3,
         swirl: float = 0.,
-        damping_ratio: float = 0.8,
+        endpoint_k: float = 1.0,
         twin_intensity: float = 0.1,
 
         _7: fs.gui.collapsible_separator="Interior points",
@@ -609,7 +519,7 @@ class deepzooming(GUItemplate):
         if has_fieldlines:
             pp.add_postproc(
                 "fieldlines",
-                Fieldlines_pp(n_iter, swirl, damping_ratio)
+                Fieldlines_pp(n_iter, swirl, endpoint_k)
             )
         else:
             field_kind = "None"
@@ -636,11 +546,11 @@ class deepzooming(GUItemplate):
     
         if field_kind == "twin":
             plotter.add_layer(Virtual_layer(
-                    "fieldlines", func=None, output=False
+                "fieldlines", func=None, output=False
             ))
         elif field_kind == "overlay":
             plotter.add_layer(Grey_layer(
-                    "fieldlines", func=None, output=False
+                "fieldlines", func=None, output=False
             ))
     
         if has_shading:
@@ -702,9 +612,13 @@ class shallowzooming(GUItemplate):
         - interior cycle attractivity implement or not
         """
         super().__init__(fractal)
-        self.holomorphic = fractal.holomorphic
-        self.implements_fieldlines = fractal.implements_fieldlines
-        self.implements_newton = fractal.implements_newton
+
+        badges = (
+            "holomorphic", "implements_fieldlines", "implements_newton",
+            "implements_Milnor", "implements_interior_detection"
+        )
+        for attr in badges:
+            setattr(self, attr, getattr(fractal, attr, False))
 
         self.connect_image_params = {
             "image_param": "calc_name"
@@ -729,13 +643,31 @@ class shallowzooming(GUItemplate):
             self.make_partial("zmax_int", None)
             self.make_partial("lighting_int", None)
 
+        if self.holomorphic:
+            # Delete all parameters associated with skew transform
+            self.make_partial("_1b", None)
+            self.make_partial("has_skew", False)
+            self.make_partial("skew_00", 1.)
+            self.make_partial("skew_01", 0.)
+            self.make_partial("skew_10", 0.)
+            self.make_partial("skew_11", 1.)
+
+        if self.implements_Milnor:
+            self.set_annotation(
+                "shading_kind",
+                typing.Literal["potential", "Milnor"],
+                'typing.Literal["potential", "Milnor"]'
+            )
+
+        if not(self.implements_interior_detection):
+            self.make_partial("epsilon_stationnary", None)
+            
 
     def __call__(
         self,
-
         fractal: fs.Fractal=None,
-        calc_name: str="deepzoom",
-    
+        calc_name: str="shallowzoom",
+
         _1: fs.gui.collapsible_separator="Zoom parameters",
         x: float=-1.0,
         y: float=0.0,
@@ -743,18 +675,26 @@ class shallowzooming(GUItemplate):
         xy_ratio: float=1.0,
         theta_deg: float=0.0,
         nx: int=600,
+        
+        _1b: fs.gui.collapsible_separator=(
+                "Skew parameters /!\ Re-run when modified!"
+        ),
+        has_skew: bool=False,
+        skew_00: float=1.,
+        skew_01: float=0.,
+        skew_10: float=0.,
+        skew_11: float=1.,
 
         _2: fs.gui.collapsible_separator="Calculation parameters",
         max_iter: int = 5000,
         M_divergence: float = 1000.,
-        interior_detect: bool = True,
         epsilon_stationnary: float = 0.001,
 
         _3: fs.gui.collapsible_separator = "Newton parameters",
         compute_newton: bool = True,
         max_order: int = 1500,
         max_newton: int = 20,
-        eps_newton_cv: float =1.e-12,
+        eps_newton_cv: float =1.e-8,
 
         _4: fs.gui.collapsible_separator="Plotting parameters: base field",
         base_layer: typing.Literal[
@@ -777,31 +717,36 @@ class shallowzooming(GUItemplate):
                  "attractivity",
                  "order"
         ]="attractivity",
-        colormap_int: fs.colors.Fractal_colormap=(
+        colormap_int: fs.colors.Fractal_colormap = (
                 fs.colors.cmap_register["stellar"]
         ),
         cmap_func_int: fs.numpy_utils.Numpy_expr = (
                 fs.numpy_utils.Numpy_expr("x", "x")
         ),
-        zmin_int: float=0.0,
-        zmax_int: float=5.0,
+        zmin_int: float = 0.0,
+        zmax_int: float = 5.0,
 
-        _5: fs.gui.collapsible_separator="Plotting parameters: shading",
-        has_shading: bool=True,
-        lighting: Blinn_lighting=(
+        _5: fs.gui.collapsible_separator = "Plotting parameters: shading",
+        has_shading: bool = True,
+        shading_kind: typing.Literal["potential"] = "potential", 
+        lighting: Blinn_lighting = (
                 fs.colors.lighting_register["glossy"]
         ),
-        lighting_int: Blinn_lighting=(
+        lighting_int: Blinn_lighting = (
                 fs.colors.lighting_register["glossy"]
         ),
         max_slope: float = 60.,
 
-        _6: fs.gui.collapsible_separator="Plotting parameters: field lines",
-        has_fieldlines: bool=False,
-        fieldlines_kind: typing.Literal["overlay", "twin"]="overlay",
-        fieldlines_zmin: float=0.0,
-        fieldlines_zmax: float=1.0,
-        n_iter: int = 3,
+        _6: fs.gui.collapsible_separator = "Plotting parameters: field lines",
+        has_fieldlines: bool = False,
+        fieldlines_func: fs.numpy_utils.Numpy_expr = (
+                fs.numpy_utils.Numpy_expr("x", "x")
+        ),
+        fieldlines_kind: typing.Literal["overlay", "twin"] = "overlay",
+        fieldlines_zmin: float = -1.0,
+        fieldlines_zmax: float = 1.0,
+        backshift: int = 3, 
+        n_iter: int = 4,
         swirl: float = 0.,
         damping_ratio: float = 0.8,
         twin_intensity: float = 0.1,
@@ -838,16 +783,31 @@ class shallowzooming(GUItemplate):
             xy_ratio=xy_ratio,
             theta_deg=theta_deg,
             projection="cartesian",
+            has_skew=has_skew,
+            skew_00=skew_00,
+            skew_01=skew_01,
+            skew_10=skew_10,
+            skew_11=skew_11
         )
-    
-        fractal.calc_std_div(
-                calc_name=calc_name,
-                subset=None,
-                max_iter=max_iter,
-                M_divergence=M_divergence,
-                epsilon_stationnary=epsilon_stationnary,
-            )
-        
+
+        calc_std_div_kw = {
+            "calc_name": calc_name,
+            "subset": None,
+            "max_iter": max_iter,
+            "M_divergence": M_divergence,
+        }
+        if shading_kind == "Milnor":
+            calc_std_div_kw["calc_d2zndz2"] = True
+        if has_fieldlines:
+            calc_orbit = (backshift > 0)
+            calc_std_div_kw["calc_orbit"] = calc_orbit
+            calc_std_div_kw["backshift"] = backshift
+        if fractal.implements_interior_detection:
+            calc_std_div_kw["epsilon_stationnary"] = epsilon_stationnary
+            
+
+        fractal.calc_std_div(**calc_std_div_kw)
+
         # Run the calculation for the interior points - if wanted
         if compute_newton:
             interior = Fractal_array(
@@ -873,11 +833,6 @@ class shallowzooming(GUItemplate):
             pp.add_postproc(base_layer, DEM_pp())
     
         if has_fieldlines:
-            # Linear interpolation zmin -> 0. zmax -> 1.
-            diff = fieldlines_zmax - fieldlines_zmin
-            fieldlines_func = lambda x: (
-                 (x - fieldlines_zmin) / diff
-            )
             pp.add_postproc(
                 "fieldlines",
                 Fieldlines_pp(n_iter, swirl, damping_ratio)
@@ -903,7 +858,7 @@ class shallowzooming(GUItemplate):
             pps = pp
     
         if has_shading:
-            pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
+            pp.add_postproc("DEM_map", DEM_normal_pp(kind=shading_kind))
             if compute_newton:
                 pp_int.add_postproc("attr_map", Attr_normal_pp())
 
@@ -914,8 +869,8 @@ class shallowzooming(GUItemplate):
             jitter=jitter,
             reload=reload
         )
-    
-    
+
+
         # The layers
         plotter.add_layer(Bool_layer("interior", output=False))
 
@@ -929,7 +884,9 @@ class shallowzooming(GUItemplate):
             ))
         elif fieldlines_kind == "overlay":
             plotter.add_layer(Grey_layer(
-                    "fieldlines", func=fieldlines_func, output=False
+                    "fieldlines", func=fieldlines_func,
+                    probes_z=[fieldlines_zmin, fieldlines_zmax],
+                    output=False
             ))
     
         if has_shading:

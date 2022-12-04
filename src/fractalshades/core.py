@@ -305,6 +305,7 @@ class Fractal_plotter:
         f = self.fractal
         for pbatch in self.postproc_batches:
             calc_name = pbatch.calc_name
+            f.clean_postproc_attr()
             if self.postproc_options["final_render"]:
                 if (hasattr(f, "_subset_hook")
                         and calc_name in f._subset_hook.keys()):
@@ -711,7 +712,6 @@ class _Null_status_wget:
     def update_status(self, key, str_val):
         """ Update the text status
         """
-        print("******   IN _Null_status_wget", key, str_val)
         self._status[key]["str_val"] = str_val
 
 
@@ -872,32 +872,33 @@ advanced users when subclassing.
         # print("self.__class__, vals", self.__class__, vals)
         return (self.__class__, vals)
 
+    def script_repr(self, indent):
+        """String used to serialize this instance in GUI-generated scripts
+        """
+        # Mainly a call to __init__ with the directory tuned to variable
+        # `plot_dir`
+        fullname = fs.utils.Code_writer.fullname(self.__class__)
+        kwargs = self.init_kwargs
+        kwargs["directory"] = fs.utils.Rawcode("plot_dir") # get rid of quotes
+        kwargs_code = fs.utils.Code_writer.func_args(kwargs, 1)
+        str_call_init = f"{fullname}(\n{kwargs_code})"
+        return str_call_init
 
-#    def script_repr(self, ):
-#        init_kwargs = self.init_kwargs
-#        
-#        return (
-#            "fsm."
-#            + self.__class__.__name__
-#            + "(plot_dir)"
-#        )    
-#    def _repr(self):
-#        # String used to generate a new instance in GUI-generated scripts
-#        return (
-#            "fsm."
-#            + self.__class__.__name__
-#            + "(plot_dir)"
-#        )
 
     @fs.utils.zoom_options
     def zoom(self, *,
-             x: float=0.,
-             y: float=0.,
-             dx: float=8.,
-             nx: int=800,
-             xy_ratio: float=1.,
-             theta_deg: float=0.,
+             x: float = 0.,
+             y: float = 0.,
+             dx: float = 8.,
+             nx: int = 800,
+             xy_ratio: float = 1.,
+             theta_deg: float = 0.,
              projection: projection_type="cartesian",
+             has_skew: bool = False,
+             skew_00:float = 1.0,
+             skew_01: float = 0.0,
+             skew_10: float = 0.0,
+             skew_11: float = 1.0
     ):
         """
         Define and stores as class-attributes the zoom parameters for the next
@@ -919,10 +920,21 @@ advanced users when subclassing.
             Pre-rotation of the calculation domain, in degree
         projection : "cartesian" | "spherical" | "exp_map"
             Kind of projection used (default to cartesian)
+        has_skew : bool
+            If True, unskew the view base on skew coefficients skew_ij
+        skew_ij : float
+            Components of the local skw matrix, ij = 00, 01, 10, 11
         """
         # Safeguard in case the GUI inputs were strings
         if isinstance(x, str) or isinstance(y, str) or isinstance(dx, str):
             raise RuntimeError("Float expected for x, y, dx")
+
+        # Stores the skew matrix
+        self._skew = None
+        if has_skew:
+            self._skew = np.array(
+                ((skew_00, skew_01), (skew_10, skew_11)), dtype=np.float64
+            )
 
     def new_status(self, wget):
         """ Return a dictionnary that can hold the current progress status """
@@ -1051,6 +1063,15 @@ advanced users when subclassing.
         # Delete also the temporay attributes
         temp_attrs = ("_FP_params", "_Z_path", "_SA_data")
         for temp_attr in temp_attrs:
+            if hasattr(self, temp_attr):
+                delattr(self, temp_attr)
+
+
+    def clean_postproc_attr(self):
+        # Deletes the postproc-related temporary attributes, thus forcing
+        # a recompute of invalidated data
+        postproc_attrs = ("_uncompressed_beg_end",)
+        for temp_attr in postproc_attrs:
             if hasattr(self, temp_attr):
                 delattr(self, temp_attr)
 
@@ -1339,8 +1360,16 @@ advanced users when subclassing.
 
     def calc_hook(self, calc_callable, calc_kwargs, return_dic):
         """
-        Called by a calculation wrapper
+        Called by a calculation wrapper (ref. utils.py)
         Prepares & stores the data needed for future calculation of tiles
+
+        /!\ If error here check that the Fractal calculation implementation
+        returns the expected dict of functionss:
+        {
+            "set_state": set_state,
+            "initialize": initialize,
+            "iterate": iterate
+        }
         """
         calc_name = calc_kwargs["calc_name"]
 
@@ -1553,7 +1582,9 @@ advanced users when subclassing.
     # Codes filtering
     def saved_codes(self, codes):
         (complex_codes, int_codes, stop_codes) = codes
+        print(">>>>>>>>>>>>>>>>>>>>>>>saved_codes 1", complex_codes)
         f_complex_codes = self.filter_stored_codes(complex_codes)
+        print(">>>>>>>>>>>>>>>>>>>>>>>saved_codes 2", complex_codes)
         f_int_codes = self.filter_stored_codes(int_codes)
         return (f_complex_codes, f_int_codes, stop_codes)
 
@@ -1757,6 +1788,7 @@ advanced users when subclassing.
         
         Note : subset can be initialized here
         """
+        state = self._calc_data[calc_name]["state"]
         keys = self.SAVE_ARRS
         data_type = {
             "Z": self.complex_type,
@@ -1767,7 +1799,7 @@ advanced users when subclassing.
         data_path = self.data_path(calc_name)
 
         pts_count = self.pts_count(calc_name) # the memmap 1st dim
-        (complex_codes, int_codes, stop_codes) = self.codes
+        (complex_codes, int_codes, stop_codes) = state.codes
         # keep only the one which do not sart with "_"
         f_complex_codes = self.filter_stored_codes(complex_codes)
         f_int_codes = self.filter_stored_codes(int_codes)
@@ -1780,6 +1812,7 @@ advanced users when subclassing.
             "stop_reason": (1, pts_count),
             "stop_iter": (1, pts_count),
         }
+        print("!!! data_dim Z", data_dim["Z"], f_complex_codes,complex_codes, len(f_complex_codes), len(complex_codes) )
 
         for key in keys:
             setattr(
@@ -1853,6 +1886,7 @@ advanced users when subclassing.
     def update_data_mmaps(
             self, calc_name, chunk_slice, Z, U, stop_reason, stop_iter
     ):
+        state = self._calc_data[calc_name]["state"]
         keys = self.SAVE_ARRS
         arr_map = {
             "Z": Z,
@@ -1865,7 +1899,7 @@ advanced users when subclassing.
 
         # codes mapping - taking into account suppressed fields
         # (those starting with "_")
-        (complex_codes, int_codes, stop_codes) = self.codes
+        (complex_codes, int_codes, stop_codes) = state.codes
         # keep only the one which do not sart with "_"
         f_complex_codes = self.filter_stored_codes(complex_codes)
         f_int_codes = self.filter_stored_codes(int_codes)
@@ -1961,8 +1995,6 @@ advanced users when subclassing.
                 calc_name, chunk_slice, Z, U, stop_reason, stop_iter
         )
         self.incr_tiles_status(which="Calc tiles")
-
-
 
 
     def reload_rawdata_dev(self, calc_name, chunk_slice):
@@ -2153,9 +2185,6 @@ advanced users when subclassing.
           post_array of shape(nposts, chunk_n_pts)
           subset
         """
-#        if self.is_interrupted():
-#            return None
-
         if postproc_batch.fractal is not self:
             raise ValueError("Postproc batch from a different factal provided")
         calc_name = postproc_batch.calc_name
@@ -2345,27 +2374,210 @@ def numba_cycles(
     dx, center, xy_ratio, theta, projection,
     _interrupted
 ):
-    """ Run the standard cycles
-    """
+    # Full iteration for a set of points - calls numba_cycle
     npts = c_pix.size
 
     for ipt in range(npts):
         Zpt = Z[:, ipt]
         Upt = U[:, ipt]
-        cpt = ref_path_c_from_pix(c_pix[ipt], dx, center, xy_ratio, theta,
-                                  projection)
+        cpt = c_from_pix(
+            c_pix[ipt], dx, center, xy_ratio, theta, projection
+        )
         stop_pt = stop_reason[:, ipt]
 
         initialize(Zpt, Upt, cpt)
         n_iter = iterate(
-            Zpt, Upt, cpt, stop_pt, 0,
+            # Zpt, Upt, cpt, stop_pt, 0,
+            cpt, Zpt, Upt, stop_pt
         )
         stop_iter[0, ipt] = n_iter
         stop_reason[0, ipt] = stop_pt[0]
 
         if _interrupted[0]:
             return USER_INTERRUPTED
+
     return 0
+
+def numba_iterate(
+    calc_orbit, i_znorbit, backshift, zn,
+    iterate_once, zn_iterate
+):
+    """ Numba implementation - recompiled if options change """
+    @numba.njit(nogil=True)
+    def numba_impl(c, Z, U, stop):
+        n_iter = 0
+
+        if calc_orbit:
+            div_shift = 0
+            orbit_zn1 = Z[zn]
+            orbit_zn2 = Z[zn]
+            orbit_i1 = 0
+            orbit_i2 = 0
+
+        while True:
+            n_iter += 1
+            ret = iterate_once(c, Z, U, stop, n_iter)
+
+            if calc_orbit:
+                div = n_iter // backshift
+                if div > div_shift:
+                    div_shift = div
+                    orbit_i2 = orbit_i1
+                    orbit_zn2 = orbit_zn1
+                    orbit_i1 = n_iter
+                    orbit_zn1 = Z[zn]
+
+            if ret != 0:
+                break
+
+        if calc_orbit:
+            zn_orbit = orbit_zn2
+            while orbit_i2 < n_iter - backshift:
+                zn_orbit = zn_iterate(zn_orbit, c)
+                orbit_i2 += 1
+            Z[i_znorbit] = zn_orbit
+
+        return n_iter
+    return numba_impl
+
+
+def numba_iterate_BS(
+    calc_orbit, i_xnorbit, i_ynorbit, backshift, xn, yn,
+    iterate_once, xnyn_iterate
+):
+    """ Numba implementation - recompiled if options change """
+    @numba.njit(nogil=True)
+    def numba_impl(c, Z, U, stop):
+        n_iter = 0
+
+        if calc_orbit:
+            div_shift = 0
+            orbit_xn1 = Z[xn]
+            orbit_xn2 = Z[xn]
+            orbit_yn1 = Z[yn]
+            orbit_yn2 = Z[yn]
+            orbit_i1 = 0
+            orbit_i2 = 0
+        
+        a = c.real
+        b = c.imag
+
+        while True:
+            n_iter += 1
+            ret = iterate_once(c, Z, U, stop, n_iter)
+
+            if calc_orbit:
+                div = n_iter // backshift
+                if div > div_shift:
+                    div_shift = div
+                    orbit_i2 = orbit_i1
+                    orbit_xn2 = orbit_xn1
+                    orbit_yn2 = orbit_yn1
+                    orbit_i1 = n_iter
+                    orbit_xn1 = Z[xn]
+                    orbit_yn1 = Z[yn]
+
+            if ret != 0:
+                break
+
+        if calc_orbit:
+            xn_orbit = orbit_xn2
+            yn_orbit = orbit_yn2
+            while orbit_i2 < n_iter - backshift:
+                xn_orbit, yn_orbit = xnyn_iterate(xn_orbit, yn_orbit, a, b)
+                orbit_i2 += 1
+            Z[i_xnorbit] = xn_orbit
+            Z[i_ynorbit] = yn_orbit
+
+        return n_iter
+    return numba_impl
+
+
+def numba_Newton(   
+    known_orders, max_order, max_newton, eps_newton_cv,
+    reason_max_order, reason_order_confirmed,
+    izr, idzrdz, idzrdc, id2zrdzdc, i_partial,  i_zn, iorder,
+    zn_iterate, iterate_newton_search
+):
+    """ Numba implementation 
+    Run Newton search to find z0 so that f^n(z0) == z0 (n being the order)
+    """
+    @numba.njit(nogil=True)
+    def numba_impl(c, Z, U, stop):
+        
+        n_iter = 0
+        while True:
+            n_iter += 1
+
+            if n_iter > max_order:
+                stop[0] = reason_max_order
+                break
+
+            # If n is not a 'partial' for this point it cannot be the 
+            # cycle order : early exit
+            Z[i_zn] = zn_iterate(Z[i_zn], c)
+            m = np.abs(Z[i_zn])
+            if m < Z[i_partial].real:
+                # This is a new partial, might be an attracting cycle
+                Z[i_partial] = m # Cannot assign to the real part 
+            else:
+                continue
+
+            # Early exit if n it is not a multiple of one of the
+            # known_orders (provided by the user)
+            if known_orders is not None:
+                valid = False
+                for order in known_orders:
+                    if  n_iter % order == 0:
+                        valid = True
+                if not valid:
+                    continue
+
+            z0_loop = complex(0.) # Z[0]
+            dz0dc_loop = complex(0.)  # Z[2]
+
+            for i_newton in range(max_newton):
+                zr = z0_loop
+                dzrdc = dz0dc_loop
+                dzrdz = complex(1.)
+                d2zrdzdc = complex(0.)
+
+                for i in range(n_iter):
+                    # It seems it is not possible to split and compute the
+                    # derivatives in postprocssing when convergence is reached
+                    # --> we do it during the Newton iterations
+                    d2zrdzdc, dzrdc, dzrdz, zr = iterate_newton_search(
+                            d2zrdzdc, dzrdc, dzrdz, zr, c
+                    )
+
+                delta = (zr - z0_loop) / (dzrdz - 1.)
+                newton_cv = (np.abs(delta) < eps_newton_cv)
+                zz = z0_loop - delta
+                dz0dc_loop = dz0dc_loop - (
+                    (dzrdc - dz0dc_loop) / (dzrdz - 1.)
+                    - (zr - z0_loop) * d2zrdzdc / (dzrdz - 1.)**2
+                )
+                z0_loop = zz
+                if newton_cv:
+                    break
+
+            # We have a candidate but is it the good one ?
+            is_confirmed = (np.abs(dzrdz) <= 1.) & newton_cv
+            if not(is_confirmed): # not found, try next
+                continue
+
+            Z[izr] = zr
+            Z[idzrdz] = dzrdz # attr (cycle attractivity)
+            Z[idzrdc] = dzrdc
+            Z[id2zrdzdc] = d2zrdzdc # dattrdc
+            U[iorder] = n_iter
+            stop[0] = reason_order_confirmed
+            break
+
+        # End of while loop
+        return n_iter
+
+    return numba_impl
 
 
 proj_cartesian = PROJECTION_ENUM.cartesian.value
@@ -2409,9 +2621,9 @@ def apply_rot_2d(theta, arrx, arry):
 
 
 @numba.njit
-def ref_path_c_from_pix(pix, dx, center, xy_ratio, theta, projection): # TODO : rename this to c_from_pix ??
+def c_from_pix(pix, dx, center, xy_ratio, theta, projection): # was: ref_path_c_from_pix
     """
-    Returns the true c (coords from ref point) from the pixel coords
+    Returns the true c from the pixel coords
 
     Parameters
     ----------
@@ -2420,7 +2632,7 @@ def ref_path_c_from_pix(pix, dx, center, xy_ratio, theta, projection): # TODO : 
 
     Returns
     -------
-    c, c_xr : c value as complex # and as Xrange
+    c, c_xr : c value as complex
     """
     # Case cartesian
     if projection == proj_cartesian:
@@ -2453,7 +2665,7 @@ def fill1d_ref_path_c_from_pix(c_pix, dx, center, xy_ratio, theta, projection,
     """ same but fills in-place a 1d vec """
     nx = c_pix.shape[0]
     for i in range(nx):
-        c_out[i] = ref_path_c_from_pix(
+        c_out[i] = c_from_pix(
             c_pix[i], dx, center, xy_ratio, theta, projection
         )
 

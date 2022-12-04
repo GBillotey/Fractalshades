@@ -321,7 +321,7 @@ def perturbation_mandelbrot_nucleus_size_estimate(
     """
     Hyperbolic component size estimate. Reference :
     https://mathr.co.uk/blog/2016-12-24_deriving_the_size_estimate.html
-    
+
     Parameters:
     -----------
     x: str
