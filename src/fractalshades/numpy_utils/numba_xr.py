@@ -58,9 +58,11 @@ https://jiffyclub.github.io/numpy/user/c-info.ufunc-tutorial.html
 
 """
 
+numba_int_types = (numba.int32, numba.int64)
 numba_float_types = (numba.float64,)
 numba_complex_types = (numba.complex128,)
 numba_base_types = numba_float_types + numba_complex_types
+numba_all_std_types = numba_float_types + numba_complex_types + numba_int_types
 
 def numpy_xr_type(base_type):
     return np.dtype([("mantissa", base_type), ("exp", np.int32)], align=False)
@@ -499,7 +501,6 @@ def extended_overload(compare_operator):
                 return compare_operator(m0_out, m1_out)
             return impl
         else:
-#            print(op0 in numba_base_types, op1 in xr_types)
             raise TypingError("datatype not accepted in compare({}, {})".format(
                 op0, op1))
 
@@ -510,7 +511,7 @@ for compare_operator in (
         operator.ne,
         operator.ge,
         operator.gt
-        ):
+):
     extended_overload(compare_operator)
 
 @overload(np.sqrt)
@@ -534,17 +535,27 @@ def extended_sqrt(op0):
 
 @generated_jit(nopython=True)
 def extended_abs2(op0):
-    """ square of abs of a Record field """
+    """ square of abs of a Record field, overloaded for float64, complex128 """
     if op0 in real_xr_types:
         def impl(op0):
-            return Xrange_scalar(op0.mantissa ** 2,
-                                 add_int32(op0.exp, op0.exp))
+            return Xrange_scalar(
+                op0.mantissa ** 2, add_int32(op0.exp, op0.exp)
+            )
         return impl
     elif op0 in xr_types:
         def impl(op0):
             return Xrange_scalar(
                 (op0.mantissa.real ** 2 + op0.mantissa.imag ** 2),
-                add_int32(op0.exp, op0.exp))
+                add_int32(op0.exp, op0.exp)
+            )
+        return impl
+    elif op0 in numba_float_types:
+        def impl(op0):
+            return op0 ** 2
+        return impl
+    elif op0 in numba_complex_types:
+        def impl(op0):
+            return op0.real ** 2 + op0.imag ** 2
         return impl
     else:
         raise TypingError("extended_abs2: Datatype not accepted ({})".format(
@@ -560,6 +571,23 @@ def extended_abs(op0):
     else:
         raise TypingError("extended_abs: Datatype not accepted ({})".format(
             op0))
+
+
+@overload(np.power)
+def extended_power(op0, op1):
+    """ integer power of a Record field """
+    if (op0 in real_xr_types) and (op1 in numba_int_types):
+        def impl(op0):
+            return Xrange_scalar(
+                *_normalize(
+                    op0.mantissa ** op1,
+                    mul_int32(op0.exp,  numba.int32(op1))
+                )
+            )
+        return impl
+    else:
+        raise TypingError("extended_power: Datatype not accepted"
+                          f"{op0} {op1}")
 
 
 @generated_jit(nopython=True)
@@ -705,10 +733,6 @@ def normalize(rec):
         raise TypingError("datatype not accepted {}".format(dtype))
     return impl
 
-# Conversion to / from Xrange_scalar in numba functions
-#@numba.njit
-#def to_Xrange_scalar(item):
-#    return Xrange_scalar(*_normalize(item, numba.int32(0)))
 
 @generated_jit(nopython=True)
 def to_Xrange_scalar(item):

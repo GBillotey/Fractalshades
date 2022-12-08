@@ -1,12 +1,21 @@
 # -*- coding: utf-8 -*-
+import math
 from typing import Optional
 
 import numpy as np
 import numba
+import mpmath
 
 import fractalshades as fs
-import fractalshades.utils as fsutils
+import fractalshades.mpmath_utils.FP_loop as fsFP
 from fractalshades.postproc import Fractal_array
+import fractalshades.numpy_utils.numba_xr as fsxn
+
+def Mn_iterate(n):
+    @numba.njit
+    def numba_impl(zn, c):
+        return zn ** n + c
+    return numba_impl
 
 
 class Mandelbrot_N(fs.Fractal):
@@ -37,16 +46,13 @@ directory : str
         self.implements_fieldlines = True
         self.implements_newton = True
         self.implements_Milnor = True
-        self.implements_interior_detection = True
+        self.implements_interior_detection = "always"
+        self.implements_deepzoom = False
+
+        self.zn_iterate = Mn_iterate(exponent)
 
 
-        @numba.njit
-        def _zn_iterate(zn, c):
-            return zn ** exponent + c
-        self.zn_iterate = _zn_iterate
-
-
-    @fsutils.calc_options
+    @fs.utils.calc_options
     def calc_std_div(self, *,
             calc_name: str,
             subset: Optional[Fractal_array] = None,
@@ -314,3 +320,494 @@ directory : str
             "initialize": initialize,
             "iterate": iterate
         }
+
+#==============================================================================
+#==============================================================================
+
+class Perturbation_mandelbrot_N(fs.PerturbationFractal):
+    
+    def __init__(self, directory: str, exponent: int):
+        """
+An arbitrary precision power-2 Mandelbrot Fractal. 
+
+.. math::
+
+    z_0 &= 0 \\\\
+    z_{n+1} &= z_{n}^2 + c
+
+This class implements arbitrary precision for the reference orbit, ball method
+period search, newton search, perturbation method, chained billinear
+approximations.
+
+Parameters
+----------
+directory : str
+    Path for the working base directory
+        """
+        super().__init__(directory)
+        self.exponent = exponent # Needed for serialization
+
+        # Sets default values used for postprocessing (potential)
+        self.potential_kind = "infinity"
+        self.potential_d = exponent
+        self.potential_a_d = 1.
+        self.potential_M_cutoff = 1000. # Minimum M for valid potential
+
+        # Set parameters for the full precision orbit
+        self.critical_pt = 0.
+        self.FP_code = "zn"
+
+        # GUI 'badges'
+        self.holomorphic = True
+        self.implements_fieldlines = True
+        self.implements_newton = False
+        self.implements_Milnor = False
+        self.implements_interior_detection = "user"
+        self.implements_deepzoom = True
+
+        # Orbit 'on the fly' calculation
+        self.zn_iterate = Mn_iterate(exponent)
+
+
+    def FP_loop(self, NP_orbit, c0):
+        """
+        The full precision loop ; fills in place NP_orbit
+        """
+        xr_detect_activated = self.xr_detect_activated
+
+        max_orbit_iter = (NP_orbit.shape)[0] - 1
+        M_divergence = self.M_divergence
+
+        x = c0.real
+        y = c0.imag
+        seed_prec = mpmath.mp.prec
+        (i, partial_dict, xr_dict
+         ) = fsFP.perturbation_mandelbrotN_FP_loop(
+            NP_orbit.view(dtype=np.float64),
+            xr_detect_activated,
+            max_orbit_iter,
+            self.exponent,
+            M_divergence * 2, # to be sure ref exit after close points
+            str(x).encode('utf8'),
+            str(y).encode('utf8'),
+            seed_prec
+        )
+        return i, partial_dict, xr_dict
+
+    @fs.utils.calc_options
+    def calc_std_div(self, *,
+        calc_name: str,
+        subset,
+        max_iter: int,
+        M_divergence: float,
+        epsilon_stationnary: float,
+        BLA_eps: float=1e-6,
+        interior_detect: bool=False,
+        calc_dzndc: bool=True,
+        calc_orbit: bool = False,
+        backshift: int = 0
+    ):
+        """
+Perturbation iterations (arbitrary precision) for Mandelbrot standard set
+(power n).
+
+Parameters
+==========
+calc_name : str
+     The string identifier for this calculation
+subset : 
+    A boolean array-like, where False no calculation is performed
+    If `None`, all points are calculated. Defaults to `None`.
+max_iter : int
+    the maximum iteration number. If reached, the loop is exited with
+    exit code "max_iter".
+M_divergence : float
+    The diverging radius. If reached, the loop is exited with exit code
+    "divergence"
+epsilon_stationnary : float
+    Used only if `interior_detect` parameter is set to True
+    A small criteria (typical range 0.01 to 0.001) used to detect earlier
+    points belonging to a minibrot, based on dzndz1 value.
+    If reached, the loop is exited with exit code "stationnary"
+BLA_eps : None | float
+    Relative error criteriafor BiLinear Approximation (default: 1.e-6)
+    if `None` BLA is not activated.
+interior_detect : bool
+    If True, activates interior point early detection.
+    This will trigger the computation of additionnal quantities, so will be
+    efficient only when a mini fills a significant part of the view.
+calc_orbit: bool
+    If True, stores the value of an orbit point @ exit - backshift
+backshift: int (> 0)
+    The number of iteration backward for the stored orbit starting point
+"""
+        # self.init_data_types(np.complex128)
+
+        # used for potential post-processing
+        # self.potential_M = M_divergence
+
+        # Complex complex128 fields codes "Z" 
+        complex_codes = ["zn"]
+        zn = 0
+        code_int = 0
+
+        calc_dzndz = interior_detect
+        if calc_dzndz:
+            code_int += 1
+            complex_codes += ["dzndz"]
+            dzndz = code_int
+        else:
+            dzndz = -1
+
+        if calc_dzndc:
+            code_int += 1
+            complex_codes += ["dzndc"]
+            dzndc = code_int
+        else:
+            dzndc = -1
+
+        if calc_orbit:
+            code_int += 1
+            complex_codes += ["zn_orbit"]
+            i_znorbit = code_int
+        else:
+            i_znorbit = -1
+
+        # Integer int32 fields codes "U" 
+        int_codes = ["ref_cycle_iter"] # Position in ref orbit
+
+        # Stop codes
+        stop_codes = ["max_iter", "divergence", "stationnary"]
+        reason_max_iter = 0
+        reason_M_divergence = 1
+        reason_stationnary = 2
+
+        # self.codes = (complex_codes, int_codes, stop_codes)
+
+        #----------------------------------------------------------------------
+        # Define the functions used for BLA approximation
+        # BLA triggered ?
+        BLA_activated = (
+            (BLA_eps is not None)
+            and (self.dx < fs.settings.newton_zoom_level)
+        )
+        
+        nexp = self.exponent
+        # We will need also Binomial coefficients - defined as float 64 due
+        # to numba Xrange implementation of operations
+        C_binom = np.empty((nexp + 1), dtype=np.float64)
+        for k in range(nexp + 1):
+            C_binom[k] = math.comb(nexp, k)
+        float_nexp = float(self.exponent)
+
+        @numba.njit
+        def _dfdz(z):
+            tmp = z # ensure same datatype as z (incl. xrange)
+            for k in range(2, nexp):
+                tmp = tmp * z # Has the power k
+            return tmp * float_nexp
+
+        @numba.njit
+        def _dfdc(z):
+            return 1.
+
+        def set_state():
+            def impl(instance):
+                instance.complex_type = np.complex128
+                instance.potential_M = M_divergence
+                instance.codes = (complex_codes, int_codes, stop_codes)
+
+                instance.calc_dZndz = interior_detect
+                instance.calc_dZndc = calc_dzndc or BLA_activated
+                instance.dfdz = _dfdz
+                instance.dfdc = _dfdc
+            return impl
+
+        #----------------------------------------------------------------------
+        # Defines initialize - jitted implementation
+        def initialize():
+            return fs.perturbation.numba_initialize(zn, dzndc, dzndz)
+
+        #----------------------------------------------------------------------
+        # Defines iterate - jitted implementation
+        M_divergence_sq = M_divergence ** 2
+        epsilon_stationnary_sq = epsilon_stationnary ** 2
+        # Xr triggered for ultra-deep zoom
+        xr_detect_activated = self.xr_detect_activated
+
+        @numba.njit
+        def p_iter_zn(Z, ref_zn, c):
+#            # Do we need all terms ?
+#            ref_zn_abs2 = fsxn.extended_abs2(ref_zn)
+#            zn_abs2 = fsxn.extended_abs2(Z[zn])
+#
+#            if zn_abs2 < 1.e-12 * ref_zn_abs2:
+#                # Only the lowest Z[zn] degree term
+#                tmp = float_nexp * Z[zn] * (ref_zn ** (nexp - 1))
+#
+#            else:
+                # Need a full binomial expansion
+
+            tmp = Z[zn] * (Z[zn] + C_binom[1] * ref_zn)
+            ref_zn_pk = ref_zn # The iterative ref_zn ** k
+            for k in range(2, nexp): # k is the power of ref_zn
+                # Full binomial expansion
+                # decreasing Z[zn] power, increasing ref_zn
+                ref_zn_pk = ref_zn_pk * ref_zn # ref_zn ** k
+                tmp = Z[zn] * (tmp + C_binom[k] * ref_zn_pk)
+
+            Z[zn] = tmp + c
+
+
+        @numba.njit
+        def p_iter_dzndz(Z, ref_zn, ref_dzndz):
+#            # Do we need all terms ?
+#            ref_zn_abs2 = fsxn.extended_abs2(ref_zn)
+#            zn_abs2 = fsxn.extended_abs2(Z[zn])
+#
+#            if zn_abs2 < 1.e-12 * ref_zn_abs2:
+#                # Only the lowest Z[zn] degree term
+#                ref_zn_nm2 = ref_zn ** (nexp - 2)
+#                dtmpdz = float_nexp * ref_zn_nm2 * (
+#                    Z[dzndz] * ref_zn + Z[zn] * (float_nexp - 1.)
+#                )
+#
+#            else:
+            # Need a full binomial expansion
+            mul = (Z[zn] + C_binom[1] * ref_zn)
+            tmp = Z[zn] * mul
+            dtmpdz = (
+                Z[dzndz] * mul
+                + Z[zn] * (Z[dzndz] + C_binom[1] * ref_dzndz)
+            )
+
+            ref_zn_pk = ref_zn
+            ref_dzn_pkdz = ref_dzndz
+            for k in range(2, nexp):
+                # Full binomial expansion
+                ref_dzn_pkdz = (
+                    k * ref_zn_pk * ref_dzndz
+                )
+                ref_zn_pk = ref_zn_pk * ref_zn
+
+                mul = (tmp + C_binom[k] * ref_zn_pk)
+                dtmpdz = (
+                    Z[dzndz] * mul
+                    + Z[zn] * (dtmpdz + C_binom[k] * ref_dzn_pkdz)
+                )
+                tmp = Z[zn] * mul
+
+            Z[dzndz] = dtmpdz
+
+        @numba.njit
+        def p_iter_dzndc(Z, ref_zn, ref_dzndc):
+#            # Do we need all terms ?
+#            ref_zn_abs2 = fsxn.extended_abs2(ref_zn)
+#            zn_abs2 = fsxn.extended_abs2(Z[zn])
+#
+#            if zn_abs2 < 1.e-12 * ref_zn_abs2:
+#                # Only the lowest Z[zn] degree term
+#                ref_zn_nm2 = ref_zn ** (nexp - 2)
+#                dtmpdc = float_nexp * ref_zn_nm2 * (
+#                    Z[dzndc] * ref_zn + Z[zn] * (float_nexp - 1.)
+#                )
+#
+#            else:
+            # Need a full binomial expansion
+            mul = (Z[zn] + C_binom[1] * ref_zn)
+            tmp = Z[zn] * mul
+            dtmpdc = (
+                Z[dzndc] * mul
+                + Z[zn] * (Z[dzndc] + C_binom[1] * ref_dzndc)
+            )
+            ref_zn_pk = ref_zn
+            ref_dzn_pkdc = ref_dzndc
+
+            for k in range(2, nexp):
+                # Full binomial expansion
+                ref_dzn_pkdc = (
+                    k * ref_zn_pk * ref_dzndc
+                )
+                ref_zn_pk = ref_zn_pk * ref_zn
+
+                mul = (tmp + C_binom[k] * ref_zn_pk)
+                dtmpdc = (
+                    Z[dzndc] * mul
+                    + Z[zn] * (dtmpdc + C_binom[k] * ref_dzn_pkdc)
+                )
+                tmp = Z[zn] * mul
+
+            Z[dzndc] = dtmpdc
+
+
+        zn_iterate = self.zn_iterate
+
+        def iterate():
+            return fs.perturbation.numba_iterate(
+                max_iter, M_divergence_sq, epsilon_stationnary_sq,
+                reason_max_iter, reason_M_divergence, reason_stationnary,
+                xr_detect_activated, BLA_activated,
+                zn, dzndc, dzndz,
+                p_iter_zn, p_iter_dzndz, p_iter_dzndc,
+                calc_dzndc, calc_dzndz,
+                calc_orbit, i_znorbit, backshift, zn_iterate # Added args
+            )
+
+        return {
+            "set_state": set_state,
+            "initialize": initialize,
+            "iterate": iterate
+        }
+
+
+#------------------------------------------------------------------------------
+# Newton search & other related methods
+
+    @staticmethod
+    def _ball_method(c, px, maxiter, M_divergence):
+        """ Order 1 ball method: Cython wrapper"""
+        x = c.real
+        y = c.imag
+        seed_prec = mpmath.mp.prec
+        
+        order = fsFP.perturbation_mandelbrot_ball_method(
+            str(x).encode('utf8'),
+            str(y).encode('utf8'),
+            seed_prec,
+            str(px).encode('utf8'),
+            maxiter,
+            M_divergence
+        )
+        if order == -1:
+            return None
+        return order
+
+
+    @staticmethod
+    def find_nucleus(c, order, eps_pixel, max_newton=None, eps_cv=None):
+        """
+        Run Newton search to find z0 so that f^n(z0) == 0 : Cython wrapper
+
+        Includes a "divide by undesired roots" technique so that solutions
+        using divisors of n are disregarded.
+        
+        # eps_pixel = self.dx * (1. / self.nx)
+        """
+        if order is None:
+            raise ValueError("order shall be defined for Newton method")
+
+        x = c.real
+        y = c.imag
+        seed_prec = mpmath.mp.prec
+        if max_newton is None:
+            max_newton = 80
+        if eps_cv is None:
+            eps_cv = mpmath.mpf(val=(2, -seed_prec))
+
+        is_ok, val = fsFP.perturbation_mandelbrot_find_nucleus(
+            str(x).encode('utf8'),
+            str(y).encode('utf8'),
+            seed_prec,
+            order,
+            max_newton,
+            str(eps_cv).encode('utf8'),
+            str(eps_pixel).encode('utf8'),
+        )
+
+        return is_ok, val
+
+
+    @staticmethod
+    def find_any_nucleus(c, order, eps_pixel, max_newton=None, eps_cv=None):
+        """
+        Run Newton search to find z0 so that f^n(z0) == 0 : Cython wrapper
+        """
+        if order is None:
+            raise ValueError("order shall be defined for Newton method")
+
+        x = c.real
+        y = c.imag
+        seed_prec = mpmath.mp.prec
+        if max_newton is None:
+            max_newton = 80
+        if eps_cv is None:
+            eps_cv = mpmath.mpf(val=(2, -seed_prec))
+        
+        is_ok, val = fsFP.perturbation_mandelbrot_find_any_nucleus(
+            str(x).encode('utf8'),
+            str(y).encode('utf8'),
+            seed_prec,
+            order,
+            max_newton,
+            str(eps_cv).encode('utf8'),
+            str(eps_pixel).encode('utf8'),
+        )
+
+        return is_ok, val
+
+
+    @staticmethod
+    def _nucleus_size_estimate(c0, order):
+        """
+Nucleus size estimate
+
+Parameters:
+-----------
+c0 :
+    position of the nucleus
+order :
+    cycle order
+
+Returns:
+--------
+nucleus_size : 
+    size estimate of the nucleus
+julia_size : 
+    size estimate of the Julian embedded set
+
+https://mathr.co.uk/blog/2016-12-24_deriving_the_size_estimate.html
+
+Structure in the parameter dependence of order and chaos for the quadratic map
+Brian R Hunt and Edward Ott
+J. Phys. A: Math. Gen. 30 (1997) 7067–7076
+
+https://fractalforums.org/fractal-mathematics-and-new-theories/28/miniset-and-embedded-julia-size-estimates/912/msg4805#msg4805
+    julia size estimate : r_J = r_M ** ((n+1)*(n-1)/n**2)
+"""
+        x = c0.real
+        y = c0.imag
+        seed_prec = mpmath.mp.prec
+        nucleus_size = fsFP.perturbation_mandelbrot_nucleus_size_estimate(
+            str(x).encode('utf8'),
+            str(y).encode('utf8'),
+            seed_prec,
+            order
+        )
+        nucleus_size = np.abs(nucleus_size)
+
+        # r_J = r_M ** 0.75 for power 2 Mandelbrot
+        sqrt = np.sqrt(nucleus_size)
+        sqrtsqrt = np.sqrt(sqrt)
+        julia_size = sqrtsqrt * sqrt
+
+        return nucleus_size, julia_size
+
+#==============================================================================
+# GUI : "interactive options"
+#==============================================================================
+    @fs.utils.interactive_options
+    def coords(self, x, y, pix, dps):
+        return super().coords(x, y, pix, dps)
+
+    @fs.utils.interactive_options
+    def ball_method_order(self, x, y, pix, dps, maxiter: int=100000,
+                          radius_pixels: int=25):
+        return super().ball_method_order(x, y, pix, dps, maxiter,
+                    radius_pixels)
+
+    @fs.utils.interactive_options
+    def newton_search(self, x, y, pix, dps, maxiter: int=100000,
+                      radius_pixels: int=3):
+        return super().newton_search(x, y, pix, dps, maxiter, radius_pixels)
+
+

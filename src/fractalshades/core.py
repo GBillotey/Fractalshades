@@ -2233,7 +2233,7 @@ advanced users when subclassing.
         theta = self.theta_deg / 180. * np.pi # used for expmap
         projection = getattr(PROJECTION_ENUM, self.projection).value
         cpt = np.empty((n_pts,), dtype=c_pix.dtype)
-        fill1d_ref_path_c_from_pix(
+        fill1d_c_from_pix(
             c_pix, dx, center, xy_ratio, theta, projection, cpt
         )
         return cpt
@@ -2399,8 +2399,7 @@ def numba_cycles(
     return 0
 
 def numba_iterate(
-    calc_orbit, i_znorbit, backshift, zn,
-    iterate_once, zn_iterate
+    calc_orbit, i_znorbit, backshift, zn, iterate_once, zn_iterate
 ):
     """ Numba implementation - recompiled if options change """
     @numba.njit(nogil=True)
@@ -2621,9 +2620,10 @@ def apply_rot_2d(theta, arrx, arry):
 
 
 @numba.njit
-def c_from_pix(pix, dx, center, xy_ratio, theta, projection): # was: ref_path_c_from_pix
+def c_from_pix(pix, dx, center, xy_ratio, theta, projection):
     """
-    Returns the true c from the pixel coords
+    Returns the true c from the pixel coords - Note: to be reimplemnted for 
+    pertubation theory, as C = cref + dc
 
     Parameters
     ----------
@@ -2632,7 +2632,7 @@ def c_from_pix(pix, dx, center, xy_ratio, theta, projection): # was: ref_path_c_
 
     Returns
     -------
-    c, c_xr : c value as complex
+    c : c value as complex
     """
     # Case cartesian
     if projection == proj_cartesian:
@@ -2660,45 +2660,11 @@ def c_from_pix(pix, dx, center, xy_ratio, theta, projection): # was: ref_path_c_
     return offset + center
 
 @numba.njit
-def fill1d_ref_path_c_from_pix(c_pix, dx, center, xy_ratio, theta, projection,
+def fill1d_c_from_pix(c_pix, dx, center, xy_ratio, theta, projection,
                                c_out):
-    """ same but fills in-place a 1d vec """
+    """ Same as c_from_pix but fills in-place a 1d vec """
     nx = c_pix.shape[0]
     for i in range(nx):
         c_out[i] = c_from_pix(
             c_pix[i], dx, center, xy_ratio, theta, projection
         )
-
-#        elif self.projection == "spherical":
-#            dr_sc = np.sqrt(dx_vec**2 + dy_vec**2) / max(dx, dy) * np.pi
-#            k = np.where(dr_sc >= np.pi * 0.5, np.nan,  # outside circle
-#                         np.where(dr_sc < 1.e-12, 1., np.tan(dr_sc) / dr_sc))
-#            dx_vec *= k
-#            dy_vec *= k
-#            offset = [(dx_vec * np.cos(theta)) - (dy_vec * np.sin(theta)),
-#                      (dx_vec * np.sin(theta)) + (dy_vec * np.cos(theta))]
-#
-#        elif self.projection == "mixed_exp_map":
-#            # square + exp. map
-#            h_max = 2. * np.pi * xy_ratio # max h reached on the picture
-#            xbar = (dx_vec + 0.5 * dx - dy) / dx * h_max # 0 .. hmax
-#            ybar = dy_vec / dy * 2. * np.pi              # -pi .. +pi
-#            rho = dx * 0.5 * np.where(xbar > 0., np.exp(xbar), 0.)
-#            phi = ybar + theta
-#            dx_vec = (dx_vec + 0.5 * dx - 0.5 * dy) * xy_ratio
-#            dy_vec = dy_vec * xy_ratio
-#            offset = [np.where(xbar <= 0.,
-#                          (dx_vec * np.cos(theta)) - (dy_vec * np.sin(theta)),
-#                          rho * np.cos(phi)),
-#                      np.where(xbar <= 0.,
-#                          (dx_vec * np.sin(theta)) + (dy_vec * np.cos(theta)),
-#                          rho * np.sin(phi))]
-#
-#        elif self.projection == "exp_map":
-#            # only exp. map
-#            h_max = 2. * np.pi * xy_ratio # max h reached on the picture
-#            xbar = (dx_vec + 0.5 * dx - dy) / dx * h_max # 0 .. hmax
-#            ybar = dy_vec / dy * 2. * np.pi              # -pi .. +pi
-#            rho = dx * 0.5 * np.exp(xbar)
-#            phi = ybar + theta
-#            offset = [rho * np.cos(phi), rho * np.sin(phi)]

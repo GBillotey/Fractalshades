@@ -204,6 +204,9 @@ class GUItemplate:
     def make_partial(self, pname, val):
         """ Remove the parameter from the signature (hence from the
         GUI-settable parameters) and impose its value to be val.
+
+        Implementation note: Value of the partials to be considered by the
+        caller (caller responsability) before actually calling the GUItemplate
         """
         self.partial_vals[pname] = val
 
@@ -385,215 +388,215 @@ class GUItemplate:
         return func_name, func_params, func_body
 
 
-class deepzooming(GUItemplate):
-    
-    def __init__(self, fractal):
-        """
-        A generic deepzoming explorer for Fractals implementing perturbation
-        theory. Compatible with holomorphic or non-holomorphic (Burning-ship)
-        variants
-        """
-        super().__init__(fractal)
-        self.holomorphic = fractal.holomorphic
-
-        self.connect_image_params = {
-            "image_param": "calc_name"
-        }
-        self.connect_mouse_params = {
-            "x": "x", "y": "y", "dx": "dx",
-            "xy_ratio": "xy_ratio", "dps": "dps"
-        }
-
-
-    def __call__(
-        self,
-        fractal: fs.Fractal=None,
-        calc_name: str="deepzoom",
-    
-        _1: fs.gui.collapsible_separator="Zoom parameters",
-        x: mpmath.mpf="-1.0",
-        y: mpmath.mpf="0.0",
-        dx: mpmath.mpf="5.0",
-        xy_ratio: float=1.0,
-        theta_deg: float=0.0,
-        dps: int=16,
-        nx: int=600,
-    
-        _2: fs.gui.collapsible_separator="Calculation parameters",
-        max_iter: int=5000,
-        M_divergence: float=1000.,
-        interior_detect: bool=True,
-        epsilon_stationnary: float=0.001,
-    
-        _3: fs.gui.collapsible_separator="Bilinear series parameters",
-        use_BLA: bool=True,
-        eps: float=1.e-6,
-    
-        _4: fs.gui.collapsible_separator="Plotting parameters: base field",
-        base_layer: typing.Literal[
-                 "continuous_iter",
-                 "distance_estimation"
-        ]="continuous_iter",
-        interior_mask: typing.Literal[
-                 "all",
-                 "not_diverging",
-                 "dzndz_detection",
-        ]="all",
-        colormap: fs.colors.Fractal_colormap=(
-                fs.colors.cmap_register["classic"]
-        ),
-        invert_cmap: bool=False,
-        zmin: float=0.0,
-        zmax: float=5.0,
-    
-        _5: fs.gui.collapsible_separator="Plotting parameters: shading",
-        has_shading: bool=False,
-        lighting: Blinn_lighting=(
-                fs.colors.lighting_register["glossy"]
-        ),
-        max_slope: float = 60.,
-    
-        _6: fs.gui.collapsible_separator="Plotting parameters: field lines",
-        has_fieldlines: bool=False,
-        field_kind: typing.Literal["overlay", "twin"]="overlay",
-        n_iter: int = 3,
-        swirl: float = 0.,
-        endpoint_k: float = 1.0,
-        twin_intensity: float = 0.1,
-
-        _7: fs.gui.collapsible_separator="Interior points",
-        interior_color: fs.colors.Color=(0.1, 0.1, 0.1, 1.0),
-    
-    
-        _8: fs.gui.collapsible_separator="High-quality rendering options",
-        final_render: bool=False,
-        supersampling: fs.core.supersampling_type = "None",
-        jitter: bool = False,
-        reload: bool = False,
-    
-        _9: fs.gui.collapsible_separator="General settings",
-        log_verbosity: typing.Literal[fs.log.verbosity_enum
-                                      ]="debug @ console + log",
-        enable_multithreading: bool = True,
-        inspect_calc: bool = False,
-    ):
-
-        fs.settings.log_directory = os.path.join(fractal.directory, "log")
-        fs.set_log_handlers(verbosity=log_verbosity)
-        fs.settings.enable_multithreading = enable_multithreading
-        fs.settings.inspect_calc = inspect_calc
-
-        fractal.zoom(
-            precision=dps,
-            x=x,
-            y=y,
-            dx=dx,
-            nx=nx,
-            xy_ratio=xy_ratio,
-            theta_deg=theta_deg,
-            projection="cartesian",
-        )
-    
-        BLA_eps = eps if use_BLA else None
-    
-        fractal.calc_std_div(
-                calc_name=calc_name,
-                subset=None,
-                max_iter=max_iter,
-                M_divergence=M_divergence,
-                epsilon_stationnary=epsilon_stationnary,
-                BLA_eps=BLA_eps,
-                interior_detect=interior_detect,
-            )
-    
-    
-        pp = Postproc_batch(fractal, calc_name)
-        
-        if base_layer == "continuous_iter":
-            pp.add_postproc(base_layer, Continuous_iter_pp())
-    
-        elif base_layer == "distance_estimation":
-            pp.add_postproc("continuous_iter", Continuous_iter_pp())
-            pp.add_postproc(base_layer, DEM_pp())
-    
-        if has_fieldlines:
-            pp.add_postproc(
-                "fieldlines",
-                Fieldlines_pp(n_iter, swirl, endpoint_k)
-            )
-        else:
-            field_kind = "None"
-    
-        interior_func = {
-            "all": lambda x: x != 1,
-            "not_diverging": lambda x: x == 0,
-            "dzndz_detection": lambda x: x == 2,
-        }[interior_mask]
-        pp.add_postproc("interior", Raw_pp("stop_reason", func=interior_func))
-    
-        if has_shading:
-            pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
-    
-        plotter = fs.Fractal_plotter(
-            pp,
-            final_render=final_render,
-            supersampling=supersampling,
-            jitter=jitter,
-            reload=reload
-        )
-    
-        plotter.add_layer(Bool_layer("interior", output=False))
-    
-        if field_kind == "twin":
-            plotter.add_layer(Virtual_layer(
-                "fieldlines", func=None, output=False
-            ))
-        elif field_kind == "overlay":
-            plotter.add_layer(Grey_layer(
-                "fieldlines", func=None, output=False
-            ))
-    
-        if has_shading:
-            plotter.add_layer(Normal_map_layer(
-                "DEM_map", max_slope=max_slope, output=True
-            ))
-    
-        if base_layer != 'continuous_iter':
-            plotter.add_layer(
-                Virtual_layer("continuous_iter", func=None, output=False)
-            )
-    
-        sign = {False: 1., True: -1.}[invert_cmap]
-        plotter.add_layer(Color_layer(
-                base_layer,
-                func=lambda x: sign * np.log(x),
-                colormap=colormap,
-                probes_z=[zmin, zmax],
-                output=True))
-        plotter[base_layer].set_mask(
-            plotter["interior"], mask_color=interior_color
-        )
-    
-        if field_kind == "twin":
-            plotter[base_layer].set_twin_field(plotter["fieldlines"],
-                   twin_intensity)
-        elif field_kind == "overlay":
-            overlay_mode = Overlay_mode("tint_or_shade", pegtop=1.0)
-            plotter[base_layer].overlay(plotter["fieldlines"], overlay_mode)
-    
-        if has_shading:
-            plotter[base_layer].shade(plotter["DEM_map"], lighting)
-    
-        plotter.plot()
-        
-        # Renaming output to match expected from the Fractal GUI
-        layer = plotter[base_layer]
-        file_name = "{}_{}".format(type(layer).__name__, layer.postname)
-        src_path = os.path.join(fractal.directory, file_name + ".png")
-        dest_path = os.path.join(fractal.directory, calc_name + ".png")
-        if os.path.isfile(dest_path):
-            os.unlink(dest_path)
-        os.link(src_path, dest_path)
+#class deepzooming(GUItemplate):
+#    
+#    def __init__(self, fractal):
+#        """
+#        A generic deepzoming explorer for Fractals implementing perturbation
+#        theory. Compatible with holomorphic or non-holomorphic (Burning-ship)
+#        variants
+#        """
+#        super().__init__(fractal)
+#        self.holomorphic = fractal.holomorphic
+#
+#        self.connect_image_params = {
+#            "image_param": "calc_name"
+#        }
+#        self.connect_mouse_params = {
+#            "x": "x", "y": "y", "dx": "dx",
+#            "xy_ratio": "xy_ratio", "dps": "dps"
+#        }
+#
+#
+#    def __call__(
+#        self,
+#        fractal: fs.Fractal=None,
+#        calc_name: str="deepzoom",
+#    
+#        _1: fs.gui.collapsible_separator="Zoom parameters",
+#        x: mpmath.mpf="-1.0",
+#        y: mpmath.mpf="0.0",
+#        dx: mpmath.mpf="5.0",
+#        xy_ratio: float=1.0,
+#        theta_deg: float=0.0,
+#        dps: int=16,
+#        nx: int=600,
+#    
+#        _2: fs.gui.collapsible_separator="Calculation parameters",
+#        max_iter: int=5000,
+#        M_divergence: float=1000.,
+#        interior_detect: bool=True,
+#        epsilon_stationnary: float=0.001,
+#    
+#        _3: fs.gui.collapsible_separator="Bilinear series parameters",
+#        use_BLA: bool=True,
+#        eps: float=1.e-6,
+#    
+#        _4: fs.gui.collapsible_separator="Plotting parameters: base field",
+#        base_layer: typing.Literal[
+#                 "continuous_iter",
+#                 "distance_estimation"
+#        ]="continuous_iter",
+#        interior_mask: typing.Literal[
+#                 "all",
+#                 "not_diverging",
+#                 "dzndz_detection",
+#        ]="all",
+#        colormap: fs.colors.Fractal_colormap=(
+#                fs.colors.cmap_register["classic"]
+#        ),
+#        invert_cmap: bool=False,
+#        zmin: float=0.0,
+#        zmax: float=5.0,
+#    
+#        _5: fs.gui.collapsible_separator="Plotting parameters: shading",
+#        has_shading: bool=False,
+#        lighting: Blinn_lighting=(
+#                fs.colors.lighting_register["glossy"]
+#        ),
+#        max_slope: float = 60.,
+#    
+#        _6: fs.gui.collapsible_separator="Plotting parameters: field lines",
+#        has_fieldlines: bool=False,
+#        field_kind: typing.Literal["overlay", "twin"]="overlay",
+#        n_iter: int = 3,
+#        swirl: float = 0.,
+#        endpoint_k: float = 1.0,
+#        twin_intensity: float = 0.1,
+#
+#        _7: fs.gui.collapsible_separator="Interior points",
+#        interior_color: fs.colors.Color=(0.1, 0.1, 0.1, 1.0),
+#    
+#    
+#        _8: fs.gui.collapsible_separator="High-quality rendering options",
+#        final_render: bool=False,
+#        supersampling: fs.core.supersampling_type = "None",
+#        jitter: bool = False,
+#        reload: bool = False,
+#    
+#        _9: fs.gui.collapsible_separator="General settings",
+#        log_verbosity: typing.Literal[fs.log.verbosity_enum
+#                                      ]="debug @ console + log",
+#        enable_multithreading: bool = True,
+#        inspect_calc: bool = False,
+#    ):
+#
+#        fs.settings.log_directory = os.path.join(fractal.directory, "log")
+#        fs.set_log_handlers(verbosity=log_verbosity)
+#        fs.settings.enable_multithreading = enable_multithreading
+#        fs.settings.inspect_calc = inspect_calc
+#
+#        fractal.zoom(
+#            precision=dps,
+#            x=x,
+#            y=y,
+#            dx=dx,
+#            nx=nx,
+#            xy_ratio=xy_ratio,
+#            theta_deg=theta_deg,
+#            projection="cartesian",
+#        )
+#    
+#        BLA_eps = eps if use_BLA else None
+#    
+#        fractal.calc_std_div(
+#                calc_name=calc_name,
+#                subset=None,
+#                max_iter=max_iter,
+#                M_divergence=M_divergence,
+#                epsilon_stationnary=epsilon_stationnary,
+#                BLA_eps=BLA_eps,
+#                interior_detect=interior_detect,
+#            )
+#    
+#    
+#        pp = Postproc_batch(fractal, calc_name)
+#        
+#        if base_layer == "continuous_iter":
+#            pp.add_postproc(base_layer, Continuous_iter_pp())
+#    
+#        elif base_layer == "distance_estimation":
+#            pp.add_postproc("continuous_iter", Continuous_iter_pp())
+#            pp.add_postproc(base_layer, DEM_pp())
+#    
+#        if has_fieldlines:
+#            pp.add_postproc(
+#                "fieldlines",
+#                Fieldlines_pp(n_iter, swirl, endpoint_k)
+#            )
+#        else:
+#            field_kind = "None"
+#    
+#        interior_func = {
+#            "all": lambda x: x != 1,
+#            "not_diverging": lambda x: x == 0,
+#            "dzndz_detection": lambda x: x == 2,
+#        }[interior_mask]
+#        pp.add_postproc("interior", Raw_pp("stop_reason", func=interior_func))
+#    
+#        if has_shading:
+#            pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
+#    
+#        plotter = fs.Fractal_plotter(
+#            pp,
+#            final_render=final_render,
+#            supersampling=supersampling,
+#            jitter=jitter,
+#            reload=reload
+#        )
+#    
+#        plotter.add_layer(Bool_layer("interior", output=False))
+#    
+#        if field_kind == "twin":
+#            plotter.add_layer(Virtual_layer(
+#                "fieldlines", func=None, output=False
+#            ))
+#        elif field_kind == "overlay":
+#            plotter.add_layer(Grey_layer(
+#                "fieldlines", func=None, output=False
+#            ))
+#    
+#        if has_shading:
+#            plotter.add_layer(Normal_map_layer(
+#                "DEM_map", max_slope=max_slope, output=True
+#            ))
+#    
+#        if base_layer != 'continuous_iter':
+#            plotter.add_layer(
+#                Virtual_layer("continuous_iter", func=None, output=False)
+#            )
+#    
+#        sign = {False: 1., True: -1.}[invert_cmap]
+#        plotter.add_layer(Color_layer(
+#                base_layer,
+#                func=lambda x: sign * np.log(x),
+#                colormap=colormap,
+#                probes_z=[zmin, zmax],
+#                output=True))
+#        plotter[base_layer].set_mask(
+#            plotter["interior"], mask_color=interior_color
+#        )
+#    
+#        if field_kind == "twin":
+#            plotter[base_layer].set_twin_field(plotter["fieldlines"],
+#                   twin_intensity)
+#        elif field_kind == "overlay":
+#            overlay_mode = Overlay_mode("tint_or_shade", pegtop=1.0)
+#            plotter[base_layer].overlay(plotter["fieldlines"], overlay_mode)
+#    
+#        if has_shading:
+#            plotter[base_layer].shade(plotter["DEM_map"], lighting)
+#    
+#        plotter.plot()
+#        
+#        # Renaming output to match expected from the Fractal GUI
+#        layer = plotter[base_layer]
+#        file_name = "{}_{}".format(type(layer).__name__, layer.postname)
+#        src_path = os.path.join(fractal.directory, file_name + ".png")
+#        dest_path = os.path.join(fractal.directory, calc_name + ".png")
+#        if os.path.isfile(dest_path):
+#            os.unlink(dest_path)
+#        os.link(src_path, dest_path)
 
 
 
@@ -615,7 +618,8 @@ class shallowzooming(GUItemplate):
 
         badges = (
             "holomorphic", "implements_fieldlines", "implements_newton",
-            "implements_Milnor", "implements_interior_detection"
+            "implements_Milnor", "implements_interior_detection",
+            "implements_deepzoom"
         )
         for attr in badges:
             setattr(self, attr, getattr(fractal, attr, False))
@@ -623,10 +627,17 @@ class shallowzooming(GUItemplate):
         self.connect_image_params = {
             "image_param": "calc_name"
         }
-        self.connect_mouse_params = {
-            "x": "x", "y": "y", "dx": "dx",
-            "xy_ratio": "xy_ratio", "dps": None
-        }
+
+        if self.implements_deepzoom:
+            self.connect_mouse_params = {
+                "x": "x", "y": "y", "dx": "dx",
+                "xy_ratio": "xy_ratio", "dps": "dps"
+            }
+        else:
+            self.connect_mouse_params = {
+                "x": "x", "y": "y", "dx": "dx",
+                "xy_ratio": "xy_ratio", "dps": None
+            }
 
         if not(self.implements_newton):
             # Delete all parameters associated with Newton
@@ -652,6 +663,20 @@ class shallowzooming(GUItemplate):
             self.make_partial("skew_10", 0.)
             self.make_partial("skew_11", 1.)
 
+        if not(self.implements_fieldlines):
+            # Delete all parameters associated with fieldlines
+            self.make_partial("_6", None)
+            self.make_partial("has_fieldlines", False)
+            self.make_partial("fieldlines_func", None)
+            self.make_partial("fieldlines_kind", None)
+            self.make_partial("fieldlines_zmin", None)
+            self.make_partial("fieldlines_zmax", None)
+            self.make_partial("backshift", None)
+            self.make_partial("n_iter", None)
+            self.make_partial("swirl", None)
+            self.make_partial("damping_ratio", None)
+            self.make_partial("twin_intensity", None)
+
         if self.implements_Milnor:
             self.set_annotation(
                 "shading_kind",
@@ -659,9 +684,29 @@ class shallowzooming(GUItemplate):
                 'typing.Literal["potential", "Milnor"]'
             )
 
-        if not(self.implements_interior_detection):
+        if self.implements_interior_detection == "no":
+            self.make_partial("interior_detect", False)
             self.make_partial("epsilon_stationnary", None)
-            
+        elif self.implements_interior_detection == "always":
+            self.make_partial("interior_detect", True)
+        elif self.implements_interior_detection == "user":
+            pass
+        else:
+            raise ValueError(
+                    "Unexpected value for GUI interior_detection:"
+                    f"{self.implements_interior_detection}"
+            )
+
+        if self.implements_deepzoom:
+            self.set_annotation("x", mpmath.mpf, "mpmath.mpf")
+            self.set_annotation("y", mpmath.mpf, "mpmath.mpf")
+            self.set_annotation("dx", mpmath.mpf, "mpmath.mpf")
+            self.set_default("x", "-1.0")
+            self.set_default("y", "0.0")
+            self.set_default("dx", "5.0")
+        else:
+            self.make_partial("dps", None)
+
 
     def __call__(
         self,
@@ -669,25 +714,27 @@ class shallowzooming(GUItemplate):
         calc_name: str="shallowzoom",
 
         _1: fs.gui.collapsible_separator="Zoom parameters",
-        x: float=-1.0,
-        y: float=0.0,
-        dx: float=5.0,
-        xy_ratio: float=1.0,
-        theta_deg: float=0.0,
-        nx: int=600,
-        
-        _1b: fs.gui.collapsible_separator=(
+        x: float = -1.0,
+        y: float = 0.0,
+        dx: float = 5.0,
+        dps: int = 16,
+        xy_ratio: float = 1.0,
+        theta_deg: float = 0.0,
+        nx: int = 600,
+
+        _1b: fs.gui.collapsible_separator = (
                 "Skew parameters /!\ Re-run when modified!"
         ),
-        has_skew: bool=False,
-        skew_00: float=1.,
-        skew_01: float=0.,
-        skew_10: float=0.,
-        skew_11: float=1.,
+        has_skew: bool = False,
+        skew_00: float = 1.,
+        skew_01: float = 0.,
+        skew_10: float = 0.,
+        skew_11: float = 1.,
 
         _2: fs.gui.collapsible_separator="Calculation parameters",
         max_iter: int = 5000,
         M_divergence: float = 1000.,
+        interior_detect: bool = True,
         epsilon_stationnary: float = 0.001,
 
         _3: fs.gui.collapsible_separator = "Newton parameters",
@@ -775,20 +822,25 @@ class shallowzooming(GUItemplate):
         fs.settings.enable_multithreading = enable_multithreading
         fs.settings.inspect_calc = inspect_calc
 
-        fractal.zoom(
-            x=x,
-            y=y,
-            dx=dx,
-            nx=nx,
-            xy_ratio=xy_ratio,
-            theta_deg=theta_deg,
-            projection="cartesian",
-            has_skew=has_skew,
-            skew_00=skew_00,
-            skew_01=skew_01,
-            skew_10=skew_10,
-            skew_11=skew_11
-        )
+
+        zoom_kwargs = {
+            "x": x,
+            "y": y,
+            "dx": dx,
+            "nx": nx,
+            "xy_ratio": xy_ratio,
+            "theta_deg": theta_deg,
+            "projection": "cartesian",
+            "has_skew": has_skew,
+            "skew_00": skew_00,
+            "skew_01": skew_01,
+            "skew_10": skew_10,
+            "skew_11": skew_11
+        }
+        if fractal.implements_deepzoom:
+            zoom_kwargs["precision"] = dps
+        fractal.zoom(**zoom_kwargs)
+
 
         calc_std_div_kw = {
             "calc_name": calc_name,
@@ -802,11 +854,14 @@ class shallowzooming(GUItemplate):
             calc_orbit = (backshift > 0)
             calc_std_div_kw["calc_orbit"] = calc_orbit
             calc_std_div_kw["backshift"] = backshift
-        if fractal.implements_interior_detection:
+        if fractal.implements_interior_detection == "always":
             calc_std_div_kw["epsilon_stationnary"] = epsilon_stationnary
-            
+        elif fractal.implements_interior_detection == "user":
+            calc_std_div_kw["interior_detect"] = interior_detect
+            calc_std_div_kw["epsilon_stationnary"] = epsilon_stationnary
 
         fractal.calc_std_div(**calc_std_div_kw)
+
 
         # Run the calculation for the interior points - if wanted
         if compute_newton:
@@ -954,7 +1009,7 @@ class shallowzooming(GUItemplate):
             )
 
         plotter.plot()
-        
+
         # Renaming output to match expected from the Fractal GUI
         layer = plotter[base_layer]
         file_name = "{}_{}".format(type(layer).__name__, layer.postname)

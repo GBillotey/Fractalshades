@@ -10,6 +10,10 @@ import fractalshades.mpmath_utils.FP_loop as fsFP
 from fractalshades.postproc import Fractal_array
 
 
+@numba.njit
+def M2_iterate(zn, c):
+    return zn * zn + c
+
 class Mandelbrot(fs.Fractal):
 
     def __init__(self, directory: str):
@@ -32,23 +36,18 @@ directory : str
         self.potential_kind = "infinity"
         self.potential_d = 2
         self.potential_a_d = 1.
-        # Minimum M for valid potential estimation
-        self.potential_M_cutoff = 1000.
+        self.potential_M_cutoff = 1000. # Minimum M for valid potential
 
         # GUI 'badges'
         self.holomorphic = True
         self.implements_fieldlines = True
         self.implements_newton = True
         self.implements_Milnor = True
-        self.implements_interior_detection = True
+        self.implements_interior_detection = "always"
+        self.implements_deepzoom = False
 
         # Orbit 'on the fly' calculation
-        @numba.njit
-        def _zn_iterate(zn, c):
-            return zn * zn + c
-        self.zn_iterate = _zn_iterate
-
-        self.zn_iterate = _zn_iterate
+        self.zn_iterate = M2_iterate
 
 
     @fs.utils.calc_options
@@ -331,10 +330,23 @@ directory : str
         self.potential_kind = "infinity"
         self.potential_d = 2
         self.potential_a_d = 1.
+        self.potential_M_cutoff = 1000. # Minimum M for valid potential
+
         # Set parameters for the full precision orbit
         self.critical_pt = 0.
         self.FP_code = "zn"
+
+        # GUI 'badges'
         self.holomorphic = True
+        self.implements_fieldlines = True
+        self.implements_newton = False
+        self.implements_Milnor = False
+        self.implements_interior_detection = "user"
+        self.implements_deepzoom = True
+
+        # Orbit 'on the fly' calculation
+        self.zn_iterate = M2_iterate
+
 
     def FP_loop(self, NP_orbit, c0):
         """
@@ -369,7 +381,9 @@ directory : str
         epsilon_stationnary: float,
         BLA_eps: float=1e-6,
         interior_detect: bool=False,
-        calc_dzndc: bool=True
+        calc_dzndc: bool=True,
+        calc_orbit: bool = False,
+        backshift: int = 0
     ):
         """
 Perturbation iterations (arbitrary precision) for Mandelbrot standard set
@@ -400,13 +414,11 @@ interior_detect : bool
     If True, activates interior point early detection.
     This will trigger the computation of additionnal quantities, so will be
     efficient only when a mini fills a significant part of the view.
+calc_orbit: bool
+    If True, stores the value of an orbit point @ exit - backshift
+backshift: int (> 0)
+    The number of iteration backward for the stored orbit starting point
 """
-        # self.init_data_types(np.complex128)
-
-        # used for potential post-processing
-        # self.potential_M = M_divergence
-
-        # Complex complex128 fields codes "Z" 
         complex_codes = ["zn"]
         zn = 0
         code_int = 0
@@ -425,6 +437,13 @@ interior_detect : bool
             dzndc = code_int
         else:
             dzndc = -1
+
+        if calc_orbit:
+            code_int += 1
+            complex_codes += ["zn_orbit"]
+            i_znorbit = code_int
+        else:
+            i_znorbit = -1
 
         # Integer int32 fields codes "U" 
         int_codes = ["ref_cycle_iter"] # Position in ref orbit
@@ -489,6 +508,9 @@ interior_detect : bool
         def p_iter_dzndc(Z, ref_zn, ref_dzndc):
             Z[dzndc] = 2. * ((ref_zn + Z[zn]) * Z[dzndc] + ref_dzndc * Z[zn])
 
+
+        zn_iterate = self.zn_iterate
+
         def iterate():
             return fs.perturbation.numba_iterate(
                 max_iter, M_divergence_sq, epsilon_stationnary_sq,
@@ -497,6 +519,7 @@ interior_detect : bool
                 zn, dzndc, dzndz,
                 p_iter_zn, p_iter_dzndz, p_iter_dzndc,
                 calc_dzndc, calc_dzndz,
+                calc_orbit, i_znorbit, backshift, zn_iterate # Added args
             )
 
         return {
@@ -629,7 +652,6 @@ https://fractalforums.org/fractal-mathematics-and-new-theories/28/miniset-and-em
             seed_prec,
             order
         )
-        print("raw nucleus_size", nucleus_size)
         nucleus_size = np.abs(nucleus_size)
 
         # r_J = r_M ** 0.75 for power 2 Mandelbrot

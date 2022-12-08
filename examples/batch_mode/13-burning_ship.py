@@ -76,7 +76,6 @@ def plot(plot_dir):
         xy_ratio=xy_ratio,
         theta_deg=0., 
         projection="cartesian",
-        antialiasing=False,
         has_skew=has_skew,
         skew_00=skew_00,
         skew_01=skew_01,

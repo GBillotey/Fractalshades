@@ -352,7 +352,6 @@ class Func_submodel(Submodel):
             (iparam, i_union, 'val') the value (*)
         """
         fd = self._dict #= dict()
-#        sign = inspect.signature(self._func)
         sign = fs.gui.guitemplates.signature(self._func)
         fd["n_params"] = len(sign.parameters.items())
         for i_param, (name, param) in enumerate(sign.parameters.items()):
@@ -422,7 +421,6 @@ class Func_submodel(Submodel):
         """
         fd = self._dict
         fd[(i_param, i_union, "type")] = utype
-#        fd[(i_param, i_union, "type")] = utype #.__name__
 
         if ((fd[(i_param, "n_types")] > 0)
                 and (i_union != fd[(i_param, "type_def")])):

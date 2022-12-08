@@ -17,6 +17,8 @@ import fractalshades.numpy_utils.numba_xr as fsxn
 
 logger = logging.getLogger(__name__)
 
+PROJECTION_ENUM = fs.core.PROJECTION_ENUM
+
 class PerturbationFractal(fs.Fractal):
 
     def __init__(self, directory):
@@ -145,6 +147,24 @@ directory : str
                  abs(ref - corner_c), abs(ref - corner_d)) * 1.1
 
         return fsx.mpf_to_Xrange(kc, dtype=np.float64)
+    
+    def get_std_cpt(self, c_pix):
+        """ Return the c complex value from c_pix - standard precision """
+        n_pts, = c_pix.shape  # Z of shape [n_Z, n_pts]
+        # Explicit casting to complex / float
+        dx = float(self.dx)
+        center = complex(self.x + 1j * self.y)
+        ref_point = complex(self.FP_params["ref_point"])
+        drift = complex((self.x + 1j * self.y) - ref_point)
+
+        xy_ratio = self.xy_ratio
+        theta = self.theta_deg / 180. * np.pi # used for expmap
+        projection = getattr(PROJECTION_ENUM, self.projection).value
+        cpt = np.empty((n_pts,), dtype=c_pix.dtype)
+        fill1d_std_C_from_pix(
+            c_pix, dx, center, drift, xy_ratio, theta, projection, cpt
+        )
+        return cpt
 
 
     def ref_point_matching(self):
@@ -835,8 +855,10 @@ directory : str
         FP_params["xr"] = {}
         FP_params["div_iter"] = div_iter
 
-        Zn_path = np.empty([div_iter + 1], dtype=np.complex128)
+        Zn_path = np.zeros([div_iter + 1], dtype=np.complex128)
         Zn_path[:] = crit
+        
+        print("store_critical_orbit", crit, Zn_path)
 
         self.save_ref_point(FP_params, Zn_path)
 
@@ -1097,6 +1119,7 @@ def numba_iterate(
         zn, dzndc, dzndz,
         p_iter_zn, p_iter_dzndz, p_iter_dzndc,
         calc_dzndc, calc_dzndz,
+        calc_orbit, i_znorbit, backshift, zn_iterate # Added args
 ):
 
     @numba.njit(fastmath=True, error_model="numpy")
@@ -1117,6 +1140,13 @@ def numba_iterate(
         n_iter = 0
         if w_iter >= ref_order:
             w_iter = w_iter % ref_order
+
+        if calc_orbit:
+            div_shift = 0
+            orbit_zn1 = Z[zn]
+            orbit_zn2 = Z[zn]
+            orbit_i1 = 0
+            orbit_i2 = 0
             
         if calc_dzndz:
             nullify_dZndz = False
@@ -1272,6 +1302,16 @@ def numba_iterate(
             # div condition computation with std only
             ZZ = Z[zn] + ref_zn_next
             full_sq_norm = ZZ.real ** 2 + ZZ.imag ** 2
+            
+            # Storing the orbit for future use
+            if calc_orbit:
+                div = n_iter // backshift
+                if div > div_shift:
+                    div_shift = div
+                    orbit_i2 = orbit_i1
+                    orbit_zn2 = orbit_zn1
+                    orbit_i1 = n_iter
+                    orbit_zn1 = ZZ
 
             # Flagged as 'diverging'
             bool_infty = (full_sq_norm > M_divergence_sq)
@@ -1383,6 +1423,14 @@ def numba_iterate(
         else:
             Z[zn] += Zn_path[w_iter]
             Z[dzndc] += dZndc_path[w_iter]
+        
+        if calc_orbit: # Finalizing the orbit
+            zn_orbit = orbit_zn2
+            CC = c + Zn_path[1]
+            while orbit_i2 < n_iter - backshift:
+                zn_orbit = zn_iterate(zn_orbit, CC)
+                orbit_i2 += 1
+            Z[i_znorbit] = zn_orbit
 
         return n_iter
 
@@ -1750,101 +1798,101 @@ def apply_BLA_deriv_BS(M, Z, a, b, dxnda, dxndb, dynda, dyndb):
     Z[dynda] = Z_dynda
     Z[dyndb] = Z_dyndb
 
-#------------------------------------------------------------------------------
-# Series approximations
-@numba.njit
-def numba_SA_run(
-        SA_loop, 
-        Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
-        kc, SA_cutdeg, SA_err_sq, SA_stop
-):
-    """
-    SA_loop function with signature (P, n_iter, ref_zn_xr, kcX)
-    Ref_path : Ref_path object
-    kc = Xrange float
-    SA_err_sq : float
-    SA_stop : int or -1
-    SA_cutdeg :  int
-    
-    SA_stop : user-provided max SA iter. If -1, will default to ref_path length
-    ref_div_iter : point where Reference point DV
-    """
-    # Note : SA 23064 23063 for order 23063
-    # ref_path[ref_order-1] ** 2 == -c OK
-    # print("SA", ref_div_iter, ref_order)#, ref_path[ref_order-1])
-    if SA_stop == -1:
-        SA_stop = ref_div_iter
-    else:
-        SA_stop = min(ref_div_iter, SA_stop)
-
-    print_freq = max(5, int(SA_stop / 100000.))
-    print_freq *= 1000
-#    print("numba_SA_cycles - output every", print_freq)
-
-    SA_valid = True
-    n_real_iter = 0
-    n_iter = 0
-
-    P0_arr = Xr_template.repeat(1)
-    P0_err = Xr_float_template.repeat(1)
-    P = fsx.Xrange_SA(P0_arr, cutdeg=SA_cutdeg, err=P0_err) # P0
-
-    kcX_arr = Xr_template.repeat(2)
-    kcX_arr[1] = kc[0]
-    kcX_err = Xr_float_template.repeat(1)
-    kcX = fsx.Xrange_SA(kcX_arr, cutdeg=SA_cutdeg, err=kcX_err)
-    
-    # refpath_ptr = [prev_idx, curr_xr]
-    refpath_ptr = np.zeros((2,), dtype=numba.int32)
-    out_is_xr = np.zeros((1,), dtype=numba.bool_)
-    out_xr = Xr_template.repeat(1)
-
-    while SA_valid:
-
-        # keep a copy in case this iter is invalidated
-        P_old = P.coeffs.copy()
-
-        # Load reference point value
-        # refpath_ptr = [prev_idx, curr_xr]
-        ref_zn = ref_path_get(
-            Zn_path, n_iter,
-            has_xr, ref_index_xr, ref_xr, refpath_ptr,
-            out_is_xr, out_xr, 0
-        )
-
-        # incr iter
-        n_real_iter +=1
-        n_iter += 1
-        # wraps to 0 when reaching cycle order
-        if n_iter >= ref_order:
-            n_iter -= ref_order
-
-        ref_zn_xr = ensure_xr(ref_zn, out_xr[0], out_is_xr[0])
-        P = SA_loop(P, n_iter, ref_zn_xr, kcX)
-
-        coeffs_sum = fsxn.Xrange_scalar(0., numba.int32(0))
-        for i in range(len(P.coeffs)):
-            coeffs_sum = coeffs_sum + fsxn.extended_abs2(P.coeffs[i])
-        err_abs2 = P.err[0] * P.err[0]
-
-        SA_valid = (
-            (err_abs2  <= SA_err_sq * coeffs_sum) # relative err
-            and (coeffs_sum <= 1.e6) # 1e6 to allow 'low zoom'
-            and (n_iter < SA_stop)
-        )
-        if not(SA_valid):
-            P_ret = fsx.Xrange_polynomial(P_old, P.cutdeg)
-            n_real_iter -= 1
-
-        if n_iter % print_freq == 0 and SA_valid:
-            ssum = np.sqrt(coeffs_sum)
-            print(
-                "SA running", n_real_iter,
-                "err: ", fsxn.to_Xrange_scalar(P.err[0]),
-                "<< ", ssum
-            )
-
-    return P_ret, n_real_iter, P.err
+##------------------------------------------------------------------------------
+## Series approximations
+#@numba.njit
+#def numba_SA_run(
+#        SA_loop, 
+#        Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
+#        kc, SA_cutdeg, SA_err_sq, SA_stop
+#):
+#    """
+#    SA_loop function with signature (P, n_iter, ref_zn_xr, kcX)
+#    Ref_path : Ref_path object
+#    kc = Xrange float
+#    SA_err_sq : float
+#    SA_stop : int or -1
+#    SA_cutdeg :  int
+#    
+#    SA_stop : user-provided max SA iter. If -1, will default to ref_path length
+#    ref_div_iter : point where Reference point DV
+#    """
+#    # Note : SA 23064 23063 for order 23063
+#    # ref_path[ref_order-1] ** 2 == -c OK
+#    # print("SA", ref_div_iter, ref_order)#, ref_path[ref_order-1])
+#    if SA_stop == -1:
+#        SA_stop = ref_div_iter
+#    else:
+#        SA_stop = min(ref_div_iter, SA_stop)
+#
+#    print_freq = max(5, int(SA_stop / 100000.))
+#    print_freq *= 1000
+##    print("numba_SA_cycles - output every", print_freq)
+#
+#    SA_valid = True
+#    n_real_iter = 0
+#    n_iter = 0
+#
+#    P0_arr = Xr_template.repeat(1)
+#    P0_err = Xr_float_template.repeat(1)
+#    P = fsx.Xrange_SA(P0_arr, cutdeg=SA_cutdeg, err=P0_err) # P0
+#
+#    kcX_arr = Xr_template.repeat(2)
+#    kcX_arr[1] = kc[0]
+#    kcX_err = Xr_float_template.repeat(1)
+#    kcX = fsx.Xrange_SA(kcX_arr, cutdeg=SA_cutdeg, err=kcX_err)
+#    
+#    # refpath_ptr = [prev_idx, curr_xr]
+#    refpath_ptr = np.zeros((2,), dtype=numba.int32)
+#    out_is_xr = np.zeros((1,), dtype=numba.bool_)
+#    out_xr = Xr_template.repeat(1)
+#
+#    while SA_valid:
+#
+#        # keep a copy in case this iter is invalidated
+#        P_old = P.coeffs.copy()
+#
+#        # Load reference point value
+#        # refpath_ptr = [prev_idx, curr_xr]
+#        ref_zn = ref_path_get(
+#            Zn_path, n_iter,
+#            has_xr, ref_index_xr, ref_xr, refpath_ptr,
+#            out_is_xr, out_xr, 0
+#        )
+#
+#        # incr iter
+#        n_real_iter +=1
+#        n_iter += 1
+#        # wraps to 0 when reaching cycle order
+#        if n_iter >= ref_order:
+#            n_iter -= ref_order
+#
+#        ref_zn_xr = ensure_xr(ref_zn, out_xr[0], out_is_xr[0])
+#        P = SA_loop(P, n_iter, ref_zn_xr, kcX)
+#
+#        coeffs_sum = fsxn.Xrange_scalar(0., numba.int32(0))
+#        for i in range(len(P.coeffs)):
+#            coeffs_sum = coeffs_sum + fsxn.extended_abs2(P.coeffs[i])
+#        err_abs2 = P.err[0] * P.err[0]
+#
+#        SA_valid = (
+#            (err_abs2  <= SA_err_sq * coeffs_sum) # relative err
+#            and (coeffs_sum <= 1.e6) # 1e6 to allow 'low zoom'
+#            and (n_iter < SA_stop)
+#        )
+#        if not(SA_valid):
+#            P_ret = fsx.Xrange_polynomial(P_old, P.cutdeg)
+#            n_real_iter -= 1
+#
+#        if n_iter % print_freq == 0 and SA_valid:
+#            ssum = np.sqrt(coeffs_sum)
+#            print(
+#                "SA running", n_real_iter,
+#                "err: ", fsxn.to_Xrange_scalar(P.err[0]),
+#                "<< ", ssum
+#            )
+#
+#    return P_ret, n_real_iter, P.err
 
 
 #------------------------------------------------------------------------------
@@ -2288,6 +2336,43 @@ def ref_path_c_from_pix(pix, dx, drift):
     c_xr = (pix * dx[0]) + drift[0]
     return fsxn.to_standard(c_xr), c_xr
 
+
+proj_cartesian = PROJECTION_ENUM.cartesian.value
+proj_spherical = PROJECTION_ENUM.spherical.value
+proj_expmap = PROJECTION_ENUM.expmap.value
+
+@numba.njit
+def std_C_from_pix(pix, dx, center, drift, xy_ratio, theta, projection):
+    """
+    Returns the true C (C = cref + dc) from the pixel coords
+
+    Parameters
+    ----------
+    pix :  complex
+        pixel location in fraction of dx
+
+    Returns
+    -------
+    C : Full C value, as complex
+    """
+    # Case cartesian
+    if projection == proj_cartesian:
+        offset = (pix * dx) # resp. to ref_pt
+
+#    offset -= drift    # center - ref_pt DO not take into account here...
+    return offset + center
+
+@numba.njit
+def fill1d_std_C_from_pix(c_pix, dx, center, drift, xy_ratio, theta, projection,
+                               c_out):
+    """ same as std_C_from_pix but fills in-place a 1d vec """
+    nx = c_pix.shape[0]
+    for i in range(nx):
+        c_out[i] = std_C_from_pix(
+            c_pix[i], dx, center, drift, xy_ratio, theta, projection
+        )
+
+
 @numba.njit
 def ref_path_c_from_pix_BS(pix, dx, driftx_xr, drifty_xr):
     """
@@ -2307,7 +2392,6 @@ def ref_path_c_from_pix_BS(pix, dx, driftx_xr, drifty_xr):
     a_xr = (pix.real * dx[0]) + driftx_xr[0]
     b_xr = (pix.imag * dx[0]) + drifty_xr[0]
     return fsxn.to_standard(a_xr), fsxn.to_standard(b_xr), a_xr, b_xr
-
 
 @numba.njit
 def numba_dZndc_path(Zn_path, has_xr, ref_index_xr, ref_xr,
