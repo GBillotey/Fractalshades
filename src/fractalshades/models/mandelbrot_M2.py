@@ -82,10 +82,6 @@ directory : str
         A small criteria (typical range 0.01 to 0.001) used to detect earlier
         points belonging to a minibrot, based on dzndz1 value.
         If reached, the loop is exited with exit code "stationnary"
-    interior_detect : bool
-        If True, activates interior point early detection.
-        This will trigger the additional computation of *dzndz*, so will be
-        efficient only when a mini fills a significant part of the view.
     calc_d2zndc2:
         If True, activates the additional computation of *d2zndc2*, needed 
         only for the alternative normal map shading 'Milnor'.

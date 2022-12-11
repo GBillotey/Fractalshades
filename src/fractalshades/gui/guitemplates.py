@@ -612,12 +612,14 @@ class std_zooming(GUItemplate):
                                       ]="debug @ console + log",
         enable_multithreading: bool = True,
         inspect_calc: bool = False,
+        no_newton: bool = False
     ):
 
         fs.settings.log_directory = os.path.join(fractal.directory, "log")
         fs.set_log_handlers(verbosity=log_verbosity)
         fs.settings.enable_multithreading = enable_multithreading
         fs.settings.inspect_calc = inspect_calc
+        fs.settings.no_newton = no_newton
 
 
         zoom_kwargs = {

@@ -7,6 +7,7 @@
 This example shows one of the ways to plot fieldlines: here the fieldlines 
 values are used to modify the original layer colors : they are tinted or
 shaded.
+Notice the use of `calc_orbit` and backshift` during the calculation.
 
 The location is around the 1/3 main bulb.
 
@@ -14,7 +15,6 @@ Reference:
 `fractalshades.models.Mandelbrot`
 """
 import os
-import numpy as np
 
 import fractalshades as fs
 import fractalshades.models as fsm
@@ -50,12 +50,14 @@ def plot(plot_dir):
     f = fsm.Mandelbrot(plot_dir)
     f.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
            theta_deg=0., projection="cartesian")
-    f.base_calc(
+    f.calc_std_div(
         calc_name=calc_name,
         subset=None,
         max_iter=5000,
         M_divergence=100.,
-        epsilon_stationnary= 0.001,
+        epsilon_stationnary= 0.01,
+        calc_orbit=True,
+        backshift=3
     )
 
     # Plot the image
@@ -64,22 +66,21 @@ def plot(plot_dir):
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
     pp.add_postproc(
         "fieldlines",
-        Fieldlines_pp(n_iter=4, swirl=0., damping_ratio=1.0)
+        Fieldlines_pp(n_iter=4, swirl=0., endpoint_k=1.0)
     )
 
-    plotter = fs.Fractal_plotter(pp, final_render=False, supersampling="3x3")   
+    plotter = fs.Fractal_plotter(pp)
     plotter.add_layer(Bool_layer("interior", output=False))
     plotter.add_layer(Color_layer(
             "cont_iter",
             func="np.log(x)",
             colormap=colormap,
-            probes_z=[-0.5, 2.1],
-            probes_kind="absolute",
+            probes_z=[0.5, 2.1],
             output=True
     ))
     plotter.add_layer(
             Grey_layer("fieldlines", func=None, output=True,
-                       probes_z=[-1.0, 1.0])
+            probes_z=[-0.6281, 0.952])
     )
     plotter["cont_iter"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
     # This is the lines where we indicate that coloring is shaded or tinted

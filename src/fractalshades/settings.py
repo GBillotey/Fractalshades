@@ -10,12 +10,6 @@ this_module = sys.modules[__name__]
 enable_multithreading = True
 """Turn on or off multithreading (for debugging purpose)"""
 
-optimize_RAM = False
-"""If true, memory mappings will be used not only during calculation but also
-at post-processing stage. This obviously is at the detriment of speed
-but will avoid memory errors for very large images or on system with low RAM.
-"""
-
 skip_calc = False
 """If True, no calculation "loop" will be performed. Only the data already
 calculated will be post-processed"""

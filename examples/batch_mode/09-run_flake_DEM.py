@@ -43,6 +43,7 @@ def plot(directory):
     """
     Example plot of distance estimation method
     """
+    settings.enable_multithreading = True
     # A simple showcase using perturbation technique
     precision = 164
     nx = 2400
@@ -51,11 +52,6 @@ def plot(directory):
     dx = '1.7e-157'
 
     colormap = fscolors.cmap_register["valensole"]
-
-    # Set to True if you only want to rerun the post-processing part
-    settings.skip_calc = False
-    # Set to True to enable multi-processing
-    settings.enable_multithreading = True
 
     f = fsm.Perturbation_mandelbrot(directory)
     f.zoom(precision=precision,
@@ -88,7 +84,7 @@ def plot(directory):
     
     plotter = fs.Fractal_plotter(pp, final_render=False, supersampling="2x2")   
     plotter.add_layer(Bool_layer("interior", output=False))
-    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=False))
+    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=35, output=False))
     plotter.add_layer(Virtual_layer("potential", func=None, output=False))
     plotter.add_layer(Color_layer(
             "DEM",
@@ -104,26 +100,22 @@ def plot(directory):
     plotter["DEM_map"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
 
 
-    # This is where we define the lighting (here 3 ccolored light sources)
+    # This is where we define the lighting (here 2 light sources)
     # and apply the shading
-    light = Blinn_lighting(0.4, np.array([1., 1., 1.]))
+    light = Blinn_lighting(0.35, np.array([1., 1., 1.]))
     light.add_light_source(
-        k_diffuse=0.2,
-        k_specular=300.,
-        shininess=1400.,
+        k_diffuse=0.0,
+        k_specular=600.,
+        shininess=200.,
         polar_angle=75.,
-        azimuth_angle=20.,
-#        angles=(75., 20.),
-#        coords=None,
-        color=np.array([0.9, 0.9, 1.5]))
+        azimuth_angle=5.,
+        color=np.array([0.9, 0.9, 0.2]))
     light.add_light_source(
-        k_diffuse=2.8,
-        k_specular=2.,
+        k_diffuse=1.9,
+        k_specular=0.,
         shininess=400.,
         polar_angle=75.,
-        azimuth_angle=20.,
-#        angles=(75., 20.),
-#        coords=None,
+        azimuth_angle=30.,
         color=np.array([1., 1., 1.]))
     plotter["DEM"].shade(plotter["DEM_map"], light)
 

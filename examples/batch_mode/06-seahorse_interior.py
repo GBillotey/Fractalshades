@@ -54,30 +54,24 @@ def plot(plot_dir=None):
     fs.settings.optimize_RAM = True
 
     calc_name="escaping"
-    colormap = fscolors.Fractal_colormap(
-            colors=[[0.5, 0.5, 0.5],
-                    [0.5, 0.5, 0.5]],
-            kinds=['Lab'],
-            grad_npts=[2],
-            grad_funcs=['x'],
-            extent='mirror'
-        )
-    colormap_int = fscolors.cmap_register["stellar"]
 
+    colormap = fscolors.cmap_register["legacy"]
+    colormap_int = fscolors.cmap_register["legacy"]
 
     # Run the calculation
     f = fsm.Mandelbrot(plot_dir)
     f.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
            theta_deg=0., projection="cartesian")
-    f.base_calc(
+    f.calc_std_div(
         calc_name=calc_name,
         subset=None,
-        max_iter=5000,
+        max_iter=25000,
         M_divergence=40.,
         epsilon_stationnary= 0.001,
+        calc_orbit=True,
+        backshift=3
     )
-    # f.clean_up("escaping") # keep this line if you want to force recalculate
-    
+
     # Run the calculation for the interior points
     interior = Fractal_array(f, "escaping", "stop_reason", func= "x != 1")
     f.newton_calc(
@@ -88,7 +82,6 @@ def plot(plot_dir=None):
         max_newton=20,
         eps_newton_cv=1.e-12,
     )
-    # f.clean_up("interior")
 
     # Plot the image
     pp = Postproc_batch(f, calc_name)
@@ -97,8 +90,8 @@ def plot(plot_dir=None):
     #pp.add_postproc("div", Raw_pp("stop_reason", func="x == 1."))
     pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
     pp.add_postproc("fieldlines",
-                Fieldlines_pp(n_iter=3, swirl=0.0, damping_ratio=0.6))
-    
+                Fieldlines_pp(n_iter=4, swirl=0.0, endpoint_k=0.6))
+
     # Defines a second pastproc batch for interior points
     pp_int = Postproc_batch(f, "interior")
     pp_int.add_postproc("attr_map", Attr_normal_pp())
@@ -111,27 +104,24 @@ def plot(plot_dir=None):
     )  
     plotter.add_layer(Bool_layer("interior", output=False))
     plotter.add_layer(Bool_layer("div", output=True))
-    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=False))
+    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=30, output=False))
     plotter.add_layer(Normal_map_layer("attr_map", max_slope=90, output=False))
     plotter.add_layer(Color_layer(
             "cont_iter",
             func="np.log(x)",
             colormap=colormap,
-            probes_z=[-2., 0.],
-#            probes_kind="absolute",
+            probes_z=[1., 2.],
             output=True
     ))
     plotter.add_layer(Color_layer(
             "attr",
-            func=None, #"x * -1. + 1.", #"np.log(x)",
+            func=None,
             colormap=colormap_int,
-            probes_z=[0., 1.],
-#            probes_kind="absolute",
+            probes_z=[1., 2.],
             output=False))
     plotter.add_layer(
         Grey_layer("fieldlines", func=None,
-                   probes_z=[-0.5809746980667114, 0.5808975100517273],
-                   # curve=lambda x: 0.5 + (x - 0.5) * 0.4,
+                   probes_z=[-2, 2],
                    output=True)
     )
 
@@ -142,34 +132,33 @@ def plot(plot_dir=None):
 
     # This is where we define the lighting (here 3 ccolored light sources)
     # and apply the shading
-    light = Blinn_lighting(0.4, np.array([1., 1., 1.]))
+    light = Blinn_lighting(0.35, np.array([1., 1., 1.]))
     light.add_light_source(
         k_diffuse=0.2,
-        k_specular=10.,
+        k_specular=25.,
         shininess=400.,
         polar_angle=-135.,
-        azimuth_angle=20.,
-#        angles=(-135., 20.),
-#        coords=None,
-        color=np.array([0.05, 0.05, 1.0]))
+        azimuth_angle=15.,
+        color=np.array([0.05, 0.05, 1.0])
+    )
     light.add_light_source(
         k_diffuse=0.2,
         k_specular=10.,
         shininess=400.,
         polar_angle=135.,
-        azimuth_angle=20.,
-#        angles=(135., 20.),
-#        coords=None,
-        color=np.array([0.5, 0.5, .4]))
+        azimuth_angle=15.,
+        color=np.array([0.5, 0.5, .4])
+    )
     light.add_light_source(
         k_diffuse=1.3,
         k_specular=0.,
         shininess=0.,
         polar_angle=90.,
-        azimuth_angle=40.,
-#        angles=(90., 40.),
-#        coords=None,
-        color=np.array([1.0, 1.0, 1.0]))
+        azimuth_angle=10.,
+        color=np.array([1.0, 1.0, 1.0])
+    )
+    plotter["cont_iter"].shade(plotter["DEM_map"], light)
+    plotter.plot()
 
     # Adds some shading based on the previouly defined normal maps
     plotter["cont_iter"].shade(plotter["DEM_map"], light)
@@ -177,7 +166,7 @@ def plot(plot_dir=None):
 
     # Overlay : tint or shade depending on fieldlines layer value
     overlay_mode = Overlay_mode("tint_or_shade", pegtop=1.)
-    # plotter["cont_iter"].overlay(plotter["fieldlines"], overlay_mode)
+    plotter["cont_iter"].overlay(plotter["fieldlines"], overlay_mode)
 
     # Overlay : alpha composite with "interior" layer ie, where it is not
     # masked, we take the value of the "attr" layer

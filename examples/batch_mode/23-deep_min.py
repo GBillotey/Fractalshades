@@ -19,7 +19,6 @@ import typing
 
 import numpy as np
 import mpmath
-from PyQt6 import QtGui
 
 import fractalshades as fs
 import fractalshades.models as fsm
@@ -59,7 +58,6 @@ def plot(plot_dir):
     theta_deg = 0.0
     dps = 550
     nx = 3200
-    antialiasing = True
     _2 = 'Calculation parameters'
     max_iter = 400000000
     M_divergence = 100.0
@@ -83,9 +81,8 @@ def plot(plot_dir):
         extent='mirror'
     )
     invert_cmap = False
-    cmap_z_kind = 'relative'
-    zmin = 0.0
-    zmax = 0.66
+    zmin = 13.193805694580078
+    zmax = 0.34 * 13.193805694580078 + 0.66 * 19.80672264099121
     _5 = 'Plotting parameters: shading'
     shade_kind = 'glossy'
     gloss_intensity = 10.0
@@ -114,7 +111,6 @@ def plot(plot_dir):
          theta_deg: float=theta_deg,
          dps: int=dps,
          nx: int=nx,
-         antialiasing: bool=False,
 
          _2: fsgui.separator="Calculation parameters",
          max_iter: int=max_iter,
@@ -136,10 +132,9 @@ def plot(plot_dir):
                  "not_diverging",
                  "dzndz_detection",
          ]="all",
-         interior_color: QtGui.QColor=(0.1, 0.1, 0.1),
+         interior_color=(0.1, 0.1, 0.1),
          colormap: fscolors.Fractal_colormap=colormap,
          invert_cmap: bool=False,
-         cmap_z_kind: typing.Literal["relative", "absolute"]=cmap_z_kind,
          zmin: float=zmin,
          zmax: float=zmax,
 
@@ -147,8 +142,8 @@ def plot(plot_dir):
          shade_kind: typing.Literal["None", "standard", "glossy"]=shade_kind,
          gloss_intensity: float=10.,
          light_angle_deg: float=65.,
-         light_color: QtGui.QColor=(1.0, 1.0, 1.0),
-         gloss_light_color: QtGui.QColor=(1.0, 1.0, 1.0),
+         light_color=(1.0, 1.0, 1.0),
+         gloss_light_color=(1.0, 1.0, 1.0),
 
          _6: fsgui.separator="Plotting parameters: field lines",
          field_kind: typing.Literal["None", "overlay", "twin"]=field_kind,
@@ -167,13 +162,12 @@ def plot(plot_dir):
             xy_ratio=xy_ratio,
             theta_deg=theta_deg,
             projection="cartesian",
-            antialiasing=antialiasing
         )
 
         if use_BLA:
-            BLA_params={"eps": eps}
+            BLA_eps=eps
         else:
-            BLA_params = None
+            BLA_eps=None
             
         fractal.calc_std_div(
                 calc_name=calc_name,
@@ -181,18 +175,9 @@ def plot(plot_dir):
                 max_iter=max_iter,
                 M_divergence=M_divergence,
                 epsilon_stationnary=epsilon_stationnary,
-                SA_params=None,
-                BLA_params=BLA_params,
+                BLA_eps=BLA_eps,
                 interior_detect=interior_detect,
             )
-
-        if fractal.res_available():
-            print("RES AVAILABLE, no compute")
-        else:
-            print("RES NOT AVAILABLE, clean-up")
-            fractal.clean_up(calc_name)
-
-        fractal.run()
 
         pp = Postproc_batch(fractal, calc_name)
         
@@ -233,7 +218,7 @@ def plot(plot_dir):
 
         if shade_kind != "None":
             plotter.add_layer(Normal_map_layer(
-                "DEM_map", max_slope=60, output=False
+                "DEM_map", max_slope=40, output=False
             ))
 
         if base_layer != 'continuous_iter':
@@ -247,7 +232,6 @@ def plot(plot_dir):
                 func=lambda x: sign * np.log(x),
                 colormap=colormap,
                 probes_z=[zmin, zmax],
-                probes_kind=cmap_z_kind,
                 output=True))
         plotter[base_layer].set_mask(
             plotter["interior"], mask_color=interior_color
@@ -261,23 +245,24 @@ def plot(plot_dir):
             plotter[base_layer].overlay(plotter["fieldlines"], overlay_mode)
 
         if shade_kind != "None":
-            light = Blinn_lighting(0.4, np.array([1., 1., 1.]))
+            light = Blinn_lighting(0.6, np.array([1., 1., 1.]))
             light.add_light_source(
                 k_diffuse=0.8,
                 k_specular=.0,
                 shininess=350.,
-                angles=(light_angle_deg, 20.),
-                coords=None,
-                color=np.array(light_color))
-    
+                polar_angle=light_angle_deg,
+                azimuth_angle=10.,
+                color=np.array(light_color)
+            )
             if shade_kind == "glossy":
                 light.add_light_source(
                     k_diffuse=0.2,
                     k_specular=gloss_intensity,
-                    shininess=1400.,
-                    angles=(light_angle_deg, 20.),
-                    coords=None,
-                    color=np.array(gloss_light_color))
+                    shininess=400.,
+                    polar_angle=light_angle_deg,
+                    azimuth_angle=10.,
+                    color=np.array(gloss_light_color)
+                )
     
             plotter[base_layer].shade(plotter["DEM_map"], light)
 
@@ -297,7 +282,6 @@ def plot(plot_dir):
         theta_deg,
         dps,
         nx,
-        antialiasing,
         _2,
         max_iter,
         M_divergence,
@@ -312,7 +296,6 @@ def plot(plot_dir):
         interior_color,
         colormap,
         invert_cmap,
-        cmap_z_kind,
         zmin,
         zmax,
         _5,

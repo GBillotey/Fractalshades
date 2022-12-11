@@ -49,8 +49,8 @@ def plot(plot_dir):
     
     sign = 1.0
     DEM_min = 1.e-4
-    zmin = -0.0
-    zmax = 1.0
+    zmin = -9.21034049987793
+    zmax = -0.3999025523662567
     
     # As this formula is non-analytic, we will 'unskew' based on the 
     # influencing miniship "size estimate" matrix.
@@ -65,7 +65,6 @@ def plot(plot_dir):
 
     # Run the calculation
     f = fsm.Perturbation_burning_ship(plot_dir)
-    # f.clean_up()
 
     f.zoom(
         precision=precision,
@@ -88,11 +87,10 @@ def plot(plot_dir):
         subset=None,
         max_iter=1500,
         M_divergence=1.e3,
-        BLA_params={"eps": 1.e-6},
+        BLA_eps= 1.e-6,
     )
 
-    f.run()
-    print("has been run")
+
     # Plot the image
     pp = Postproc_batch(f, calc_name)
     pp.add_postproc("continuous_iter", Continuous_iter_pp())
@@ -102,7 +100,7 @@ def plot(plot_dir):
 
     plotter = fs.Fractal_plotter(pp)   
     plotter.add_layer(Bool_layer("interior", output=False))
-    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=False))
+    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=30, output=False))
     plotter.add_layer(
         Virtual_layer("continuous_iter", func=None, output=False)
     )
@@ -117,7 +115,6 @@ def plot(plot_dir):
             func=cmap_func,
             colormap=colormap,
             probes_z=[zmin, zmax],
-            probes_kind="relative",
             output=True
     ))
 
@@ -131,15 +128,15 @@ def plot(plot_dir):
         k_diffuse=0.2,
         k_specular=300.,
         shininess=1400.,
-        angles=(45., 20.),
-        coords=None,
+        polar_angle=45.,
+        azimuth_angle=10.,
         color=np.array([1.0, 1.0, 0.98]))
     light.add_light_source(
         k_diffuse=0.8,
         k_specular=2.,
         shininess=400.,
-        angles=(45., 20.),
-        coords=None,
+        polar_angle=45.,
+        azimuth_angle=10.,
         color=np.array([1., 1., 1.]))
     plotter["distance_estimation"].shade(plotter["DEM_map"], light)
 

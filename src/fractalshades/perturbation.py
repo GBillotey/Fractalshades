@@ -324,7 +324,7 @@ directory : str
             # /!\ ref_xr at least len 1 to ensure typing as complex
             refx_xr = fsx.Xrange_array([0.] * max(len(ref_xr_python), 1))
             refy_xr = fsx.Xrange_array([0.] * max(len(ref_xr_python), 1))
-            # print("init refx_xr", refx_xr.shape, refx_xr.dtype)
+
             for i, xr_index in enumerate(ref_xr_python.keys()):
                 ref_index_xr[i] = xr_index
                 tmpx, tmpy = ref_xr_python[xr_index]
@@ -983,19 +983,16 @@ def numba_initialize(zn, dzndc, dzndz):
         Initialize 'in place'  :
             Z[zn], Z[dzndz], Z[dzndc]
         """
-#        print("enter initialize")
         Z_xr[zn] = fsxn.to_Xrange_scalar(Z[zn])
         if dzndc != -1:
             Z_xr[dzndc] = fsxn.to_Xrange_scalar(Z[dzndc])
 
         if (dzndz != -1):
             Z[dzndz] = 0.
-#        print("exit initialize")
     return numba_init_impl
 
 
 # Defines iterate via a function factory - jitted implementation
-
 def numba_iterate(
         max_iter, M_divergence_sq, epsilon_stationnary_sq,
         reason_max_iter, reason_M_divergence, reason_stationnary,
@@ -1019,7 +1016,6 @@ def numba_iterate(
         Z, Z_xr: idem for result vector Z
         Z_xr_trigger : bolean, activated when Z_xr need to be used
         """
-        # SA skipped - wrapped iteration if we reach the cycle order 
         w_iter = 0
         n_iter = 0
         if w_iter >= ref_order:
@@ -1782,7 +1778,6 @@ def init_BLA(M_bla, r_bla, Zn_path, dfdz, kc_std, eps):
                 # ((0.5 * mZZ) - kc_std) / (1. + mA)
             )
         )
-    # print("orbit loop done")
 
     # Now the combine step
     # number of needed "stages" (ref_orbit_len).bit_length()
@@ -1842,10 +1837,8 @@ def init_BLA_BS(M_bla, r_bla, Zn_path, dfxdx, dfxdy, dfydx, dfydy,
         M_bla[i_0, 6] = 0.
         M_bla[i_0, 7] = -1.
 
-        mZ = min(abs(Xn_i), abs(Yn_i))
-        # ii = (i + 1) % ref_orbit_len
-        
-        
+        mZ = min(abs(Xn_i), abs(Yn_i))        
+
         r_bla[i_0] =  mZ * eps
 
     # Now the combine step

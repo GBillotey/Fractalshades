@@ -7,6 +7,7 @@
 This example shows one of the ways to plot fieldlines: here the fieldlines 
 values are used to modify the original layer values before applying the
 colormap.
+Notice the use of `calc_orbit` and backshift` during the calculation.
 
 The location is around the 1/3 main bulb.
 
@@ -15,7 +16,6 @@ Reference:
 """
 
 import os
-import numpy as np
 
 import fractalshades as fs
 import fractalshades.models as fsm
@@ -48,24 +48,23 @@ def plot(plot_dir):
     # Run the calculation
     f = fsm.Mandelbrot(plot_dir)
     f.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
-           theta_deg=0., projection="cartesian") #, antialiasing=False)
-    f.base_calc(
+           theta_deg=0., projection="cartesian")
+    f.calc_std_div(
         calc_name=calc_name,
         subset=None,
         max_iter=5000,
         M_divergence=100.,
         epsilon_stationnary= 0.001,
+        calc_orbit=True,
+        backshift=3
     )
-    # f.clean_up(calc_name)
 
-
-    # Plot the image
     # Plot the image
     pp = Postproc_batch(f, calc_name)
     pp.add_postproc("cont_iter", Continuous_iter_pp())
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
     pp.add_postproc("fieldlines",
-                Fieldlines_pp(n_iter=3, swirl=0., damping_ratio=0.2))
+                Fieldlines_pp(n_iter=4, swirl=0., endpoint_k=0.8))
 
     plotter = fs.Fractal_plotter(pp)
     plotter.add_layer(Bool_layer("interior", output=False))
@@ -74,7 +73,6 @@ def plot(plot_dir):
             func="np.log(x)",
             colormap=colormap,
             probes_z=[0.4, 2.4],
-            probes_kind="absolute",
             output=True
     ))
     plotter.add_layer(Virtual_layer("fieldlines", func=None, output=False))

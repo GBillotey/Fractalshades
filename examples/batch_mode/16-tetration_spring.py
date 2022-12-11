@@ -44,7 +44,7 @@ def plot(plot_dir):
     xy_ratio = 1.8
     theta_deg = 135.0
 
-    nx = 8000
+    nx = 800
     compute_order = True
     max_order = 10000
     eps_newton_cv = 1e-12
@@ -55,12 +55,12 @@ def plot(plot_dir):
         0.2823529541492462
     )
     colormap = colormap = fscolors.cmap_register["lily"]
-    zmin = 0.1
-    zmax = 0.7
+    zmin = 0.9 * 1.0376274585723877 + 0.1 * 1.2009856700897217
+    zmax = 0.3 * 1.0376274585723877 + 0.7 * 1.2009856700897217
 
 
     fractal.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
-         theta_deg=theta_deg, projection="cartesian", antialiasing=False)
+         theta_deg=theta_deg, projection="cartesian")
 
     fractal.newton_calc(
         calc_name=calc_name,
@@ -71,13 +71,6 @@ def plot(plot_dir):
         eps_newton_cv=eps_newton_cv
     )
 
-    if fractal.res_available():
-        print("RES AVAILABLE, no compute")
-    else:
-        print("RES NOT AVAILABLE, clean-up")
-        fractal.clean_up(calc_name)
-
-    fractal.run()
 
     layer_name = "cycle_order"
 
@@ -96,7 +89,6 @@ def plot(plot_dir):
             func=lambda x: np.log(np.log(np.log(x + 1.) + 1.) + 1.),
             colormap=colormap,
             probes_z=[zmin, zmax],
-            probes_kind="relative",
             output=True))
     plotter[layer_name].set_mask(plotter["interior"],
                                  mask_color=interior_color)

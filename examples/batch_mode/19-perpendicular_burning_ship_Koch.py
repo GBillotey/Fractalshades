@@ -78,9 +78,8 @@ def plot(plot_dir):
     )
     invert_cmap = False
     DEM_min = 1e-07
-    cmap_z_kind = 'relative'
-    zmin = 0.
-    zmax = 1.
+    zmin = -16.11809539794922
+    zmax = -6.8490519523620605
 
     # _5 = 'Plotting parameters: shading'
     shade_kind = 'glossy'
@@ -90,11 +89,14 @@ def plot(plot_dir):
     gloss_light_color = (1.0, 1.0, 1.0)
 
     # Run the calculation
-    fractal = fsm.Perturbation_perpendicular_burning_ship(plot_dir)
-    # f.clean_up()
+    fractal = fsm.Perturbation_burning_ship(
+            plot_dir,
+            flavor="Perpendicular burning ship"
+    )
+
 
     fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
-                 theta_deg=theta_deg, projection="cartesian", antialiasing=False,
+                 theta_deg=theta_deg, projection="cartesian",
                  has_skew=has_skew, skew_00=skew_00, skew_01=skew_01,
                  skew_10=skew_10, skew_11=skew_11
             )
@@ -104,16 +106,8 @@ def plot(plot_dir):
         subset=None,
         max_iter=max_iter,
         M_divergence=1.e3,
-        BLA_params={"eps": eps},
+        BLA_eps=eps,
     )
-
-    if fractal.res_available():
-        print("RES AVAILABLE, no compute")
-    else:
-        print("RES NOT AVAILABLE, clean-up")
-        fractal.clean_up(calc_name)
-
-    fractal.run()
 
     pp = Postproc_batch(fractal, calc_name)
     
@@ -156,7 +150,6 @@ def plot(plot_dir):
             func=cmap_func,
             colormap=colormap,
             probes_z=[zmin, zmax],
-            probes_kind=cmap_z_kind,
             output=True))
     plotter[base_layer].set_mask(
         plotter["interior"], mask_color=interior_color
@@ -167,8 +160,8 @@ def plot(plot_dir):
             k_diffuse=0.8,
             k_specular=.0,
             shininess=350.,
-            angles=(light_angle_deg, 20.),
-            coords=None,
+            polar_angle=light_angle_deg,
+            azimuth_angle=10.,
             color=np.array(light_color))
 
         if shade_kind == "glossy":
@@ -176,8 +169,8 @@ def plot(plot_dir):
                 k_diffuse=0.2,
                 k_specular=gloss_intensity,
                 shininess=400.,
-                angles=(light_angle_deg, 20.),
-                coords=None,
+                polar_angle=light_angle_deg,
+                azimuth_angle=10.,
                 color=np.array(gloss_light_color))
 
         plotter[base_layer].shade(plotter["DEM_map"], light)

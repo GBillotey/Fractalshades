@@ -52,7 +52,7 @@ def plot(plot_dir):
     # A simple showcase using perturbation technique
     x = "-1.768667862837488812627419470"
     y = "0.001645580546820209430325900"
-    dx = "18.e-22"
+    dx = "12.e-22"
     precision = 30
     nx = 2400
     xy_ratio = 16. / 9.
@@ -91,8 +91,11 @@ def plot(plot_dir):
             max_iter=100000,
             M_divergence=1.e3,
             epsilon_stationnary=1.e-3,
-            BLA_params={"eps": 1.e-6},
-            interior_detect=False)
+            BLA_eps=1.e-6,
+            interior_detect=False,
+            calc_orbit=True,
+            backshift=4
+    )
 
     # Plot the image
     pp = Postproc_batch(f, calc_name)
@@ -100,11 +103,11 @@ def plot(plot_dir):
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
     pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
     pp.add_postproc("fieldlines",
-                Fieldlines_pp(n_iter=3, swirl=0., damping_ratio=1.0))
+                Fieldlines_pp(n_iter=3, swirl=0., endpoint_k=1.0))
 
     plotter = fs.Fractal_plotter(pp)   
     plotter.add_layer(Bool_layer("interior", output=False))
-    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=False))
+    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=35, output=False))
     plotter.add_layer(Virtual_layer("fieldlines", func=None, output=False))
     plotter.add_layer(Color_layer(
             "cont_iter",
@@ -119,24 +122,24 @@ def plot(plot_dir):
 
     # This is the line where we indicate that coloring is a combination of
     # "Continuous iteration" and "fieldines values"
-    plotter["cont_iter"].set_twin_field(plotter["fieldlines"], 0.0001)
+    plotter["cont_iter"].set_twin_field(plotter["fieldlines"], 0.0005)
 
     # This is where we define the lighting (here 2 ccolored light sources)
     # and apply the shading
     light = Blinn_lighting(0.4, np.array([1., 1., 1.]))
     light.add_light_source(
         k_diffuse=0.2,
-        k_specular=300.,
-        shininess=1400.,
-        angles=(45., 20.),
-        coords=None,
-        color=np.array([0.9, 0.9, 1.5]))
+        k_specular=10.,
+        shininess=400.,
+        polar_angle=45.,
+        azimuth_angle=20.,
+        color=np.array([0.9, 0.9, 0.9]))
     light.add_light_source(
         k_diffuse=0.8,
-        k_specular=2.,
+        k_specular=0.,
         shininess=400.,
-        angles=(55., 20.),
-        coords=None,
+        polar_angle=55.,
+        azimuth_angle=20.,
         color=np.array([1., 1., 1.]))
     plotter["cont_iter"].shade(plotter["DEM_map"], light)
     plotter.plot()

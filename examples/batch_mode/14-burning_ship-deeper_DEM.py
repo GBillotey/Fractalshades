@@ -48,8 +48,8 @@ def plot(plot_dir):
     
     sign = 1.0
     DEM_min = 5.e-5
-    zmin = 0.0
-    zmax = 1.0
+    zmin = -9.903487205505371
+    zmax = -4.948512077331543
     
     # As this formula is non-analytic, we will 'unskew' based on the 
     # influencing miniship "size estimate" matrix.
@@ -64,7 +64,6 @@ def plot(plot_dir):
 
     # Run the calculation
     f = fsm.Perturbation_burning_ship(plot_dir)
-    # f.clean_up()
 
     f.zoom(
         precision=precision,
@@ -75,7 +74,6 @@ def plot(plot_dir):
         xy_ratio=xy_ratio,
         theta_deg=-2., 
         projection="cartesian",
-        antialiasing=False,
         has_skew=has_skew,
         skew_00=skew_00,
         skew_01=skew_01,
@@ -88,11 +86,9 @@ def plot(plot_dir):
         subset=None,
         max_iter=50000,
         M_divergence=1.e3,
-        BLA_params={"eps": 1.e-6},
+        BLA_eps=1.e-6,
     )
 
-    f.run()
-    print("has been run")
     # Plot the image
     pp = Postproc_batch(f, calc_name)
     pp.add_postproc("continuous_iter", Continuous_iter_pp())
@@ -102,7 +98,7 @@ def plot(plot_dir):
 
     plotter = fs.Fractal_plotter(pp)   
     plotter.add_layer(Bool_layer("interior", output=False))
-    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=50, output=False))
+    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=35, output=False))
     plotter.add_layer(
         Virtual_layer("continuous_iter", func=None, output=False)
     )
@@ -117,7 +113,6 @@ def plot(plot_dir):
             func=cmap_func,
             colormap=colormap,
             probes_z=[zmin, zmax],
-            probes_kind="relative",
             output=True
     ))
 
@@ -126,21 +121,15 @@ def plot(plot_dir):
     plotter["DEM_map"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
 
     # define the lighting and apply the shading
-    light = Blinn_lighting(0.4, np.array([1., 1., 1.]))
+    light = Blinn_lighting(0.3, np.array([1., 1., 1.]))
     light.add_light_source(
         k_diffuse=0.4,
-        k_specular=3.,
-        shininess=100.,
-        angles=(45., 40.),
-        coords=None,
-        color=np.array([1.0, 1.0, 0.98]))
-#    light.add_light_source(
-#        k_diffuse=0.8,
-#        k_specular=1.,
-#        shininess=40.,
-#        angles=(90., 20.),
-#        coords=None,
-#        color=np.array([1., 1., 1.]))
+        k_specular=4.,
+        shininess=300.,
+        polar_angle=45.,
+        azimuth_angle=20.,
+        color=np.array([1.0, 1.0, 0.96]))
+
     plotter["distance_estimation"].shade(plotter["DEM_map"], light)
 
     plotter.plot()
