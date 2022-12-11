@@ -121,6 +121,13 @@ def numba_test_sqrt(xa, out):
         out[i] = np.sqrt(xa[i])
 
 @numba.njit
+def numba_test_power(xa, power_exp, out):
+    n, = xa.shape
+    for i in range(n):
+        out[i] = np.power(xa[i], power_exp)
+
+
+@numba.njit
 def numba_test_abs(xa, out):
     n, = xa.shape
     for i in range(n):
@@ -498,35 +505,56 @@ class Test_numba_xr(unittest.TestCase):
                           ktol=2.)
 
     def test_power(self):
-        for power_exp in range(20): 
+        # Testing integer path
+        for power_exp in range(10): 
             for dtype in (np.float64, np.complex128): # np.complex64 np.float32
+                k_tol = 2.0
+                if dtype == np.complex128:
+                    k_tol = 20.
+                
                 with self.subTest(power_exp=power_exp, dtype=dtype):
-                    nvec = 10000
+                    nvec = 1000
                     xa, stda = generate_random_xr(dtype, nvec=nvec,
-                                                  max_bin_exp=75)
+                                                  max_bin_exp=15)
 
-                    xa = np.asarray(xa)
-                    exp = np.copy(xa["exp"])
-                    xa["mantissa"] *= 2.**(2 * exp)
-                    xa["exp"] = -exp
                     xa = xa.view(Xrange_array)
+                    expected = np.power(stda, power_exp)
                     res = Xrange_array.empty(xa.shape, dtype=dtype)
-                    expected = np.sqrt(stda)
-    
-                    numba_test_sqrt(xa, res)
-                    # Numba timing without compilation
-                    t_numba = - time.time()
-                    numba_test_sqrt(xa, res)
-                    t_numba += time.time()
-                    # numpy timing 
-                    t_np = - time.time()
-                    res_np = np.sqrt(xa)
-                    t_np += time.time()
-                    
+                    res_np = np.power(xa, power_exp)
+                    numba_test_power(xa, power_exp, res)
                     _matching(res, expected, almost=True, dtype=np.float64,
-                              ktol=2.)
+                              ktol=k_tol)
                     _matching(res_np, expected, almost=True, dtype=np.float64,
                               ktol=2.)
+
+        # Testing float path
+        for power_exp in (0.5, 0.122522, 1.554, 4.8962): #  -2.3): 
+            for dtype in (np.float64, np.complex128): # np.complex64 np.float32
+                k_tol = 70.
+                if dtype == np.complex128:
+                    k_tol = 70.
+                
+                with self.subTest(power_exp=power_exp, dtype=dtype):
+                    nvec = 1000
+                    xa, stda = generate_random_xr(
+                            dtype, nvec=nvec, max_bin_exp=15)
+                    
+                    # fractionnal power not defined for negative reals
+                    if dtype == np.float64:
+                        xa = np.abs(xa)
+                        stda = np.abs(stda)
+
+                    xa = xa.view(Xrange_array)
+                    expected = np.power(stda, power_exp)
+                    res = Xrange_array.empty(xa.shape, dtype=dtype)
+                    res_np = np.power(xa, power_exp)
+
+                    numba_test_power(xa, power_exp, res)
+                    _matching(res, expected, almost=True, dtype=np.float64,
+                              ktol=k_tol)
+                    _matching(res_np, expected, almost=True, dtype=np.float64,
+                              ktol=k_tol)
+
 
                 
     def test_abs(self):

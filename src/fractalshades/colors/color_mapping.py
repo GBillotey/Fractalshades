@@ -3,6 +3,7 @@ import os
 import typing
 import enum
 import pprint
+import pickle
 
 import numpy as np
 #import matplotlib.colors
@@ -545,9 +546,21 @@ class Fractal_colormap:
         self.n_probes = n_probes
         self.n_grads = n_grads
         self._load_internal_arrays()
-        
 
-    def script_repr(self, indent):
+    def save_as_pickle(self, save_path):
+        """ Save as .cmap pickle file"""
+        with open(save_path, 'wb+') as tmpfile:
+            pickle.dump(self, tmpfile, pickle.HIGHEST_PROTOCOL)
+
+    @classmethod
+    def load_as_pickle(cls, save_path):
+        """ Load a .cmap pickle file and returns the result"""
+        with open(save_path, "rb") as tmpfile:
+            cmap_res = pickle.load(tmpfile)
+        return cmap_res
+
+
+    def script_repr(self, indent=0):
         """ Return a string that can be used to restore the colormap
         """
         shift = " " * (4 * (indent + 1))

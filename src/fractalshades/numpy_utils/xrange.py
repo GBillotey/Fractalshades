@@ -522,6 +522,10 @@ Reference:
             elif ufunc is np.arctan2:
                 # Not a Xrange array, returns a float array
                 return self._arctan2(casted_inputs, out=out)
+            elif ufunc is np.power:
+                # For power passing directly the inputs, as exponent shall not
+                # be Xrange
+                out = self._pow(inputs, out=out)
             else:
                 out = None
         elif method in ["reduce", "accumulate"]:
@@ -549,8 +553,8 @@ Reference:
 
         if op0.shape == () and op0 == 0.:
             # As of numpy 1.19.3 'np.angle' is not a ufunc but wraps arctan2 ;
-            # this branch will handle calls by np.angle with zimag = 0. and
-            # zreal a complex Xrange_array
+            # this branch will handle calls by np.angle with imag = 0. and
+            # real a complex Xrange_array
             return np.angle(op1._mantissa)
 
         m0 = op0._mantissa
@@ -667,6 +671,32 @@ Reference:
                     (sqrt0._exp - 1) // 2)
 
         return out
+
+    @staticmethod
+    def _pow(inputs, out=None):
+        """ x -> x ** alpha, alpha real """
+        pow0, pow1 = inputs
+        if isinstance(pow1, Xrange_array):
+            raise NotImplementedError(
+                "np.power called with a Xrange exponent, not implemented"
+            )
+        m0 = pow0._mantissa
+        exp0 = pow0._exp
+
+        exp_tot = exp0 * pow1
+        exp_int = np.trunc(exp_tot)
+        exp_frac = exp_tot - exp_int
+
+        if out is None:
+            out = Xrange_array.empty(m0.shape, dtype=m0.dtype, asarray=True)
+
+        out["mantissa"], out["exp"] = Xrange_array._normalize(
+            (m0 ** pow1) * (2. ** exp_frac),
+            exp_int.astype(np.int32)
+        )
+
+        return out
+
 
     @staticmethod
     def _abs(inputs, out=None):

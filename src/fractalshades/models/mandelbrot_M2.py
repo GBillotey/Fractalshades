@@ -40,6 +40,7 @@ directory : str
 
         # GUI 'badges'
         self.holomorphic = True
+        self.implements_dzndc = "always"
         self.implements_fieldlines = True
         self.implements_newton = True
         self.implements_Milnor = True
@@ -57,7 +58,7 @@ directory : str
             max_iter: int = 10000,
             M_divergence: float = 1000.,
             epsilon_stationnary: float = 0.01,
-            calc_d2zndz2: bool = False,
+            calc_d2zndc2: bool = False,
             calc_orbit: bool = False,
             backshift: int = 0
     ):
@@ -85,8 +86,8 @@ directory : str
         If True, activates interior point early detection.
         This will trigger the additional computation of *dzndz*, so will be
         efficient only when a mini fills a significant part of the view.
-    calc_d2zndz2:
-        If True, activates the additional computation of *d2zndz2*, needed 
+    calc_d2zndc2:
+        If True, activates the additional computation of *d2zndc2*, needed 
         only for the alternative normal map shading 'Milnor'.
     calc_orbit: bool
         If True, stores the value of an orbit point @ exit - orbit_shift
@@ -108,7 +109,7 @@ directory : str
         # Optionnal output fields
         icode = 3
         d2zndc2 = -1 
-        if calc_d2zndz2:
+        if calc_d2zndc2:
             complex_codes += ["d2zndc2"]
             d2zndc2 = icode
             icode += 1
@@ -150,7 +151,7 @@ directory : str
                 stop_reason[0] = 0
                 return 1
 
-            if calc_d2zndz2:
+            if calc_d2zndc2:
                Z[d2zndc2] = 2 * (Z[d2zndc2] * Z[zn] + Z[dzndc] ** 2)
 
             Z[dzndc] = 2 * Z[dzndc] * Z[zn] + 1.
@@ -338,6 +339,7 @@ directory : str
 
         # GUI 'badges'
         self.holomorphic = True
+        self.implements_dzndc = "user"
         self.implements_fieldlines = True
         self.implements_newton = False
         self.implements_Milnor = False
@@ -346,6 +348,9 @@ directory : str
 
         # Orbit 'on the fly' calculation
         self.zn_iterate = M2_iterate
+        
+        # Cache for numba compiled implementations
+        self._numba_cache = {}
 
 
     def FP_loop(self, NP_orbit, c0):
@@ -411,9 +416,12 @@ BLA_eps : None | float
     Relative error criteriafor BiLinear Approximation (default: 1.e-6)
     if `None` BLA is not activated.
 interior_detect : bool
-    If True, activates interior point early detection.
-    This will trigger the computation of additionnal quantities, so will be
-    efficient only when a mini fills a significant part of the view.
+    If True, activates interior points early detection.
+    This will trigger the computation of an additionnal quantity (`dzndz`), so
+    shall be activated only when a mini fills a significative part of the view.
+calc_dzndc: bool
+    If True, activates the computation of an additionnal quantities (`dzndc`),
+    used for distance estimation plots and for shading (normal map calculation)
 calc_orbit: bool
     If True, stores the value of an orbit point @ exit - backshift
 backshift: int (> 0)
@@ -454,7 +462,6 @@ backshift: int (> 0)
         reason_M_divergence = 1
         reason_stationnary = 2
 
-        # self.codes = (complex_codes, int_codes, stop_codes)
 
         #----------------------------------------------------------------------
         # Define the functions used for BLA approximation
@@ -464,13 +471,8 @@ backshift: int (> 0)
             and (self.dx < fs.settings.newton_zoom_level)
         )
 
-        @numba.njit
-        def _dfdz(z):
-            return 2. * z
-
-        @numba.njit
-        def _dfdc(z):
-            return 1.
+        dfdz = self.from_numba_cache("dfdz", zn, dzndz, dzndc)
+        dfdc = self.from_numba_cache("dfdc", zn, dzndz, dzndc)
 
         def set_state():
             def impl(instance):
@@ -480,8 +482,8 @@ backshift: int (> 0)
 
                 instance.calc_dZndz = interior_detect
                 instance.calc_dZndc = calc_dzndc or BLA_activated
-                instance.dfdz = _dfdz
-                instance.dfdc = _dfdc
+                instance.dfdz = dfdz
+                instance.dfdc = dfdc
             return impl
 
         #----------------------------------------------------------------------
@@ -496,20 +498,11 @@ backshift: int (> 0)
         # Xr triggered for ultra-deep zoom
         xr_detect_activated = self.xr_detect_activated
 
-        @numba.njit
-        def p_iter_zn(Z, ref_zn, c):
-            Z[zn] = Z[zn] * (Z[zn] + 2. * ref_zn) + c
-
-        @numba.njit
-        def p_iter_dzndz(Z, ref_zn, ref_dzndz):
-            Z[dzndz] = 2. * ((ref_zn + Z[zn]) * Z[dzndz] + ref_dzndz * Z[zn])
-
-        @numba.njit
-        def p_iter_dzndc(Z, ref_zn, ref_dzndc):
-            Z[dzndc] = 2. * ((ref_zn + Z[zn]) * Z[dzndc] + ref_dzndc * Z[zn])
-
-
+        p_iter_zn = self.from_numba_cache("p_iter_zn", zn, dzndz, dzndc)
+        p_iter_dzndz = self.from_numba_cache("p_iter_dzndz", zn, dzndz, dzndc)
+        p_iter_dzndc = self.from_numba_cache("p_iter_dzndc", zn, dzndz, dzndc)
         zn_iterate = self.zn_iterate
+
 
         def iterate():
             return fs.perturbation.numba_iterate(
@@ -519,7 +512,7 @@ backshift: int (> 0)
                 zn, dzndc, dzndz,
                 p_iter_zn, p_iter_dzndz, p_iter_dzndc,
                 calc_dzndc, calc_dzndz,
-                calc_orbit, i_znorbit, backshift, zn_iterate # Added args
+                calc_orbit, i_znorbit, backshift, zn_iterate
             )
 
         return {
@@ -527,6 +520,45 @@ backshift: int (> 0)
             "initialize": initialize,
             "iterate": iterate
         }
+
+
+    def from_numba_cache(self, key, zn, dzndz, dzndc):
+        """ Returns the numba implementation if exists to avoid unnecessary
+        recompilation"""
+        cache = self._numba_cache
+        try:
+            return cache[(key, zn, dzndz, dzndc)]
+
+        except KeyError:
+            if key == "dfdz":
+                @numba.njit
+                def numba_impl(z):
+                    return 2. * z
+            elif key == "dfdc":
+                @numba.njit
+                def numba_impl(z):
+                    return 1.
+            elif key == "p_iter_zn":
+                @numba.njit
+                def numba_impl(Z, ref_zn, c):
+                    Z[zn] = Z[zn] * (Z[zn] + 2. * ref_zn) + c
+            elif key == "p_iter_dzndz":
+                @numba.njit
+                def numba_impl(Z, ref_zn, ref_dzndz):
+                    Z[dzndz] = 2. * (
+                        (ref_zn + Z[zn]) * Z[dzndz] + ref_dzndz * Z[zn]
+                    )
+            elif key == "p_iter_dzndc":
+                @numba.njit
+                def numba_impl(Z, ref_zn, ref_dzndc):
+                    Z[dzndc] = 2. * (
+                        (ref_zn + Z[zn]) * Z[dzndc] + ref_dzndc * Z[zn]
+                    )
+            else:
+                raise NotImplementedError(key)
+
+            cache[(key, zn, dzndz, dzndc)] = numba_impl
+            return numba_impl
 
 
 #------------------------------------------------------------------------------

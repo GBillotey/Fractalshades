@@ -911,7 +911,6 @@ class Fractal_array:
 
     def __eq__(self, other):
         """ Equality testing, useful when pickling / unpickling"""
-        print("Fractal_array __eq__")
         if isinstance(other, self.__class__):
             eq = (
                 (self._func == other._func)

@@ -98,8 +98,11 @@ cdef extern from "mpc.h":
     int mpc_sub(mpc_t rop, const mpc_t op1, const mpc_t op2, mpc_rnd_t rnd)
 
     int mpc_mul(mpc_t rop, const mpc_t op1, const mpc_t op2, mpc_rnd_t rnd)
+    int mpc_mul_fr(mpc_t rop, const mpc_t op1, const mpfr_t op2, mpc_rnd_t rnd)
     int mpc_mul_si(mpc_t rop, const mpc_t op1, long int op2, mpc_rnd_t rnd)
-    
+    int mpc_mul_ui(mpc_t rop, const mpc_t op1 , unsigned long int op2 ,
+                   mpc_rnd_t rnd )
+
     int mpc_div(mpc_t rop, const mpc_t op1, const mpc_t op2, mpc_rnd_t rnd)
     int mpc_div_ui(mpc_t rop, const mpc_t op1, unsigned long int op2,
                    mpc_rnd_t rnd)
@@ -117,6 +120,7 @@ cdef extern from "mpc.h":
     
     int mpc_pow_ui(mpc_t rop, const mpc_t op1, unsigned long op2,
                    mpc_rnd_t rnd)
+    int mpc_pow_d(mpc_t rop, const mpc_t op1, double op2 , mpc_rnd_t rnd)
 
 
 cdef extern from "Python.h":
@@ -139,6 +143,97 @@ cdef:
     double XR_TSHOLD = fractalshades.settings.xrange_zoom_level
 
 
+# Type for in-place iterations of Mandelbrot Mn or other holomorphic formula
+# zn+1 = f(zn, c)
+ctypedef void (*iterMn_zn_t)(
+    unsigned long, mpc_t, mpc_t, mpc_t
+)
+
+# Type for in-place iterations for Mandelbrot Mn or other holomorphic formula
+# dzndc = f(zn, dzndc) or dzndz = f(zn, dzndz)
+ctypedef void (*iterMn_dzndz_t)(
+    unsigned long, int, mpc_t, mpc_t, mpc_t
+)
+
+cdef void iter_M2(
+    unsigned long exponent, mpc_t z_t, mpc_t c_t, mpc_t tmp_t
+):
+    # One standard Mandelbrot M2 iteration - here exponent == 2
+    # zn <- zn **2 + c
+    mpc_sqr(tmp_t, z_t, MPC_RNDNN)
+    mpc_add(z_t, tmp_t, c_t, MPC_RNDNN)
+    return 
+
+cdef void iter_Mn(
+    unsigned long exponent, mpc_t z_t, mpc_t c_t, mpc_t tmp_t
+):
+    # One standard Mandelbrot Mn iteration
+    # zn <- zn ** exponent + c
+    mpc_pow_ui(tmp_t, z_t, exponent, MPC_RNDNN)
+    mpc_add(z_t, tmp_t, c_t, MPC_RNDNN)
+    return
+
+
+cdef void iter_deriv_M2(
+    unsigned long exponent, int var_c_z,
+    mpc_t z_t, mpc_t dzndz_t, mpc_t tmp_t
+):
+    # One derivative Mandelbrot M2 iteration - here exponent == 2
+    # dzndz <- 2 * dzndz * zn * (+ 1)
+    # if var_c_z == 0 : we compute the derivatives wrt c
+    # if var_c_z == 1 : we compute the derivatives wrt z
+    mpc_mul(tmp_t, z_t, dzndz_t, MPC_RNDNN)
+    mpc_mul_si(dzndz_t, tmp_t, 2, MPC_RNDNN)
+
+    if var_c_z == 0:
+        mpc_add_ui(dzndz_t, dzndz_t, 1, MPC_RNDNN)
+
+    return
+
+cdef void iter_deriv_Mn(
+    unsigned long exponent, int var_c_z,
+    mpc_t z_t, mpc_t dzndz_t, mpc_t tmp_t
+):
+# iter_deriv(exponent, 0, z_t, dzndc_t, tmp_t)
+
+    # One derivative Mandelbrot Mn iteration
+    # dzndz <- n * dzndz * zn ** (n-1) * (+ 1)
+    # if var_c_z == 0 : we compute the derivatives wrt c
+    # if var_c_z == 1 : we compute the derivatives wrt z
+    cdef unsigned long exponent_m1 = (exponent - 1)
+    mpc_pow_ui(tmp_t, z_t, exponent_m1, MPC_RNDNN)
+    mpc_mul(tmp_t, dzndz_t, tmp_t, MPC_RNDNN)
+    mpc_mul_ui(dzndz_t, tmp_t, exponent, MPC_RNDNN)
+
+    if var_c_z == 0:
+        mpc_add_ui(dzndz_t, dzndz_t, 1, MPC_RNDNN)
+
+    return
+
+
+cdef iterMn_zn_t select_Mnfunc(unsigned long exponent):
+    # Selects the right code path for orbit calculation
+    cdef iterMn_zn_t iterMn_zn
+    if exponent == 2:
+        iterMn_zn = &iter_M2
+    elif exponent > 2:
+        iterMn_zn = &iter_Mn
+    else:
+        raise NotImplementedError(exponent)
+    return iterMn_zn
+
+cdef iterMn_dzndz_t select_Mn_deriv_func(unsigned long exponent):
+    # Selects the right code path for orbit derivative calculation
+    cdef iterMn_dzndz_t iterMn_dzndz
+    if exponent == 2:
+        iterMn_dzndz = &iter_deriv_M2
+    elif exponent > 2:
+        iterMn_dzndz = &iter_deriv_Mn
+    else:
+        raise NotImplementedError(exponent)
+    return iterMn_dzndz
+
+
 def perturbation_mandelbrot_FP_loop(
         np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
         bint need_Xrange,
@@ -149,8 +244,47 @@ def perturbation_mandelbrot_FP_loop(
         long seed_prec
 ):
     """
-    Full precision orbit for standard Mandelbrot
-    
+    Full precision orbit for standard Mandelbrot (power 2)
+    """
+    cdef unsigned long exponent = 2
+    return perturbation_mandelbrotN_select_FP_loop(
+        orbit, need_Xrange, max_iter, exponent, M, seed_x, seed_y, seed_prec
+    )
+
+
+def perturbation_mandelbrotN_FP_loop(
+        np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
+        bint need_Xrange,
+        long max_iter,
+        unsigned long exponent,
+        double M,
+        char * seed_x,
+        char * seed_y,
+        long seed_prec
+):
+    """
+    Full precision orbit for standard Mandelbrot with power `exponent`, 
+    integer >= 2
+    """
+    return perturbation_mandelbrotN_select_FP_loop(
+        orbit, need_Xrange, max_iter, exponent, M, seed_x, seed_y, seed_prec
+    )
+
+
+def perturbation_mandelbrotN_select_FP_loop(
+        np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
+        bint need_Xrange,
+        long max_iter,
+        unsigned long exponent,
+        double M,
+        char * seed_x,
+        char * seed_y,
+        long seed_prec,
+):
+    """
+    Full precision orbit for standard Mandelbrot (power = 2) or higher
+    exponent (integer exponent > 2).
+
     Parameters
     ----------
     orbit arr
@@ -159,6 +293,7 @@ def perturbation_mandelbrot_FP_loop(
     need_Xrange bool
         bool - wether we shall worry about ultra low values (Xrange needed)
     max_iter : maximal iteration.
+    exponent: int >= 2, exponent for this Mandelbrot fractal 
     M : radius
     seed_x : C char array representing screen pixel abscissa
         Note: use str(x).encode('utf8') if x is a python str
@@ -177,6 +312,7 @@ def perturbation_mandelbrot_FP_loop(
     orbit_partial_register
         dictionnary containing the partials
     """
+    # Internal private func, common code path for M2 and Mn variants
     cdef:
         long max_len = orbit.shape[0]
         long i = 0
@@ -190,6 +326,10 @@ def perturbation_mandelbrot_FP_loop(
         mpc_t c_t
         mpc_t tmp_t
         mpfr_t x_t, y_t
+        iterMn_zn_t iter_func
+
+
+    iter_func = select_Mnfunc(exponent)
 
     assert orbit.dtype == DTYPE_FLOAT
     print(max_iter, max_len, max_iter * 2)
@@ -223,8 +363,7 @@ def perturbation_mandelbrot_FP_loop(
 
     for i in range(1, max_iter + 1):
 
-        mpc_sqr(tmp_t, z_t, MPC_RNDNN)
-        mpc_add(z_t, tmp_t, c_t, MPC_RNDNN)
+        iter_func(exponent, z_t, c_t, tmp_t)
 
         # C _Complex type assignment to numpy complex128 array is not
         # straightforward, using 2 float64 components
@@ -232,7 +371,7 @@ def perturbation_mandelbrot_FP_loop(
         y = mpfr_get_d(mpc_imagref(z_t), MPFR_RNDN)
         orbit[2 * i] = x
         orbit[2 * i + 1] = y
-        
+
         # take the norm 
         abs_i = hypot(x, y)
 
@@ -261,7 +400,7 @@ def perturbation_mandelbrot_FP_loop(
         # Outputs every print_freq
         if i % print_freq == 0:
             print("FP loop", i, flush=True)
-    
+
     # If we did not escape from the last loop, first invalid iteration is i + 1
     div = True
     if (i == max_iter) and (abs_i <= M):
@@ -322,8 +461,42 @@ def perturbation_mandelbrot_nucleus_size_estimate(
         long order
 ):
     """
+    Hyperbolic component size estimate for standard Mandelbrot (power 2)
+    """
+    cdef unsigned long exponent = 2
+    return perturbation_mandelbrotN_select_nucleus_size_estimate(
+        seed_x, seed_y, seed_prec, exponent, order
+    )
+
+
+def perturbation_mandelbrotN_nucleus_size_estimate(
+        char * seed_x,
+        char * seed_y,
+        long seed_prec,
+        unsigned long exponent,
+        long order
+):
+    """
+    Hyperbolic component size estimate for standard Mandelbrot with power
+    `exponent`, integer >= 2
+    """
+    return perturbation_mandelbrotN_select_nucleus_size_estimate(
+        seed_x, seed_y, seed_prec, exponent, order
+    )
+
+def perturbation_mandelbrotN_select_nucleus_size_estimate(
+        char * seed_x,
+        char * seed_y,
+        long seed_prec,
+        unsigned long exponent,
+        long order
+):
+    """
     Hyperbolic component size estimate. Reference :
     https://mathr.co.uk/blog/2016-12-24_deriving_the_size_estimate.html
+    
+    For power n > 2:
+https://fractalforums.org/fractal-mathematics-and-new-theories/28/miniset-and-embedded-julia-size-estimates/912/msg4815;topicseen#msg4815
 
     Parameters:
     -----------
@@ -358,10 +531,18 @@ def perturbation_mandelbrot_nucleus_size_estimate(
     """
     cdef:
         unsigned long int ui_one = 1
+        double map_normalisation_exponent
         long i = 0
 
         mpc_t z_t, c_t, l_t, b_t, tmp_t, tmp2_t
         mpfr_t x_t, y_t
+
+        iterMn_zn_t iter_func
+        iterMn_dzndz_t iter_deriv
+
+        
+    iter_func = select_Mnfunc(exponent)
+    iter_deriv = select_Mn_deriv_func(exponent)
 
     # initialisation
     mpc_init2(z_t, seed_prec)
@@ -383,17 +564,13 @@ def perturbation_mandelbrot_nucleus_size_estimate(
     mpc_set_si_si(z_t, 0, 0, MPC_RNDNN)
     mpc_set_si_si(l_t, 1, 0, MPC_RNDNN)
     mpc_set_si_si(b_t, 1, 0, MPC_RNDNN)
-    mpc_set_si_si(tmp_t, 0, 0, MPC_RNDNN)
-    mpc_set_si_si(tmp2_t, 0, 0, MPC_RNDNN)
 
     for i in range(1, order):
         #  z = z * z + c
-        mpc_sqr(tmp_t, z_t, MPC_RNDNN)
-        mpc_add(z_t, tmp_t, c_t, MPC_RNDNN)
+        iter_func(exponent, z_t, c_t, tmp_t)
 
         # l = 2. * z * l
-        mpc_mul(tmp_t, z_t, l_t, MPC_RNDNN)
-        mpc_mul_si(l_t, tmp_t, 2, MPC_RNDNN)
+        iter_deriv(exponent, 1, z_t, l_t, tmp_t)
 
         # b = b + 1. / l
         mpc_ui_div(tmp_t, ui_one, l_t, MPC_RNDNN)
@@ -401,10 +578,15 @@ def perturbation_mandelbrot_nucleus_size_estimate(
         mpc_swap(tmp2_t, b_t)
 
     # return 1. / (b * l * l)
-    mpc_sqr(tmp_t, l_t, MPC_RNDNN)
+    if exponent == 2:
+        mpc_sqr(tmp_t, l_t, MPC_RNDNN)
+    else:
+        # For exponent > 2, ll is ll ** ((n)/(n - 1.))
+        map_normalisation_exponent = exponent / (exponent - 1.)
+        mpc_pow_d(tmp_t, l_t, map_normalisation_exponent, MPC_RNDNN)
     mpc_mul(tmp2_t, b_t, tmp_t, MPC_RNDNN)
     mpc_ui_div(tmp_t, ui_one, tmp2_t, MPC_RNDNN)
-    
+
     ret = mpc_t_to_Xrange(tmp_t)
 
     mpc_clear(z_t)
@@ -418,9 +600,164 @@ def perturbation_mandelbrot_nucleus_size_estimate(
     mpfr_clear(y_t)
 
     return ret
-    
+
 
 def perturbation_mandelbrot_ball_method(
+        char * seed_x,
+        char * seed_y,
+        long seed_prec,
+        char * seed_px,
+        long maxiter,
+        double M_divergence
+):
+    cdef unsigned long exponent = 2
+    return perturbation_mandelbrotN_select_ball_method(
+        seed_x, seed_y, seed_prec, seed_px, exponent, maxiter, M_divergence
+    )
+
+def perturbation_mandelbrotN_ball_method(
+        char * seed_x,
+        char * seed_y,
+        long seed_prec,
+        char * seed_px,
+        unsigned long exponent,
+        long maxiter,
+        double M_divergence
+        ):
+    return perturbation_mandelbrotN_select_ball_method(
+        seed_x, seed_y, seed_prec, seed_px, exponent, maxiter, M_divergence
+    )
+
+def perturbation_mandelbrotN_select_ball_method(
+        char * seed_x,
+        char * seed_y,
+        long seed_prec,
+        char * seed_px,
+        unsigned long exponent,
+        long maxiter,
+        double M_divergence
+):
+    """
+    Cycle order estimation by ball-method (iterations of a ball untils it
+    contains 0.)
+
+    Note: this implementation uses the local differential dzdc ; see
+    perturbation_mandelbrot_ball_method_legacy for an implementation based
+    on ball arithmetic 
+
+    Parameters:
+    -----------
+    x: str
+        real part of the starting reference point
+    y: str
+        imag part of the starting reference point
+    seed_prec
+        Precision used for the full precision calculation (in bits)
+        Usually one should just use `mpmath.mp.prec`
+    maxiter: int
+        The maximum number of iteration
+    M_divergence: double
+        The criteria for divergence
+
+    Returns:
+    --------
+    i: int
+        The found order (or -1 if no order is found)
+    """
+    cdef:
+        int cmp = 0
+        long ret = -1
+        long i = 0
+        unsigned long int ui_one = 1
+
+        mpc_t c_t, z_t, dzndc_t, tmp_t, r_t
+        mpfr_t ar_t, x_t, y_t, pix_t, inv_pix_t
+        
+        iterMn_zn_t iter_func
+        iterMn_dzndz_t iter_deriv
+
+    iter_func = select_Mnfunc(exponent)
+    iter_deriv = select_Mn_deriv_func(exponent)
+
+    mpc_init2(c_t, seed_prec)
+    mpc_init2(z_t, seed_prec)
+    mpc_init2(dzndc_t, seed_prec)
+    mpc_init2(tmp_t, seed_prec)
+    mpc_init2(r_t, seed_prec)
+
+    mpfr_init2(ar_t, seed_prec)
+    mpfr_init2(x_t, seed_prec)
+    mpfr_init2(y_t, seed_prec)
+    mpfr_init2(pix_t, seed_prec)
+    mpfr_init2(inv_pix_t, seed_prec)
+
+
+    # from char: set value of c
+    mpfr_set_str(x_t, seed_x, 10, MPFR_RNDN)
+    mpfr_set_str(y_t, seed_y, 10, MPFR_RNDN)
+    mpc_set_fr_fr(c_t, x_t, y_t, MPC_RNDNN)
+
+    # from char: set value of pix_t, inv_pix_t
+    mpfr_set_str(pix_t, seed_px, 10, MPFR_RNDN)
+    mpfr_ui_div(inv_pix_t, ui_one, pix_t, MPFR_RNDN)
+
+    # set z = 0, dz = 0
+    mpc_set_si_si(z_t, 0, 0, MPC_RNDNN)
+    mpc_set_si_si(dzndc_t, 0, 0, MPC_RNDNN)
+
+    # Can't harm, but is it needed ...
+    mpc_set_si_si(tmp_t, 0, 0, MPC_RNDNN)
+    mpc_set_si_si(r_t, 0, 0, MPC_RNDNN)
+
+    for i in range(1, maxiter + 1):
+        
+        iter_deriv(exponent, 0, z_t, dzndc_t, tmp_t)
+        iter_func(exponent, z_t, c_t, tmp_t)
+
+        # r_t <- z_t / dzndc_t
+        mpc_div(r_t, z_t, dzndc_t, MPC_RNDNN)
+        mpc_mul_fr(r_t, r_t, inv_pix_t, MPC_RNDNN)
+
+        # C _Complex type assignment to numpy complex128 array is not
+        # straightforward, using 2 float64 components
+        x = mpfr_get_d(mpc_realref(z_t), MPFR_RNDN)
+        y = mpfr_get_d(mpc_imagref(z_t), MPFR_RNDN)
+
+        if hypot(x, y) > M_divergence: # escaping
+            ret = -1
+            break
+
+        xprint = mpfr_get_d(mpc_realref(dzndc_t), MPFR_RNDN)
+        yprint = mpfr_get_d(mpc_imagref(dzndc_t), MPFR_RNDN)
+
+        # Or did we find a cycle |r_t| < 1
+        mpc_abs(ar_t, r_t, MPFR_RNDN)
+        cmp = mpfr_cmp_d(ar_t, 1.)
+        
+        ar_print = mpfr_get_d(ar_t, MPFR_RNDN)
+        
+        # Return a positive value if op1 > op2, zero if op1 = op2, and a
+        # negative value if op1 < op2.
+        if cmp < 0.:
+            ret = i
+            break
+
+    mpc_clear(c_t)
+    mpc_clear(z_t)
+    mpc_clear(dzndc_t)
+    mpc_clear(tmp_t)
+    mpc_clear(r_t)
+
+    mpfr_clear(x_t)
+    mpfr_clear(y_t)
+    mpfr_clear(ar_t)
+    mpfr_clear(pix_t)
+    mpfr_clear(inv_pix_t)
+    
+    return ret
+
+
+def perturbation_mandelbrot_ball_method_legacy(
         char * seed_x,
         char * seed_y,
         long seed_prec,
@@ -557,6 +894,9 @@ def perturbation_mandelbrot_ball_method(
     mpfr_clear(tmp_real2)
     
     return ret
+
+
+
 
 def perturbation_mandelbrot_find_nucleus(
     char *seed_x,
@@ -788,6 +1128,47 @@ def perturbation_mandelbrot_find_any_nucleus(
 ):
     """
     Run Newton search to find z0 so that f^n(z0) == 0 (n being the order input)
+    Applied to Mandelbrot M2
+    """
+    cdef unsigned long exponent = 2
+    return perturbation_mandelbrotN_select_find_any_nucleus(
+        seed_x, seed_y, seed_prec, exponent, order, max_newton, seed_eps_cv,
+        seed_eps_valid
+    )
+
+
+def perturbation_mandelbrotN_find_any_nucleus(
+    char *seed_x,
+    char *seed_y,
+    long seed_prec,
+    unsigned long exponent,
+    long order,
+    long max_newton,
+    char *seed_eps_cv,
+    char *seed_eps_valid
+):
+    """
+    Run Newton search to find z0 so that f^n(z0) == 0 (n being the order input)
+    Applied to Mandelbrot Mn
+    """
+    return perturbation_mandelbrotN_select_find_any_nucleus(
+        seed_x, seed_y, seed_prec, exponent, order, max_newton, seed_eps_cv,
+        seed_eps_valid
+    )
+    
+
+def perturbation_mandelbrotN_select_find_any_nucleus(
+    char *seed_x,
+    char *seed_y,
+    long seed_prec,
+    unsigned long exponent,
+    long order,
+    long max_newton,
+    char *seed_eps_cv,
+    char *seed_eps_valid
+):
+    """
+    Run Newton search to find z0 so that f^n(z0) == 0 (n being the order input)
 
     This implementation does not includes a "divide by undesired roots"
     technique, so divisors of n are considered.
@@ -856,18 +1237,22 @@ def perturbation_mandelbrot_find_any_nucleus(
         mpc_t zr_t
         mpc_t dzrdc_t
         mpc_t tmp_t1
-        mpc_t tmp_t2
 
         mpfr_t x_t
         mpfr_t y_t
         mpfr_t abs_diff
         mpfr_t eps_t
+        
+        iterMn_zn_t iter_func
+        iterMn_dzndz_t iter_deriv
+
+    iter_func = select_Mnfunc(exponent)
+    iter_deriv = select_Mn_deriv_func(exponent)
 
     mpc_init2(c_t, seed_prec)
     mpc_init2(zr_t, seed_prec)
     mpc_init2(dzrdc_t, seed_prec)
     mpc_init2(tmp_t1, seed_prec)
-    mpc_init2(tmp_t2, seed_prec)
 
     mpfr_init2(x_t, seed_prec)
     mpfr_init2(y_t, seed_prec)
@@ -892,13 +1277,10 @@ def perturbation_mandelbrot_find_any_nucleus(
         # Newton descent
         for i in range(1, order + 1):
             # dzrdc = 2. * dzrdc * zr + 1.
-            mpc_mul_si(tmp_t1, dzrdc_t, 2, MPC_RNDNN)
-            mpc_mul(tmp_t2, tmp_t1, zr_t, MPC_RNDNN)
-            mpc_add_ui(dzrdc_t, tmp_t2, ui_one, MPC_RNDNN)
+            iter_deriv(exponent, 0, zr_t, dzrdc_t, tmp_t1)
 
             # zr = zr * zr + c_loop
-            mpc_sqr(tmp_t1, zr_t, MPC_RNDNN)
-            mpc_add(zr_t, tmp_t1, c_t, MPC_RNDNN)
+            iter_func(exponent, zr_t, c_t, tmp_t1)
 
         # cc = c_loop - zr / dzrdc
         mpc_div(tmp_t1, zr_t, dzrdc_t, MPC_RNDNN)
@@ -937,7 +1319,6 @@ def perturbation_mandelbrot_find_any_nucleus(
     mpc_clear(zr_t)
     mpc_clear(dzrdc_t)
     mpc_clear(tmp_t1)
-    mpc_clear(tmp_t2)
 
     mpfr_clear(x_t)
     mpfr_clear(y_t)
@@ -950,167 +1331,18 @@ def perturbation_mandelbrot_find_any_nucleus(
 
 #==============================================================================
 #==============================================================================
-# Mandelbrot with int power N >= 2 
-
-def perturbation_mandelbrotN_FP_loop(
-        np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
-        bint need_Xrange,
-        long max_iter,
-        unsigned long exponent,
-        double M,
-        char * seed_x,
-        char * seed_y,
-        long seed_prec
-):
-    """
-    Full precision orbit for standard Mandelbrot power N
-    
-    Parameters
-    ----------
-    orbit arr
-        low prec (np.complex 128 viewed as 2 np.float64 components)
-        array which will be filled with the orbit pts
-    need_Xrange bool
-        bool - wether we shall worry about ultra low values (Xrange needed)
-    max_iter : maximal iteration.
-    exponent : int > power for these iterations 
-    M : radius
-    seed_x : C char array representing screen pixel abscissa
-        Note: use str(x).encode('utf8') if x is a python str
-    seed_y : C char array representing screen pixel abscissa
-        Note: use str(y).encode('utf8') if y is a python str
-    int seed_prec
-        Precision used for the full precision calculation (in bits)
-        Usually one should just use `mpmath.mp.prec`
-
-    Return
-    ------
-    i int
-        index of exit
-    orbit_Xrange_register
-        dictionnary containing the special iterations thats need Xrange
-    orbit_partial_register
-        dictionnary containing the partials
-    """
-    cdef:
-        long max_len = orbit.shape[0]
-        long i = 0
-        long print_freq = 0
-        double curr_partial = PARTIAL_TSHOLD
-        double x = 0.
-        double y = 0.
-        double abs_i = 0.
-
-        mpc_t z_t
-        mpc_t c_t
-        mpc_t tmp_t
-        mpfr_t x_t, y_t
-
-    assert orbit.dtype == DTYPE_FLOAT
-    print(max_iter, max_len, max_iter * 2)
-    assert (max_iter + 1) * 2 == max_len # (NP_orbit starts at critical point)
-
-    orbit_Xrange_register = dict()
-    orbit_partial_register = dict()
-
-    mpc_init2(z_t, seed_prec)
-    mpc_init2(c_t, seed_prec)
-    mpc_init2(tmp_t, seed_prec)
-
-    mpfr_init2(x_t, seed_prec)
-    mpfr_init2(y_t, seed_prec)
-
-    mpfr_set_str(x_t, seed_x, 10, MPFR_RNDN)
-    mpfr_set_str(y_t, seed_y, 10, MPFR_RNDN)
-    mpc_set_fr_fr(c_t, x_t, y_t, MPC_RNDNN)
-
-    # For standard Mandelbrot the critical point is 0. - initializing
-    # the FP z and the NP_orbit
-    mpc_set_si_si(z_t, 0, 0, MPC_RNDNN)
-    # Complex 0. :
-    orbit[0] = 0.
-    orbit[1] = 0.
-
-    print_freq = max(10000, (int(max_iter / 100.) // 10000 + 1) * 10000)
-    print("============================================")
-    print("Mandelbrot iterations, full precision: ", seed_prec)
-    print("Output every: ", print_freq, flush=True)
-
-    for i in range(1, max_iter + 1):
-
-#        mpc_sqr(tmp_t, z_t, MPC_RNDNN)
-#        mpc_add(z_t, tmp_t, c_t, MPC_RNDNN)
-#            int mpc_pow_ui(mpc_t rop, const mpc_t op1, unsigned long op2,
-#                   mpc_rnd_t rnd)
-        mpc_pow_ui(tmp_t, z_t, exponent, MPC_RNDNN)
-        mpc_add(z_t, tmp_t, c_t, MPC_RNDNN)
-
-        # C _Complex type assignment to numpy complex128 array is not
-        # straightforward, using 2 float64 components
-        x = mpfr_get_d(mpc_realref(z_t), MPFR_RNDN)
-        y = mpfr_get_d(mpc_imagref(z_t), MPFR_RNDN)
-        orbit[2 * i] = x
-        orbit[2 * i + 1] = y
-        
-        # take the norm 
-        abs_i = hypot(x, y)
-
-        if abs_i > M: # escaping
-            break
-
-        # Handles the special case where the orbit goes closer to the critical
-        # point than a standard double can handle.
-        if need_Xrange and (abs_i < XR_TSHOLD):
-            orbit_Xrange_register[i] = mpc_t_to_Xrange(z_t)
-
-        # Hanldes the successive partials
-        if abs_i <= curr_partial:
-            # We need to check more precisely (due to the 'Xrange' cases)
-            try:
-                curr_index= next(reversed(orbit_partial_register.keys()))
-                curr_partial_Xrange = orbit_partial_register[curr_index]
-            except StopIteration:
-                curr_partial_Xrange = fsx.Xrange_array([curr_partial])
-            candidate_partial = mpc_t_to_Xrange(z_t)
-
-            if candidate_partial.abs2() < curr_partial_Xrange.abs2():
-                orbit_partial_register[i] = candidate_partial
-                curr_partial = abs(candidate_partial.to_standard())
-
-        # Outputs every print_freq
-        if i % print_freq == 0:
-            print("FP loop", i, flush=True)
-    
-    # If we did not escape from the last loop, first invalid iteration is i + 1
-    div = True
-    if (i == max_iter) and (abs_i <= M):
-        div = False
-        i += 1
-
-    print("FP loop completed at iteration: ", i)
-    print("Divergence ? : ", div)
-    print("============================================", flush=True)
-
-    mpc_clear(z_t)
-    mpc_clear(c_t)
-    mpc_clear(tmp_t)
-
-    mpfr_clear(x_t)
-    mpfr_clear(y_t)
-
-    return i, orbit_partial_register, orbit_Xrange_register
-
-#==============================================================================
-#==============================================================================
 # The Burning ship & al !
 # This implementation is largely following the following paper:
 #
 # At the Helm of the Burning Ship, Claude Heiland-Allen, 2019
 # Proceedings of EVA London 2019 (EVA 2019)
 # http://dx.doi.org/10.14236/ewic/EVA2019.74
-cdef int BURNING_SHIP = 0
-cdef int PERPENDICULAR_BURNING_SHIP = 1
-cdef int SHARK_FIN = 2
+    
+# These constants shall match the enumeration define in Burning_Ship
+# implementation: BS_flavor_enum
+cdef int BURNING_SHIP = 1
+cdef int PERPENDICULAR_BURNING_SHIP = 2
+cdef int SHARK_FIN = 3
 
 ctypedef void (*iter_func_t)(
     mpfr_t, mpfr_t, mpfr_t, mpfr_t, mpfr_t, mpfr_t, mpfr_t
@@ -1286,6 +1518,7 @@ cdef void iter_J_pBS(
     if var_ab_xy == 0:
         mpfr_add_si(dxndx_t, dxndx_t, 1, MPFR_RNDN)
         mpfr_add_si(dyndy_t, dyndy_t, -1, MPFR_RNDN)
+
     return
 
 cdef void iter_J_sharkfin(
@@ -1416,14 +1649,75 @@ cdef void matsolve(
     return
 
 
-def perturbation_BS_FP_loop(
+#def perturbation_BS_FP_loop(
+#        np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
+#        bint need_Xrange,
+#        long max_iter,
+#        double M,
+#        char * seed_x,
+#        char * seed_y,
+#        long seed_prec
+#):
+#    return perturbation_nonholomorphic_FP_loop(
+#        orbit,
+#        need_Xrange,
+#        max_iter,
+#        M,
+#        seed_x,
+#        seed_y,
+#        seed_prec,
+#        kind=BURNING_SHIP
+#    )
+#
+#def perturbation_perpendicular_BS_FP_loop(
+#        np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
+#        bint need_Xrange,
+#        long max_iter,
+#        double M,
+#        char * seed_x,
+#        char * seed_y,
+#        long seed_prec
+#):
+#    return perturbation_nonholomorphic_FP_loop(
+#        orbit,
+#        need_Xrange,
+#        max_iter,
+#        M,
+#        seed_x,
+#        seed_y,
+#        seed_prec,
+#        kind=PERPENDICULAR_BURNING_SHIP
+#    )
+#
+#def perturbation_shark_fin_FP_loop(
+#        np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
+#        bint need_Xrange,
+#        long max_iter,
+#        double M,
+#        char * seed_x,
+#        char * seed_y,
+#        long seed_prec
+#):
+#    return perturbation_nonholomorphic_FP_loop(
+#        orbit,
+#        need_Xrange,
+#        max_iter,
+#        M,
+#        seed_x,
+#        seed_y,
+#        seed_prec,
+#        kind=SHARK_FIN
+#    )
+
+def perturbation_nonholomorphic_FP_loop(
         np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
         bint need_Xrange,
         long max_iter,
         double M,
         char * seed_x,
         char * seed_y,
-        long seed_prec
+        long seed_prec,
+        const int kind
 ):
     """
     Full precision orbit for Burning ship
@@ -1441,9 +1735,11 @@ def perturbation_BS_FP_loop(
         Note: use str(x).encode('utf8') if x is a python str
     seed_y : C char array representing screen pixel abscissa
         Note: use str(y).encode('utf8') if y is a python str
-    int seed_prec
+    seed_prec: int 
         Precision used for the full precision calculation (in bits)
         Usually one should just use `mpmath.mp.prec`
+    kind: int
+        The int flavor for this Burning ship implementation 
 
     Return
     ------
@@ -1454,67 +1750,7 @@ def perturbation_BS_FP_loop(
     orbit_partial_register
         dictionnary containing the partials
     """
-    return perturbation_nonholomorphic_FP_loop(
-        orbit,
-        need_Xrange,
-        max_iter,
-        M,
-        seed_x,
-        seed_y,
-        seed_prec,
-        kind=BURNING_SHIP
-    )
-
-def perturbation_perpendicular_BS_FP_loop(
-        np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
-        bint need_Xrange,
-        long max_iter,
-        double M,
-        char * seed_x,
-        char * seed_y,
-        long seed_prec
-):
-    return perturbation_nonholomorphic_FP_loop(
-        orbit,
-        need_Xrange,
-        max_iter,
-        M,
-        seed_x,
-        seed_y,
-        seed_prec,
-        kind=PERPENDICULAR_BURNING_SHIP
-    )
-
-def perturbation_shark_fin_FP_loop(
-        np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
-        bint need_Xrange,
-        long max_iter,
-        double M,
-        char * seed_x,
-        char * seed_y,
-        long seed_prec
-):
-    return perturbation_nonholomorphic_FP_loop(
-        orbit,
-        need_Xrange,
-        max_iter,
-        M,
-        seed_x,
-        seed_y,
-        seed_prec,
-        kind=SHARK_FIN
-    )
-
-def perturbation_nonholomorphic_FP_loop(
-        np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
-        bint need_Xrange,
-        long max_iter,
-        double M,
-        char * seed_x,
-        char * seed_y,
-        long seed_prec,
-        const int kind
-):
+    
     cdef:
         long max_len = orbit.shape[0]
         long i = 0
@@ -1627,11 +1863,55 @@ def perturbation_nonholomorphic_FP_loop(
     return i, orbit_partial_register, orbit_Xrange_register
 
 
-def perturbation_BS_nucleus_size_estimate(
+#def perturbation_BS_nucleus_size_estimate(
+#        char * seed_x,
+#        char * seed_y,
+#        long seed_prec,
+#        long order
+#):
+#
+#    return perturbation_nonholomorphic_nucleus_size_estimate(
+#        seed_x,
+#        seed_y,
+#        seed_prec,
+#        order,
+#        kind=BURNING_SHIP
+#    )
+#
+#def perturbation_perpendicular_BS_nucleus_size_estimate(
+#        char * seed_x,
+#        char * seed_y,
+#        long seed_prec,
+#        long order
+#):
+#    return perturbation_nonholomorphic_nucleus_size_estimate(
+#        seed_x,
+#        seed_y,
+#        seed_prec,
+#        order,
+#        kind=PERPENDICULAR_BURNING_SHIP
+#    )
+#
+#def perturbation_shark_fin_nucleus_size_estimate(
+#        char * seed_x,
+#        char * seed_y,
+#        long seed_prec,
+#        long order
+#):
+#    return perturbation_nonholomorphic_nucleus_size_estimate(
+#        seed_x,
+#        seed_y,
+#        seed_prec,
+#        order,
+#        kind=SHARK_FIN
+#    )
+
+def perturbation_nonholomorphic_nucleus_size_estimate(
         char * seed_x,
         char * seed_y,
         long seed_prec,
-        long order
+        long order,
+        const int kind
 ):
     """
     Hyperbolic component size estimate. Reference :
@@ -1649,70 +1929,16 @@ def perturbation_BS_nucleus_size_estimate(
         Usually one should just use `mpmath.mp.prec`
     order: int
         The reference cycle order
+    kind: int
+        The int flavor for this Burning ship implementation 
 
-    Returns:
-    --------
-    A size estimate of the nucleus described by the input parameters
-
-
-    Note: 
-    -----
-    C-translation of the following python code for Mandelbrot
-    l becomes the jacobian matrix for the Burning ship
-
-        def nucleus_size_estimate(c, order):
-            z = mpmath.mpc(0., 0.)
-            l = mpmath.mpc(1., 0.)
-            b = mpmath.mpc(1., 0.)
-            for i in range(1, order):
-                z = z * z + c
-                l = 2. * z * l
-                b = b + 1. / l
-            return 1. / (b * l * l)
+    Return:
+    -------
+    size, skew
+    A size estimate of the nucleus described by the input parameters, and the
+    local skew matrice
     """
-    return perturbation_nonholomorphic_nucleus_size_estimate(
-        seed_x,
-        seed_y,
-        seed_prec,
-        order,
-        kind=BURNING_SHIP
-    )
-
-def perturbation_perpendicular_BS_nucleus_size_estimate(
-        char * seed_x,
-        char * seed_y,
-        long seed_prec,
-        long order
-):
-    return perturbation_nonholomorphic_nucleus_size_estimate(
-        seed_x,
-        seed_y,
-        seed_prec,
-        order,
-        kind=PERPENDICULAR_BURNING_SHIP
-    )
-
-def perturbation_shark_fin_nucleus_size_estimate(
-        char * seed_x,
-        char * seed_y,
-        long seed_prec,
-        long order
-):
-    return perturbation_nonholomorphic_nucleus_size_estimate(
-        seed_x,
-        seed_y,
-        seed_prec,
-        order,
-        kind=SHARK_FIN
-    )
-
-def perturbation_nonholomorphic_nucleus_size_estimate(
-        char * seed_x,
-        char * seed_y,
-        long seed_prec,
-        long order,
-        const int kind
-):
+    
     cdef:
         unsigned long int ui_one = 1
         long i = 0
@@ -1783,13 +2009,13 @@ def perturbation_nonholomorphic_nucleus_size_estimate(
         #                   [-dyndx   dxndx]
         mpfr_mul(_tmp, delta_t, dyndy_t, MPFR_RNDN)
         mpfr_add(bn_xx_t, bn_xx_t, _tmp, MPFR_RNDN)
-        
+
         mpfr_mul(_tmp, delta_t, dxndy_t, MPFR_RNDN)
         mpfr_sub(bn_xy_t, bn_xy_t, _tmp, MPFR_RNDN)
 
         mpfr_mul(_tmp, delta_t, dyndx_t, MPFR_RNDN)
         mpfr_sub(bn_yx_t, bn_yx_t, _tmp, MPFR_RNDN)
-        
+
         mpfr_mul(_tmp, delta_t, dxndx_t, MPFR_RNDN)
         mpfr_add(bn_yy_t, bn_yy_t, _tmp, MPFR_RNDN)
 
@@ -1805,7 +2031,7 @@ def perturbation_nonholomorphic_nucleus_size_estimate(
     mpfr_abs(_tmp, delta_t, MPFR_RNDN)
     mpfr_rec_sqrt(delta_t, _tmp, MPFR_RNDN)
     size = mpfr_t_to_Xrange(delta_t)
-    
+
     # Skew : SKEW = normalized(beta)^-1
     # However we ALSO need to change basis (because of the minus sign before b)
     # so M -> P^-1 M P where :
@@ -1832,56 +2058,56 @@ def perturbation_nonholomorphic_nucleus_size_estimate(
     return size, skew
 
 
-def perturbation_BS_skew_estimate(
-        char * seed_x,
-        char * seed_y,
-        long seed_prec,
-        long max_iter,
-        double M,
-):
-    """
-    Quick estimation of skew for areas without minis
-    """
-    return perturbation_nonholomorphic_skew_estimate(
-        seed_x,
-        seed_y,
-        seed_prec,
-        max_iter,
-        M,
-        kind=BURNING_SHIP
-    )
-
-def perturbation_perpendicular_BS_skew_estimate(
-        char * seed_x,
-        char * seed_y,
-        long seed_prec,
-        long max_iter,
-        double M,
-):
-    return perturbation_nonholomorphic_skew_estimate(
-        seed_x,
-        seed_y,
-        seed_prec,
-        max_iter,
-        M,
-        kind=PERPENDICULAR_BURNING_SHIP
-    )
-
-def perturbation_shark_fin_skew_estimate(
-        char * seed_x,
-        char * seed_y,
-        long seed_prec,
-        long max_iter,
-        double M,
-):
-    return perturbation_nonholomorphic_skew_estimate(
-        seed_x,
-        seed_y,
-        seed_prec,
-        max_iter,
-        M,
-        kind=SHARK_FIN
-    )
+#def perturbation_BS_skew_estimate(
+#        char * seed_x,
+#        char * seed_y,
+#        long seed_prec,
+#        long max_iter,
+#        double M,
+#):
+#    """
+#    Quick estimation of skew for areas without minis
+#    """
+#    return perturbation_nonholomorphic_skew_estimate(
+#        seed_x,
+#        seed_y,
+#        seed_prec,
+#        max_iter,
+#        M,
+#        kind=BURNING_SHIP
+#    )
+#
+#def perturbation_perpendicular_BS_skew_estimate(
+#        char * seed_x,
+#        char * seed_y,
+#        long seed_prec,
+#        long max_iter,
+#        double M,
+#):
+#    return perturbation_nonholomorphic_skew_estimate(
+#        seed_x,
+#        seed_y,
+#        seed_prec,
+#        max_iter,
+#        M,
+#        kind=PERPENDICULAR_BURNING_SHIP
+#    )
+#
+#def perturbation_shark_fin_skew_estimate(
+#        char * seed_x,
+#        char * seed_y,
+#        long seed_prec,
+#        long max_iter,
+#        double M,
+#):
+#    return perturbation_nonholomorphic_skew_estimate(
+#        seed_x,
+#        seed_y,
+#        seed_prec,
+#        max_iter,
+#        M,
+#        kind=SHARK_FIN
+#    )
 
 def perturbation_nonholomorphic_skew_estimate(
         char * seed_x,
@@ -2110,11 +2336,11 @@ def perturbation_nonholomorphic_ball_method(
     mpfr_set_str(a_t, seed_x, 10, MPFR_RNDN)
     mpfr_set_str(b_t, seed_y, 10, MPFR_RNDN)
 
-    # set z = 0 l = 1 b = 1
+    # set z = 0
     mpfr_set_si(xn_t, 0, MPFR_RNDN)
     mpfr_set_si(yn_t, 0, MPFR_RNDN)
 
-    # L0 = 0 (identity matrix)
+    # L0 = 0
     mpfr_set_si(dxnda_t, 0, MPFR_RNDN)
     mpfr_set_si(dxndb_t, 0, MPFR_RNDN)
     mpfr_set_si(dynda_t, 0, MPFR_RNDN)
@@ -2150,7 +2376,6 @@ def perturbation_nonholomorphic_ball_method(
         y = mpfr_get_d(yn_t, MPFR_RNDN)
         # print("x y", x, y)
         if hypot(x, y) > M_divergence: # escaping
-#            print("escaping")
             ret = -1
             break
 
@@ -2421,7 +2646,6 @@ def perturbation_nonholomorphic_find_any_nucleus(
 
     if newton_cv:
         return newton_cv, gmpy_to_mpmath_mpc(gmpy_mpc, seed_prec)
-    print("DEBUG: Failed in perturbation_nonholomorphic_find_any_nucleus")
     return False, mpmath.mpc("nan", "nan")
 
 #==============================================================================

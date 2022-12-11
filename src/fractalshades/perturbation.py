@@ -173,10 +173,15 @@ directory : str
            - same or more max_iter
            - not too far
            - and with a suitable dps
+           - Same fractal __init__ params 
         """
+        init_kwargs = self.init_kwargs
+        del init_kwargs["directory"]
+
         try:
             ref_point = self.FP_params["ref_point"]
             max_iter_ref = self.FP_params["max_iter"]
+            init_kwargs_ref = self.FP_params["init_kwargs"]
         except FileNotFoundError:
             logger.debug("No data file found for ref point")
             return False
@@ -187,12 +192,17 @@ directory : str
 
         drift_xr = fsx.mpc_to_Xrange((self.x + 1j * self.y) - ref_point)
         dx_xr = fsx.mpf_to_Xrange(self.dx)
-
         
+        matching_init_kwargs = True
+        for k, v in init_kwargs_ref.items():
+            if init_kwargs[k] != v:
+                matching_init_kwargs = False
+
         dic_match = {
            "dps": mpmath.mp.dps <= self.FP_params["dps"] + 3,
            "location": (drift_xr / dx_xr).abs2() < 1.e6,
            "max_iter": max_iter_ref >= max_iter,
+           "init_kwargs": matching_init_kwargs
         }
         for item, match in dic_match.items():
             if not match:
@@ -323,82 +333,7 @@ directory : str
             return (Zn_path, has_xr, ref_index_xr, refx_xr, refy_xr,
                     ref_div_iter, ref_order, driftx_xr, drifty_xr,
                     dx_xr)
-            
 
-
-
-#    def SA_file(self): # , iref, calc_name):
-#        """
-#        Returns the file path to store or retrieve data arrays associated to a 
-#        Series Approximation
-#        """
-#        return os.path.join(self.directory, "data", "SA.dat")
-
-
-#    def save_SA(self, FP_params, SA_params, SA_kc, P, n_iter, P_err):
-#        """
-#        Reload arrays from a data file
-#           - params = main parameters used for the calculation
-#           - codes = complex_codes, int_codes, termination_codes
-#           - arrays : [Z, U, stop_reason, stop_iter]
-#        """
-#        save_path = self.SA_file()
-#        fs.utils.mkdir_p(os.path.dirname(save_path))
-#
-#        with open(save_path, 'wb+') as tmpfile:
-#            logger.debug("SA computed, saving", save_path)
-#            for item in (FP_params, SA_params, SA_kc, P, n_iter, P_err):
-#                pickle.dump(item, tmpfile, pickle.HIGHEST_PROTOCOL)
-
-
-#    def reload_SA(self, scan_only=False):
-#        """
-#        Reload arrays from a data file
-#           - FP_params = main parameters used for ref pt calc
-#           - SA_params = main parameters used for SA calc
-#            P, n_iter, P_err : The SA results
-#
-#        """
-#        save_path = self.SA_file()
-#        with open(save_path, 'rb') as tmpfile:
-#            FP_params = pickle.load(tmpfile)
-#            SA_params = pickle.load(tmpfile)
-#            SA_kc = pickle.load(tmpfile)
-#            if scan_only:
-#                return FP_params, SA_params, SA_kc
-#            P = pickle.load(tmpfile)
-#            n_iter = pickle.load(tmpfile)
-#            P_err = pickle.load(tmpfile)
-#        return FP_params, SA_params, SA_kc, P, n_iter, P_err
-
-#    def get_SA_data(self):
-#        """ return attribute or try to reload from file """
-#        if hasattr(self, "_SA_data"):
-#            return self._SA_data
-#        else:
-#            _, _, _, P, n_iter, P_err = self.reload_SA()
-#            return P, n_iter, P_err
-
-#    def SA_matching(self):
-#        """
-#        Test if the SA stored can be used for this calculation ie 
-#           - same ref point
-#           - same SA parameters
-#        """
-#        try:
-#            (stored_FP_params, stored_SA_params, stored_kc
-#             ) = self.reload_SA(scan_only=True)
-#        except FileNotFoundError:
-#            return False
-#
-#        valid_FP_params = (stored_FP_params == self.FP_params)
-#        valid_SA_params = (stored_SA_params == self.SA_params)
-#        valid_kc = (stored_kc == self.kc)
-#        logger.debug("validate stored SA",
-#                     valid_FP_params, valid_SA_params, valid_kc
-#        )
-#
-#        return (valid_FP_params and valid_SA_params and valid_kc)
 
 #==============================================================================
 # Printing - export functions
@@ -415,14 +350,10 @@ directory : str
             try:
                 for kv, vv in v.items():
                     pp +=  f"  {k}, ({kv}) --> {vv}"
-                    # print(k, f"({kv}) --> ", str(vv))
             except AttributeError:
                 pp +=  f"  {k} --> {v}"
-                # print(k, " --> ", v)
         pp += f"ref_path, shape: {Zn_path.shape}, {Zn_path.dtype}"
         pp += str(Zn_path)
-        # print("ref_path, shape: ", Zn_path.shape, Zn_path.dtype) 
-        # print(Zn_path)
         pp += "  -------------------------------------------------------------"
         logger.info(pp)
 
@@ -451,24 +382,11 @@ directory : str
             return numba_cycles_perturb(
                 *cycle_dep_args, *cycle_indep_args
             )
-#                c_pix, Z, U, stop_reason, stop_iter,
-#                initialize, iterate,
-#                Zn_path, dZndc_path, dZndz_path,
-#                has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
-#                drift_xr, dx_xr,
-#                P, kc, n_iter, M_bla, r_bla, bla_len, stages_bla,
-#                self._interrupted
+
         else:
             return numba_cycles_perturb_BS(
                 *cycle_dep_args, *cycle_indep_args
             )
-#                c_pix, Z, U, stop_reason, stop_iter, # DEP
-#                initialize, iterate, # INDEP
-#                Zn_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path, # INDEP
-#                has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order, # INDEP
-#                driftx_xr, drifty_xr, dx_xr, # INDEP
-#                P, kc, n_iter, M_bla, r_bla, bla_len, stages_bla, # INDEP
-#                self._interrupted # INDEP
 
 
     def get_cycle_indep_args(self, initialize, iterate):
@@ -476,28 +394,6 @@ directory : str
         Parameters independant of the cycle
         This is where the hard work is done
         """
-        # Dev notes for "on the fly" calc -  In cycle you have :
-        # - chunck dependant args -> Shall be stored once only !
-        # - chunck dependant args ->  Shall be 
-        
-        # Parent class implementation
-        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-#        initialize = self.initialize()
-#        iterate = self.iterate()
-#
-#        dx = self.dx
-#        center = self.x + 1j * self.y
-#        xy_ratio = self.xy_ratio
-#        theta = self.theta_deg / 180. * np.pi # used for expmap
-#        projection = self.PROJECTION_ENUM[self.projection]
-#
-#        return (
-#            initialize, iterate,  # INDEP
-#            dx, center, xy_ratio, theta, projection, # INDEP
-#            self._interrupted # INDEP
-#        )
-        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
         # ====================================================================
         # CUSTOM class impl
         # Initialise the reference path
@@ -505,20 +401,6 @@ directory : str
         holomorphic = self.holomorphic
         calc_deriv_c = self.calc_dZndc if holomorphic else self.calc_hessian
         calc_dZndz = self.calc_dZndz if holomorphic else False
-#        has_SA = (
-#            (self.SA_params is not None) if hasattr(self, "SA_params") 
-#            else False
-#        )
-        
-        # if hasattr(self, "calc_dZndz") and self.calc_dZndz:
-
-        # expected ret value for holomorphic :
-        # (holomorphic, initialize, iterate,
-#                Zn_path, dZndc_path, dZndz_path,
-#                has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
-#                drift_xr, dx_xr,
-#                P, kc, n_iter, M_bla, r_bla, bla_len, stages_bla,
-#                self._interrupted)
 
         # 1) compute or retrieve the reference orbit
         self.set_status("Reference", "running")
@@ -588,17 +470,6 @@ directory : str
                 "Resolution is too low for this zoom depth. Try to increase"
                 "the reference calculation precicion."
         )
-
-        # Initialise SA interpolation - legacy code
-#        n_iter = 0
-#        P = None
-#        if has_SA:
-#            warnings.warn('SA is obsolete, use BLA instead',
-#                          DeprecationWarning)
-#            self.get_SA(Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter,
-#                        ref_order)
-#            P, n_iter, _ = self.get_SA_data()
-
 
         # Initialize BLA interpolation
         if self.BLA_eps is None:
@@ -855,10 +726,16 @@ directory : str
         FP_params["xr"] = {}
         FP_params["div_iter"] = div_iter
 
+        # Also, store the *init_kwargs* because if the Fractal is regenerated
+        # from new initial inputs, we shall obvs invalidate the orbit
+        init_kwargs = self.init_kwargs
+        del init_kwargs["directory"]
+        FP_params["init_kwargs"] = init_kwargs
+
         Zn_path = np.zeros([div_iter + 1], dtype=np.complex128)
         Zn_path[:] = crit
         
-        print("store_critical_orbit", crit, Zn_path)
+        logger.debug(f"Storing critical orbit {crit}:\n  {Zn_path}")
 
         self.save_ref_point(FP_params, Zn_path)
 
@@ -902,6 +779,13 @@ directory : str
         FP_params["xr"] = xr_dict
         FP_params["div_iter"] = i
 
+        # Also, store the *init_kwargs* because if the Fractal is regenerated
+        # from new initial inputs, we shall obvs invalidate the orbit
+        init_kwargs = self.init_kwargs
+        del init_kwargs["directory"]
+        FP_params["init_kwargs"] = init_kwargs
+
+        logger.info(f"Storing  orbit for pt: \n  {ref_point}\n  {Zn_path}")
         self.save_ref_point(FP_params, Zn_path)
 
 
@@ -1124,7 +1008,7 @@ def numba_iterate(
 
     @numba.njit(fastmath=True, error_model="numpy")
     def numba_impl(
-        c, c_xr, Z, Z_xr, Z_xr_trigger, U, stop, #n_iter,
+        c, c_xr, Z, Z_xr, Z_xr_trigger, U, stop,
         Zn_path, dZndc_path, dZndz_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
         refpath_ptr, out_is_xr, out_xr, M_bla, r_bla, bla_len, stages_bla
     ):
@@ -1419,10 +1303,12 @@ def numba_iterate(
 
         if xr_detect_activated:
             Z[zn] = fsxn.to_standard(Z_xr[zn]) + Zn_path[w_iter]
-            Z[dzndc] = fsxn.to_standard(Z_xr[dzndc] + dZndc_path[w_iter])
+            if calc_dzndc:
+                Z[dzndc] = fsxn.to_standard(Z_xr[dzndc] + dZndc_path[w_iter])
         else:
             Z[zn] += Zn_path[w_iter]
-            Z[dzndc] += dZndc_path[w_iter]
+            if calc_dzndc:
+                Z[dzndc] += dZndc_path[w_iter]
         
         if calc_orbit: # Finalizing the orbit
             zn_orbit = orbit_zn2
@@ -1797,102 +1683,6 @@ def apply_BLA_deriv_BS(M, Z, a, b, dxnda, dxndb, dynda, dyndb):
     Z[dxndb] = Z_dxndb
     Z[dynda] = Z_dynda
     Z[dyndb] = Z_dyndb
-
-##------------------------------------------------------------------------------
-## Series approximations
-#@numba.njit
-#def numba_SA_run(
-#        SA_loop, 
-#        Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
-#        kc, SA_cutdeg, SA_err_sq, SA_stop
-#):
-#    """
-#    SA_loop function with signature (P, n_iter, ref_zn_xr, kcX)
-#    Ref_path : Ref_path object
-#    kc = Xrange float
-#    SA_err_sq : float
-#    SA_stop : int or -1
-#    SA_cutdeg :  int
-#    
-#    SA_stop : user-provided max SA iter. If -1, will default to ref_path length
-#    ref_div_iter : point where Reference point DV
-#    """
-#    # Note : SA 23064 23063 for order 23063
-#    # ref_path[ref_order-1] ** 2 == -c OK
-#    # print("SA", ref_div_iter, ref_order)#, ref_path[ref_order-1])
-#    if SA_stop == -1:
-#        SA_stop = ref_div_iter
-#    else:
-#        SA_stop = min(ref_div_iter, SA_stop)
-#
-#    print_freq = max(5, int(SA_stop / 100000.))
-#    print_freq *= 1000
-##    print("numba_SA_cycles - output every", print_freq)
-#
-#    SA_valid = True
-#    n_real_iter = 0
-#    n_iter = 0
-#
-#    P0_arr = Xr_template.repeat(1)
-#    P0_err = Xr_float_template.repeat(1)
-#    P = fsx.Xrange_SA(P0_arr, cutdeg=SA_cutdeg, err=P0_err) # P0
-#
-#    kcX_arr = Xr_template.repeat(2)
-#    kcX_arr[1] = kc[0]
-#    kcX_err = Xr_float_template.repeat(1)
-#    kcX = fsx.Xrange_SA(kcX_arr, cutdeg=SA_cutdeg, err=kcX_err)
-#    
-#    # refpath_ptr = [prev_idx, curr_xr]
-#    refpath_ptr = np.zeros((2,), dtype=numba.int32)
-#    out_is_xr = np.zeros((1,), dtype=numba.bool_)
-#    out_xr = Xr_template.repeat(1)
-#
-#    while SA_valid:
-#
-#        # keep a copy in case this iter is invalidated
-#        P_old = P.coeffs.copy()
-#
-#        # Load reference point value
-#        # refpath_ptr = [prev_idx, curr_xr]
-#        ref_zn = ref_path_get(
-#            Zn_path, n_iter,
-#            has_xr, ref_index_xr, ref_xr, refpath_ptr,
-#            out_is_xr, out_xr, 0
-#        )
-#
-#        # incr iter
-#        n_real_iter +=1
-#        n_iter += 1
-#        # wraps to 0 when reaching cycle order
-#        if n_iter >= ref_order:
-#            n_iter -= ref_order
-#
-#        ref_zn_xr = ensure_xr(ref_zn, out_xr[0], out_is_xr[0])
-#        P = SA_loop(P, n_iter, ref_zn_xr, kcX)
-#
-#        coeffs_sum = fsxn.Xrange_scalar(0., numba.int32(0))
-#        for i in range(len(P.coeffs)):
-#            coeffs_sum = coeffs_sum + fsxn.extended_abs2(P.coeffs[i])
-#        err_abs2 = P.err[0] * P.err[0]
-#
-#        SA_valid = (
-#            (err_abs2  <= SA_err_sq * coeffs_sum) # relative err
-#            and (coeffs_sum <= 1.e6) # 1e6 to allow 'low zoom'
-#            and (n_iter < SA_stop)
-#        )
-#        if not(SA_valid):
-#            P_ret = fsx.Xrange_polynomial(P_old, P.cutdeg)
-#            n_real_iter -= 1
-#
-#        if n_iter % print_freq == 0 and SA_valid:
-#            ssum = np.sqrt(coeffs_sum)
-#            print(
-#                "SA running", n_real_iter,
-#                "err: ", fsxn.to_Xrange_scalar(P.err[0]),
-#                "<< ", ssum
-#            )
-#
-#    return P_ret, n_real_iter, P.err
 
 
 #------------------------------------------------------------------------------

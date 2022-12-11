@@ -323,9 +323,17 @@ class Fractal_plotter:
 
         self.save_images()
         logger.info("Plotting images: done")
-        
+
         # Output data file
         self.write_postproc_report()
+
+        if fs.settings.inspect_calc:
+            # Detailed debugging "inspect_calc" report
+            for pbatch in self.postproc_batches:
+                calc_name = pbatch.calc_name
+                f.write_inspect_calc(
+                    calc_name, final=self.postproc_options["final_render"]
+                )
 
 
     @property
@@ -477,8 +485,7 @@ class Fractal_plotter:
 
 
     def write_postproc_report(self):
-        txt_report_path = os.path.join(
-            self.fractal.directory, type(self).__name__ + ".txt")
+        txt_report_path = self.fractal.txt_report_path
 
         def write_layer_report(i, layer, report):
             report.write(" - Layer #{} :\n".format(i))
@@ -835,7 +842,6 @@ advanced users when subclassing.
 
         The string identifiers are stored in ``codes`` attributes.
 """
-        print("IN INIT Fractal")
         self.directory = directory
         self.subset = None
         self._interrupted = np.array([0], dtype=np.bool_)
@@ -867,9 +873,7 @@ advanced users when subclassing.
         """ Serialisation of a Fractal object. The fractal state (zoom, calc)
         is dropped and shall be re-instated externally if need be.
         """
-        # print("IN REDUCE Fractal")
         vals = tuple(self.init_kwargs.values())
-        # print("self.__class__, vals", self.__class__, vals)
         return (self.__class__, vals)
 
     def script_repr(self, indent):
@@ -1582,9 +1586,7 @@ advanced users when subclassing.
     # Codes filtering
     def saved_codes(self, codes):
         (complex_codes, int_codes, stop_codes) = codes
-        print(">>>>>>>>>>>>>>>>>>>>>>>saved_codes 1", complex_codes)
         f_complex_codes = self.filter_stored_codes(complex_codes)
-        print(">>>>>>>>>>>>>>>>>>>>>>>saved_codes 2", complex_codes)
         f_int_codes = self.filter_stored_codes(int_codes)
         return (f_complex_codes, f_int_codes, stop_codes)
 
@@ -1594,7 +1596,15 @@ advanced users when subclassing.
         return list(filter(lambda x: not(x.startswith("_")), codes))
 
 #==============================================================================
-# Report path tracks the progress of the calculations
+    @property
+    def txt_report_path(self):
+        """The main report is written by the Fractal_plotter, only the name is 
+        defined here"""
+        return  os.path.join(
+            self.directory, self.__class__.__name__ + ".txt"
+        )
+
+    # Report path ".inspect" tracks the progress of the calculations
     def report_path(self, calc_name): # public
         return os.path.join(
             self.directory, "data", calc_name + ".report"
@@ -1703,12 +1713,22 @@ advanced users when subclassing.
         return report
 
 
-    def inspect_calc(self, calc_name):
+    def write_inspect_calc(self, calc_name, final):
         """
         Outputs a report for the current calculation
         """
         REPORT_ITEMS, report = self.reload_report(calc_name, None)
         report_header = ("chnk_beg|chnk_end|chnk_pts|done|")
+        outpath = os.path.join(self.directory, calc_name + ".inspect")
+
+        if final:
+            log_txt = ("Cannot write detailed output *.inspect_calc"
+                       " for a final render")
+            if os.path.exists(outpath):
+                os.remove(outpath)
+                log_txt += f", deleting obsolete file {outpath}"
+            logger.info(log_txt)
+            return
 
         # There are other interesting items to inspect
         chunks_count = self.chunks_count
@@ -1762,8 +1782,7 @@ advanced users when subclassing.
         for i in range(l2, n_header):
             r = i - l2
             full_report[:, i] = reason_reports[r][:, 0]
-        
-        outpath = os.path.join(self.directory, self.calc_name + ".inspect")
+
         np.savetxt(
             outpath,
             full_report,
@@ -1812,7 +1831,6 @@ advanced users when subclassing.
             "stop_reason": (1, pts_count),
             "stop_iter": (1, pts_count),
         }
-        print("!!! data_dim Z", data_dim["Z"], f_complex_codes,complex_codes, len(f_complex_codes), len(complex_codes) )
 
         for key in keys:
             setattr(
@@ -2000,7 +2018,6 @@ advanced users when subclassing.
     def reload_rawdata_dev(self, calc_name, chunk_slice):
         """ In dev mode we follow a 2-step approach : here the reload step
         """
-        # print(f"reload_rawdata_dev ${calc_name} ${chunk_slice}")
         if self.res_available(calc_name, chunk_slice):
             self.incr_tiles_status(which="Plot tiles")
             return self.reload_data(chunk_slice, calc_name)

@@ -2214,7 +2214,7 @@ class Fractal_editor(QWidget):
             user_ret = msgBox.exec()
             if user_ret == QMessageBox.StandardButton.Ok:
                 self.reset_zoom_parameters()
-            # msgBox.buttonClicked.connect(msgButtonClick)
+
 
     def reset_zoom_parameters(self):
         """ Reset the zoom parameters to default """
@@ -3065,6 +3065,7 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
         self._kind.currentTextChanged.connect(self.update_cmap)
         self._go.clicked.connect(self.display_cmap_code)
         self._push.clicked.connect(self.push_to_param)
+        self._save.clicked.connect(self.save)
         
         # Signal / slot
         self.model_changerequest.connect(
@@ -3088,7 +3089,7 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
         lbl_n_grad = QLabel("Number of gradients:")
         self._n_grad = QSpinBox()
         self._n_grad.setRange(1, 255)
-        self._n_grad.setValue(10)
+        self._n_grad.setValue(64)
         ngrad_layout.addWidget(lbl_n_grad)
         ngrad_layout.addWidget(self._n_grad)
         param_layout.addLayout(ngrad_layout)
@@ -3097,7 +3098,7 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
         lbl_n_pts = QLabel("Points per gradient:")
         self._n_pts = QSpinBox()
         self._n_pts.setRange(1, 255)
-        self._n_pts.setValue(32)
+        self._n_pts.setValue(2)
         npts_layout.addWidget(lbl_n_pts)
         npts_layout.addWidget(self._n_pts)
         param_layout.addLayout(npts_layout)
@@ -3122,17 +3123,24 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
 
         go_layout = QVBoxLayout()
         go = QLabel("Gradient code:")
-        self._go = QPushButton("Export")
+        self._go = QPushButton("Source code")
         go_layout.addWidget(go)
         go_layout.addWidget(self._go)
         action_layout.addLayout(go_layout)
 
         push_layout = QVBoxLayout()
-        push = QLabel("Gradient to param:")
+        push = QLabel("Gradient to parameter:")
         self._push = QPushButton("Push")
         push_layout.addWidget(push)
         push_layout.addWidget(self._push)
         action_layout.addLayout(push_layout)
+
+        save_layout = QVBoxLayout()
+        save = QLabel("Save to file:")
+        self._save = QPushButton("Save")
+        save_layout.addWidget(save)
+        save_layout.addWidget(self._save)
+        action_layout.addLayout(save_layout)
 
         action_box = QGroupBox("Actions")
         action_box.setLayout(action_layout)
@@ -3143,7 +3151,7 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
     def display_cmap_code(self):
         """ displays source code for Fractal object """
         ce = Fractal_code_editor(self)
-        str_args = repr(self._cmap)
+        str_args = self._cmap.script_repr()
         ce.set_text(str_args)
         ce.setWindowTitle("Fractal code")
         ce.show()
@@ -3178,6 +3186,24 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
                 ("func", (i_param, 0, "val")), self._cmap
         )
 
+    def save(self):
+        """ Save the camp as a pickle .cmap file"""
+        cmap = self._cmap
+        mainw = self.parent()
+
+        if cmap is not None:
+            file_path = mainw.gui_file_path(
+                    _filter="Colormap (*.cmap)", mode="save"
+            )
+            if file_path == "":
+                return 
+
+            root, ext = os.path.splitext(file_path)
+            if ext != "cmap":
+                file_path = root + "." + "cmap"
+                logger.info(f"Changed cmap save file to: {file_path}")
+
+            cmap.save_as_pickle(file_path)
 
     def add_cmap_box(self):
         cmap_layout = QHBoxLayout()
@@ -3230,7 +3256,6 @@ class Cmap_Image_widget(QDialog, Zoomable_Drawer_mixin):
         
 
     def update_cmap(self):
-
         if not(hasattr(self, "validated_object_pos")):
             # Nothing to update
             return
@@ -3338,7 +3363,6 @@ class Fractal_cmap_choser(QDialog):
 
     def push_to_param(self):
         """ Try to push to a colormap param if there is one """
-#        sign = inspect.signature(self.parent()._gui._func)
         sign = fs.gui.guitemplates.signature(
                 self.parent()._gui._func
         )
@@ -3381,6 +3405,8 @@ class Fractal_cmap_choser(QDialog):
 
 class Fractal_MainWindow(QMainWindow):
     
+    model_changerequest = pyqtSignal(object, object)
+    
     def __init__(self, gui):
         super().__init__(parent=None)
         self.setStyleSheet(MAIN_WINDOW_CSS)
@@ -3391,16 +3417,30 @@ class Fractal_MainWindow(QMainWindow):
         if fs.settings.output_context["doc"] or True:
             # Needed for github build where QT_QPA_PLATFORM=offscreen
             self.setMinimumSize(1200, 744 - 24)
+        
+        # Signal / slot
+        self.model_changerequest.connect(
+                self._model.model_changerequest_slot
+        )
 
     def set_menubar(self) :
       bar = self.menuBar()
+
       tools = bar.addMenu("Tools")
+      layers_data = QAction('View Layers data', tools)
       clear_cache = QAction('Clear calculation cache', tools)
-      png_info = QAction('Png info', tools)
-      png_cbar = QAction('Colormap from png image', tools)
-      template_cbar = QAction('Colormap from templates', tools)
-      tools.addActions((clear_cache, png_info, png_cbar, template_cbar))
+      png_info = QAction("Show png info", tools)
+      tools.addActions((layers_data, clear_cache, png_info))
       tools.triggered[QAction].connect(self.actiontrig)
+      
+      cmap = bar.addMenu("Colormaps")
+      png_cbar = QAction('Colormap from png image', cmap)
+      template_cbar = QAction('Colormap from templates', cmap)
+      save_cmap_cbar = QAction('Save cmap (.cmap)', cmap)
+      load_cmap_cbar = QAction('Load cmap (.cmap)', cmap)
+      cmap.addActions((png_cbar, template_cbar, save_cmap_cbar,
+                       load_cmap_cbar))
+      cmap.triggered[QAction].connect(self.actiontrig)
 
       about = bar.addMenu("About")
       license_txt = QAction('License', about)
@@ -3408,16 +3448,27 @@ class Fractal_MainWindow(QMainWindow):
       about.triggered[QAction].connect(self.actiontrig)
 
     def actiontrig(self, action):
-        if action.text() == "License":
-            self.show_license()
-        elif action.text() == "Png info":
-            self.show_png_info()
-        elif action.text() == "Colormap from png image":
-            self.cmap_from_png()
-        elif action.text() == "Colormap from templates":
-            self.cmap_from_template()
-        elif action.text() == "Clear calculation cache":
+        print("*****,actiontrig", action.text())
+        
+        txt = action.text()
+        if txt == "View Layers data":
+            self.layers_data()
+        elif txt == "Clear calculation cache":
             self.clear_cache()
+        elif txt == "Show png info":
+            self.show_png_info()
+        elif txt == "Colormap from png image":
+            self.cmap_from_png()
+        elif txt == "Colormap from templates":
+            self.cmap_from_template()
+        elif txt == "Save cmap (.cmap)":
+            self.save_cmap()
+        elif txt == "Load cmap (.cmap)":
+            self.load_cmap()
+        elif txt == "License":
+            self.show_license()
+        else:
+            print("Unknow actiontrig")
 
     def show_license(self):
         """
@@ -3437,7 +3488,7 @@ class Fractal_MainWindow(QMainWindow):
         msg.setDetailedText(license_str)
         msg.exec()
     
-    def gui_file_path(self, _filter=None):
+    def gui_file_path(self, _filter=None, mode="open"):
         """
         Load a file, browsing from the __main__ directory 
         """
@@ -3446,15 +3497,25 @@ class Fractal_MainWindow(QMainWindow):
             script_dir = os.path.abspath(os.path.dirname(__main__.__file__))
         except NameError:
             script_dir = None
-        file_path = QFileDialog.getOpenFileName(
-                self,
-                directory=script_dir,
-                caption="Select Directory",
-                filter=_filter
-        )
+        if mode == "open":
+            file_path = QFileDialog.getOpenFileName(
+                    self,
+                    directory=script_dir,
+                    caption="Select File",
+                    filter=_filter
+            )
+        elif mode == "save":
+            file_path = QFileDialog.getSaveFileName(
+                    self,
+                    directory=script_dir,
+                    caption="Save File",
+                    filter=_filter
+            )
+            
         if isinstance(file_path, tuple):
             file_path = file_path[0]
         return file_path
+
 
     def show_png_info(self):
         """
@@ -3497,7 +3558,91 @@ class Fractal_MainWindow(QMainWindow):
         msg.setText("Directory :")
         msg.setInformativeText(f"{fractal.directory}")
         msg.exec()
-        
+    
+    def layers_data(self):
+        """ display in GUI the file with layers info"""
+        func_submodel = self.from_register(("func",))
+        fractal = next(iter(func_submodel.getkwargs().values()))
+        txt_report_path = fractal.txt_report_path
+        txt_report_file = os.path.basename(txt_report_path)
+
+        with open(txt_report_path, "r") as f:
+            report = f.read()
+
+        ce = Fractal_code_editor()
+        ce.set_text(report)
+        ce.setWindowTitle(f"Layers info [./{txt_report_file}]")
+        ce.exec()
+
+
+    def save_cmap(self):
+        """ Select one of the parameters of type Colormap, and save its as
+        a .cmap file"""
+        key, cmap = self.chose_cmap_param()
+        if cmap is not None:
+            file_path = self.gui_file_path(
+                    _filter="Colormap (*.cmap)", mode="save"
+            )
+            if file_path == "":
+                return 
+
+            root, ext = os.path.splitext(file_path)
+            if ext != "cmap":
+                file_path = root + "." + "cmap"
+                logger.info(f"Changed cmap save file to: {file_path}")
+
+            cmap.save_as_pickle(file_path)
+
+    def load_cmap(self):
+        """ Load a Colormap from a .cmap file, and push it to one of the
+        parameters """
+        file_path = self.gui_file_path(_filter="Colormap (*.cmap)")
+        if file_path == "":
+            return 
+
+        key = self.chose_cmap_param(with_val=False)
+        if key is not None:
+            cmap = fs.colors.Fractal_colormap.load_as_pickle(file_path)
+            self.model_changerequest.emit(key, cmap)
+
+
+    def chose_cmap_param(self, with_val=True):
+        """ Return the model-evel key associated with one of the 
+        cmap parameters (user can chose if there are multiple)
+        + its current value
+        """
+        sign = fs.gui.guitemplates.signature(self._gui._func)
+
+        cmap_params_index = dict()
+        for i_param, (name, param) in enumerate(sign.parameters.items()):
+            if param.annotation is fs.colors.Fractal_colormap:
+                cmap_params_index[name] = i_param
+
+        if len(cmap_params_index) == 0:
+            raise RuntimeError("No fs.colors.Fractal_colormap parameter")
+
+        elif len(cmap_params_index) == 1:
+            i_param = next(iter(cmap_params_index.values()))
+        else:
+            params = list(cmap_params_index.keys())
+            param, ok = QInputDialog.getItem(
+                self, "Select parameter", 
+                "available parameters", params, 0, False
+            )
+            if ok and param:
+                 i_param = cmap_params_index[param]
+            else:
+                if with_val:
+                    return None, None
+                return None
+
+        key = ("func", (i_param, 0, "val"))
+        if not(with_val):
+            return key
+
+        val = self._model[key]
+        return key, val
+
 
     def build_model(self, gui):
         self._gui = gui

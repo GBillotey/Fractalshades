@@ -43,6 +43,7 @@ directory : str
         
         # GUI 'badges'
         self.holomorphic = True
+        self.implements_dzndc = "always"
         self.implements_fieldlines = True
         self.implements_newton = True
         self.implements_Milnor = True
@@ -138,7 +139,6 @@ directory : str
                 # Not much to do here
                 pass
             return numba_init_impl
-
 
         Mdiv_sq = M_divergence ** 2
         epscv_sq = epsilon_stationnary ** 2
@@ -359,6 +359,7 @@ directory : str
 
         # GUI 'badges'
         self.holomorphic = True
+        self.implements_dzndc = "user"
         self.implements_fieldlines = True
         self.implements_newton = False
         self.implements_Milnor = False
@@ -367,6 +368,9 @@ directory : str
 
         # Orbit 'on the fly' calculation
         self.zn_iterate = Mn_iterate(exponent)
+        
+        # Cache for numba compiled implementations
+        self._numba_cache = {}
 
 
     def FP_loop(self, NP_orbit, c0):
@@ -374,7 +378,6 @@ directory : str
         The full precision loop ; fills in place NP_orbit
         """
         xr_detect_activated = self.xr_detect_activated
-
         max_orbit_iter = (NP_orbit.shape)[0] - 1
         M_divergence = self.M_divergence
 
@@ -415,38 +418,35 @@ Parameters
 ==========
 calc_name : str
      The string identifier for this calculation
-subset : 
+subset: Optional `fractalshades.postproc.Fractal_array`
     A boolean array-like, where False no calculation is performed
     If `None`, all points are calculated. Defaults to `None`.
-max_iter : int
+max_iter: int
     the maximum iteration number. If reached, the loop is exited with
     exit code "max_iter".
-M_divergence : float
+M_divergence: float
     The diverging radius. If reached, the loop is exited with exit code
     "divergence"
-epsilon_stationnary : float
+epsilon_stationnary: float
     Used only if `interior_detect` parameter is set to True
     A small criteria (typical range 0.01 to 0.001) used to detect earlier
     points belonging to a minibrot, based on dzndz1 value.
     If reached, the loop is exited with exit code "stationnary"
-BLA_eps : None | float
+BLA_eps: None | float
     Relative error criteriafor BiLinear Approximation (default: 1.e-6)
     if `None` BLA is not activated.
-interior_detect : bool
-    If True, activates interior point early detection.
-    This will trigger the computation of additionnal quantities, so will be
-    efficient only when a mini fills a significant part of the view.
+interior_detect: bool
+    If True, activates interior points early detection.
+    This will trigger the computation of additionnal quantities (`dzndz`), so
+    shall be activated only when a mini fills a significative part of the view.
+calc_dzndc: bool
+    If True, activates the computation of an additionnal quantities (`dzndc`),
+    used for distance estimation plots and for shading (normal map calculation)
 calc_orbit: bool
     If True, stores the value of an orbit point @ exit - backshift
 backshift: int (> 0)
     The number of iteration backward for the stored orbit starting point
 """
-        # self.init_data_types(np.complex128)
-
-        # used for potential post-processing
-        # self.potential_M = M_divergence
-
-        # Complex complex128 fields codes "Z" 
         complex_codes = ["zn"]
         zn = 0
         code_int = 0
@@ -482,8 +482,6 @@ backshift: int (> 0)
         reason_M_divergence = 1
         reason_stationnary = 2
 
-        # self.codes = (complex_codes, int_codes, stop_codes)
-
         #----------------------------------------------------------------------
         # Define the functions used for BLA approximation
         # BLA triggered ?
@@ -491,25 +489,28 @@ backshift: int (> 0)
             (BLA_eps is not None)
             and (self.dx < fs.settings.newton_zoom_level)
         )
-        
+
         nexp = self.exponent
-        # We will need also Binomial coefficients - defined as float 64 due
-        # to numba Xrange implementation of operations
-        C_binom = np.empty((nexp + 1), dtype=np.float64)
-        for k in range(nexp + 1):
-            C_binom[k] = math.comb(nexp, k)
-        float_nexp = float(self.exponent)
 
-        @numba.njit
-        def _dfdz(z):
-            tmp = z # ensure same datatype as z (incl. xrange)
-            for k in range(2, nexp):
-                tmp = tmp * z # Has the power k
-            return tmp * float_nexp
+        dfdz = self.from_numba_cache("dfdz", nexp, zn, dzndz, dzndc)
+        dfdc = self.from_numba_cache("dfdc", nexp, zn, dzndz, dzndc)
+#        # We will need also Binomial coefficients - defined as float 64 due
+#        # to numba Xrange implementation of operations
+#        C_binom = np.empty((nexp + 1), dtype=np.float64)
+#        for k in range(nexp + 1):
+#            C_binom[k] = math.comb(nexp, k)
+#        float_nexp = float(self.exponent)
 
-        @numba.njit
-        def _dfdc(z):
-            return 1.
+#        @numba.njit
+#        def _dfdz(z):
+#            tmp = z # ensure same datatype as z (incl. xrange)
+#            for k in range(2, nexp):
+#                tmp = tmp * z # Has the power k
+#            return tmp * float_nexp
+#
+#        @numba.njit
+#        def _dfdc(z):
+#            return 1.
 
         def set_state():
             def impl(instance):
@@ -519,8 +520,8 @@ backshift: int (> 0)
 
                 instance.calc_dZndz = interior_detect
                 instance.calc_dZndc = calc_dzndc or BLA_activated
-                instance.dfdz = _dfdz
-                instance.dfdc = _dfdc
+                instance.dfdz = dfdz
+                instance.dfdc = dfdc
             return impl
 
         #----------------------------------------------------------------------
@@ -535,111 +536,85 @@ backshift: int (> 0)
         # Xr triggered for ultra-deep zoom
         xr_detect_activated = self.xr_detect_activated
 
-        @numba.njit
-        def p_iter_zn(Z, ref_zn, c):
-#            # Do we need all terms ?
-#            ref_zn_abs2 = fsxn.extended_abs2(ref_zn)
-#            zn_abs2 = fsxn.extended_abs2(Z[zn])
+#        @numba.njit
+#        def p_iter_zn(Z, ref_zn, c):
+#            # Use a full binomial expansion - could be optimized
+#            tmp = Z[zn] * (Z[zn] + C_binom[1] * ref_zn)
+#            ref_zn_pk = ref_zn # The iterative ref_zn ** k
+#            for k in range(2, nexp): # k is the power of ref_zn
+#                # Full binomial expansion
+#                # decreasing Z[zn] power, increasing ref_zn
+#                ref_zn_pk = ref_zn_pk * ref_zn # ref_zn ** k
+#                tmp = Z[zn] * (tmp + C_binom[k] * ref_zn_pk)
 #
-#            if zn_abs2 < 1.e-12 * ref_zn_abs2:
-#                # Only the lowest Z[zn] degree term
-#                tmp = float_nexp * Z[zn] * (ref_zn ** (nexp - 1))
+#            Z[zn] = tmp + c
 #
-#            else:
-                # Need a full binomial expansion
-
-            tmp = Z[zn] * (Z[zn] + C_binom[1] * ref_zn)
-            ref_zn_pk = ref_zn # The iterative ref_zn ** k
-            for k in range(2, nexp): # k is the power of ref_zn
-                # Full binomial expansion
-                # decreasing Z[zn] power, increasing ref_zn
-                ref_zn_pk = ref_zn_pk * ref_zn # ref_zn ** k
-                tmp = Z[zn] * (tmp + C_binom[k] * ref_zn_pk)
-
-            Z[zn] = tmp + c
-
-
-        @numba.njit
-        def p_iter_dzndz(Z, ref_zn, ref_dzndz):
-#            # Do we need all terms ?
-#            ref_zn_abs2 = fsxn.extended_abs2(ref_zn)
-#            zn_abs2 = fsxn.extended_abs2(Z[zn])
 #
-#            if zn_abs2 < 1.e-12 * ref_zn_abs2:
-#                # Only the lowest Z[zn] degree term
-#                ref_zn_nm2 = ref_zn ** (nexp - 2)
-#                dtmpdz = float_nexp * ref_zn_nm2 * (
-#                    Z[dzndz] * ref_zn + Z[zn] * (float_nexp - 1.)
+#        @numba.njit
+#        def p_iter_dzndz(Z, ref_zn, ref_dzndz):
+#            # Use a full binomial expansion - could be optimized
+#            mul = (Z[zn] + C_binom[1] * ref_zn)
+#            tmp = Z[zn] * mul
+#            dtmpdz = (
+#                Z[dzndz] * mul
+#                + Z[zn] * (Z[dzndz] + C_binom[1] * ref_dzndz)
+#            )
+#
+#            ref_zn_pk = ref_zn
+#            ref_dzn_pkdz = ref_dzndz
+#            for k in range(2, nexp):
+#                # Full binomial expansion
+#                ref_dzn_pkdz = (
+#                    k * ref_zn_pk * ref_dzndz
 #                )
+#                ref_zn_pk = ref_zn_pk * ref_zn
 #
-#            else:
-            # Need a full binomial expansion
-            mul = (Z[zn] + C_binom[1] * ref_zn)
-            tmp = Z[zn] * mul
-            dtmpdz = (
-                Z[dzndz] * mul
-                + Z[zn] * (Z[dzndz] + C_binom[1] * ref_dzndz)
-            )
-
-            ref_zn_pk = ref_zn
-            ref_dzn_pkdz = ref_dzndz
-            for k in range(2, nexp):
-                # Full binomial expansion
-                ref_dzn_pkdz = (
-                    k * ref_zn_pk * ref_dzndz
-                )
-                ref_zn_pk = ref_zn_pk * ref_zn
-
-                mul = (tmp + C_binom[k] * ref_zn_pk)
-                dtmpdz = (
-                    Z[dzndz] * mul
-                    + Z[zn] * (dtmpdz + C_binom[k] * ref_dzn_pkdz)
-                )
-                tmp = Z[zn] * mul
-
-            Z[dzndz] = dtmpdz
-
-        @numba.njit
-        def p_iter_dzndc(Z, ref_zn, ref_dzndc):
-#            # Do we need all terms ?
-#            ref_zn_abs2 = fsxn.extended_abs2(ref_zn)
-#            zn_abs2 = fsxn.extended_abs2(Z[zn])
-#
-#            if zn_abs2 < 1.e-12 * ref_zn_abs2:
-#                # Only the lowest Z[zn] degree term
-#                ref_zn_nm2 = ref_zn ** (nexp - 2)
-#                dtmpdc = float_nexp * ref_zn_nm2 * (
-#                    Z[dzndc] * ref_zn + Z[zn] * (float_nexp - 1.)
+#                mul = (tmp + C_binom[k] * ref_zn_pk)
+#                dtmpdz = (
+#                    Z[dzndz] * mul
+#                    + Z[zn] * (dtmpdz + C_binom[k] * ref_dzn_pkdz)
 #                )
+#                tmp = Z[zn] * mul
 #
-#            else:
-            # Need a full binomial expansion
-            mul = (Z[zn] + C_binom[1] * ref_zn)
-            tmp = Z[zn] * mul
-            dtmpdc = (
-                Z[dzndc] * mul
-                + Z[zn] * (Z[dzndc] + C_binom[1] * ref_dzndc)
-            )
-            ref_zn_pk = ref_zn
-            ref_dzn_pkdc = ref_dzndc
+#            Z[dzndz] = dtmpdz
+#
+#        @numba.njit
+#        def p_iter_dzndc(Z, ref_zn, ref_dzndc):
+#            # Use a full binomial expansion - could be optimized
+#            mul = (Z[zn] + C_binom[1] * ref_zn)
+#            tmp = Z[zn] * mul
+#            dtmpdc = (
+#                Z[dzndc] * mul
+#                + Z[zn] * (Z[dzndc] + C_binom[1] * ref_dzndc)
+#            )
+#            ref_zn_pk = ref_zn
+#            ref_dzn_pkdc = ref_dzndc
+#
+#            for k in range(2, nexp):
+#                # Full binomial expansion
+#                ref_dzn_pkdc = (
+#                    k * ref_zn_pk * ref_dzndc
+#                )
+#                ref_zn_pk = ref_zn_pk * ref_zn
+#
+#                mul = (tmp + C_binom[k] * ref_zn_pk)
+#                dtmpdc = (
+#                    Z[dzndc] * mul
+#                    + Z[zn] * (dtmpdc + C_binom[k] * ref_dzn_pkdc)
+#                )
+#                tmp = Z[zn] * mul
+#
+#            Z[dzndc] = dtmpdc
 
-            for k in range(2, nexp):
-                # Full binomial expansion
-                ref_dzn_pkdc = (
-                    k * ref_zn_pk * ref_dzndc
-                )
-                ref_zn_pk = ref_zn_pk * ref_zn
-
-                mul = (tmp + C_binom[k] * ref_zn_pk)
-                dtmpdc = (
-                    Z[dzndc] * mul
-                    + Z[zn] * (dtmpdc + C_binom[k] * ref_dzn_pkdc)
-                )
-                tmp = Z[zn] * mul
-
-            Z[dzndc] = dtmpdc
-
-
+        p_iter_zn = self.from_numba_cache(
+                "p_iter_zn",nexp, zn, dzndz, dzndc
+        )
+        p_iter_dzndz = self.from_numba_cache(
+                "p_iter_dzndz", nexp, zn, dzndz, dzndc
+        )
+        p_iter_dzndc = self.from_numba_cache(
+                "p_iter_dzndc", nexp, zn, dzndz, dzndc
+        )
         zn_iterate = self.zn_iterate
 
         def iterate():
@@ -660,21 +635,135 @@ backshift: int (> 0)
         }
 
 
+    def from_numba_cache(self, key, nexp, zn, dzndz, dzndc):
+        """ Returns the numba implementation if exists to avoid unnecessary
+        recompilation"""
+        cache = self._numba_cache
+        full_key = (key, key, nexp, zn, dzndz, dzndc)
+
+        try:
+            return cache[full_key]
+
+        except KeyError:
+            
+            # We will need also Binomial coefficients - defined as float 64 due
+            # to numba Xrange implementation of operations
+            C_binom = np.empty((nexp + 1), dtype=np.float64)
+            for k in range(nexp + 1):
+                C_binom[k] = math.comb(nexp, k)
+            float_nexp = float(self.exponent)
+
+            if key == "dfdz":
+                @numba.njit
+                def numba_impl(z):
+                    tmp = z # ensure same datatype as z (incl. xrange)
+                    for k in range(2, nexp):
+                        tmp = tmp * z # Has the power k
+                    return tmp * float_nexp
+
+            elif key == "dfdc":
+                @numba.njit
+                def numba_impl(z):
+                    return 1.
+
+            elif key == "p_iter_zn":
+                @numba.njit
+                def numba_impl(Z, ref_zn, c):
+                    # Uses a full binomial expansion - could be optimized
+                    tmp = Z[zn] * (Z[zn] + C_binom[1] * ref_zn)
+                    ref_zn_pk = ref_zn # The iterative ref_zn ** k
+                    for k in range(2, nexp): # k is the power of ref_zn
+                        # Full binomial expansion
+                        # decreasing Z[zn] power, increasing ref_zn
+                        ref_zn_pk = ref_zn_pk * ref_zn # ref_zn ** k
+                        tmp = Z[zn] * (tmp + C_binom[k] * ref_zn_pk)
+        
+                    Z[zn] = tmp + c
+
+            elif key == "p_iter_dzndz":
+                @numba.njit
+                def numba_impl(Z, ref_zn, ref_dzndz):
+                    # Use a full binomial expansion - could be optimized
+                    mul = (Z[zn] + C_binom[1] * ref_zn)
+                    tmp = Z[zn] * mul
+                    dtmpdz = (
+                        Z[dzndz] * mul
+                        + Z[zn] * (Z[dzndz] + C_binom[1] * ref_dzndz)
+                    )
+        
+                    ref_zn_pk = ref_zn
+                    ref_dzn_pkdz = ref_dzndz
+                    for k in range(2, nexp):
+                        # Full binomial expansion
+                        ref_dzn_pkdz = (
+                            k * ref_zn_pk * ref_dzndz
+                        )
+                        ref_zn_pk = ref_zn_pk * ref_zn
+        
+                        mul = (tmp + C_binom[k] * ref_zn_pk)
+                        dtmpdz = (
+                            Z[dzndz] * mul
+                            + Z[zn] * (dtmpdz + C_binom[k] * ref_dzn_pkdz)
+                        )
+                        tmp = Z[zn] * mul
+        
+                    Z[dzndz] = dtmpdz
+
+            elif key == "p_iter_dzndc":
+                @numba.njit
+                def numba_impl(Z, ref_zn, ref_dzndc):
+                    # Use a full binomial expansion - could be optimized
+                    mul = (Z[zn] + C_binom[1] * ref_zn)
+                    tmp = Z[zn] * mul
+                    dtmpdc = (
+                        Z[dzndc] * mul
+                        + Z[zn] * (Z[dzndc] + C_binom[1] * ref_dzndc)
+                    )
+                    ref_zn_pk = ref_zn
+                    ref_dzn_pkdc = ref_dzndc
+        
+                    for k in range(2, nexp):
+                        # Full binomial expansion
+                        ref_dzn_pkdc = (
+                            k * ref_zn_pk * ref_dzndc
+                        )
+                        ref_zn_pk = ref_zn_pk * ref_zn
+        
+                        mul = (tmp + C_binom[k] * ref_zn_pk)
+                        dtmpdc = (
+                            Z[dzndc] * mul
+                            + Z[zn] * (dtmpdc + C_binom[k] * ref_dzn_pkdc)
+                        )
+                        tmp = Z[zn] * mul
+        
+                    Z[dzndc] = dtmpdc
+
+            else:
+                raise NotImplementedError(key)
+
+            cache[full_key] = numba_impl
+            return numba_impl
+
+
+
+
+
 #------------------------------------------------------------------------------
 # Newton search & other related methods
 
-    @staticmethod
-    def _ball_method(c, px, maxiter, M_divergence):
+    def _ball_method(self, c, px, maxiter, M_divergence):
         """ Order 1 ball method: Cython wrapper"""
+        print("*** in Mandelbrot n, _ball_method", self.exponent)
         x = c.real
         y = c.imag
         seed_prec = mpmath.mp.prec
         
-        order = fsFP.perturbation_mandelbrot_ball_method(
+        order = fsFP.perturbation_mandelbrotN_ball_method(
             str(x).encode('utf8'),
             str(y).encode('utf8'),
             seed_prec,
             str(px).encode('utf8'),
+            self.exponent,
             maxiter,
             M_divergence
         )
@@ -683,8 +772,9 @@ backshift: int (> 0)
         return order
 
 
-    @staticmethod
-    def find_nucleus(c, order, eps_pixel, max_newton=None, eps_cv=None):
+    def find_nucleus(
+        self, c, order, eps_pixel, max_newton=None, eps_cv=None
+    ):
         """
         Run Newton search to find z0 so that f^n(z0) == 0 : Cython wrapper
 
@@ -693,32 +783,15 @@ backshift: int (> 0)
         
         # eps_pixel = self.dx * (1. / self.nx)
         """
-        if order is None:
-            raise ValueError("order shall be defined for Newton method")
-
-        x = c.real
-        y = c.imag
-        seed_prec = mpmath.mp.prec
-        if max_newton is None:
-            max_newton = 80
-        if eps_cv is None:
-            eps_cv = mpmath.mpf(val=(2, -seed_prec))
-
-        is_ok, val = fsFP.perturbation_mandelbrot_find_nucleus(
-            str(x).encode('utf8'),
-            str(y).encode('utf8'),
-            seed_prec,
-            order,
-            max_newton,
-            str(eps_cv).encode('utf8'),
-            str(eps_pixel).encode('utf8'),
+        raise NotImplementedError(
+            "Divide by undesired roots technique not implemented, "
+            "Use 'find_any_nucleus'"
         )
 
-        return is_ok, val
 
-
-    @staticmethod
-    def find_any_nucleus(c, order, eps_pixel, max_newton=None, eps_cv=None):
+    def find_any_nucleus(
+        self, c, order, eps_pixel, max_newton=None, eps_cv=None
+    ):
         """
         Run Newton search to find z0 so that f^n(z0) == 0 : Cython wrapper
         """
@@ -733,10 +806,11 @@ backshift: int (> 0)
         if eps_cv is None:
             eps_cv = mpmath.mpf(val=(2, -seed_prec))
         
-        is_ok, val = fsFP.perturbation_mandelbrot_find_any_nucleus(
+        is_ok, val = fsFP.perturbation_mandelbrotN_find_any_nucleus(
             str(x).encode('utf8'),
             str(y).encode('utf8'),
             seed_prec,
+            self.exponent,
             order,
             max_newton,
             str(eps_cv).encode('utf8'),
@@ -746,8 +820,7 @@ backshift: int (> 0)
         return is_ok, val
 
 
-    @staticmethod
-    def _nucleus_size_estimate(c0, order):
+    def _nucleus_size_estimate(self, c0, order):
         """
 Nucleus size estimate
 
@@ -777,18 +850,18 @@ https://fractalforums.org/fractal-mathematics-and-new-theories/28/miniset-and-em
         x = c0.real
         y = c0.imag
         seed_prec = mpmath.mp.prec
-        nucleus_size = fsFP.perturbation_mandelbrot_nucleus_size_estimate(
+        nucleus_size = fsFP.perturbation_mandelbrotN_nucleus_size_estimate(
             str(x).encode('utf8'),
             str(y).encode('utf8'),
             seed_prec,
+            self.exponent,
             order
         )
         nucleus_size = np.abs(nucleus_size)
 
-        # r_J = r_M ** 0.75 for power 2 Mandelbrot
-        sqrt = np.sqrt(nucleus_size)
-        sqrtsqrt = np.sqrt(sqrt)
-        julia_size = sqrtsqrt * sqrt
+        expo = self.exponent
+        julia_exp = ((expo + 1.) * (expo - 1.) / expo / expo)
+        julia_size = np.power(nucleus_size, julia_exp)
 
         return nucleus_size, julia_size
 

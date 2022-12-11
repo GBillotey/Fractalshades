@@ -21,12 +21,12 @@ skip_calc = False
 calculated will be post-processed"""
 
 newton_zoom_level = 1.e-5
-""" Minimal zoom level for activating Newton search. For lower zooms, a fixed
-critical point will be used (0. for mandelbrot)"""
+""" Minimal zoom level for activating Newton search. For shallower zoom, a
+fixed critical point will be used (usually 0.)"""
 
 std_zoom_level = 1.e-8
 """ Zoom level at which we drop some perturbation techniques optimisation 
-Chosen as this level squared is ~ precision of float64"""
+Chosen as this level squared is ~ precision of float64 """
 
 xrange_zoom_level = 1.e-300
 """Zoom level (dx) which triggers Xrange special branches

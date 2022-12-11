@@ -3,20 +3,11 @@ import logging
 
 import numpy as np
 import numba
-#from numpy.lib.format import open_memmap
-#import matplotlib.colors
-#from matplotlib.figure import Figure
-#from matplotlib.backends.backend_agg import FigureCanvasAgg
-
-
 import PIL
 import PIL.ImageQt
 
 import fractalshades.numpy_utils.expr_parser as fs_parser
 import fractalshades.colors as fscolors
-
-#import fractalshades.settings as fssettings
-#import fractalshades.utils as fsutils
 
 #        Note: Pillow image modes:
 #        RGB (3x8-bit pixels, true color)
@@ -218,8 +209,6 @@ class Virtual_layer:
         """ Update the overall min - max according to what is found in this 
          chunk_slice  """
         arr = self[chunk_slice]
-#        if arr is None or arr.shape == (): # Interrupted calculation
-#            return
 
         # If a user-mapping is defined, apply it
         if self.func is not None:
@@ -423,8 +412,6 @@ class Color_layer(Virtual_layer):
         """ private - Return the image for this chunk"""
         # 1) The "base" image
         arr = self[chunk_slice]
-#        if arr is None or arr.shape == (): # Interrupted calculation
-#            return
         
         # If a user-mapping is defined, apply it
         if self.func is not None:
@@ -490,7 +477,7 @@ class Color_layer(Virtual_layer):
             crop.paste(mask_colors, (0, 0), crop_mask)
 
         elif mask_kind == "float":
-            # TODO should scale !!
+            # TODO Not tested 
             crop.putalpha(crop_mask)
 
         else:
@@ -550,7 +537,6 @@ class Grey_layer(Virtual_layer):
         # Will only become RGBA if masked & mask_color has transparency
         self.curve = curve
         self.probe_z = np.asarray(probes_z)
-#        self.probes_kind = probes_kind
 
     def set_mask(self, layer, mask_color=None):
         """
@@ -574,26 +560,13 @@ class Grey_layer(Virtual_layer):
         """ Return the image for this chunk"""
         # 1) The "base" image
         arr = self[chunk_slice]
-#        if arr is None or arr.shape == (): # Interrupted calculation
-#            return
-        
+
         # If a user-mapping is defined, apply it
         if self.func is not None:
             arr = self.func(arr)
 
-        # taking into account probes for scaling
-#        if self.probes_kind == "relative":
-#            logger.warning("probes kind 'relative' option is deprecated"
-#                           "and will have no effect - Use absolute scaling")
-#            probes = self.probe_z
-#        elif self.probes_kind == "absolute":
-#            probes = self.probe_z
-#        else:
-#            raise ValueError(self.probes_kind, "not in [relative, absolute]")
-        
         probes = self.probe_z
-            
-        
+
         # arr = np.clip(arr, probes[0], probes[1])
         # wraps values in excess, rescale to [0, 1]
         # Formula: https://en.wikipedia.org/wiki/Triangle_wave
@@ -713,11 +686,8 @@ class Normal_map_layer(Color_layer):
         """ Return the image for this chunk"""
         # 1) The "base" image
         arr = self[chunk_slice]
-#        if arr is None or arr.shape == (): # Interrupted calculation
-#            return
 
-#        print('crop bool', arr, arr.shape, arr.dtype, arr[0:100])
-#        rgb = np.uint8(rgb * 255)
+        # Note: rgb = np.uint8(rgb * 255)
         (ix, ixx, iy, iyy) = chunk_slice
         nx, ny = ixx - ix, iyy - iy
 
@@ -729,8 +699,7 @@ class Normal_map_layer(Color_layer):
         rgb =  np.zeros((nx, ny, 3), dtype=np.float32)
         
         # max slope (from layer property) used for renormalisation
-        # TODO : check if removing self.max has an impact...
-        coeff = np.sin(self.max_slope) / np.sqrt(2.) # (np.sqrt(2.) * self.max) 
+        coeff = np.sin(self.max_slope) / np.sqrt(2.)
         rgb[:, :, 0] = - arr[0, :, :] * coeff # nx component
         rgb[:, :, 1] = - arr[1, :, :] * coeff # ny component
 
@@ -759,7 +728,7 @@ class Normal_map_layer(Color_layer):
         crop_size = (nx, ny)
         mask_layer, mask_color = self.mask
         self.apply_mask(crop, crop_size,
-                        mask_layer[chunk_slice], mask_color) #, self.mask_kind)
+                        mask_layer[chunk_slice], mask_color)
         return crop
 
 
@@ -781,8 +750,6 @@ class Bool_layer(Virtual_layer):
         """ Return the image for this bool layer chunk"""
         # 1) The "base" image
         arr = self[chunk_slice]
-#        if arr is None or arr.shape == (): # Interrupted calculation
-#            return
 
         crop_mask = PIL.Image.fromarray(self.np2PIL(arr))
         return crop_mask

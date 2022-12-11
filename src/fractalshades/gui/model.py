@@ -525,7 +525,10 @@ class Func_submodel(Submodel):
             fd = pickle.load(param_file)
         
         if fd["n_params"] != self._dict["n_params"]:
-            raise RuntimeError("Incompatible saved parameters")
+            raise RuntimeError(
+                    "Incompatible saved GUI parameters, "
+                    "delete the `gui` subfolder"
+            )
 
         for key in fd.keys():
             self._dict[key] = fd[key]
@@ -901,7 +904,7 @@ class Fractal_presenter(Presenter):
             self.model_changerequest.emit(
                 self._mapping["Fractal_presenter"], new_frac
             )
-            
+
     def reset_zoom_parameters(self, gui, reset_listing):
         """ Provides defaults values for the main GUI image-binded parameter
         """

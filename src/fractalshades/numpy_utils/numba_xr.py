@@ -21,14 +21,11 @@ from numba.extending import (
 )
 from numba.core.errors import TypingError
 
-
-
 import fractalshades.numpy_utils.xrange as fsx
 
-
 """
-This modules allows the use of Xrange_arrays, polynomials and SA objects
-inside jitted functions by defining mirrored low-level implementations.
+This modules allows the use of Xrange_arrays inside jitted functions by
+defining mirrored low-level implementations.
 
 By default, Numba will treat all numpy.ndarray subtypes as if they were of the
 base numpy.ndarray type. On one side, ndarray subtypes can easily use all of
@@ -47,15 +44,14 @@ in numba: only float64, complex128 mantissa are currently supported.
 Note:
     https://numba.pydata.org/numba-doc/latest/proposals/extension-points.html
 
-/!\ This submodule has side effects at import time (due to its use of
-numba operators overload)
+/!\ This submodule has side effects at import time (because it defines numba
+operators overload)
 
 See https://github.com/pygae/clifford
 
-Note : An alternative approach without numba:
+Note: An alternative approach without numba (not used here):
 https://numpy.org/doc/stable/user/c-info.ufunc-tutorial.html
 https://jiffyclub.github.io/numpy/user/c-info.ufunc-tutorial.html
-
 """
 
 numba_int_types = (numba.int32, numba.int64)
@@ -576,12 +572,24 @@ def extended_abs(op0):
 @overload(np.power)
 def extended_power(op0, op1):
     """ integer power of a Record field """
-    if (op0 in real_xr_types) and (op1 in numba_int_types):
-        def impl(op0):
+    if (op0 in xr_types) and isinstance(op1, types.Integer): #(op1 in numba_int_types):
+        def impl(op0, op1):
             return Xrange_scalar(
                 *_normalize(
-                    op0.mantissa ** op1,
+                    np.power(op0.mantissa, op1),
                     mul_int32(op0.exp,  numba.int32(op1))
+                )
+            )
+        return impl
+    elif (op0 in xr_types) and isinstance(op1, types.Float): # and (op1 in numba_float_types):
+        def impl(op0, op1):
+            exp_tot = op0.exp * op1
+            exp_int = np.trunc(exp_tot)
+            exp_frac = exp_tot - exp_int
+            return Xrange_scalar(
+                *_normalize(
+                    np.power(op0.mantissa, op1) * (2 ** exp_frac),
+                    numba.int32(exp_int)
                 )
             )
         return impl

@@ -18,19 +18,20 @@ Reference:
 import os
 
 import fractalshades as fs
-import fractalshades.gui.guitemplates
 import fractalshades.models as fsm
 import fractalshades.gui
+import fractalshades.gui.guitemplates
+import fractalshades.gui.guimodel
 
 
 def plot(plot_dir):
     """
-    Example interactive
+    GUI-interactive M2 deepzoom example
     """
     fractal = fsm.Perturbation_mandelbrot(plot_dir)
-    deepzooming = fs.gui.guitemplates.deepzooming(fractal)
+    zooming = fs.gui.guitemplates.std_zooming(fractal)
 
-    gui = fs.gui.Fractal_GUI(deepzooming)
+    gui = fs.gui.guimodel.Fractal_GUI(zooming)
     gui.show()
 
 
