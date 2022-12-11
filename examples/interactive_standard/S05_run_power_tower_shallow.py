@@ -5,7 +5,7 @@ S05 - Tetration fractal explorer - Standard precision
 ====================================================================
 
 A template to explore the tetration fractal set (aka power-tower) with
-the GUI.
+the GUI (example of "low-level API" for GUI implementation).
 Resolution limited to approx 1.e-13 due to double (float64) precision.
 
 Coloring is based on the limit cycle order and attractivity. The influence of
@@ -19,13 +19,13 @@ import typing
 import os
 
 import numpy as np
-from PyQt6 import QtGui
 
 import fractalshades as fs
 import fractalshades.models as fsm
 import fractalshades.settings as settings
-import fractalshades.colors as fscolors
-import fractalshades.gui as fsgui
+import fractalshades.colors
+import fractalshades.gui
+from fractalshades.gui.guimodel import Fractal_GUI
 
 from fractalshades.postproc import (
     Postproc_batch,
@@ -55,10 +55,10 @@ def plot(plot_dir):
     nx = 800
     eps_newton_cv = 1e-12
     
-    colormap = fscolors.cmap_register["classic"]
+    colormap = fs.colors.cmap_register["classic"]
 
     zmin = 0.00
-    zmax = 0.20
+    zmax = 0.25
     attr_strength = 0.15
 
     # Set to True to enable multi-processing
@@ -72,29 +72,30 @@ def plot(plot_dir):
     def func(
         fractal: fsm.Mandelbrot=fractal,
          calc_name: str= calc_name,
-         _1: fsgui.separator="Zoom parameters",
+         _1: fs.gui.separator="Zoom parameters",
          x: float= x,
          y: float= y,
          dx: float= dx,
          xy_ratio: float=xy_ratio,
          theta_deg: float=theta_deg,
-         _2: fsgui.separator="Calculation parameters",
+         _2: fs.gui.separator="Calculation parameters",
          nx: int=nx,
          compute_order: bool=compute_order,
          max_order: int=max_order,
          eps_newton_cv: float=eps_newton_cv,
-         _3: fsgui.separator="Plotting parameters",
-         interior_color: QtGui.QColor=(0.1, 0.1, 0.1),
-         colormap: fscolors.Fractal_colormap=colormap,
+         _3: fs.gui.separator="Plotting parameters",
+         interior_color: fs.colors.Color=(0.1, 0.1, 0.1),
+         colormap: fs.colors.Fractal_colormap=colormap,
          cmap_z_kind: typing.Literal["relative", "absolute"]="relative",
          zmin: float=zmin,
          zmax: float=zmax,
+         zshift: float=0.0,
          attr_strength: float =attr_strength,
          
     ):
 
         fractal.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
-             theta_deg=theta_deg, projection="cartesian", antialiasing=False)
+             theta_deg=theta_deg, projection="cartesian")
 
         fractal.newton_calc(
             calc_name=calc_name,
@@ -105,13 +106,6 @@ def plot(plot_dir):
             eps_newton_cv=eps_newton_cv
         )
 
-        if fractal.res_available():
-            print("RES AVAILABLE, no compute")
-        else:
-            print("RES NOT AVAILABLE, clean-up")
-            fractal.clean_up(calc_name)
-
-        fractal.run()
 
         layer_name = "cycle_order"
 
@@ -121,17 +115,14 @@ def plot(plot_dir):
         pp.add_postproc("interior", Raw_pp("stop_reason",
                         func=lambda x: x != 1)
         )
-#        pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
 
         plotter = fs.Fractal_plotter(pp)   
         plotter.add_layer(Bool_layer("interior", output=False))
-#        plotter.add_layer(Normal_map_layer("DEM_map", max_slope=45, output=True))
         plotter.add_layer(Color_layer(
                 layer_name,
                 func=lambda x: np.log(np.log(x + 1.) + 1.),
                 colormap=colormap,
-                probes_z=[zmin, zmax],
-                probes_kind="relative",
+                probes_z=[zmin + zshift, zmax + zshift],
                 output=True))
         plotter[layer_name].set_mask(plotter["interior"],
                                      mask_color=interior_color)
@@ -151,10 +142,9 @@ def plot(plot_dir):
         os.link(src_path, dest_path)
 
 
-    gui = fsgui.Fractal_GUI(func)
+    gui = Fractal_GUI(func)
     gui.connect_image(image_param="calc_name")
-    gui.connect_mouse(dps=None)#x="x", y="y", dx="dx", xy_ratio="xy_ratio",
-                      # dps=None)
+    gui.connect_mouse(dps=None)
     gui.show()
 
 

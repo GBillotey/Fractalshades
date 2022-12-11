@@ -65,10 +65,14 @@ directory : str
         complex_codes = ["zn", "dzndz"]
         int_codes = []
         stop_codes = ["max_iter", "divergence", "stationnary"]
-        self.codes = (complex_codes, int_codes, stop_codes)
-        self.init_data_types(np.complex128)
+        
+        def set_state():
+            def impl(instance):
+                instance.codes = (complex_codes, int_codes, stop_codes)
+                instance.complex_type = np.complex128
+                instance.potential_M = M_divergence
 
-        self.potential_M = M_divergence
+            return impl
 
         def initialize():
             @numba.njit
@@ -76,7 +80,6 @@ directory : str
                 Z[1] = 1.
                 Z[0] = c
             return numba_init_impl
-        self.initialize = initialize
 
         def iterate():
             Mdiv_sq = self.M_divergence ** 2
@@ -84,7 +87,8 @@ directory : str
             max_iter = self.max_iter
 
             @numba.njit
-            def numba_impl(Z, U, c, stop_reason, n_iter):
+            def numba_impl(c, Z, U, stop_reason):
+                n_iter = 0
 
                 while True:
                     n_iter += 1
@@ -92,7 +96,7 @@ directory : str
                     if n_iter >= max_iter:
                         stop_reason[0] = 0
                         break
-    
+
                     cos0 = np.cos(np.pi * Z[0])
                     sin0 = np.sin(np.pi * Z[0])
 
@@ -116,4 +120,9 @@ directory : str
                 return n_iter
 
             return numba_impl
-        self.iterate = iterate
+
+        return {
+            "set_state": set_state,
+            "initialize": initialize,
+            "iterate": iterate
+        }
