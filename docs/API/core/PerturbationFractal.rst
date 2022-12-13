@@ -4,4 +4,4 @@ PerturbationFractal
 
 
 .. autoclass:: fractalshades.PerturbationFractal
-    :members:  __init__, zoom, run
+    :members:  __init__, zoom

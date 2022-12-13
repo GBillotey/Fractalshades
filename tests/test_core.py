@@ -18,26 +18,20 @@ class Test_core(unittest.TestCase):
         core_dir = os.path.join(test_config.temporary_data_dir, "_core_dir")
         fsutils.mkdir_p(core_dir)
         self.core_dir = core_dir
-        
+
         x = '-1.0'
         y = '-0.0'
         dx = '5.0'
-        # file_prefix = 'test'
-        
+
         xy_ratio = 1.0
         dps = 77
-        # max_iter = 15000
         nx = 600
-#        interior_detect = True
-#        epsilon_stationnary = 0.0001
-        
+
         fractal = fsm.Perturbation_mandelbrot(core_dir)
         fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
-             theta_deg=0., projection="cartesian", antialiasing=False)
+             theta_deg=0., projection="cartesian")
         self.fractal = fractal
 
-#        fsutils.mkdir_p(mproc_dir)
-#        self.mproc_dir = mproc_dir
     
     def test_chunk_count(self):
         """ Test the various Fractal methods linked to chunk indexing"""

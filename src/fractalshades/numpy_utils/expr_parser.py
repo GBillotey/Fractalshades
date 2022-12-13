@@ -20,6 +20,9 @@ def acceptable_expr(expr, safe_vars):
 
         elif isinstance(expr, ast.Num):
             return True
+        
+        elif isinstance(expr, ast.UnaryOp):
+            return inner(expr.operand)
 
         elif isinstance(expr, ast.BinOp):
             return (inner(expr.left) and inner(expr.right))
@@ -87,15 +90,16 @@ class Numpy_expr:
     # See https://docs.python.org/3/library/typing.html#typing.Annotated
     # https://peps.python.org/pep-0593/
     # T1 = Annotated[Numpy_expr, Vars("x", "y")]
-
     def __init__(self, variables, expr):
         f"""
+        Defines a numpy expression from a string ; can be used to parse a
+        GUI user-input string.
+
         Parameters:
         -----------
         variables: str or str[]
-            The list of variables used in expr. The length of vraiables should 
-            be at most 2, e.g, "x", "x1", "x2", "y" "z", "xy".
-            (If only one string is provided, it is converted to a 1-item [])
+            The list of variables used in expr. The length of variables names
+            shall be max 2 chars, e.g, "x", "x1", "x2", "y" "z", "xy".
         expr: str
             The numerical expression to be evaluated. The standard operations 
             (+, -, *, /, **) are accepted, and a subset of numpy
@@ -138,9 +142,7 @@ class Numpy_expr:
     def __reduce__(self):
         """ Serialisation of a Numpy_expr object.
         """
-        print("IN REDUCE Numpy_expr")
         vals = tuple(self.init_kwargs.values())
-        print("self.__class__, vals", self.__class__, vals)
         return (self.__class__, vals)
 
 
@@ -149,31 +151,4 @@ class Vars:
     # (typing.Annotated new in Python 3.9)
     def __init__(self, *args):
         self.args = args
-
-
-if __name__ == "__main__":
-#    print(safe_eval("3 + 5 * 2"))
-#
-#    f = safe_eval("lambda x: x * 2.")
-#    print(f)
-#    print(f(1))
-#
-#    f = safe_eval("lambda x: np.sin(x)")
-#    print(f)
-
-    f = func_parser(["x"], "np.sin(x) + np.isin(x, (1, 2, 3)) * np.where(x==2, 0., x**x)")
-    print(f)
-    print(f(0))
-    f = func_parser(["x1", "x2", "x3"], "x1 + x2 + x3")
-    print(f)
-    print(f(1, 2, 3))
-    # print(f(1))
-#    e = ast.parse("lambda x: 2. * x", mode="eval")
-#    f = safe_eval(e)
-#    print(f)
-#    print(f(1))
-    expr = Numpy_expr("x", "np.sin(x)")
-    print(isinstance(expr, str))
-    print(isinstance(expr, Numpy_expr))
-    print(expr(0.))
 

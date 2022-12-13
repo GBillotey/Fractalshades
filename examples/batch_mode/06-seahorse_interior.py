@@ -98,12 +98,10 @@ def plot(plot_dir=None):
     pp_int.add_postproc("attr", Attr_pp())
     pp_int.add_postproc("div", Raw_pp("stop_reason", func="x == 0"))
 
-    plotter = fs.Fractal_plotter(
-            [pp, pp_int],
-            final_render=False, supersampling="3x3"
-    )  
+    plotter = fs.Fractal_plotter([pp, pp_int])
+
     plotter.add_layer(Bool_layer("interior", output=False))
-    plotter.add_layer(Bool_layer("div", output=True))
+    plotter.add_layer(Bool_layer("div", output=False))
     plotter.add_layer(Normal_map_layer("DEM_map", max_slope=30, output=False))
     plotter.add_layer(Normal_map_layer("attr_map", max_slope=90, output=False))
     plotter.add_layer(Color_layer(
@@ -122,7 +120,7 @@ def plot(plot_dir=None):
     plotter.add_layer(
         Grey_layer("fieldlines", func=None,
                    probes_z=[-2, 2],
-                   output=True)
+                   output=False)
     )
 
     # plotter["cont_iter"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
@@ -158,7 +156,6 @@ def plot(plot_dir=None):
         color=np.array([1.0, 1.0, 1.0])
     )
     plotter["cont_iter"].shade(plotter["DEM_map"], light)
-    plotter.plot()
 
     # Adds some shading based on the previouly defined normal maps
     plotter["cont_iter"].shade(plotter["DEM_map"], light)

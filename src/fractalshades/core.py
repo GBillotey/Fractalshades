@@ -53,25 +53,6 @@ class _Pillow_figure:
         im.save(im_path, format="png", pnginfo=self.pnginfo)
 
 
-#SUPERSAMPLING_DIC = {
-#    "2x2": 2,
-#    "3x3": 3,
-#    "4x4": 4,
-#    "5x5": 5,
-#    "6x6": 6,
-#    "7x7": 7,
-#    "None": None
-#}
-#
-#class supersampling_type(enum.Enum):
-#    "2x2": 2,
-#    "3x3": 3,
-#    "4x4": 4,
-#    "5x5": 5,
-#    "6x6": 6,
-#    "7x7": 7,
-#    "None": None
-
 SUPERSAMPLING_DIC = {
     "2x2": 2,
     "3x3": 3,
@@ -89,13 +70,6 @@ SUPERSAMPLING_ENUM = enum.Enum(
 )
 
 supersampling_type = typing.Literal[SUPERSAMPLING_ENUM]
-#    enum.Enum(
-#        "supersampling_type",
-#        list(SUPERSAMPLING_DIC.keys())# ,
-#        #module=__name__
-#    )
-#]
-
 
 
 class Fractal_plotter:
@@ -105,7 +79,7 @@ class Fractal_plotter:
         final_render: bool = False,
         supersampling: supersampling_type = "None",
         jitter: bool = False,
-        reload: bool = False,
+        recovery_mode: bool = False,
         _delay_registering: bool = False # Private
     ):
         """
@@ -122,10 +96,10 @@ class Fractal_plotter:
         final_render: bool
             - If False, this is an exploration rendering, the raw arrays will be
               stored to allow fast modifcation of the plotting parameters
-              (without recomputing)
+              - without recomputing.
             - If True, this is the final rendering, the RGB arrays will
               be directly computed by chunks on the fly to limit disk usage.
-              high quality rendering options are available in this case
+              high quality rendering options are available only in this case
               (antialising, jitter)
 
         supersampling: None | "2x2" | ... | "7x7"
@@ -136,10 +110,11 @@ class Fractal_plotter:
             Used only for the final render. If not None, the final image will
             leverage jitter, default intensity is 1. This can help reduce moiré
             effect
-        reload: bool
+        recovery_mode: bool
             Used only for the final render. If True, will attempt to reload
             the image tiles already computed. Allows to restart an interrupted
-            calculation
+            calculation (this mode will fail if plotting parameters have been 
+            modified)
 
         Notes
         -----
@@ -156,7 +131,7 @@ class Fractal_plotter:
             "final_render": final_render,
             "supersampling": supersampling,
             "jitter": jitter,
-            "reload": reload
+            "recovery_mode": recovery_mode
         }
 
         # postproc_batches can be single or an enumeration
@@ -239,11 +214,13 @@ class Fractal_plotter:
         -----
         .. warning::
             Layer `postname` shall have been already registered in one of the
-            plotter batches.
+            plotter batches (see method
+            `fractalshades.postproc.Postproc_batch.add_postproc`).
 
         .. warning::
             When a layer is added, a link layer -> Fractal_plotter is 
-            created ; a layer can only point to a single `Fractal_plotter`.
+            created ; a layer can therefore only be added to a single
+            `Fractal_plotter`.
         """
         postname = layer.postname
         if postname not in (list(self.postnames) + self.postnames_2d):
@@ -332,15 +309,15 @@ class Fractal_plotter:
             for pbatch in self.postproc_batches:
                 calc_name = pbatch.calc_name
                 f.write_inspect_calc(
-                    calc_name, final=self.postproc_options["final_render"]
+                    calc_name, final=self.final_render
                 )
 
 
     @property
-    def try_reload(self):
+    def try_recover(self):
         """ Will we try to reopen saved image chunks ?"""
         return (
-            self.postproc_options["reload"]
+            self.postproc_options["recovery_mode"]
             and self.postproc_options["final_render"]
         )
 
@@ -364,7 +341,7 @@ class Fractal_plotter:
         
         """
         # early exit if already computed
-        if self.try_reload:
+        if self.try_recover:
             f = self.fractal
             rank = f.chunk_rank(chunk_slice)
             is_valid = (self._mmap_status[rank] > 0)
@@ -542,7 +519,7 @@ class Fractal_plotter:
                 if self.final_render:
                     self._mmaps += [None]
 
-        if self.try_reload:
+        if self.try_recover:
             valid_chunks = np.count_nonzero(self._mmap_status)
             n = self.fractal.chunks_count
             logger.info(
@@ -564,7 +541,7 @@ class Fractal_plotter:
         try:
             # Does layer the mmap already exists, and does it seems to suit
             # our need ?
-            if not(self.try_reload):
+            if not(self.try_recover):
                 raise ValueError("Invalidated mmap_status")
             _mmap_status = open_memmap(
                 filename=file_path, mode="r+"
@@ -603,7 +580,7 @@ class Fractal_plotter:
         try:
             # Does layer the mmap already exists, and does it seems to suit
             # our need ?
-            if not(self.postproc_options["reload"]):
+            if not(self.postproc_options["recovery_mode"]):
                 raise ValueError("Invalidated mmap_status")
             mmap = open_memmap(
                 filename=file_path, mode="r+"
@@ -762,21 +739,6 @@ Parameters
 directory : str
     Path for the working base directory
 
-Attributes
-----------
-directory : str
-    the working directory
-subset
-    A boolean array-like of the size of the image, when False the
-    calculation is skipped for this point. It is usually the result
-    of a previous calculation that can be passed via a Fractal_array
-    wrapper.
-    If None (default) all points will be calculated.
-complex_type :
-    the datatype used for Z output arrays
-codes :
-    the string identifier codes for the saved arrays:
-    (`complex_codes`, `int_codes`, `termination_codes`)
 
 Notes
 -----
@@ -792,7 +754,7 @@ advanced users when subclassing.
     specific tags:
     
     `fractalshades.zoom_options`
-        decorates the methods used to define the zoom
+        decorates the method used to define the zooming
     `fractalshades.calc_options`
         decorates the methods defining the calculation inner-loop
     `fractalshades.interactive_options` 
@@ -817,9 +779,10 @@ advanced users when subclassing.
 
     **Saved data**
     
-        The calculation results (raw output of the inner loop at exit) are
+        The calculation raw results (raw output of the inner loop at exit) are
         saved to disk and internally accessed during plotting phase through
-        memory-mapping. These are:
+        memory-mapping. They are however not saved for a final render.
+        These arrays are:
 
         subset    
             boolean - alias for `subset`
@@ -1717,8 +1680,6 @@ advanced users when subclassing.
         """
         Outputs a report for the current calculation
         """
-        REPORT_ITEMS, report = self.reload_report(calc_name, None)
-        report_header = ("chnk_beg|chnk_end|chnk_pts|done|")
         outpath = os.path.join(self.directory, calc_name + ".inspect")
 
         if final:
@@ -1729,6 +1690,9 @@ advanced users when subclassing.
                 log_txt += f", deleting obsolete file {outpath}"
             logger.info(log_txt)
             return
+
+        REPORT_ITEMS, report = self.reload_report(calc_name, None)
+        report_header = ("chnk_beg|chnk_end|chnk_pts|done|")
 
         # There are other interesting items to inspect
         chunks_count = self.chunks_count

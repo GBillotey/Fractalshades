@@ -23,8 +23,7 @@ std_zoom_level = 1.e-8
 Chosen as this level squared is ~ precision of float64 """
 
 xrange_zoom_level = 1.e-300
-"""Zoom level (dx) which triggers Xrange special branches
-"""
+"""Zoom level (dx) which triggers Xrange special branches"""
 
 no_newton = False
 """Veto all Newton iterations- keep the ref point as is for the full precision
@@ -55,16 +54,21 @@ decompression bomb DOS attack.
 verbosity = 2
 """
 Controls the verbosity for the log messages:
-    0: WARNING & higher severity, output to stdout
-    1: INFO & higher severity, output to stdout
-    2 (default): INFO & higher severity, output to stdout
-                 + DEBUG & higher severity, output to a log file
-    3: INFO & higher severity, output to stdout
-       + all message (incl. NOTSET), output to a log file
+
+    - 0: WARNING & higher severity, output to stdout
+    - 1: INFO & higher severity, output to stdout
+    - 2 (default): 
+
+        - INFO & higher severity, output to stdout
+        - + DEBUG & higher severity, output to a log file
+
+    - 3:
+
+        - INFO & higher severity, output to stdout
+        - + all message (incl. NOTSET), output to a log file
 
 Note: Severities in descending order:
-CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET
-"""
+CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET """
 
 postproc_dtype = "float32"
 """ The float datatype used for post-processing (float32 | float64)"""
@@ -86,19 +90,6 @@ def set_RAM_limit(RAM_limit_Gb):
         byte_limit =  (2**30) * RAM_limit_Gb  # Gbyte to byte
     resource.setrlimit(rsrc, (byte_limit, byte_limit))
 
-
-#class Working_directory(os.PathLike):
-#    # https://docs.python.org/3/library/os.html#os.PathLike
-#    def __init__(self, str_path=None):
-#        self.path = str_path
-#
-#    def __fspath__(self):
-#        if self.path is None:
-#            raise RuntimeError(
-#                "Working directory not specified, please define it through:\n"
-#                "fs.working_directory = Working_directory(str_path)"
-#            )
-#        return self.path
 
 log_directory = None # Working_directory(None)
 """ The logging directory for this session """

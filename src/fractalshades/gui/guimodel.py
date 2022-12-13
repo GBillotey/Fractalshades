@@ -3448,8 +3448,8 @@ class Fractal_MainWindow(QMainWindow):
       about.triggered[QAction].connect(self.actiontrig)
 
     def actiontrig(self, action):
-        print("*****,actiontrig", action.text())
-        
+        """  Dispatch the action to the matching method
+        """
         txt = action.text()
         if txt == "View Layers data":
             self.layers_data()

@@ -33,7 +33,7 @@ class Test_Fractal_colormap(unittest.TestCase):
                              purple[np.newaxis, :]))
         colormap = fs.colors.Fractal_colormap(colors=colors, kinds="Lab",
              grad_npts=200, grad_funcs="x", extent="mirror")
-        colormap_inp = eval(colormap._repr())
+        colormap_inp = eval(colormap.script_repr())
         # Tests that the 2 cmap are the same
         np.testing.assert_almost_equal(colormap.colors, colormap_inp.colors)
         np.testing.assert_almost_equal(colormap._probes, colormap_inp._probes)
@@ -46,7 +46,7 @@ class Test_Fractal_colormap(unittest.TestCase):
                              purple[np.newaxis, :]))
         colormap2 = fs.colors.Fractal_colormap(kinds="Lch", colors=colors2,
              grad_npts=[200, 20, 10], grad_funcs=["x", "x**6", "(1-x)"], extent="mirror")
-        colormap_inp2 = eval(colormap2._repr())
+        colormap_inp2 = eval(colormap2.script_repr())
         # Tests that the 2 cmap are the same
         np.testing.assert_almost_equal(colormap2.colors, colormap_inp2.colors)
         np.testing.assert_almost_equal(colormap2._probes, colormap_inp2._probes)

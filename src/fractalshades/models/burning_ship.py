@@ -134,6 +134,8 @@ Parameters
 directory : str
     Path for the working base directory
 flavor : str
+    The variant of Burning Ship detailed implementation, defaults to
+    "Burning Ship". 
 
 Notes
 =====
@@ -143,14 +145,14 @@ Notes
   Several variants (`flavor` parameter) are implemented with small
   differences in the iteration formula ; among them:
     
-    - "Perpendicular" variant of the Burning Ship Fractal.
+    - "Perpendicular burning ship" variant of the Burning Ship Fractal.
     
       .. math::
     
         x_{n+1} &= x_n^2 - y_n^2 + a \\\\
         y_{n+1} &= 2 x_n |y_n| - b
     
-    - Shark Fin variant
+    - "Shark fin" variant
     
       .. math::
     
@@ -628,8 +630,11 @@ approximations.
 
 Parameters
 ----------
-directory : str
+directory: str
     Path for the working base directory
+flavor: str
+    The variant of Burning Ship detailed implementation, defaults to
+    "Burning Ship". 
 
 Notes
 -----
@@ -640,6 +645,23 @@ Implementation based on :
     **At the Helm of the Burning Ship** - Claude Heiland-Allen, 2019
     Proceedings of EVA London 2019 (EVA 2019) 
     <http://dx.doi.org/10.14236/ewic/EVA2019.74>
+
+Several variants (`flavor` parameter) are implemented with small
+differences in the iteration formula ; among them:
+    
+    - "Perpendicular burning ship" variant of the Burning Ship Fractal.
+    
+      .. math::
+    
+        x_{n+1} &= x_n^2 - y_n^2 + a \\\\
+        y_{n+1} &= 2 x_n |y_n| - b
+    
+    - "Shark fin" variant
+    
+      .. math::
+    
+        x_{n+1} &= x_n^2 - y_n |y_n| + a \\\\
+        y_{n+1} &= 2 x_n y_n - b
 """
         super().__init__(directory)
         self.flavor = flavor
@@ -728,20 +750,9 @@ Implementation based on :
     M_divergence : float
         The diverging radius. If reached, the loop is exited with exit code
         "divergence"
-    BLA_params :
-        The dictionnary of parameters for Series-Approximation :
-
-        .. list-table:: 
-           :widths: 20 80
-           :header-rows: 1
-
-           * - keys
-             - values 
-           * - eps
-             - float: relative error criteria (default: 1.e-6)
-
-        if `None`, BLA is not activated.
-
+    BLA_eps: float 
+        Relative error criteria for BLA (default: 1.e-6)
+        If `None`, BLA is not activated.
     calc_hessian: bool
         if True, the derivatives will be caculated allowing distance
         estimation and shading.
@@ -786,11 +797,6 @@ Implementation based on :
         flavor_int = get_flavor_int(self.flavor)
         cache_args = (flavor_int, xn, yn, dxnda, dxndb, dynda, dyndb)
 
-#        dfxdx = _dfxdx(flavor_int)
-#        dfxdx = _dfxdx(flavor_int)
-#        dfxdx = _dfxdx(flavor_int)
-#        dfxdx = _dfxdx(flavor_int)
-
         dfxdx = self.from_numba_cache("dfxdx", *cache_args)
         dfxdy = self.from_numba_cache("dfxdy", *cache_args)
         dfydx = self.from_numba_cache("dfydx", *cache_args)
@@ -802,7 +808,6 @@ Implementation based on :
                 instance.complex_type = np.float64
                 instance.potential_M = M_divergence
                 instance.codes = (complex_codes, int_codes, stop_codes)
-#                instance.calc_dZndc = calc_dzndc or BLA_activated
                 instance.dfxdx = dfxdx # (flavor_int)
                 instance.dfxdy = dfxdy # (flavor_int)
                 instance.dfydx = dfydx # (flavor_int)
@@ -821,16 +826,13 @@ Implementation based on :
         # Defines iterate - jitted implementation
         M_divergence_sq = M_divergence ** 2
 
-#        # Xr triggered for ultra-deep zoom
+        # Xr triggered for ultra-deep zoom
         xr_detect_activated = self.xr_detect_activated
 
 
         p_iter_zn = self.from_numba_cache("p_iter_zn", *cache_args)
-#        p_iter_zn = _p_iter_zn(flavor_int, xn, yn)
         p_iter_hessian = self.from_numba_cache("p_iter_hessian", *cache_args)
-#        p_iter_hessian = _p_iter_hessian(
-#                flavor_int, xn, yn, dxnda, dxndb, dynda, dyndb
-#        )
+
 
         def iterate():
             return fs.perturbation.numba_iterate_BS(

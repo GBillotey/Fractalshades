@@ -5,8 +5,6 @@ Application-level settings
 
    .. autodata:: enable_multithreading
 
-   .. autodata:: optimize_RAM 
-
    .. autodata:: skip_calc
 
    .. autodata:: newton_zoom_level
@@ -16,4 +14,6 @@ Application-level settings
    .. autodata:: inspect_calc
 
    .. autodata:: chunk_size
+
+   .. autodata:: verbosity
 

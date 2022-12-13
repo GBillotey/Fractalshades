@@ -26,9 +26,13 @@ class PerturbationFractal(fs.Fractal):
 Base class for escape-time fractals calculations implementing the 
 perturbation technique, with an iteration matching:
 
-z_(n+1) = f(z_n) + c, critical point at 0
+    .. math::
 
-Derived classes should implement the actual function f
+    z_0 &= 0 \\\\
+    z_{n+1} &= f({z_{n}) + c
+    
+Where f has a critical point at 0. Derived classes should provide specialized 
+implementations for the actual function f
 
 Parameters
 ----------
@@ -56,9 +60,8 @@ directory : str
              skew_11: float=1.
     ):
         """
-        Define and stores as class-attributes the zoom parameters for the next
-        calculation.
-        
+        Define the zoom parameters for the next calculation.
+
         Parameters
         ----------
         precision : int
@@ -81,7 +84,7 @@ directory : str
         has_skew : bool
             If True, unskew the view base on skew coefficients skew_ij
         skew_ij : float
-            Components of the local skw matrix, ij = 00, 01, 10, 11
+            Components of the local skew matrix, with ij = 00, 01, 10, 11
         """
         mpmath.mp.dps = precision # in base 10 digit 
         

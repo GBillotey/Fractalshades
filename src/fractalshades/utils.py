@@ -218,7 +218,7 @@ def exec_no_output(func, *args, **kwargs):
 def _store_kwargs(indentifier):
     """ Decorator for an instance method, 
     - stores the individual kwargs as instance attributes 
-    - stores a (deep) copy of the kwargs in a dictionary self.<indentifier>__kwargs
+    - stores a (deep) copy of the kwargs in a dictionary self.<indentifier>_kwargs
     Note that:
         - Default values are taken into account
         - this decorator will  raise a ValueError if given positional
@@ -257,18 +257,18 @@ class _store_func_name__add_hook:
 
     At initialisation:
     - keep track of the set of decorated method by tagging them with attribute
-      "_@" + indentifier
-    - these can be retrieved by calling 
-      store_kwargs_and_func_name.methods(Instance_class)
+      "_@" + indentifier, so these can be retrieved by calling 
+      _store_func_name__add_hook.methods(Instance_CLASS)
 
-    After function call
-    - calls an instance-method 'post-hook' with parameter:
-        (method.__name__, kwargs_dic, return_dic)
-#    - stores the individual kwargs as instance attributes
-#    - stores a (deep) copy of the kwargs as an instance-attribute
-#      dictionary: instance.<indentifier>_kwargs
-#    - stores the name of the last decorated method called as instance-attribute
-#      string: instance.<indentifier>_callable
+    At function call the wrapper:
+
+    - calls the wrapped function
+    - then tries to forwards the calling kwargs to instance-method
+      'post-hook' (if it exists) with signature: (method.__name__,
+      kwargs_dic, return_dic) where:
+
+          - kwargs_dic is the calling kwargs
+          - return_dic is the returned result
 
     Note that:
         - Default values are taken into account if argument not provided
@@ -294,18 +294,15 @@ class _store_func_name__add_hook:
             return_dic = method(instance, *args, **kwargs)
 
             # post call hook
-            getattr(instance, self.indentifier + "_hook")(
-                method.__name__,
-                kwargs_dic,
-                return_dic
-            )
+            try:
+                getattr(instance, self.indentifier + "_hook")(
+                    method.__name__,
+                    kwargs_dic,
+                    return_dic
+                )
+            except AttributeError:
+                pass
 
-#            kwargs_attr = indentifier + "_kwargs"
-#            callable_attr = indentifier + "_callable"
-#
-#            ret = _store_kwargs(kwargs_attr)(method)(instance, *args, **kwargs)
-#            setattr(instance, callable_attr, method.__name__)
-#            return ret
         setattr(wrapper, "_@" + indentifier, True)
         return wrapper
 
@@ -368,26 +365,25 @@ class _store_func_name:
 
 
 zoom_options = _store_kwargs("zoom")
-zoom_options.__doc__ = """
-Decorates the method used to define the zooming (only one per 
-`fractalshades.Fractal` class).
-The last kwargs passed to the zoom method can be retrived as
+zoom_options.__doc__ = """ Decorates the method used to define the zooming
+(only one per `fractalshades.Fractal` class).
+The last kwargs passed to the zoom method can be retreived as
 fractal.zoom_kwargs
 """
 
 calc_options = _store_func_name__add_hook("calc")
-calc_options.__doc__ = """
-Decorates the calculation methods (can be several per 
-`fractalshades.Fractal` class)
-The last kwargs passed to any calculation method can be retrived as
-fractal.calc_kwargs. The name of the method called can be retrieved as
-fractal.calc_callable
+calc_options.__doc__ = """ Decorates the calculation methods
+(there can be several such methods per `fractalshades.Fractal` class)
+The list of such calculation methods can be retrieved as
+fs.utils.calc_options.methods(f.__class__)
+After each call, the calling kwargs and results are forwarded to the Fractal
+instance method `calc_hook` for further processing
 """
 
 interactive_options = _store_func_name("interactive_options")
-interactive_options.__doc__ = """
-Decorates the methods that can be called interactively from the GUI 
-(can be several per `fractalshades.Fractal` class)
-The list of such methods can be retrived as:
-    fs.utils.interactive_options.methods(f.__class__)
+interactive_options.__doc__ = """ Decorates the methods that can be called
+interactively from the GUI 
+(There can be several such methods for a `fractalshades.Fractal` class)
+The list of these methods can be retreived with:
+fs.utils.interactive_options.methods(f.__class__)
 """

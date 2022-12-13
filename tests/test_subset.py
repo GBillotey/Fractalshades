@@ -63,20 +63,22 @@ class Test_layers(unittest.TestCase):
         dx = 2.0
         nx = 1800
         cls.f = f = fsm.Mandelbrot(subset_dir)
+        
+        f.clean_up(cls.calc_name)
+        f.clean_up(cls.interior_calc_name)
+        
         f.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
-               theta_deg=0., projection="cartesian", antialiasing=False)
-        f.base_calc(
+               theta_deg=0., projection="cartesian")
+        f.calc_std_div(
             calc_name=cls.calc_name,
             subset=None,
             max_iter=1000,
             M_divergence=100.,
             epsilon_stationnary= 0.001,
         )
-        f.clean_up(cls.calc_name)
-        f.run()
 
         interior = Fractal_array(f, cls.calc_name, "stop_reason",
-                                 func= lambda x: (x!=1))
+                                 func= "x!=1")
         f.newton_calc(
             calc_name=cls.interior_calc_name,
             subset=interior,
@@ -85,8 +87,7 @@ class Test_layers(unittest.TestCase):
             max_newton=20,
             eps_newton_cv=1.e-12,
         )
-        f.clean_up(cls.interior_calc_name)
-        f.run()
+
 
     @test_config.no_stdout
     def test_interior_basic(self):
@@ -103,9 +104,15 @@ class Test_layers(unittest.TestCase):
         plotter = fractalshades.Fractal_plotter([pp0, pp])
 
         plotter.add_layer(Bool_layer("div", output=False))
-        plotter.add_layer(Color_layer("order",
-                func= None, colormap=self.colormap,
-                probes_z=[0., 0.01], probes_kind="relative", output=True ))
+        plotter.add_layer(
+            Color_layer("order",
+                func= None,
+                colormap=self.colormap,
+                probes_z=[0., 0.01],
+#                probes_kind="relative",
+                output=True 
+            )
+        )
         plotter.add_layer(Normal_map_layer("attr_map", max_slope=80, output=False))
         plotter.add_layer(Bool_layer("newton_cv", output=False))
 
@@ -119,8 +126,8 @@ class Test_layers(unittest.TestCase):
             k_diffuse=1.8,
             k_specular=20.,
             shininess=800.,
-            angles=(120., 25.),
-            coords=None,
+            polar_angle = 120.,
+            azimuth_angle= 25.,
             color=np.array([1.0, 1.0, 1.0]))
         
         plotter["order"].shade(plotter["attr_map"], light)
@@ -144,9 +151,16 @@ class Test_layers(unittest.TestCase):
         plotter = fractalshades.Fractal_plotter([pp0, pp])
 
         plotter.add_layer(Bool_layer("div", output=False))
-        plotter.add_layer(Color_layer("attr",
-                func= None, colormap=self.colormap2,
-                probes_z=[0., 1.0], probes_kind="relative", output=True ))
+        plotter.add_layer(
+            Color_layer(
+                "attr",
+                func= None,
+                colormap=self.colormap2,
+                probes_z=[0., 1.0],
+#                probes_kind="relative",
+                output=True
+            )
+        )
         plotter.add_layer(Normal_map_layer("attr_map", max_slope=80, output=False))
         plotter.add_layer(Bool_layer("newton_cv", output=False))
 
@@ -160,8 +174,9 @@ class Test_layers(unittest.TestCase):
             k_diffuse=1.8,
             k_specular=20.,
             shininess=800.,
-            angles=(120., 25.),
-            coords=None,
+#            angles=(120., 25.),
+            polar_angle = 120.,
+            azimuth_angle= 25.,
             color=np.array([1.0, 1.0, 1.0]))
         
         plotter["attr"].shade(plotter["attr_map"], light)

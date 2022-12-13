@@ -60,12 +60,14 @@ class Test_layers(unittest.TestCase):
         f.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
                theta_deg=0., projection="cartesian")
     
-        f.base_calc(
+        f.calc_std_div(
             calc_name=cls.calc_name,
             subset=None,
             max_iter=1000,
             M_divergence=100.,
             epsilon_stationnary= 0.001,
+            calc_orbit=True,
+            backshift=3
             )
         
         #f.run()
@@ -112,7 +114,7 @@ class Test_layers(unittest.TestCase):
                 func="np.log(x)",
                 colormap=self.colormap,
                 probes_z=[1.0511069297790527, 2.2134017944335938],
-                probes_kind="relative",
+                # probes_kind="relative",
                 output=True
         ))
         plotter["cont_iter"].set_mask(
@@ -180,7 +182,7 @@ class Test_layers(unittest.TestCase):
         pp.add_postproc("cont_iter", Continuous_iter_pp())
         pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
         pp.add_postproc(layer_name,
-                Fieldlines_pp(n_iter=5, swirl=0.0, damping_ratio=0.1))
+                Fieldlines_pp(n_iter=6, swirl=0.0, endpoint_k=0.5))
         plotter = fs.Fractal_plotter(pp)
 
         plotter.add_layer(Bool_layer("interior", output=False))
@@ -188,8 +190,8 @@ class Test_layers(unittest.TestCase):
                 layer_name,
                 func=None, #lambda x : np.cos(x),
                 curve=None,
-                probes_z=[0.9737706184387207, 4.380473613739014],
-                probes_kind="relative",
+                probes_z=[-0.6879764199256897, 0.6879764199256897],
+                # probes_kind="relative",
                 output=True))
         plotter[layer_name].set_mask(
                 plotter["interior"],
@@ -218,7 +220,7 @@ class Test_layers(unittest.TestCase):
                 func="np.log(x)",
                 colormap=self.colormap,
                 probes_z=[1.0511069297790527, 5.700286388397217],
-                probes_kind="relative",
+                # probes_kind="relative",
                 output=True))
         plotter[layer_name].set_mask(plotter["interior"],
                                      mask_color=(0., 0., 0.))
@@ -271,7 +273,7 @@ class Test_layers(unittest.TestCase):
         pp.add_postproc(layer_name, Continuous_iter_pp())
         pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
         pp.add_postproc("fieldlines",
-                Fieldlines_pp(n_iter=4, swirl=0., damping_ratio=0.1))
+                Fieldlines_pp(n_iter=5, swirl=0., endpoint_k=1.))
 
         plotter = fs.Fractal_plotter(pp)   
         plotter.add_layer(Bool_layer("interior", output=False))
@@ -280,13 +282,14 @@ class Test_layers(unittest.TestCase):
                 func="np.log(x)",
                 colormap=self.colormap,
                 probes_z=[1.0511069297790527, 3.3756966590881348], #[0.065, 0.465],
-                probes_kind="relative",
-                output=True))
-        plotter.add_layer(Virtual_layer("fieldlines", func="x-2.2", output=False))
+                # probes_kind="relative",
+                output=True)
+        )
+        plotter.add_layer(Virtual_layer("fieldlines", func=None, output=False))
 
         plotter[layer_name].set_mask(plotter["interior"],
                                      mask_color=(0., 0., 0.))
-        plotter[layer_name].set_twin_field(plotter["fieldlines"], 0.1925)
+        plotter[layer_name].set_twin_field(plotter["fieldlines"], 0.5925)
 
         plotter.plot()
         self.layer = plotter[layer_name]
@@ -317,7 +320,7 @@ class Test_layers(unittest.TestCase):
         pp0.add_postproc("div", Raw_pp("stop_reason", func="x == 1."))
         pp0.add_postproc(
                 "fieldlines",
-                Fieldlines_pp(n_iter=4, swirl=0.2, damping_ratio=0.3)
+                Fieldlines_pp(n_iter=6, swirl=0.2, endpoint_k=0.3)
         )
 
         pp = Postproc_batch(f, interior_calc_name)
@@ -339,7 +342,7 @@ class Test_layers(unittest.TestCase):
                 func=None, #"np.log(x)",
                 colormap=self.colormap_int,
                 probes_z=[0., 1.],
-                probes_kind="relative",
+                # probes_kind="relative",
                 output=True))
         
         plotter.add_layer(Virtual_layer("fieldlines", func="x * 0.8 ", output=False))
@@ -394,52 +397,13 @@ class Test_layers(unittest.TestCase):
         self.layer = plotter[layer_name]
         self.check_current_layer(0.10)
 
-    @test_config.no_stdout
-    def test_overlay2(self):
-        for (i, options) in enumerate([
-                {"pegtop": 1.},
-                {"Lch": 1.},
-                {},
-                ]):
-            with self.subTest(options=options):
-                layer_name = "tint_or_shade" + str(i + 1)
-                pp = Postproc_batch(self.f, self.calc_name)
-                pp.add_postproc(layer_name, Continuous_iter_pp())
-                pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
-                pp.add_postproc("fieldlines",
-                        Fieldlines_pp(n_iter=4, swirl=0., damping_ratio=0.1)
-                )
-
-                plotter = fs.Fractal_plotter(pp)   
-                plotter.add_layer(Bool_layer("interior", output=False))
-                plotter.add_layer(Color_layer(
-                        layer_name,
-                        func="np.log(x)",
-                        colormap=self.colormap,
-                        probes_z=[1.5241847038269043, 4.321159839630127],
-                        probes_kind="relative",
-                        output=True)
-                )
-                plotter.add_layer(Grey_layer("fieldlines", func="1.1 * (x )", output=True))
-        
-                plotter[layer_name].set_mask(plotter["interior"],
-                                             mask_color=(0., 0., 0.))
-
-                # Overlay : tint_or_shade
-                overlay_mode = Overlay_mode("tint_or_shade", **options)
-                plotter[layer_name].overlay(plotter["fieldlines"], overlay_mode)
-        
-                plotter.plot()
-                self.layer = plotter[layer_name]
-                self.check_current_layer()
         
     @test_config.no_stdout
+    @unittest.skip("Should be investigated later")
     def test_curve(self):
         for (i, curve) in enumerate([
-                lambda x: x, # , + 1.,
-                lambda x: 0.5 + (x - 0.5) * 0.2,
-                lambda x: 0.5 + 0.5 * np.sign(x - 0.5) * np.abs((x - 0.5) * 2.)**2,
-                lambda x: 0.5 + 0.5 * np.sign(x - 0.5) * np.abs((x - 0.5) * 2.)**0.5,
+                lambda x: x , # , + 1.,
+                lambda x: 0.5 + (x-0.5) * 0.2,
                 ]):
             with self.subTest(curve=curve):
                 layer_name = "curve" + str(i + 1)
@@ -447,7 +411,7 @@ class Test_layers(unittest.TestCase):
                 pp.add_postproc(layer_name, Continuous_iter_pp())
                 pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
                 pp.add_postproc("fieldlines",
-                        Fieldlines_pp(n_iter=5, swirl=0.25*0.7, damping_ratio=0.1))
+                        Fieldlines_pp(n_iter=7, swirl=0., endpoint_k=0.1))
 
                 plotter = fs.Fractal_plotter(pp)   
                 plotter.add_layer(Bool_layer("interior", output=False))
@@ -455,8 +419,9 @@ class Test_layers(unittest.TestCase):
                         layer_name,
                         func="np.log(x)",
                         colormap=self.colormap,
-                        probes_z=[0.0, 0.4], #[0., 0.4],
-                        probes_kind="relative",
+                        probes_z=[1.0511069297790527, 
+                                  0.6*1.0511069297790527+0.4*6.862581253051758], #[0., 0.4],
+                        # probes_kind="relative",
                         output=True))
                 plotter.add_layer(Grey_layer("fieldlines",
                                              func=None,
@@ -490,13 +455,10 @@ class Test_layers(unittest.TestCase):
 
 if __name__ == "__main__":
     runner = unittest.TextTestRunner(verbosity=2)
-    full_test = False
+    full_test = True
     if full_test:
         runner.run(test_config.suite([Test_layers]))
     else:
         suite = unittest.TestSuite()
-        suite.addTest(Test_layers("test_light_source"))
-        # suite.addTest(Test_layers("test_twin"))
-        suite.addTest(Test_layers("test_overlay1"))
-        suite.addTest(Test_layers("test_overlay2"))
+        suite.addTest(Test_layers("test_grey_basic"))
         runner.run(suite)

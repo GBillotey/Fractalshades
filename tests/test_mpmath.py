@@ -12,24 +12,15 @@ def python_loop(max_iter, M, x, y):
     NP_orbit = np.zeros([max_iter + 1], dtype=np.complex128)
     c = mpmath.mpf(x) + 1j * mpmath.mpf(y)
     z = mpmath.mp.zero
-    
-    for i in range(1, max_iter + 1):
-#        print("in loop", i)
-        # Fused multiply-add of three complex numbers
-        z = z**2 + c
 
-        # C _Complex type assignment to numpy array is not straightforward,
-        # using a temporary complex (should have negligeable perf. impact
-        # anyway)
+    for i in range(1, max_iter + 1):
+        z = z ** 2 + c
         NP_orbit[i] = complex(z)
-#        print("orbit stored", i, orbit[i], "from:\n", z)
-        
         if abs(NP_orbit[i]) > M:
             break
 
     return NP_orbit, i
-    
-    
+
 
 def cython_loop(max_iter, M, x, y):
     NP_orbit = np.zeros([max_iter + 1], dtype=np.complex128)
@@ -44,8 +35,6 @@ def cython_loop(max_iter, M, x, y):
         str(y).encode('utf8'),
         seed_prec=mpmath.mp.prec
     )
-#    print("NP_orbit", NP_orbit)
-#    print("orbit_exit", orbit_exit)
     return NP_orbit, i, partial_dict, xr_dict
 
 def test_loop():
@@ -65,15 +54,12 @@ def test_loop():
     t_cython = - time.time()
     NP_orbit, i, partial_dict, xr_dict = cython_loop(max_iter, M, x, y)
     t_cython += time.time()
-    print("t_cython", t_cython)
     
     if False:
         t_python = - time.time()
         NP_orbit_py, i_py = python_loop(max_iter, M, x, y)
         t_python += time.time()
-        print("t_python", t_python)
 
-    print(NP_orbit, i, partial_dict, xr_dict)
     
 
 

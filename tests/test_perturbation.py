@@ -94,10 +94,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                         layer_name,
                         func=lambda x: np.log(x),
                         colormap=self.colormap,
-                        # min: 6.196169853210449
-                        # max: 6.755995750427246
                         probes_z=[6.196169853210449, 6.280143737792969],
-                        probes_kind="relative",
                         output=True))
                 plotter[layer_name].set_mask(plotter["interior"],
                                               mask_color=(0., 0., 0.))
@@ -163,13 +160,12 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
                 plotter = fs.Fractal_plotter(pp)   
                 plotter.add_layer(Bool_layer("interior", output=False))
-                plotter.add_layer(Normal_map_layer("DEM_map", max_slope=45, output=True))
+                plotter.add_layer(Normal_map_layer("DEM_map", max_slope=30, output=True))
                 plotter.add_layer(Color_layer(
                         layer_name,
                         func=lambda x: np.log(x),
                         colormap=self.colormap,
                         probes_z=[6.2335, 6.7],
-                        probes_kind="absolute",
                         output=True))
                 plotter[layer_name].set_mask(plotter["interior"],
                                               mask_color=(0., 0., 1.))
@@ -179,15 +175,15 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                     k_diffuse=1.05,
                     k_specular=.0,
                     shininess=350.,
-                    angles=(50., 50.),
-                    coords=None,
+                    polar_angle=50.,
+                    azimuth_angle=50.,
                     color=np.array([1.0, 1.0, 0.9]))
                 light.add_light_source(
                     k_diffuse=0.,
                     k_specular=1.5,
                     shininess=350.,
-                    angles=(50., 40.),
-                    coords=None,
+                    polar_angle=50.,
+                    azimuth_angle=40.,
                     color=np.array([1.0, 1.0, 0.9]),
                     material_specular_color=np.array([1.0, 1.0, 1.0])
                     )
@@ -200,7 +196,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
 
 
-    @test_config.no_stdout
+    # @test_config.no_stdout
     def test_M2_E213(self):
         """
         Testing field lines, deep zoom
@@ -250,41 +246,42 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         pp.add_postproc("interior", Raw_pp("stop_reason",
                                func=lambda x: np.isin(x, [0, 2])))
         pp.add_postproc("fieldlines",
-                Fieldlines_pp(n_iter=4, swirl=0., damping_ratio=0.1))
+                Fieldlines_pp(n_iter=4, swirl=0., endpoint_k=0.4))
         pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
 
 
         plotter = fs.Fractal_plotter(pp)   
         plotter.add_layer(Bool_layer("interior", output=False))
         plotter.add_layer(Virtual_layer("fieldlines", func="x-2.", output=False))
-        plotter.add_layer(Normal_map_layer("DEM_map", max_slope=45, output=True))
+        plotter.add_layer(Normal_map_layer("DEM_map", max_slope=40, output=True))
         # min: 11.806656837463379
         # max: 11.809494972229004
         plotter.add_layer(Color_layer(
                 layer_name,
                 func=lambda x: np.log(x),
                 colormap=colormap,
-                probes_z=[0., 0.30],
-                probes_kind="relative",
+                probes_z=[11.806656837463379,
+                          11.806656837463379 * 0.7 + 0.30 * 11.809494972229004 - 0.00015],
+                # probes_kind="relative",
                 output=True))
         plotter[layer_name].set_mask(plotter["interior"],
                                       mask_color=(0., 0., 0.))
-        plotter[layer_name].set_twin_field(plotter["fieldlines"], 0.02)
-        light = Blinn_lighting(0.05, np.array([1., 1., 1.]))
+        plotter[layer_name].set_twin_field(plotter["fieldlines"], 0.00004)
+        light = Blinn_lighting(0.1, np.array([1., 1., 1.]))
         light.add_light_source(
             k_diffuse=0.5,
             k_specular=0.0,
             shininess=400.,
-            angles=(135., 70.),
-            coords=None,
+            polar_angle=135.,
+            azimuth_angle=60.,
             color=np.array([1.0, 1.0, 1.0]),
             )
         light.add_light_source(
             k_diffuse=0.2,
             k_specular=5000.0,
             shininess=800.,
-            angles=(135., 40.),
-            coords=None,
+            polar_angle=135.,
+            azimuth_angle=18.,
             color=np.array([1.0, 1.0, 0.9]),
             )
 
@@ -294,7 +291,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         
         self.layer = plotter[layer_name]
         self.test_name = test_name
-        self.check_current_layer()
+        self.check_current_layer(0.1)
 
 
     @test_config.no_stdout
@@ -341,7 +338,6 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 func=lambda x: np.log(x),
                 colormap=colormap,
                 probes_z=[7.2278738, 7.8332758],
-                probes_kind="absolute",
                 output=True))
         plotter[layer_name].set_mask(plotter["interior"],
                                       mask_color=(0., 0., 0.))
@@ -409,7 +405,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 func=lambda x: np.log(x),
                 colormap=colormap,
                 probes_z=[7.2278738, 7.8332758],
-                probes_kind="absolute",
+#                probes_kind="absolute",
                 output=True))
         plotter[layer_name].set_mask(
                 plotter["interior"], mask_color=(0., 0., 0.)
@@ -465,7 +461,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 func=lambda x: np.log(x),
                 colormap=colormap,
                 probes_z=[7.92, 7.93],
-                probes_kind="absolute",
+                #probes_kind="absolute",
                 output=True))
         plotter[layer_name].set_mask(plotter["interior"],
                                       mask_color=(0., 0., 0.))
@@ -475,16 +471,20 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
             k_diffuse=1.3,
             k_specular=25.0,
             shininess=150.,
-            angles=(30., 50.),
-            coords=None,
+#            angles=(30., 50.),
+            polar_angle=30.,
+            azimuth_angle=50.,
+#            coords=None,
             color=np.array([1.0, 1.0, 1.0]),
             )
         light.add_light_source(
             k_diffuse=0.0,
             k_specular=3.0,
             shininess=150.,
-            angles=(30., 50.),
-            coords=None,
+#            angles=(30., 50.),
+            polar_angle=30.,
+            azimuth_angle=50.,
+#            coords=None,
             color=np.array([1.0, 1.0, 1.0]),
             material_specular_color=np.array([1.0, 1.0, 1.0])
             )
@@ -560,7 +560,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 colormap=colormap,
                 probes_z=[10.321908950805664, 
                           10.347048282623291],
-                probes_kind="absolute",
+                # probes_kind="absolute",
                 output=True))
         plotter[layer_name].set_mask(plotter["interior"],
                                       mask_color=(0., 0., 0.))
@@ -609,14 +609,13 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
         plotter = fs.Fractal_plotter(pp)   
         plotter.add_layer(Bool_layer("interior", output=False))
-        plotter.add_layer(Normal_map_layer("DEM_map", max_slope=45,
+        plotter.add_layer(Normal_map_layer("DEM_map", max_slope=30,
                                            output=False))
         plotter.add_layer(Color_layer(
                 layer_name,
                 func=lambda x: np.log(x),
                 colormap=colormap,
                 probes_z=[10, 13.815954208374023],
-                probes_kind="absolute",
                 output=True))
         plotter[layer_name].set_mask(plotter["interior"],
                                       mask_color=(0., 0., 1.))
@@ -626,15 +625,15 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
             k_diffuse=1.05,
             k_specular=.0,
             shininess=350.,
-            angles=(50., 50.),
-            coords=None,
+            polar_angle=50.,
+            azimuth_angle=50.,
             color=np.array([1.0, 1.0, 0.9]))
         light.add_light_source(
             k_diffuse=0.,
             k_specular=1.5,
             shininess=350.,
-            angles=(50., 40.),
-            coords=None,
+            polar_angle=50.,
+            azimuth_angle=40.,
             color=np.array([1.0, 1.0, 0.9]),
             material_specular_color=np.array([1.0, 1.0, 1.0])
             )
@@ -643,7 +642,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
         self.layer = plotter[layer_name]
         self.test_name = test_name
-        self.check_current_layer(0.01)
+        self.check_current_layer(0.1)
 
     def test_ultradeep_interior_detect(self):
         """
@@ -676,32 +675,32 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
         plotter = fs.Fractal_plotter(pp)   
         plotter.add_layer(Bool_layer("interior", output=False))
-        plotter.add_layer(Normal_map_layer("DEM_map", max_slope=45,
+        plotter.add_layer(Normal_map_layer("DEM_map", max_slope=25,
                                            output=False))
         plotter.add_layer(Color_layer(
                 layer_name,
                 func=lambda x: np.log(x),
                 colormap=colormap,
                 probes_z=[13.19380, 18.420959],
-                probes_kind="absolute",
+                # probes_kind="absolute",
                 output=True))
         plotter[layer_name].set_mask(plotter["interior"],
                                       mask_color=(0., 0., 1.))
 
         light = Blinn_lighting(0.2, np.array([1., 1., 1.]))
         light.add_light_source(
-            k_diffuse=1.05,
+            k_diffuse=2.05,
             k_specular=.0,
             shininess=350.,
-            angles=(50., 50.),
-            coords=None,
+            polar_angle=50.,
+            azimuth_angle=10.,
             color=np.array([1.0, 1.0, 0.9]))
         light.add_light_source(
             k_diffuse=0.,
-            k_specular=1.5,
+            k_specular=8.5,
             shininess=350.,
-            angles=(50., 40.),
-            coords=None,
+            polar_angle=50.,
+            azimuth_angle=10.,
             color=np.array([1.0, 1.0, 0.9]),
             material_specular_color=np.array([1.0, 1.0, 1.0])
             )
@@ -750,7 +749,9 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
                 M_divergence=1.e3,
                 epsilon_stationnary=1.e-3,
                 interior_detect=interior_detect,
-                BLA_eps=BLA_eps
+                BLA_eps=BLA_eps,
+                calc_orbit=True,
+                backshift=2
             )
 
 
@@ -772,15 +773,15 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         self.assertTrue(err < err_max)
 
 if __name__ == "__main__":
-    full_test = False
+    full_test = True
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_Perturbation_mandelbrot]))
     else:
         suite = unittest.TestSuite()
-        # suite.addTest(Test_Perturbation_mandelbrot("test_glitch_dyn"))
-        # suite.addTest(Test_Perturbation_mandelbrot("test_ultradeep_interior_detect"))
-        suite.addTest(Test_Perturbation_mandelbrot("test_supersampling"))
         suite.addTest(Test_Perturbation_mandelbrot("test_M2_E20"))
+        # suite.addTest(Test_Perturbation_mandelbrot("test_ultradeep_interior_detect"))
+        # suite.addTest(Test_Perturbation_mandelbrot("test_supersampling"))
+        # suite.addTest(Test_Perturbation_mandelbrot("test_M2_E20"))
         runner.run(suite)
 

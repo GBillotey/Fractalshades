@@ -193,18 +193,18 @@ class Postproc:
 
 class Raw_pp(Postproc):
     def __init__(self, key, func=None):
-        """
-        A raw postproc provide direct access to the res data stored (memmap)
+        """A raw postproc provide direct access to the res data stored (memmap)
         during calculation. (Similar to what does `Fractal_array`  but 
         here within a `Postproc_batch`)
+
         Parameters
         ==========
-        key : 
+        key: str
             The raw data key. Should be one of the *complex_codes*,
             *int_codes*, *termination_codes* for this calculation.
         func: None | callable | a str of variable x (e.g. "np.sin(x)")
-              will be applied as a pre-processing step to the raw data if not
-              `None`
+            will be applied as a pre-processing step to the raw data if not
+            `None`
         """
         super().__init__()
         self.key = key
@@ -245,12 +245,13 @@ class Raw_pp(Postproc):
 class Continuous_iter_pp(Postproc):
     def __init__(self, kind=None, d=None, a_d=None, M=None, epsilon_cv=None,
                  floor_iter=0):
-        """
-        Return a continuous iteration number: this is the iteration count at
+        """Return a continuous iteration number: this is the iteration count at
         bailout, plus a fractionnal part to allow smooth coloring.
-        Implementation based on potential, for details see [#f3]_.
-        .. [#f3] *On Smooth Fractal Coloring Techniques*,
-                  **Jussi Härkönenen**, Abo University, 2007
+        Implementation based on potential, for details see:
+
+            - *On Smooth Fractal Coloring Techniques*,
+              **Jussi Härkönenen**, Abo University, 2007
+
         Parameters
         ==========
         kind :  str "infinity" | "convergent" | "transcendent"
@@ -273,6 +274,7 @@ class Continuous_iter_pp(Postproc):
             reference, the largest integer that cannot be accurately
             represented with a float32 is > 16 M), banding will start to be
             noticeable before.
+
         Notes
         =====
         .. note::
@@ -513,6 +515,7 @@ class DEM_normal_pp(Postproc):
         (*normal map*).
         This postproc is normally used in combination with a
         `fractalshades.colors.layers.Normal_map_layer`
+
         Parameters
         ==========
         `kind`:  str "potential" | "Milnor" | "convergent"
@@ -520,6 +523,7 @@ class DEM_normal_pp(Postproc):
             For Mandelbrot power 2, "Milnor" option is also available which 
             gives slightly different results (sharper edges).
             Use "convergent" for convergent fractals...
+
         Notes
         =====
         .. note::
@@ -527,10 +531,7 @@ class DEM_normal_pp(Postproc):
             in the same `Postproc_batch`
             If kind="Milnor", the following raw complex fields
             must be available from the calculation:
-                - "zn", "dzndc", "d2zndc2"
-        References
-        ==========
-        .. [1] <https://www.math.univ-toulouse.fr/~cheritat/wiki-draw/index.php/Mandelbrot_set>
+            "zn", "dzndc", "d2zndc2"
         """
         super().__init__()
         self.kind = kind
@@ -640,6 +641,7 @@ class DEM_pp(Postproc):
         `px_snap`:  None | float
             if not None, pixels at a distance from the fractal lower
             than `px_snap` (expressed in image pixel) will be snapped to 0.
+
         Notes
         =====
     
@@ -702,12 +704,13 @@ class Attr_normal_pp(Postproc):
         map*).
         This postproc is normally used in combination with a
         `fractalshades.colors.layers.Normal_map_layer`
+
         Notes
         =====
-    
         .. note::
             The following complex fields must be available from a previously
             run calculation:
+
                 - "attractivity"
                 - "order" (optionnal)
         """
@@ -753,12 +756,13 @@ class Attr_pp(Postproc):
         scale_by_order : bool
             If True return the attractivity divided by ccyle order (this
             allows more realistic 3d-view exports)
+
         Notes
         =====
-    
         .. note::
             The following complex fields must be available from a previously
             run calculation:
+
                 - "attractivity"
                 - "order" (optionnal)
         """

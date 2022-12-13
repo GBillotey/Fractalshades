@@ -5,20 +5,21 @@ Rev 1.0.0
 ~~~~~~~~~
 This revision is a major refactoring of the code, with optimised
 high-resolution rendering options. Several non backward-compatible changes
-habe been introduced.
+have been introduced.
 If you use the GUI pre-made scripts available in the documentation section,
-you will need to update them (i.e., download) as scripts running with 0.5.x
-are not compatible with version 1.x.y onwards.
+you will need to update them (i.e., download them again) as the scripts
+running with 0.5.x will not be compatible with version 1.x.y onwards.
 
 - Fractal_plotter now implements `supersampling` and `jitter` parameters
 - 'antialiasing' parameter from zoom method deprecated: use Fractal_plotter
   `supersampling` options instead
 - `BLA_params` dict-like parameter replaced by a float parameter:
-   `BLA_eps`
-- in add_light_source method from Blin_lighting class:
-      - float 2-uplet parameters 'angles' replaced by 2 float parameters 
-        `polar_angle`, `azimuth_angle`
-      - `coords` parameter removed
+  `BLA_eps`
+- in `add_light_source method` from `Blin_lighting` class:
+  float 2-uplet parameters 'angles' replaced by 2 float parameters 
+  polar_angle`, `azimuth_angle`
+- in `add_light_source method` from `Blin_lighting` class:
+  `coords` parameter deprecated
 - Fractal class: data files `.params` renamed `.fingerprint`
 - Fieldlines_pp class: implementation entirely rewritten, parameter
   `damping_ratio` `endpoint_k`
@@ -36,11 +37,37 @@ are not compatible with version 1.x.y onwards.
 - Color types: now use a dedicated type fscolors.Color instead of QtGui.QColor:
   this allows running in batch mode for systems without pyQt6 installed
 
-Several changes also implemented in the GUI:
+Regarding the Fractal models implemented:
+
+- Power n mandelbrot is now implemented in both standard and arbitrary
+  precision and accessible from the GUI (in standard precision it
+  features calculation of the limit cycle period and attaractivity
+  with Newton method.)
+- The different Burning Ship variants have been grouped into a single class
+  with a `flavor` parameter to select the appropriate variant.
+
+Regarding the Fractal post-processing implemented:
+
+- The `Fieldlines` post-processing has been re-implemented as a truncated
+  orbit average. It shall be used in conjunction with the `calc_orbit`
+  and `backshift` parameters from the basic iteration computations (to
+  define a starting point for the truncated orbit before divergence)
+
+Several changes have also been implemented in the GUI:
+
 - Collapsible paramters groups (main panel) to ease access to parameters
-- Dedicated editor for lighting effect
-- Dedicated editor for Fractals
-- Parameter "function" can now be passed (as string)
+  (for insyance
+- Dedicated editor for lighting effects
+- Dedicated editor for Fractals - this allows the interactive selection
+  of different fractal variant: exponent for Mandelbrot power n or 
+  variant (`flavor`) of the Burning ship implementation
+- Parametrized "functions" can now be passed (as string)
+- A GUI templating is now available and suitable for most implemented
+  fractals ; as a result lanching a GUI with all options for a fractal
+  is now almost a one-liner (see the updated GUI examples and
+  the `std_zooming` callable).
+- Saving and reloading Colormaps in binary format is now available from the
+  GUI (in addition to the already available python-code format output)
 
 Due to the high number of changes deployed, it is expected that bugfix-revision
 will need to be issued, please report any unexpected behavior at:

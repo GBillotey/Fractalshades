@@ -9,7 +9,6 @@ import mpmath
 import fractalshades as fs
 import fractalshades.mpmath_utils.FP_loop as fsFP
 from fractalshades.postproc import Fractal_array
-import fractalshades.numpy_utils.numba_xr as fsxn
 
 def Mn_iterate(n):
     @numba.njit
@@ -494,23 +493,6 @@ backshift: int (> 0)
 
         dfdz = self.from_numba_cache("dfdz", nexp, zn, dzndz, dzndc)
         dfdc = self.from_numba_cache("dfdc", nexp, zn, dzndz, dzndc)
-#        # We will need also Binomial coefficients - defined as float 64 due
-#        # to numba Xrange implementation of operations
-#        C_binom = np.empty((nexp + 1), dtype=np.float64)
-#        for k in range(nexp + 1):
-#            C_binom[k] = math.comb(nexp, k)
-#        float_nexp = float(self.exponent)
-
-#        @numba.njit
-#        def _dfdz(z):
-#            tmp = z # ensure same datatype as z (incl. xrange)
-#            for k in range(2, nexp):
-#                tmp = tmp * z # Has the power k
-#            return tmp * float_nexp
-#
-#        @numba.njit
-#        def _dfdc(z):
-#            return 1.
 
         def set_state():
             def impl(instance):
@@ -535,76 +517,6 @@ backshift: int (> 0)
         epsilon_stationnary_sq = epsilon_stationnary ** 2
         # Xr triggered for ultra-deep zoom
         xr_detect_activated = self.xr_detect_activated
-
-#        @numba.njit
-#        def p_iter_zn(Z, ref_zn, c):
-#            # Use a full binomial expansion - could be optimized
-#            tmp = Z[zn] * (Z[zn] + C_binom[1] * ref_zn)
-#            ref_zn_pk = ref_zn # The iterative ref_zn ** k
-#            for k in range(2, nexp): # k is the power of ref_zn
-#                # Full binomial expansion
-#                # decreasing Z[zn] power, increasing ref_zn
-#                ref_zn_pk = ref_zn_pk * ref_zn # ref_zn ** k
-#                tmp = Z[zn] * (tmp + C_binom[k] * ref_zn_pk)
-#
-#            Z[zn] = tmp + c
-#
-#
-#        @numba.njit
-#        def p_iter_dzndz(Z, ref_zn, ref_dzndz):
-#            # Use a full binomial expansion - could be optimized
-#            mul = (Z[zn] + C_binom[1] * ref_zn)
-#            tmp = Z[zn] * mul
-#            dtmpdz = (
-#                Z[dzndz] * mul
-#                + Z[zn] * (Z[dzndz] + C_binom[1] * ref_dzndz)
-#            )
-#
-#            ref_zn_pk = ref_zn
-#            ref_dzn_pkdz = ref_dzndz
-#            for k in range(2, nexp):
-#                # Full binomial expansion
-#                ref_dzn_pkdz = (
-#                    k * ref_zn_pk * ref_dzndz
-#                )
-#                ref_zn_pk = ref_zn_pk * ref_zn
-#
-#                mul = (tmp + C_binom[k] * ref_zn_pk)
-#                dtmpdz = (
-#                    Z[dzndz] * mul
-#                    + Z[zn] * (dtmpdz + C_binom[k] * ref_dzn_pkdz)
-#                )
-#                tmp = Z[zn] * mul
-#
-#            Z[dzndz] = dtmpdz
-#
-#        @numba.njit
-#        def p_iter_dzndc(Z, ref_zn, ref_dzndc):
-#            # Use a full binomial expansion - could be optimized
-#            mul = (Z[zn] + C_binom[1] * ref_zn)
-#            tmp = Z[zn] * mul
-#            dtmpdc = (
-#                Z[dzndc] * mul
-#                + Z[zn] * (Z[dzndc] + C_binom[1] * ref_dzndc)
-#            )
-#            ref_zn_pk = ref_zn
-#            ref_dzn_pkdc = ref_dzndc
-#
-#            for k in range(2, nexp):
-#                # Full binomial expansion
-#                ref_dzn_pkdc = (
-#                    k * ref_zn_pk * ref_dzndc
-#                )
-#                ref_zn_pk = ref_zn_pk * ref_zn
-#
-#                mul = (tmp + C_binom[k] * ref_zn_pk)
-#                dtmpdc = (
-#                    Z[dzndc] * mul
-#                    + Z[zn] * (dtmpdc + C_binom[k] * ref_dzn_pkdc)
-#                )
-#                tmp = Z[zn] * mul
-#
-#            Z[dzndc] = dtmpdc
 
         p_iter_zn = self.from_numba_cache(
                 "p_iter_zn",nexp, zn, dzndz, dzndc

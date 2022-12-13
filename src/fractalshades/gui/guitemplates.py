@@ -391,7 +391,17 @@ class GUItemplate:
 
 
 #==============================================================================
-
+colormap_int = fs.colors.Fractal_colormap(
+    colors=[
+        [1.        , 1.        , 1.        ],
+        [0.16862746, 0.16862746, 0.16862746],
+        [0.        , 0.        , 0.        ]
+    ],
+    kinds=['Lch', 'Lch'],
+    grad_npts=[8, 8],
+    grad_funcs=['x', 'x'],
+    extent='mirror'
+)
 
 class std_zooming(GUItemplate):
     
@@ -550,9 +560,9 @@ class std_zooming(GUItemplate):
         cmap_func: fs.numpy_utils.Numpy_expr = (
                 fs.numpy_utils.Numpy_expr("x", "np.log(x)")
         ),
-        zmin: float=0.0,
-        zmax: float=5.0,
-        zshift: float=0.0,
+        zmin: float = 0.0,
+        zmax: float = 5.0,
+        zshift: float = -1.0,
         mask_color: fs.colors.Color=(0.1, 0.1, 0.1, 1.0),
 
         _7: fs.gui.collapsible_separator="Plotting parameters: Newton field",
@@ -560,13 +570,13 @@ class std_zooming(GUItemplate):
             "attractivity", "order", "attr / order"
         ]="attractivity",
         colormap_int: fs.colors.Fractal_colormap = (
-                fs.colors.cmap_register["stellar"]
+                colormap_int
         ),
         cmap_func_int: fs.numpy_utils.Numpy_expr = (
                 fs.numpy_utils.Numpy_expr("x", "x")
         ),
         zmin_int: float = 0.0,
-        zmax_int: float = 5.0,
+        zmax_int: float = 1.0,
 
         _5: fs.gui.collapsible_separator = "Plotting parameters: shading",
         has_shading: bool = True,
@@ -598,7 +608,7 @@ class std_zooming(GUItemplate):
         final_render: bool=False,
         supersampling: fs.core.supersampling_type = "None",
         jitter: bool = False,
-        reload: bool = False,
+        recovery_mode: bool = False,
         
         _9: fs.gui.collapsible_separator="Extra outputs",
         output_masks: bool = False,
@@ -742,7 +752,7 @@ class std_zooming(GUItemplate):
             final_render=final_render,
             supersampling=supersampling,
             jitter=jitter,
-            reload=reload
+            recovery_mode=recovery_mode
         )
 
         # The mask values & curves for heighmaps
