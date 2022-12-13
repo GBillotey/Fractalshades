@@ -61,7 +61,6 @@ def plot(plot_dir):
 
     # Run the calculation
     f = fsm.Perturbation_burning_ship(plot_dir)
-    # f.clean_up()
 
     f.zoom(
         precision=precision,
@@ -72,7 +71,6 @@ def plot(plot_dir):
         xy_ratio=xy_ratio,
         theta_deg=0., 
         projection="cartesian",
-        antialiasing=False,
         has_skew=has_skew,
         skew_00=skew_00,
         skew_01=skew_01,
@@ -85,11 +83,10 @@ def plot(plot_dir):
         subset=None,
         max_iter=150000,
         M_divergence=1.e3,
-        BLA_params={"eps": 1.e-6},
+        BLA_eps= 1.e-6,
         calc_hessian=True
     )
-    f.run()
-    print("has been run")
+
     # Plot the image
     pp = Postproc_batch(f, calc_name)
     pp.add_postproc("cont_iter", Continuous_iter_pp())
@@ -98,13 +95,12 @@ def plot(plot_dir):
 
     plotter = fs.Fractal_plotter(pp)   
     plotter.add_layer(Bool_layer("interior", output=False))
-    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=False))
+    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=40, output=False))
     plotter.add_layer(Color_layer(
             "cont_iter",
             func=lambda x: np.log(x),
             colormap=colormap,
-            probes_z=[0.75, 0.90],
-            probes_kind="relative",
+            probes_z=[10.975318, 10.977222],
             output=True
     ))
 
@@ -116,17 +112,17 @@ def plot(plot_dir):
     light = Blinn_lighting(0.4, np.array([1., 1., 1.]))
     light.add_light_source(
         k_diffuse=0.2,
-        k_specular=300.,
-        shininess=1400.,
-        angles=(0., 20.),
-        coords=None,
-        color=np.array([1.0, 1.0, 0.98]))
+        k_specular=30.,
+        shininess=400.,
+        polar_angle=0.,
+        azimuth_angle=10.,
+        color=np.array([1.0, 1.0, 0.95]))
     light.add_light_source(
         k_diffuse=0.8,
-        k_specular=2.,
+        k_specular=0.,
         shininess=400.,
-        angles=(0., 20.),
-        coords=None,
+        polar_angle=0.,
+        azimuth_angle=10.,
         color=np.array([1., 1., 1.]))
     plotter["cont_iter"].shade(plotter["DEM_map"], light)
 

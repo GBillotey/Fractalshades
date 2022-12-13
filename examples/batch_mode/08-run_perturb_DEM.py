@@ -42,6 +42,8 @@ def plot(directory):
     """
     Example plot of distance estimation method
     """
+    settings.enable_multithreading = True
+
     # A simple showcas using perturbation technique
     x = "-1.768667862837488812627419470"
     y = "0.001645580546820209430325900"
@@ -50,12 +52,6 @@ def plot(directory):
     nx = 2400
 
     colormap = fscolors.cmap_register["autumn"]
-
-    # Set to True if you only want to rerun the post-processing part
-    settings.skip_calc = False
-    # Set to True to enable multi-processing
-    settings.enable_multithreading = True
-
 
     f = fsm.Perturbation_mandelbrot(directory)
     f.zoom(precision=precision,
@@ -66,7 +62,7 @@ def plot(directory):
             xy_ratio=1.0,
             theta_deg=0., 
             projection="cartesian",
-            antialiasing=False)
+    )
 
     f.calc_std_div(
             calc_name="div",
@@ -74,11 +70,9 @@ def plot(directory):
             max_iter=50000, #00,
             M_divergence=1.e3,
             epsilon_stationnary=1.e-3,
-            BLA_params={"eps": 1.e-6},
+            BLA_eps=1.e-6,
             interior_detect=True,
-            )
-
-    f.run()
+    )
 
     # Plot the image
     pp = Postproc_batch(f, "div")
@@ -94,8 +88,7 @@ def plot(directory):
             "DEM",
             func="x",
             colormap=colormap,
-            probes_z=[0.5, 1.5],
-            probes_kind="relative",
+            probes_z=[0.01061, 0.03184],
             output=True
     ))
     plotter["DEM"].set_mask(

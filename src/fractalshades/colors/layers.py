@@ -1,19 +1,13 @@
 # -*- coding: utf-8 -*-
+import logging
+
 import numpy as np
-from numpy.lib.format import open_memmap
-#import matplotlib.colors
-#from matplotlib.figure import Figure
-#from matplotlib.backends.backend_agg import FigureCanvasAgg
-
-
+import numba
 import PIL
 import PIL.ImageQt
 
 import fractalshades.numpy_utils.expr_parser as fs_parser
 import fractalshades.colors as fscolors
-
-#import fractalshades.settings as fssettings
-#import fractalshades.utils as fsutils
 
 #        Note: Pillow image modes:
 #        RGB (3x8-bit pixels, true color)
@@ -25,6 +19,8 @@ import fractalshades.colors as fscolors
 fractal -> postproc -> Secondaryla -> layer -> combined layer (blend, shading)
 
 """
+
+logger = logging.getLogger(__name__)
 
 class Virtual_layer:
 
@@ -71,7 +67,6 @@ class Virtual_layer:
         self.postname = postname
         self.min = np.inf     # neutral value for np.nanmin
         self.max = -np.inf    # neutral value for np.nanmax
-        self._scaling_defined = False # tracker
         self._func_arg = func # kept for the record
         self.func = self.parse_func(func)
         self.output = output
@@ -136,6 +131,41 @@ class Virtual_layer:
             raise ValueError("Mask layer type not recognized"
                              + type(layer).__name__)
 
+
+    def get_postproc_index(self):
+        """ Refactoring code common to get_postproc_batch / getitem """
+        plotter = self.plotter
+        postname = self.postname
+        try:
+            field_count = 1
+            post_index = list(plotter.postnames).index(self.postname)
+            return (field_count, post_index)
+        except ValueError:
+            # Could happen that we need 2 fields (e.g., normal map...)
+            if postname not in self.plotter.postnames_2d:
+                raise ValueError("postname not found: {}".format(postname))
+            post_index_x = list(self.plotter.postnames).index(postname + "_x")
+            post_index_y = list(self.plotter.postnames).index(postname + "_y")
+            if post_index_y != post_index_x + 1:
+                raise ValueError(
+                    "x y coords not contiguous for postname: {}".format(
+                        postname)
+                )
+            field_count = 2
+            return (field_count, (post_index_x, post_index_y))
+
+    def postproc_batch(self):
+        """ layer -> postproc -> batch """
+        postname = self.postname
+        for pbatch in self.plotter.postproc_batches:
+            if postname in pbatch.postnames():
+                return pbatch
+            if postname in pbatch.postnames_2d:
+                return pbatch
+        raise ValueError(
+            f"Postname not found in this plotter: {postname}"
+        )
+
     def __getitem__(self, chunk_slice):
         """ read the base data array for this layer
         Returns a numpy array of 
@@ -144,37 +174,42 @@ class Virtual_layer:
         
         Note: this is the raw, unscaled values
         """
-        (ix, ixx, iy, iyy) = chunk_slice
         plotter = self.plotter
-        if plotter.has_memmap:
-            mmap = open_memmap(filename=plotter.temporary_mmap_path(),
-                               mode='r')
-        else:
-            mmap = self.plotter._RAM_data
-        arr = np.empty((ixx - ix, iyy - iy), mmap.dtype)
-
-        postname = self.postname
-        try:
-            rank = list(plotter.postnames).index(postname)
-            arr[:] = mmap[rank, ix:ixx, iy:iyy]
-        except ValueError:
-            # Could happen that we need 2 fields (e.g., normal map...)
-            if postname not in self.plotter.postnames_2d:
-                raise ValueError("postname not found: {}".format(postname))
-            rank = list(self.plotter.postnames).index(postname + "_x")
-            rank2 = list(self.plotter.postnames).index(postname + "_y")
-            if rank2 != rank + 1:
-                raise ValueError("x y coords not contiguous for postname: "
-                                 "{}".format(postname))
+        dtype = plotter.post_dtype
+        (ix, ixx, iy, iyy) = chunk_slice
+        nx, ny = ixx - ix, iyy - iy
+        
+        ssg = plotter.supersampling
+        if ssg is not None:
+            nx *= ssg
+            ny *= ssg
+        
+        field_count, post_index = self.get_postproc_index()
+        
+        if field_count == 1:
+            arr = np.empty((nx, ny), dtype)
+            ret = plotter.get_2d_arr(post_index, chunk_slice)
+            if ret is None:
+                return None
+            arr[:] = ret
+    
+        elif field_count == 2:
+            (post_index_x, post_index_y) = post_index
+            arr = np.empty((2, nx, ny), dtype)
+            ret0 = plotter.get_2d_arr(post_index_x, chunk_slice)
+            ret1 = plotter.get_2d_arr(post_index_y, chunk_slice)
+            if (ret0 is None) or (ret1 is None):
+                return None
+            arr[0, :] = ret0
+            arr[1, :] = ret1
             
-            arr = np.empty((2, ixx - ix, iyy - iy), mmap.dtype)
-            arr[:] = mmap[rank:rank+2, ix:ixx, iy:iyy]
         return arr
 
     def update_scaling(self, chunk_slice):
         """ Update the overall min - max according to what is found in this 
          chunk_slice  """
         arr = self[chunk_slice]
+
         # If a user-mapping is defined, apply it
         if self.func is not None:
             arr = self.func(arr)
@@ -184,12 +219,15 @@ class Virtual_layer:
             n_fields = 1
         elif len(sh) == 3:
             n_fields = arr.shape[0]
+        else:
+            raise ValueError(f"arr shape: {sh}")
         
         if n_fields == 1: # standard case
             min_chunk = self.nanmin_with_mask(arr, chunk_slice)
             max_chunk = self.nanmax_with_mask(arr, chunk_slice)
             self.min = np.nanmin([self.min, min_chunk])
             self.max = np.nanmax([self.max, max_chunk])
+
         elif n_fields == 2: # case of normal maps
             # Normalizing by its module
             arr = arr[0, :, :]**2 + arr[1, :, :]**2
@@ -197,9 +235,10 @@ class Virtual_layer:
             max_chunk = np.sqrt(max_chunk)
             self.max = np.nanmax([self.max, max_chunk])
             self.min = - self.max
+
         else:
             raise ValueError(n_fields)
-        self._scaling_defined = True
+
 
     def nanmin_with_mask(self, arr, chunk_slice):
         """ nanmin but disregarding the masked vals (if layer has a mask)"""
@@ -267,8 +306,7 @@ class Virtual_layer:
 class Color_layer(Virtual_layer):
     default_mask_color = (0., 0., 0.)
 
-    def __init__(self, postname, func, colormap, probes_z=[0, 1],
-                 probes_kind="relative", output=True):
+    def __init__(self, postname, func, colormap, probes_z=[0, 1], output=True):
         """
         A colored layer.
         
@@ -281,13 +319,8 @@ class Color_layer(Virtual_layer):
         colormap : fractalshades.colors.Fractal_colormap
             a colormap
         probes_z : 2-floats list
-            The preprocessing affine rescaling. If [0., 1.] and probes_kind is 
-            `relative` (default) the minimum value of the field will be mapped
-            to 0. and the maximum to 1.
-        probes_kind : "relative" | "absolute"
-            The key for  probes_z values. If relative, they are expressed
-            relatively to min and max field values (0. <-> min, 1. <-> max) ;
-            if absolute they are used directly
+            probes_z = (z_min, zmax) ; the z_min value of the field will be
+            mapped to 0. and zmax to 1.
         output : bool
             passed to `Virtual_layer` constructor
         """
@@ -297,7 +330,6 @@ class Color_layer(Virtual_layer):
         # - float masked
         self.colormap = colormap
         self.probe_z = np.asarray(probes_z)
-        self.probes_kind = probes_kind
         # Init all modifiers to empty list
         self._modifiers = []
         self._twin_field = None
@@ -360,10 +392,8 @@ class Color_layer(Virtual_layer):
         layer : `Virtual_Layer` instance
             The combined layer
         scale : float
-            The scaling coefficient ; if 1. both layer will have the same
-            min-max contribtion. If 0.1 the combined layer will only contribute
-            to 10 % (This is based on min and max values reached for each
-            layer)
+            A scaling coefficient which will be applied to the twin layer field
+            before adding it to the base field
 
         Notes
         -----
@@ -382,6 +412,7 @@ class Color_layer(Virtual_layer):
         """ private - Return the image for this chunk"""
         # 1) The "base" image
         arr = self[chunk_slice]
+        
         # If a user-mapping is defined, apply it
         if self.func is not None:
             arr = self.func(arr)
@@ -389,25 +420,14 @@ class Color_layer(Virtual_layer):
         # is there a twin-field ? If yes we add it here, before colormaping
         if self._twin_field is not None:
             twin_layer, scale = self._twin_field
-            if not twin_layer._scaling_defined:
-                raise RuntimeError("Twin layer should be computed before")
-            k = scale * (self.max - self.min
-                         ) / (twin_layer.max - twin_layer.min)
+            k = scale 
             twin_func = twin_layer.func
             if twin_func is None:
                 arr += k * twin_layer[chunk_slice]
             else:
                 arr += k * twin_func(twin_layer[chunk_slice])
 
-        # colorize from colormap 
-        # taking into account probes for scaling
-        if self.probes_kind == "relative":
-            probes = (self.probe_z * self.max
-                      + (1. - self.probe_z) * self.min)
-        elif self.probes_kind == "absolute":
-            probes = self.probe_z
-        else:
-            raise ValueError(self.probes_kind, "not in [relative, absolute]")
+        probes = self.probe_z
         rgb = self.colormap.colorize(arr, probes)
 
         # Apply the modifiers
@@ -426,7 +446,14 @@ class Color_layer(Virtual_layer):
 
         # Here we have a mask, apply it
         (ix, ixx, iy, iyy) = chunk_slice
-        crop_size = (ixx-ix, iyy-iy)
+        nx, ny = ixx - ix, iyy - iy
+
+        ssg = self.plotter.supersampling
+        if ssg is not None:
+            nx *= ssg
+            ny *= ssg
+
+        crop_size = (nx, ny)
         mask_layer, mask_color = self.mask
         self.apply_mask(crop, crop_size,  mask_layer[chunk_slice], mask_color)
         return crop
@@ -450,7 +477,7 @@ class Color_layer(Virtual_layer):
             crop.paste(mask_colors, (0, 0), crop_mask)
 
         elif mask_kind == "float":
-            # TODO should scale !!
+            # TODO Not tested 
             crop.putalpha(crop_mask)
 
         else:
@@ -461,12 +488,13 @@ class Color_layer(Virtual_layer):
         """ private - apply the shading to rgb color array
         """
         if not(isinstance(layer, Normal_map_layer)):
-            raise ValueError("Can only shade with Normal_map_layer")
+            raise ValueError("Can only shade with a Normal_map_layer")
         normal = layer[chunk_slice]
         nf, nx, ny = normal.shape
         complex_n = np.empty(shape=(nx, ny), dtype=np.complex64)
         # max slope (from layer property) used for renormalisation
-        coeff = np.sin(layer.max_slope) / (np.sqrt(2.) * layer.max)
+        # /!\ Responsability of the caller to ensure that nx**2 + ny**2 <= 1.
+        coeff = np.sin(layer.max_slope)
         complex_n.real = normal[0, :, :] * coeff
         complex_n.imag = normal[1, :, :] * coeff
         return lighting.shade(rgb, complex_n)
@@ -481,9 +509,10 @@ class Color_layer(Virtual_layer):
 class Grey_layer(Virtual_layer):
     default_mask_color = 0.
     mode = "L"
+    k_int = 255
 
     def __init__(self, postname, func, curve=None, probes_z=[0., 1.],
-                 probes_kind="relative", output=True):
+                 output=True):
         """
         A grey layer.
         
@@ -497,13 +526,10 @@ class Grey_layer(Virtual_layer):
             A mapping from [0, 1] to [0, 1] applied *after* rescaling (this is 
             the equivalent of a colormap in greyscale)
         probes_z : 2-floats list
-            The preprocessing affine rescaling. If [0., 1.] and probes_kind is 
-            `relative` (default) the minimum value of the field will be mapped
+            The preprocessing affine rescaling. If [min, max] the minimum value
+            of the field will be mapped
             to 0. and the maximum to 1.
-        probes_kind : "relative" | "absolute"
-            The key for  probes_z values. If relative, they are expressed
-            relatively to min and max field values (0. <-> min, 1. <-> max) ;
-            if absolute they are used directly
+        
         output : bool
             passed to `Virtual_layer` constructor
         """
@@ -511,7 +537,6 @@ class Grey_layer(Virtual_layer):
         # Will only become RGBA if masked & mask_color has transparency
         self.curve = curve
         self.probe_z = np.asarray(probes_z)
-        self.probes_kind = probes_kind
 
     def set_mask(self, layer, mask_color=None):
         """
@@ -531,30 +556,24 @@ class Grey_layer(Virtual_layer):
             mask_color = self.default_mask_color
         self.mask = (layer, mask_color)
 
-    @property
-    def mode(self):
-        return "L"
-
     def crop(self, chunk_slice):
         """ Return the image for this chunk"""
         # 1) The "base" image
         arr = self[chunk_slice]
+
         # If a user-mapping is defined, apply it
         if self.func is not None:
             arr = self.func(arr)
 
-        # taking into account probes for scaling
-        if self.probes_kind == "relative":
-            probes = (self.probe_z * self.max
-                      + (1. - self.probe_z) * self.min)
-        elif self.probes_kind == "absolute":
-            probes = self.probe_z
-        else:
-            raise ValueError(self.probes_kind, "not in [relative, absolute]")
-            
-        # clip values in excess, rescale to [0, 1]
-        arr = np.clip(arr, probes[0], probes[1])
+        probes = self.probe_z
+
+        # arr = np.clip(arr, probes[0], probes[1])
+        # wraps values in excess, rescale to [0, 1]
+        # Formula: https://en.wikipedia.org/wiki/Triangle_wave
+        # 4/p * (t - p/2 * floor(2t/p + 1/2)) * (-1)**floor(2t/p + 1/2) where p = 4
         arr = (arr - probes[0]) / (probes[1] - probes[0])
+        e = np.floor((arr + 1.) / 2.)
+        arr = np.abs((arr - 2. * np.floor(e)) * (-1)**e)
 
         # then apply the transfert curve if provided
         if self.curve is not None:
@@ -568,14 +587,23 @@ class Grey_layer(Virtual_layer):
 
         # Here we have a mask, apply it
         (ix, ixx, iy, iyy) = chunk_slice
-        crop_size = (ixx-ix, iyy-iy)
+        nx, ny = ixx - ix, iyy - iy
+
+        ssg = self.plotter.supersampling
+        if ssg is not None:
+            nx *= ssg
+            ny *= ssg
+
+        crop_size = (nx, ny)
+
         mask_layer, mask_color = self.mask
         self.apply_mask(crop, crop_size,  mask_layer[chunk_slice], mask_color)
         return crop
 
     def get_grey(self, arr):
-        return np.uint8(arr * 255)
-    
+        # Fits to numerical range
+        return self.dtype(arr * self.k_int)
+
     @property
     def mask_kind(self):
         """ private - 3 possiblilities : 
@@ -596,13 +624,18 @@ class Grey_layer(Virtual_layer):
         """
 
         if self.mask_kind == "bool":
-            crop_mask = PIL.Image.fromarray(self.np2PIL(
-                    self.get_grey(mask_arr)))
             lx, ly = crop_size
+#            mask_arr = np.tile(np.array(mask_arr), crop_size
+#                ).reshape([lx, ly])
+            crop_mask = PIL.Image.fromarray(
+                self.np2PIL(np.uint8(mask_arr * 255)), mode="L"
+            )
             mask_colors = np.tile(np.array(mask_color), crop_size
-                                  ).reshape([lx, ly])
-            mask_colors = self.np2PIL(np.uint8(255 * mask_colors))
-            mask_colors = PIL.Image.fromarray(mask_colors, mode=self.mode)
+                ).reshape([lx, ly])
+            mask_colors = PIL.Image.fromarray(
+                    self.np2PIL(self.get_grey(mask_colors)),
+                    mode=self.mode
+            )
             crop.paste(mask_colors, (0, 0), crop_mask)
         else:
             raise ValueError(self.mask_kind)
@@ -616,8 +649,11 @@ class Disp_layer(Grey_layer):
     Blender)
     """
     mode = "I"
-    def get_grey(self, arr):
-        return np.int32(arr * 65535) # 2**16-1
+    # According to Pillow doc
+    # "a 32-bit signed integer has a range of 0-65535". why? cf source code:
+    # https://github.com/python-pillow/Pillow/blob/7bf5246b93cc89cfb9d6cca78c4719a943b10585/src/PIL/PngImagePlugin.py#L693-L708
+    k_int = 65535
+
 
 class Normal_map_layer(Color_layer):
     default_mask_color = (0.5, 0.5, 1.)
@@ -650,15 +686,20 @@ class Normal_map_layer(Color_layer):
         """ Return the image for this chunk"""
         # 1) The "base" image
         arr = self[chunk_slice]
-        
 
-#        print('crop bool', arr, arr.shape, arr.dtype, arr[0:100])
-#        rgb = np.uint8(rgb * 255)
+        # Note: rgb = np.uint8(rgb * 255)
         (ix, ixx, iy, iyy) = chunk_slice
-        rgb =  np.zeros([ixx - ix, iyy - iy, 3], dtype=np.float32)
+        nx, ny = ixx - ix, iyy - iy
+
+        ssg = self.plotter.supersampling
+        if ssg is not None:
+            nx *= ssg
+            ny *= ssg
+
+        rgb =  np.zeros((nx, ny, 3), dtype=np.float32)
         
         # max slope (from layer property) used for renormalisation
-        coeff = np.sin(self.max_slope) / (np.sqrt(2.) * self.max)
+        coeff = np.sin(self.max_slope) / np.sqrt(2.)
         rgb[:, :, 0] = - arr[0, :, :] * coeff # nx component
         rgb[:, :, 1] = - arr[1, :, :] * coeff # ny component
 
@@ -677,11 +718,17 @@ class Normal_map_layer(Color_layer):
 
         # We have a mask, apply it
         (ix, ixx, iy, iyy) = chunk_slice
-        crop_size = (ixx-ix, iyy-iy)
+        nx, ny = ixx - ix, iyy - iy
+
+        ssg = self.plotter.supersampling
+        if ssg is not None:
+            nx *= ssg
+            ny *= ssg
+
+        crop_size = (nx, ny)
         mask_layer, mask_color = self.mask
-        mask_color
         self.apply_mask(crop, crop_size,
-                        mask_layer[chunk_slice], mask_color) #, self.mask_kind)
+                        mask_layer[chunk_slice], mask_color)
         return crop
 
 
@@ -703,6 +750,7 @@ class Bool_layer(Virtual_layer):
         """ Return the image for this bool layer chunk"""
         # 1) The "base" image
         arr = self[chunk_slice]
+
         crop_mask = PIL.Image.fromarray(self.np2PIL(arr))
         return crop_mask
 
@@ -726,7 +774,7 @@ def _2d_CIELab_to_XYZ(Lab, nx, ny):
     
 
 class Blinn_lighting:
-    def __init__(self, k_Ambient, color_ambient):
+    def __init__(self, k_ambient, color_ambient, **light_sources):
         """
         This class holds the properties for the scene lightsources. Its
         instances can be passed as a parameter to `Color_layer.shade`.
@@ -741,41 +789,44 @@ class Blinn_lighting:
         """
         # ref : https://en.wikipedia.org/wiki/Blinn%E2%80%93Phong_reflection_model
         # http://www.codinglabs.net/article_physically_based_rendering_cook_torrance.aspx
-        self.k_Ambient = k_Ambient
+        self.k_ambient = k_ambient
         self.color_ambient = np.asarray(color_ambient)
         self.light_sources = []
 
-    def add_light_source(self, k_diffuse, k_specular, shininess,
-                         angles, coords=None, color=np.array([1., 1., 1.]),
-                         material_specular_color=None):
+        for ls in light_sources.values():
+            self.add_light_source(**ls)
+
+
+    def add_light_source(
+        self, k_diffuse, k_specular, shininess, polar_angle, azimuth_angle,
+        color=np.array([1., 1., 1.]), material_specular_color=None
+    ):
         """
         Adds a lightsource to the scene
         
         Parameters
         ==========
-        k_diffuse : 3-uplet float
+        k_diffuse: 3-uplet float
             diffuse lighting coefficients, as RGB
-        k_specular : 3-uplet float
+        k_specular: 3-uplet float
             diffuse lighting pourcentage, as RGB
-        shininess : float
+        shininess: float
             Phong exponent for specular model
-        angles : 2-uplet float
-            angles (theta, phi) of light source at infinity, in degree
-            theta = 0 : aligned to x
-            phi = 0 : normal to z (= in xy plane) 
-        coords : 2-uplet float
-            position of lightsource from image center,
-            in pourcentage of current image
-            (if None (default), source is at infinity ; 
-            if non-null, LS_angle has no effect)
+        polar_angle: float
+            angle (theta) of light source direction, in degree
+            theta = 0 if incoming light is in xOz plane
+        azimuth_angle: float
+            angle (phi) of light source direction, in degree
+            phi = 0 if incoming light is in xOy plane
         """
+        angles = (polar_angle, azimuth_angle)
         self.light_sources += [{
             "k_diffuse": np.asarray(k_diffuse),
             "k_specular": np.asarray(k_specular),
             "shininess": shininess,
-            "_angles": angles, 
-            "angles": tuple(a * np.pi / 180. for a in angles),
-            "coords": coords,
+            "polar_angle": polar_angle,
+            "azimuth_angle": azimuth_angle,
+            "angles_radian": tuple(a * np.pi / 180. for a in angles),
             "color": np.asarray(color),
             "material_specular_color": material_specular_color
         }]
@@ -783,13 +834,13 @@ class Blinn_lighting:
     def shade(self, rgb, normal):
         nx, ny, _ = rgb.shape
         XYZ = _2d_rgb_to_XYZ(rgb, nx, ny)
-        XYZ_shaded = XYZ * self.k_Ambient * self.color_ambient
+        XYZ_shaded = XYZ * self.k_ambient * self.color_ambient
         for ls in self.light_sources:
             XYZ_shaded += self.partial_shade(ls, XYZ, normal)
         return _2d_XYZ_to_rgb(XYZ_shaded, nx, ny)
 
     def partial_shade(self, ls, XYZ, normal):
-        theta_LS, phi_LS = ls['angles']
+        theta_LS, phi_LS = ls['angles_radian']
 
         # Light source coordinates
         LSx = np.cos(theta_LS) * np.cos(phi_LS)
@@ -799,20 +850,22 @@ class Blinn_lighting:
         # Normal vector coordinates
         nx = normal.real
         ny = normal.imag
-        nz = np.sqrt(1. - nx**2 - ny**2) # sin of max_slope
+        nz = np.sqrt(1. - nx**2 - ny**2) # cos of max_slope
         lambert = LSx * nx + LSy * ny + LSz * nz
         np.putmask(lambert, lambert < 0., 0.)
-        
+
         # half-way vector coordinates - Blinn Phong shading
         specular = np.zeros_like(lambert)
         if ls["k_specular"] != 0.:
+            # half azimuth angle vector between light and view
             phi_half = (np.pi * 0.5 + phi_LS) * 0.5
             half_x = np.cos(theta_LS) * np.cos(phi_half)
             half_y = np.sin(theta_LS) * np.cos(phi_half)
             half_z = np.sin(phi_half)
-            spec_angle = half_x * nx + half_y * ny + half_z * nz
-            np.putmask(spec_angle, spec_angle < 0., 0.)
-            specular = np.power(spec_angle, ls["shininess"])
+
+            specular_coeff = half_x * nx + half_y * ny + half_z * nz
+            np.putmask(specular_coeff, specular_coeff < 0., 0.)
+            specular = np.power(specular_coeff, ls["shininess"])
 
         if ls["material_specular_color"] is None:
             res =  (ls["k_diffuse"] * lambert[:, :, np.newaxis] * XYZ
@@ -821,10 +874,153 @@ class Blinn_lighting:
             XYZ_sp = np.asarray(ls["material_specular_color"])
             res =  (ls["k_diffuse"] * lambert[:, :, np.newaxis] * XYZ
                     + ls["k_specular"] * specular[:, :, np.newaxis]  * XYZ_sp)
-                   
-        return res * ls["color"]
 
-        
+        return res * ls["color"]
+    
+    def _output(self, nx, ny):
+        """ Return a RGB uint8 array of shape (nx, ny, 3)
+        """
+        margin = 1
+        nx_im = nx - 2 * margin
+        ny_im = ny - 2 * margin
+
+        normal = np.empty((nx_im, ny_im), dtype=np.complex128)
+        rgb = 0.5 * np.ones((nx_im, ny_im, 3), dtype=np.float64)
+        _Blinn_lighting_sphere_fill_normal_vec(0.75, normal)
+        img = self.shade(rgb, normal)
+        img = np.uint8(img * 255.999)
+
+        B = np.ones([nx, ny, 3], dtype=np.uint8) * 255
+        B[margin:nx - margin, margin:ny - margin, :] = img
+        return np.flip(np.swapaxes(B, 0, 1), axis=0)
+
+
+    def output_ImageQt(self, nx, ny):
+#https://stackoverflow.com/questions/34697559/pil-image-to-qpixmap-conversion-issue
+        B = self._output(nx, ny)
+        return PIL.ImageQt.ImageQt(PIL.Image.fromarray(B))
+
+    
+    #----------- methods for GUI interaction
+    @property
+    def n_rows(self):
+        return len(self.light_sources)
+
+    def modify_item(self, col_key, irow, value):
+        """ In place modification of lightsource irow """
+        if col_key == "color":
+            self.light_sources[irow][col_key] = np.asarray(value)
+        # Keep aligned the angles in radian
+        else:
+            self.light_sources[irow][col_key] = float(value)
+            if col_key == "polar_angle":
+                self.light_sources[irow]["angles_radian"] = (
+                    float(value) * np.pi / 180.,
+                    self.light_sources[irow]["angles_radian"][1]
+                )
+            if col_key == "azimuth_angle":
+                self.light_sources[irow]["angles_radian"] = (
+                    self.light_sources[irow]["angles_radian"][0],
+                    float(value) * np.pi / 180.,
+                )
+
+
+    def col_data(self, col_key):
+        """ Returns a column of the expected field """
+        ret = []
+        for ls in self.light_sources:
+            ret += [ls[col_key]]
+
+        return ret
+
+    @property
+    def default_ls_kwargs(self):
+        return {
+            "k_diffuse": 1.8,
+            "k_specular": 2.0,
+            "shininess": 15.,
+            "polar_angle": 50.,
+            "azimuth_angle": 20.,
+            "color": np.array([1.0, 1.0, 0.95])
+        }
+
+    def adjust_size(self, n_ls):
+        """ Adjust the number of lightsources to n_ls"""
+        n_ls_old = self.n_rows
+        diff = n_ls - n_ls_old
+        if diff < 0:
+            del self.light_sources[diff:]
+        else:
+            for _ in range(diff):
+                self.add_light_source(**self.default_ls_kwargs)
+
+    def script_repr(self, indent=0):
+        """ Return a string that can be used to restore the colormap
+        """
+        k_ambient_str = repr(self.k_ambient)
+        color_ambient_str = np.array2string(self.color_ambient, separator=', ')
+        lightings_str = ""
+        for ils, ls in enumerate(self.light_sources):
+            k_diffuse = ls["k_diffuse"]
+            k_specular = ls["k_specular"]
+            shininess = ls["shininess"]
+            polar_angle = ls["polar_angle"]
+            azimuth_angle = ls["azimuth_angle"]
+            ls_color_str = np.array2string(ls["color"], separator=', ')
+            matcolor = ls["material_specular_color"]
+            ls_matcolor_str = (
+                None if matcolor is None
+                else np.array2string(matcolor, separator=', ')
+            )
+
+            lightings_str += (
+                f"    ls{ils}={{\n        "
+                f"'k_diffuse': {k_diffuse},\n        "
+                f"'k_specular': {k_specular},\n        "
+                f"'shininess': {shininess},\n        "
+                f"'polar_angle': {polar_angle},\n        "
+                f"'azimuth_angle': {azimuth_angle},\n        "
+                f"'color': {ls_color_str},\n        "
+                f"'material_specular_color': {ls_matcolor_str}\n"
+                "    },\n"
+            )
+        ret =  (
+            "fs.colors.layers.Blinn_lighting(\n"
+            "    k_ambient={},\n"
+            "    color_ambient={},\n"
+            "{})"
+        ).format(k_ambient_str, color_ambient_str, lightings_str)
+
+        shift = " " * (4 * (indent + 1))
+        ret.replace("\n", "\n" + shift)
+        return ret
+
+
+
+@numba.njit
+def _Blinn_lighting_sphere_fill_normal_vec(kr, normal):
+    # Fills in-place the Open-GL normal map field for a sphere
+    # kr scalar, 0 < kr < 1 (usually ~ 0.75)
+    # normal: 2d vec
+    (nx_im, ny_im) = normal.shape
+    center_x = nx_im / 2.
+    center_y = ny_im / 2.
+    r_sphe = min(center_x, center_y) * kr
+
+    for i in range(nx_im):
+        for j in range(ny_im):
+            ipix = (i - center_x) / r_sphe
+            jpix = (j - center_y) / r_sphe
+            rloc = np.hypot(ipix, jpix)
+            if rloc > 1.:
+                # Flat surface
+                normal[i, j] = 0.
+            else:
+                phi = np.arctan2(jpix, ipix)
+                alpha = np.arcsin(rloc) # 0 where r=0, pi/2 where r=1
+                normal[i, j] = np.sin(alpha) * np.exp(1j * phi)
+
+
 class Overlay_mode:
     def __init__(self, mode, **mode_options):
         """
@@ -837,7 +1033,8 @@ class Overlay_mode:
                 the kind of overlay  applied
                 
                 - alpha_composite :
-                    alpha-compositing of 2 color layers (its is
+                    alpha-compositing of 2 color layers (a Bool_layer may be
+                    provided as optionnal parameter, otherwise its is
                     the mask of the upper layer which will be considered for
                     compositing)
                 - tint_or_shade : 
@@ -848,9 +1045,14 @@ class Overlay_mode:
 
         Other Parameters
         ----------------
-        ref_white: 3-uplet float
+        ref_white: 3-uplet float, Optionnal
             reference white light RGB coeff for ``mode`` "tint_or_shade"
              Default to CIE LAB constants Illuminant D65
+        alpha_mask: `Bool_layer`, Optionnal
+            Boolean array used for compositing, for alpha_composite mode
+            Defaults to the mask of the upper layer
+        inverse_mask: bool, Optionnal
+            if True, inverse the mask
         """
         self.mode = mode
         self.mode_options = mode_options
@@ -863,19 +1065,33 @@ class Overlay_mode:
 
     def alpha_composite(self, rgb, overlay, chunk_slice):
         """ Paste a "masked layer" over a standard layer
-        layer should be a colored layer with a mask 
-        The base layer should not have a mask as otherwise it could be applied
-        later in postprocessing
+        layer should be a colored layer with a mask, or the mask provided
+        separately
+        Note: The base layer shall not have a mask: otherwise it will be
+        applied later in postprocessing destroying the intended effect.
         """
         if not isinstance(overlay, Color_layer):
             raise ValueError("{} not allowed for alpha compositing".format(
                              type(overlay).__name__ ))
+
+        opt = self.mode_options
+
         # For alpha compositing, we obviously need an alpha channel
-        if overlay.mask is None:
-            raise ValueError("alpha_composite called with non-masked overlay "
-                             "layer")
-        # This is safer than using the A-channel from the image
-        mask_arr = overlay.mask[0][chunk_slice][:, :, np.newaxis]
+        if "alpha_mask" in opt.keys():
+            mask_arr = opt["alpha_mask"][chunk_slice][:, :, np.newaxis]
+        else:
+            if overlay.mask is None:
+                raise ValueError(
+                    "alpha_composite called with non-masked overlay "
+                    "layer - Add a mask to overlay layer or provide the "
+                    "mask separately through alpha_mask parameter."
+            )
+            # This is safer than using the A-channel from the image
+            mask_arr = overlay.mask[0][chunk_slice][:, :, np.newaxis]
+
+        inverse_mask = opt.get("inverse_mask", False)
+        if inverse_mask:
+            mask_arr = ~mask_arr 
 
         nx, ny, _ = rgb.shape
         XYZ = _2d_rgb_to_XYZ(rgb, nx, ny)
@@ -927,11 +1143,6 @@ class Overlay_mode:
         crop = np.array(overlay.crop(chunk_slice))
         shade = Virtual_layer.PIL2np(crop) / 255.
         shade = shade[:, :, np.newaxis]
-        
-        # shade = overlay[chunk_slice][:, :, np.newaxis]
-#        if np.any(shade > 1.):
-#            print(np.max(shade), np.min(shade))
-#            raise ValueError()
         
         nx, ny, _ = rgb.shape
         XYZ = _2d_rgb_to_XYZ(rgb, nx, ny)

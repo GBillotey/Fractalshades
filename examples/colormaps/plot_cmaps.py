@@ -35,6 +35,7 @@ if sys.version_info < (3, 9):
 else:
     import importlib.resources as importlib_resources 
 
+import numpy as np
 import PIL
 from PIL import ImageDraw, ImageFont, PngImagePlugin
 
@@ -42,12 +43,16 @@ import fractalshades as fs
 import fractalshades.colors as fscolors
 
 
-def plot_cmap(cmap_identifier, plot_dir, nx=600, ny=80):
+def plot_cmap(cmap_identifier, plot_dir, nx=600, ny=40):
     cmap_register = fscolors.cmap_register
     cmap = cmap_register[cmap_identifier]
     B = cmap._output(nx, ny)
-    B[:(ny // 2), :, :] = 255
-    im = PIL.Image.fromarray(B)
+
+    C = np.empty((ny * 2, nx, 3), dtype=np.uint8)
+    C [ny:, :, :] = B
+    C [:ny, :, :] = 255
+    # B[:(ny // 2), :, :] = 255
+    im = PIL.Image.fromarray(C)
     draw = ImageDraw.Draw(im)
 
     fs_resources = importlib_resources.files("fractalshades")

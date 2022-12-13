@@ -43,19 +43,15 @@ def plot(directory):
     """
     Example plot of distance estimation method
     """
+    settings.enable_multithreading = True
     # A simple showcase using perturbation technique
     precision = 164
     nx = 2400
     x = '-1.99996619445037030418434688506350579675531241540724851511761922944801584242342684381376129778868913812287046406560949864353810575744772166485672496092803920095332'
     y = '-0.00000000000000000000000000000000030013824367909383240724973039775924987346831190773335270174257280120474975614823581185647299288414075519224186504978181625478529'
-    dx = '1.8e-157'
+    dx = '1.7e-157'
 
     colormap = fscolors.cmap_register["valensole"]
-
-    # Set to True if you only want to rerun the post-processing part
-    settings.skip_calc = False
-    # Set to True to enable multi-processing
-    settings.enable_multithreading = True
 
     f = fsm.Perturbation_mandelbrot(directory)
     f.zoom(precision=precision,
@@ -63,10 +59,10 @@ def plot(directory):
             y=y,
             dx=dx,
             nx=nx,
-            xy_ratio=1.,
+            xy_ratio=1.0,
             theta_deg=0., 
             projection="cartesian",
-            antialiasing=False)
+    )
 
     f.calc_std_div(
             calc_name="div",
@@ -74,11 +70,10 @@ def plot(directory):
             max_iter=1000000,
             M_divergence=1.e3,
             epsilon_stationnary=1.e-3,
-            SA_params=None,
-            BLA_params={"eps": 1.e-8},
-            interior_detect=True)
+            BLA_eps=1.e-8,
+            interior_detect=False
+    )
 
-    f.run()
 
     # Plot the image
     pp = Postproc_batch(f, "div")
@@ -87,16 +82,15 @@ def plot(directory):
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
     pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
     
-    plotter = fs.Fractal_plotter(pp)   
+    plotter = fs.Fractal_plotter(pp, final_render=False, supersampling="2x2")   
     plotter.add_layer(Bool_layer("interior", output=False))
-    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=False))
+    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=35, output=False))
     plotter.add_layer(Virtual_layer("potential", func=None, output=False))
     plotter.add_layer(Color_layer(
             "DEM",
             func="np.log(x)",
             colormap=colormap,
-            probes_z=[0., 5.],
-            probes_kind="absolute",
+            probes_z=[0., 5.0],
             output=True
     ))
     plotter["DEM"].set_mask(
@@ -106,22 +100,22 @@ def plot(directory):
     plotter["DEM_map"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
 
 
-    # This is where we define the lighting (here 3 ccolored light sources)
+    # This is where we define the lighting (here 2 light sources)
     # and apply the shading
-    light = Blinn_lighting(0.4, np.array([1., 1., 1.]))
+    light = Blinn_lighting(0.35, np.array([1., 1., 1.]))
     light.add_light_source(
-        k_diffuse=0.2,
-        k_specular=300.,
-        shininess=1400.,
-        angles=(75., 20.),
-        coords=None,
-        color=np.array([0.9, 0.9, 1.5]))
+        k_diffuse=0.0,
+        k_specular=600.,
+        shininess=200.,
+        polar_angle=75.,
+        azimuth_angle=5.,
+        color=np.array([0.9, 0.9, 0.2]))
     light.add_light_source(
-        k_diffuse=2.8,
-        k_specular=2.,
+        k_diffuse=1.9,
+        k_specular=0.,
         shininess=400.,
-        angles=(75., 20.),
-        coords=None,
+        polar_angle=75.,
+        azimuth_angle=30.,
         color=np.array([1., 1., 1.]))
     plotter["DEM"].shade(plotter["DEM_map"], light)
 

@@ -17,7 +17,6 @@ import typing
 
 import numpy as np
 import mpmath
-from PyQt6 import QtGui
 
 import fractalshades as fs
 import fractalshades.models as fsm
@@ -44,12 +43,16 @@ def plot(plot_dir):
     #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     # Parameters
     #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-    fractal = fsm.Perturbation_shark_fin(plot_dir)
+    fractal = fsm.Perturbation_burning_ship(
+            plot_dir,
+            flavor="Shark fin"
+    )
     calc_name = 'test'
     _1 = 'Zoom parameters'
     x = '-0.51589620268627970432443972140466026618218061060835255763287480145041290920221218736270428245220746279618295095166798752620726428609211826274613117053264928657361477467234927967848753770166731064805065463419553477373233269591169614800220483380564022654439634169986994659158374011085207126571652818183508697495230387717223608030522514636708124947753134519935604246289612244797927127587933109583025775968223378485067259810292595540274443866416810747689111293571346662942340520825497910806468006677501978335474464494846513169232172970646598024886328933772273261902456292147592478159136755604313683591557546924552731872428993587388001253830610215019930920128066319351540606478859235188128959774129483187488417147576690962535'
     y = '-0.66245287866929999372606685018770977042741695086446507741696933368387025939056546346094155505184636005256929748124385822155668880701474708417984582422272710613772844669490417841138223472001735816407958513797076939299186620556823065549014718232791996093184517670844492605187891162197307252314413279558393819847771389763599825046453903796922405420550932465191160133017417295941396971611900071562514890047201047120102195410731923629108732235286316679314710301128526293690085499066374212739634013484802464773762266855871308625831096062738587245346740647723535571648059438999329620958795738080623529817798169870967107413952074751872860339286384952167472237089529593701827385040502112441301761365329882413960477126592518217051'
     dx = '4.730268188484633e-709'
+    
     xy_ratio = 1.8
     theta_deg = 180.0
     dps = 719
@@ -70,9 +73,8 @@ def plot(plot_dir):
     colormap = fs.colors.cmap_register["classic"]
     invert_cmap = True
     DEM_min = 1e-10
-    cmap_z_kind = 'relative'
-    zmin = 0.2
-    zmax = 1.0
+    zmin = 0.8 * (-12.720348358154297) + 0.2 * (-12.7184476852417)
+    zmax = -12.7184476852417
     _5 = 'Plotting parameters: shading'
     shade_kind = 'glossy'
     gloss_intensity = 10.0
@@ -84,7 +86,7 @@ def plot(plot_dir):
     # Plotting function
     #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     def func(
-        fractal: fsm.Perturbation_shark_fin=fractal,
+         fractal,
          calc_name: str=calc_name,
 
          _1: fsgui.separator="Zoom parameters",
@@ -114,11 +116,10 @@ def plot(plot_dir):
                  "continuous_iter",
                  "distance_estimation"
          ]=base_layer,
-         interior_color: QtGui.QColor=(0.1, 0.1, 0.1),
+         interior_color=(0.1, 0.1, 0.1),
          colormap: fscolors.Fractal_colormap=colormap,
          invert_cmap: bool=False,
          DEM_min: float=1.e-6,
-         cmap_z_kind: typing.Literal["relative", "absolute"]=cmap_z_kind,
          zmin: float=zmin,
          zmax: float=zmax,
 
@@ -126,13 +127,13 @@ def plot(plot_dir):
          shade_kind: typing.Literal["None", "standard", "glossy"]=shade_kind,
          gloss_intensity: float=10.,
          light_angle_deg: float=65.,
-         light_color: QtGui.QColor=(1.0, 1.0, 1.0),
-         gloss_light_color: QtGui.QColor=(1.0, 1.0, 1.0),
+         light_color=(1.0, 1.0, 1.0),
+         gloss_light_color=(1.0, 1.0, 1.0),
     ):
 
 
         fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
-             theta_deg=theta_deg, projection="cartesian", antialiasing=False,
+             theta_deg=theta_deg, projection="cartesian",
              has_skew=has_skew, skew_00=skew_00, skew_01=skew_01,
              skew_10=skew_10, skew_11=skew_11
         )
@@ -142,16 +143,8 @@ def plot(plot_dir):
             subset=None,
             max_iter=max_iter,
             M_divergence=1.e70,
-            BLA_params={"eps": eps},
+            BLA_eps=eps,
         )
-
-        if fractal.res_available():
-            print("RES AVAILABLE, no compute")
-        else:
-            print("RES NOT AVAILABLE, clean-up")
-            fractal.clean_up(calc_name)
-
-        fractal.run()
 
         pp = Postproc_batch(fractal, calc_name)
         
@@ -171,7 +164,7 @@ def plot(plot_dir):
 
         if shade_kind != "None":
             plotter.add_layer(Normal_map_layer(
-                "DEM_map", max_slope=60, output=False
+                "DEM_map", max_slope=40, output=False
             ))
 
         if base_layer != 'continuous_iter':
@@ -194,7 +187,6 @@ def plot(plot_dir):
                 func=cmap_func,
                 colormap=colormap,
                 probes_z=[zmin, zmax],
-                probes_kind=cmap_z_kind,
                 output=True))
         plotter[base_layer].set_mask(
             plotter["interior"], mask_color=interior_color
@@ -205,17 +197,17 @@ def plot(plot_dir):
                 k_diffuse=0.8,
                 k_specular=.0,
                 shininess=350.,
-                angles=(light_angle_deg, 20.),
-                coords=None,
+                polar_angle=light_angle_deg,
+                azimuth_angle=10.,
                 color=np.array(light_color))
-
+    
             if shade_kind == "glossy":
                 light.add_light_source(
                     k_diffuse=0.2,
                     k_specular=gloss_intensity,
-                    shininess=40.,
-                    angles=(light_angle_deg, 20.),
-                    coords=None,
+                    shininess=400.,
+                    polar_angle=light_angle_deg,
+                    azimuth_angle=10.,
                     color=np.array(gloss_light_color))
 
             plotter[base_layer].shade(plotter["DEM_map"], light)
@@ -252,7 +244,6 @@ def plot(plot_dir):
         colormap,
         invert_cmap,
         DEM_min,
-        cmap_z_kind,
         zmin,
         zmax,
         _5,

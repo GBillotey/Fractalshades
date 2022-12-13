@@ -116,7 +116,7 @@ class Test_ref_path(unittest.TestCase):
         cls.f = f = fsm.Perturbation_mandelbrot(subset_dir)
 
         f.zoom(precision=precision, x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
-               theta_deg=0., projection="cartesian", antialiasing=False)
+               theta_deg=0., projection="cartesian")
         f.calc_std_div(
 #                datatype=complex_type,
                 calc_name=cls.calc_name,
@@ -125,10 +125,9 @@ class Test_ref_path(unittest.TestCase):
                 M_divergence=1.e3,
                 epsilon_stationnary=1.e-3,
                 interior_detect=False,
-                SA_params={"cutdeg": 2, "eps": 1.e-8},  # 7886 :  for 7884 partial
-                calc_dzndc=False)
-        print("f.iref", f.iref)
-        f.iref = 0
+                BLA_eps=1.e-6,
+                calc_dzndc=False
+        )
 
         print("################# before get_FP_orbit")
         f.get_FP_orbit()
@@ -161,7 +160,6 @@ class Test_ref_path(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         fs.settings.no_newton = False
-
 
 class Test_newton(unittest.TestCase):
 
@@ -273,6 +271,8 @@ class Test_newton(unittest.TestCase):
 
         self.assertTrue(is_equal)
 
+BURNING_SHIP = 1
+
 class Test_BS(unittest.TestCase):
 
     def test_path(self):
@@ -285,14 +285,16 @@ class Test_BS(unittest.TestCase):
         orbit_float = orbit_complex.view(np.float64)
         
         (i, partial_dict, xr_dict
-         ) = fsFP.perturbation_BS_FP_loop(
+         ) = fsFP.perturbation_nonholomorphic_FP_loop(
             orbit_float,
             False,
             npts - 1,
             1000.,
             str(x).encode('utf8'),
             str(y).encode('utf8'),
-            53
+            53,
+            BURNING_SHIP
+            
         )
         print("orbit_complex", orbit_complex)
         print("i", i)
@@ -311,13 +313,14 @@ class Test_BS(unittest.TestCase):
         y_str = "0.0015894811966473"
         seed_px = "0.01"
 
-        order = fsFP.perturbation_BS_ball_method(
+        order = fsFP.perturbation_nonholomorphic_ball_method(
             x_str.encode('utf8'),
             y_str.encode('utf8'),
             53,
             seed_px.encode('utf8'),
             100,
-            1000. 
+            1000.,
+            BURNING_SHIP
         )
         print("order", order)
         assert order == 3
@@ -326,13 +329,14 @@ class Test_BS(unittest.TestCase):
         y_str = "1.5218981991448"
         seed_px = "0.01"
 
-        order = fsFP.perturbation_BS_ball_method(
+        order = fsFP.perturbation_nonholomorphic_ball_method(
             x_str.encode('utf8'),
             y_str.encode('utf8'),
             53,
             seed_px.encode('utf8'),
             100,
-            1000. 
+            1000.,
+            BURNING_SHIP
         )
         assert order == 3
 
@@ -344,7 +348,7 @@ class Test_BS(unittest.TestCase):
         order = 3
         eps_cv = mpmath.mpf(val=(2, -seed_prec))
          
-        is_ok, val = fsFP.perturbation_BS_find_any_nucleus(
+        is_ok, val = fsFP.perturbation_nonholomorphic_find_any_nucleus(
             x_str.encode('utf8'),
             y_str.encode('utf8'),
             seed_prec,
@@ -352,6 +356,7 @@ class Test_BS(unittest.TestCase):
             40,
             str(eps_cv).encode('utf8'),
             seed_px.encode('utf8'),
+            BURNING_SHIP
         )
         assert order == 3
         print(is_ok, val)
@@ -363,7 +368,7 @@ class Test_BS(unittest.TestCase):
         order = 3
         eps_cv = mpmath.mpf(val=(2, -seed_prec))
          
-        is_ok, val = fsFP.perturbation_BS_find_any_nucleus(
+        is_ok, val = fsFP.perturbation_nonholomorphic_find_any_nucleus(
             x_str.encode('utf8'),
             y_str.encode('utf8'),
             seed_prec,
@@ -371,6 +376,7 @@ class Test_BS(unittest.TestCase):
             40,
             str(eps_cv).encode('utf8'),
             seed_px.encode('utf8'),
+            BURNING_SHIP
         )
         assert order == 3
         print(is_ok, val)
@@ -390,10 +396,11 @@ class Test_BS(unittest.TestCase):
 #        assert order == 3
 
 if __name__ == "__main__":
-    full_test = False
+    full_test = True
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_ref_path,
+                                      Test_BS,
                                       Test_newton]))
     else:
         suite = unittest.TestSuite()

@@ -2,7 +2,6 @@
 from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtWidgets import (
     QDialog,
-    QApplication,
     QVBoxLayout,
     QTextEdit,
 )
@@ -65,7 +64,7 @@ class Fractal_code_widget(QTextEdit):
 
         # Event binding
         self.textChanged.connect(self.highlighter)
-    
+
     def highlighter(self):
         text = self.toPlainText()
 
@@ -90,17 +89,3 @@ class Fractal_code_widget(QTextEdit):
             cursor = self.textCursor()
             cursor.setPosition(min(pos, len(self.toPlainText())))
             self.setTextCursor(cursor)
-
-
-
-if __name__ == "__main__":
-    from PyQt5.QtCore import QCoreApplication 
-    app = QCoreApplication.instance()
-    if app is None:
-        app = QApplication([])
-    
-    win = Fractal_code_editor()
-    win.set_text('print ("Hello World")\n# Test Program')
-    win.show()
-
-

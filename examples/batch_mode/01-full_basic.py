@@ -12,9 +12,7 @@ The full Mandelbrot set is diplayed here.
 Reference:
 `fractalshades.models.Mandelbrot`
 """
-
 import os
-import numpy as np
 
 import fractalshades as fs
 import fractalshades.models as fsm
@@ -34,6 +32,7 @@ def plot(plot_dir):
     A very simple example: full view of the Mandelbrot set with escape-time
     coloring
     """
+    fs.settings.enable_multithreading = True
     # Define the parameters for this calculation
     x = -1.0
     y = -0.0
@@ -46,16 +45,14 @@ def plot(plot_dir):
     # Run the calculation
     f = fsm.Mandelbrot(plot_dir)
     f.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
-           theta_deg=0., projection="cartesian", antialiasing=False)
-    f.base_calc(
+           theta_deg=0., projection="cartesian")
+    f.calc_std_div(
         calc_name=calc_name,
         subset=None,
         max_iter=1000,
-        M_divergence=100.,
+        M_divergence=1000.,
         epsilon_stationnary= 0.001,
     )
-    # f.clean_up(calc_name) 
-    f.run()
 
     # Plot the image
     pp = Postproc_batch(f, calc_name)
@@ -69,7 +66,6 @@ def plot(plot_dir):
             func="np.log(x)",
             colormap=colormap,
             probes_z=[1., 3.],
-            probes_kind="absolute",
             output=True
     ))
 
@@ -77,7 +73,7 @@ def plot(plot_dir):
             plotter["interior"],
             mask_color=(0.1, 0.1, 0.1)
     )
-    
+
     plotter.plot()
 
 

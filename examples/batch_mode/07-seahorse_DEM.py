@@ -12,9 +12,7 @@ The location is a shallow one in the main Seahorse valley.
 Reference:
 `fractalshades.models.Mandelbrot`
 """
-
 import os
-import numpy as np
 
 import fractalshades as fs
 import fractalshades.models as fsm
@@ -48,15 +46,14 @@ def plot(plot_dir):
     # Run the calculation
     f = fsm.Mandelbrot(plot_dir)
     f.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
-           theta_deg=0., projection="cartesian", antialiasing=False)
-    f.base_calc(
+           theta_deg=0., projection="cartesian")
+    f.calc_std_div(
         calc_name=calc_name,
         subset=None,
         max_iter=20000,
         M_divergence=100.,
         epsilon_stationnary= 0.005,
     )
-    f.run()
 
     # Plot the image
     pp = Postproc_batch(f, calc_name)
@@ -73,7 +70,6 @@ def plot(plot_dir):
             func="np.log(x + 1e-8)",
             colormap=colormap,
             probes_z=[19.5, 40.],
-            probes_kind="absolute",
             output=True
     ))
 

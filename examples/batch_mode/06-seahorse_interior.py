@@ -5,7 +5,7 @@
 ==============================
 
 This example shows how to use several layers to plot both the divergent and
-convergent part of a fractal, with fieldlines and scene lighting.
+convergent part of a fractal.
 
 The location is a shallow one in the main Seahorse valley.
 
@@ -51,28 +51,29 @@ def plot(plot_dir=None):
     y = -0.0959468433527
     dx = 0.00745
     nx = 2400
+    fs.settings.optimize_RAM = True
 
     calc_name="escaping"
+
     colormap = fscolors.cmap_register["legacy"]
     colormap_int = fscolors.cmap_register["legacy"]
 
     # Run the calculation
     f = fsm.Mandelbrot(plot_dir)
     f.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
-           theta_deg=0., projection="cartesian", antialiasing=False)
-    f.base_calc(
+           theta_deg=0., projection="cartesian")
+    f.calc_std_div(
         calc_name=calc_name,
         subset=None,
-        max_iter=5000,
-        M_divergence=100.,
+        max_iter=25000,
+        M_divergence=40.,
         epsilon_stationnary= 0.001,
+        calc_orbit=True,
+        backshift=3
     )
-    # f.clean_up("escaping") # keep this line if you want to force recalculate
-    f.run()
-    
+
     # Run the calculation for the interior points
-    interior = Fractal_array(f, "escaping", "stop_reason",
-                         func= lambda x: (x != 1))
+    interior = Fractal_array(f, "escaping", "stop_reason", func= "x != 1")
     f.newton_calc(
         calc_name="interior",
         subset=interior,
@@ -80,76 +81,81 @@ def plot(plot_dir=None):
         max_order=1500,
         max_newton=20,
         eps_newton_cv=1.e-12,
-        )
-    # f.clean_up("interior")
-    f.run()
+    )
 
     # Plot the image
     pp = Postproc_batch(f, calc_name)
     pp.add_postproc("cont_iter", Continuous_iter_pp())
     pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
-    pp.add_postproc("div", Raw_pp("stop_reason", func="x == 1."))
+    #pp.add_postproc("div", Raw_pp("stop_reason", func="x == 1."))
     pp.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
     pp.add_postproc("fieldlines",
-                Fieldlines_pp(n_iter=10, swirl=1., damping_ratio=0.1))
-    
+                Fieldlines_pp(n_iter=4, swirl=0.0, endpoint_k=0.6))
+
     # Defines a second pastproc batch for interior points
     pp_int = Postproc_batch(f, "interior")
     pp_int.add_postproc("attr_map", Attr_normal_pp())
     pp_int.add_postproc("attr", Attr_pp())
+    pp_int.add_postproc("div", Raw_pp("stop_reason", func="x == 0"))
 
-    plotter = fs.Fractal_plotter([pp, pp_int])  
+    plotter = fs.Fractal_plotter([pp, pp_int])
+
     plotter.add_layer(Bool_layer("interior", output=False))
     plotter.add_layer(Bool_layer("div", output=False))
-    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=60, output=False))
+    plotter.add_layer(Normal_map_layer("DEM_map", max_slope=30, output=False))
     plotter.add_layer(Normal_map_layer("attr_map", max_slope=90, output=False))
     plotter.add_layer(Color_layer(
             "cont_iter",
             func="np.log(x)",
             colormap=colormap,
             probes_z=[1., 2.],
-            probes_kind="absolute",
             output=True
     ))
     plotter.add_layer(Color_layer(
             "attr",
-            func=None, #"x * -1. + 1.", #"np.log(x)",
+            func=None,
             colormap=colormap_int,
             probes_z=[1., 2.],
-            probes_kind="absolute",
             output=False))
-    plotter.add_layer(Grey_layer("fieldlines", func=None,
-                                 curve=lambda x: 0.5 + (x - 0.5) * 0.2,
-                                 output=False))
+    plotter.add_layer(
+        Grey_layer("fieldlines", func=None,
+                   probes_z=[-2, 2],
+                   output=False)
+    )
 
     # plotter["cont_iter"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
     plotter["DEM_map"].set_mask(plotter["interior"], mask_color=(0., 0., 0.))
+
     plotter["attr"].set_mask(plotter["div"], mask_color=(0.9568, 0.8039, 0.9372))
 
     # This is where we define the lighting (here 3 ccolored light sources)
     # and apply the shading
-    light = Blinn_lighting(0.2, np.array([1., 1., 1.]))
+    light = Blinn_lighting(0.35, np.array([1., 1., 1.]))
+    light.add_light_source(
+        k_diffuse=0.2,
+        k_specular=25.,
+        shininess=400.,
+        polar_angle=-135.,
+        azimuth_angle=15.,
+        color=np.array([0.05, 0.05, 1.0])
+    )
     light.add_light_source(
         k_diffuse=0.2,
         k_specular=10.,
         shininess=400.,
-        angles=(-135., 20.),
-        coords=None,
-        color=np.array([0.05, 0.05, 1.0]))
-    light.add_light_source(
-        k_diffuse=0.2,
-        k_specular=10.,
-        shininess=400.,
-        angles=(135., 20.),
-        coords=None,
-        color=np.array([0.5, 0.5, .4]))
+        polar_angle=135.,
+        azimuth_angle=15.,
+        color=np.array([0.5, 0.5, .4])
+    )
     light.add_light_source(
         k_diffuse=1.3,
         k_specular=0.,
         shininess=0.,
-        angles=(90., 40.),
-        coords=None,
-        color=np.array([1.0, 1.0, 1.0]))
+        polar_angle=90.,
+        azimuth_angle=10.,
+        color=np.array([1.0, 1.0, 1.0])
+    )
+    plotter["cont_iter"].shade(plotter["DEM_map"], light)
 
     # Adds some shading based on the previouly defined normal maps
     plotter["cont_iter"].shade(plotter["DEM_map"], light)

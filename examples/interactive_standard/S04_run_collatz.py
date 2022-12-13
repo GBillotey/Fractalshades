@@ -5,23 +5,22 @@ S04 - Collatz explorer - Standard precision
 =============================================================
 
 This is a simple template to explore the Collatz set with
-a GUI.
+a GUI (example of "low-level API" for GUI implementation).
 Resolution limited to approx 1.e-13 due to double (float64) precision
 
 Reference:
 `fractalshades.models.Collatz`
 """
-import typing
 import os
 
 import numpy as np
-from PyQt6 import QtGui
 
 import fractalshades as fs
 import fractalshades.models as fsm
 import fractalshades.settings as settings
-import fractalshades.colors as fscolors
+import fractalshades.colors
 import fractalshades.gui as fsgui
+from fractalshades.gui.guimodel import Fractal_GUI
 
 from fractalshades.postproc import (
     Postproc_batch,
@@ -35,24 +34,22 @@ from fractalshades.colors.layers import (
 
 def plot(plot_dir):
     """
-    Example interactive
+    Example of "low-level API" for GUI implementation
     """
     calc_name = 'test'
     x = 0.0
     y = 0.0
-    dx = 5.
+    dx = 8.
     xy_ratio = 1.7777
     theta_deg = 0.
 
     max_iter = 1000
     nx = 800
     M_divergence = 1000.0
-    interior_color = (0.0, 0.0, 0.0)
+    interior_color = (0.0, 0.0, 1.0)
     colormap = fs.colors.cmap_register["classic"]
-    cmap_z_kind = 'relative'
-    zmin = 0.05
-    zmax = 0.15
-  
+    zmin = 0.0
+    zmax = 0.5
 
     # Set to True to enable multi-processing
     settings.enable_multithreading = True
@@ -77,16 +74,16 @@ def plot(plot_dir):
          nx: int=nx,
          _3: fsgui.separator="Plotting parameters",
          M_divergence: float=M_divergence,
-         interior_color: QtGui.QColor=interior_color,
-         colormap: fscolors.Fractal_colormap=colormap,
-         cmap_z_kind: typing.Literal["relative", "absolute"]=cmap_z_kind,
+         interior_color: fs.colors.Color=interior_color,
+         colormap: fs.colors.Fractal_colormap=colormap,
          zmin: float=zmin,
-         zmax: float=zmax
+         zmax: float=zmax,
+         zshift: float=0.0
     ):
 
 
         fractal.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
-             theta_deg=0., projection="cartesian", antialiasing=False)
+             theta_deg=0., projection="cartesian")
 
         fractal.base_calc(
             calc_name=calc_name,
@@ -95,15 +92,6 @@ def plot(plot_dir):
             M_divergence=M_divergence,
             epsilon_stationnary=1.e-4,
         )
-
-        if fractal.res_available():
-            print("RES AVAILABLE, no compute")
-        else:
-            print("RES NOT AVAILABLE, clean-up")
-            fractal.clean_up(calc_name)
-
-        fractal.run()
-
 
         pp = Postproc_batch(fractal, calc_name)
         pp.add_postproc("n_iter", Raw_pp("stop_iter", func=None))
@@ -117,15 +105,14 @@ def plot(plot_dir):
                 "n_iter",
                 func=lambda x: np.log(x + 10.),
                 colormap=colormap,
-                probes_z=[zmin, zmax],
-                probes_kind=cmap_z_kind,
+                probes_z=[zmin + zshift, zmax + zshift],
                 output=True))
-        plotter["n_iter"].set_mask(plotter["interior"],
-                                     mask_color=interior_color)
-
+        plotter["n_iter"].set_mask(
+            plotter["interior"], mask_color=interior_color
+        )
 
         plotter.plot()
-        
+
         # Renaming output to match expected from the Fractal GUI
         layer = plotter["n_iter"]
         file_name = "{}_{}".format(type(layer).__name__, layer.postname)
@@ -136,7 +123,7 @@ def plot(plot_dir):
         os.link(src_path, dest_path)
 
 
-    gui = fsgui.Fractal_GUI(func)
+    gui = Fractal_GUI(func)
     gui.connect_image(image_param="calc_name")
     gui.connect_mouse(x="x", y="y", dx="dx", xy_ratio="xy_ratio", dps=None)
     gui.show()

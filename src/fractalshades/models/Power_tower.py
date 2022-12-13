@@ -4,8 +4,6 @@ import numba
 
 import fractalshades as fs
 
-#==============================================================================
-#==============================================================================
 
 class Power_tower(fs.Fractal):
     def __init__(self, directory):
@@ -28,8 +26,6 @@ directory : str
         super().__init__(directory)
         # default values used for postprocessing (potential)
         self.potential_kind = "infinity"
-        self.potential_d = 2
-        self.potential_a_d = 1.
 
 
     @fs.utils.calc_options
@@ -80,34 +76,33 @@ directory : str
             The cycle order
     
         Exit codes are *max_order*, *order_confirmed*.
-
-
         """
-        complex_codes = ["zr", "dzrdz", "_zn", "_dzndz", "_partial1"]
+        complex_codes = ["zr", "dzrdz", "_zn", "_partial1"]
         zr = 0
         dzrdz = 1
         _zn = 2
-        _dzndz = 3
-        _partial1 = 4
+        _partial1 = 3
 
         int_codes = ["order"]
         stop_codes = ["max_order", "order_confirmed", "overflow"]
-        self.codes = (complex_codes, int_codes, stop_codes)
-        self.init_data_types(np.complex128)
+        
+        def set_state():
+            def impl(instance):
+                instance.codes = (complex_codes, int_codes, stop_codes)
+                instance.complex_type = np.complex128
+            return impl
 
         def initialize():
             @numba.njit
             def numba_init_impl(Z, U, c):
                 Z[_partial1] = 1.e6 # bigger than any reasonnable np.abs(z0)
                 Z[_zn] = 1.
-                Z[_dzndz] = 1.
             return numba_init_impl
-        self.initialize = initialize
 
         def iterate():
             @numba.njit
-            def numba_impl(Z, U, c, stop_reason, n_iter):
-
+            def numba_impl(c, Z, U, stop_reason):
+                n_iter = 0
                 logc = np.log(c)
 
                 while True:
@@ -120,7 +115,6 @@ directory : str
                     # If n is not a 'partial' for this point it cannot be the 
                     # cycle order : early exit
                     cPzn = np.exp(Z[_zn] * logc)
-#                    Z[_dzndz] = Z[_dzndz] * logc * cPzn
                     Z[_zn] = cPzn
 
                     if np.isinf(Z[_zn]):
@@ -151,7 +145,6 @@ directory : str
                             newton_cv = False
                             break
 
-                        # zr_loop = zr_loop - 1.
                         delta = (zr_loop - zr0_loop) / (dzrdz_loop - 1.)
                         newton_cv = (np.abs(delta) < eps_newton_cv)
                         zr_loop = (dzrdz_loop * zr0_loop - zr_loop) / (dzrdz_loop - 1.)
@@ -160,7 +153,6 @@ directory : str
                         if newton_cv:
                             break
 
-                    # print("NEWTON", newton_cv, np.abs(dzrdz_loop))
                     # We have a candidate but is it the good one ?
                     is_confirmed = (np.abs(dzrdz_loop) <= 1.) & newton_cv
                     if not(is_confirmed): # not found, same player shoot again
@@ -177,12 +169,14 @@ directory : str
                 return n_iter
 
             return numba_impl
-        self.iterate = iterate
+
+
+        return {
+            "set_state": set_state,
+            "initialize": initialize,
+            "iterate": iterate
+        }
 
     @fs.utils.interactive_options
     def coords(self, x, y, pix, dps):
         return super().coords(x, y, pix, dps)
-
-#==============================================================================
-#==============================================================================
-

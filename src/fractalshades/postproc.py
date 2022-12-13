@@ -1,12 +1,17 @@
 # -*- coding: utf-8 -*-
+import pickle
+import inspect
+import logging
+
 import numpy as np
+import numba
 from numpy.lib.format import open_memmap
 
 import fractalshades as fs
 #import fractalshades.numpy_utils.xrange as fsx
 import fractalshades.numpy_utils.expr_parser as fs_parser
 
-
+logger = logging.getLogger(__name__)
 
 class Postproc_batch:
     def __init__(self, fractal, calc_name):
@@ -30,8 +35,11 @@ class Postproc_batch:
         self.calc_name = calc_name
         self.posts = dict()
         self.postnames_2d = []
-        # Temporary data used when iterating
-        self.clear_chunk_data()
+
+        # Temporary data used when iterating chunk_slices
+        self.raw_data = dict()
+        self.context = dict()
+        # self.clear_chunk_data()
 
     @property
     def postnames(self):
@@ -49,17 +57,13 @@ class Postproc_batch:
             post-processing object
         postproc : `Postproc` instance
             The post-processing object to be added
-
         Notes
         =====
-
         .. warning::
-
             A Postproc can only be added to one batch.
         """
         if postproc.batch is not None:
             raise ValueError("Postproc can only be linked to one batch")
-
 
         postproc.link_batch(self) # Give access to batch members from postproc
         if postproc.field_count == 1:
@@ -77,28 +81,29 @@ class Postproc_batch:
             self.posts[postname + "_y"] = y_field
             self.postnames_2d += [postname]
         else:
-            raise ValueError("postproc.field_count bigger than 2: {}".format(
-                    postproc.field_count))
+            raise ValueError(
+                f"postproc.field_count bigger than 2: {postproc.field_count}"
+            )
 
-    def set_chunk_data(self, chunk_slice, chunk_mask, Z, U, stop_reason,
+
+    def set_chunk_data(self, chunk_slice, chunk_mask, c_pt, Z, U, stop_reason,
             stop_iter, complex_dic, int_dic, termination_dic):
-        self.chunk_slice = chunk_slice
-        self.raw_data = (chunk_mask, Z, U, stop_reason, stop_iter,
-            complex_dic, int_dic, termination_dic)
-        self.context = dict()
+        # self.chunk_slice = chunk_slice
+        self.raw_data[chunk_slice] = (
+            chunk_mask, c_pt, Z, U, stop_reason, stop_iter,
+            complex_dic, int_dic, termination_dic
+        )
+        self.context[chunk_slice] = dict()
+
 
     def update_context(self, chunk_slice, context_update):
-        if chunk_slice != self.chunk_slice:
-            raise RuntimeError("Attempt to update context"
-                               " from a different chunk")
-        self.context.update(context_update)
+        self.context[chunk_slice].update(context_update)
 
-    def clear_chunk_data(self):
+    def clear_chunk_data(self, chunk_slice):
         """ Temporary data shared by postproc items when iterating a given
         chunk """
-        self.chunk_slice = None
-        self.raw_data = None
-        self.context = None
+        del self.raw_data[chunk_slice]
+        del self.context[chunk_slice]
 
 
 class Postproc:
@@ -115,7 +120,6 @@ class Postproc:
     def link_batch(self, batch):
         """
         Link to Postproc group
-
         :meta private:
         """
         self.batch = batch
@@ -135,6 +139,11 @@ class Postproc:
     @property
     def context(self):
         return self.batch.context
+    
+    @property
+    def state(self):
+        # The fractal state object
+        return self.fractal._calc_data[self.calc_name]["state"]
 
     @property
     def holomorphic(self):
@@ -147,14 +156,13 @@ class Postproc:
             self._holomorphic = select[np.dtype(complex_type)]
         return self._holomorphic
 
-    def ensure_context(self, key):
+    def ensure_context(self, chunk_slice, key):
         """
         Check that the provided context contains the expected data
-
         :meta private:
         """
         try:
-            return self.context[key]
+            return self.context[chunk_slice][key]
         except KeyError:
             msg = ("{} should be computed before {}. "
                    "Please add the relevant item to this post-processing "
@@ -185,19 +193,18 @@ class Postproc:
 
 class Raw_pp(Postproc):
     def __init__(self, key, func=None):
-        """
-        A raw postproc provide direct access to the res data stored (memmap)
+        """A raw postproc provide direct access to the res data stored (memmap)
         during calculation. (Similar to what does `Fractal_array`  but 
         here within a `Postproc_batch`)
 
         Parameters
         ==========
-        key : 
+        key: str
             The raw data key. Should be one of the *complex_codes*,
             *int_codes*, *termination_codes* for this calculation.
         func: None | callable | a str of variable x (e.g. "np.sin(x)")
-              will be applied as a pre-processing step to the raw data if not
-              `None`
+            will be applied as a pre-processing step to the raw data if not
+            `None`
         """
         super().__init__()
         self.key = key
@@ -211,9 +218,10 @@ class Raw_pp(Postproc):
         calc_name = self.calc_name
         func = self.func
         key = self.key
-        (params, codes) = fractal.reload_params(calc_name)
-        (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-         termination_dic) = self.raw_data# [chunk_slice]
+        # (params, codes) = fractal.reload_params(calc_name)
+        codes = fractal._calc_data[calc_name]["saved_codes"]
+        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
+         termination_dic) = self.raw_data[chunk_slice]
         
         kind = fractal.kind_from_code(self.key, codes)
         if kind == "complex":
@@ -237,13 +245,12 @@ class Raw_pp(Postproc):
 class Continuous_iter_pp(Postproc):
     def __init__(self, kind=None, d=None, a_d=None, M=None, epsilon_cv=None,
                  floor_iter=0):
-        """
-        Return a continuous iteration number: this is the iteration count at
+        """Return a continuous iteration number: this is the iteration count at
         bailout, plus a fractionnal part to allow smooth coloring.
-        Implementation based on potential, for details see [#f3]_.
+        Implementation based on potential, for details see:
 
-        .. [#f3] *On Smooth Fractal Coloring Techniques*,
-                  **Jussi Härkönenen**, Abo University, 2007
+            - *On Smooth Fractal Coloring Techniques*,
+              **Jussi Härkönenen**, Abo University, 2007
 
         Parameters
         ==========
@@ -270,9 +277,7 @@ class Continuous_iter_pp(Postproc):
 
         Notes
         =====
-
         .. note::
-
             Usually it is not recommended to pass any parameter ; 
             if a parameter <param>
             is not provided, it will defaut to the attribute of 
@@ -297,7 +302,7 @@ class Continuous_iter_pp(Postproc):
         Returns the potential parameters properties
            priority order :
                1) user input to Continuous_iter_pp constructor
-               2) fractal objet defaut potential attributes
+               2) fractal (or fractal 'state') defaut potential attributes
                    ("potential_" + prop)
                3) default to None if 1) and 2) fail. """
         if self._potential_dic is not None:
@@ -305,42 +310,48 @@ class Continuous_iter_pp(Postproc):
 
         post_dic = self.post_dic
         _potential_dic = {}
-        fractal = self.fractal
 
-        for prop in ["kind", "d", "a_d", "M", "epsilon_cv"]:
+
+        fractal = self.fractal # The factal
+        for prop in ["kind", "d", "a_d", "M_cutoff"]:
             _potential_dic[prop] =  post_dic.get(
-                prop, getattr(fractal, "potential_" + prop, None))
+                prop, getattr(fractal, "potential_" + prop, None)
+        )
+
+        state = self.state # The fractal state
+        for prop in ["M", "epsilon_cv"]:
+            _potential_dic[prop] =  post_dic.get(
+                prop, getattr(state, "potential_" + prop, None)
+        )
+
         self._potential_dic = _potential_dic
         return _potential_dic
 
     def __getitem__(self, chunk_slice):
         """  Returns the real Iteration number
         """
-        (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-         termination_dic) = self.raw_data# [chunk_slice]
-
+        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
+         termination_dic) = self.raw_data[chunk_slice]
 
         n = stop_iter[0, :]
         potential_dic = self.potential_dic
+        
         zn = self.get_zn(Z, complex_dic) #["zn"], :]
 
         if potential_dic["kind"] == "infinity":
             d = potential_dic["d"]
             a_d = potential_dic["a_d"]
             M = potential_dic["M"]
-            k = np.abs(a_d) ** (1. / (d - 1.))
-            # k normaliszation corefficient, because the formula given
-            # in https://en.wikipedia.org/wiki/Julia_set                    
-            # suppose the highest order monome is normalized
-            nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(M * k))
-                        / np.log(d))
+
+            nu_frac = Continuous_iter_pp_infinity(zn, d, a_d, M)
 
         elif potential_dic["kind"] == "convergent":
             eps = potential_dic["epsilon_cv"]
-            alpha = 1. / Z[complex_dic["attractivity"]]
+            attractivity = Z[complex_dic["attractivity"]]
             z_star = Z[complex_dic["zr"]]
-            nu_frac = + np.log(eps / np.abs(zn - z_star)  # nu frac > 0
-                               ) / np.log(np.abs(alpha))
+            nu_frac = Continuous_iter_pp_convergent(
+                zn, eps, attractivity, z_star
+            )
 
         elif potential_dic["kind"] == "transcendent":
             # Not possible to define a proper potential for a 
@@ -348,7 +359,9 @@ class Continuous_iter_pp(Postproc):
             nu_frac = 0.
 
         else:
-            raise NotImplementedError("Potential 'kind' unsupported")
+            raise NotImplementedError(
+                f"Potential kind: {potential_dic['kind']} unsupported"
+        )
 
         # We need to take care of special cases to ensure that
         # -1 < nu_frac <= 0. 
@@ -364,95 +377,126 @@ class Continuous_iter_pp(Postproc):
         context_update = {
             "potential_dic": self.potential_dic,
             "nu_frac": nu_frac,
-            "n": n
+            "n": n, # + jump,
+            "backshift": getattr(self.state, "backshift", None)
         }
 
         return val, context_update
-    
+
 
 class Fieldlines_pp(Postproc):
-    def __init__(self, n_iter=5, swirl=0., damping_ratio=0.25):
+    def __init__(self, n_iter=5, swirl=0., endpoint_k=1.0):
         """
         Return a continuous orbit-averaged angular value, allowing to reveal
-        fieldlines
-        
+        fieldlines. Implementation based on [#f2]_. The averaging orbit starts
+        at the computed `zn_orbit` field if it exists, otherwise at the exit 
+        `zn` value, and is truncated after `n_iter` iterations.
+
         Fieldlines approximate the external rays which are very important
         in the study of the Mandelbrot set and more generally in
-        holomorphic dynamics. Implementation based on [#f2]_.
+        holomorphic dynamics. 
 
         .. [#f2] *On Smooth Fractal Coloring Techniques*,
-                  **Jussi Härkönenen**, Abo University, 2007
+          **Jussi Härkönenen**, Abo University, 2007
 
         Parameters
         ==========
-        n_iter :  int
-            the number of orbit points used for the average
+        n_iter :  int > 0
+            the number of orbit points used for the averageing
         swirl : float between -1. and 1.
             adds a random dephasing effect between each successive orbit point
-        damping_ratio : float
-            a geometric damping is used, damping ratio represent the ratio
-            between the scaling coefficient of the last orbit point and 
-            the first orbit point. 
-            For no damping (arithmetic mean) use 1.
-
+        endpoint_k : float > 0.
+            A geometric serie is used for scaling individual orbit points,
+            this parameters is the ratio between the last and the first scaling
+            (For an arithmetic mean over the truncated orbit, use 1.)
         Notes
         =====
-
         .. note::
-
             The Continuous iteration number  shall have been calculated before
             in the same `Postproc_batch`
         """
         super().__init__()
         self.n_iter = n_iter
         self.swirl = swirl
-        self.damping_ratio = damping_ratio
+        self.endpoint_k = endpoint_k
 
     def __getitem__(self, chunk_slice):
-        """  Returns 
+        """  Returns the post arr
         """
-        nu_frac = self.ensure_context("nu_frac")
-        potential_dic = self.ensure_context("potential_dic")
-        d = potential_dic["d"]
-        a_d = potential_dic["a_d"]
+        nu_frac = self.ensure_context(chunk_slice, "nu_frac")
+        potential_dic = self.ensure_context(chunk_slice, "potential_dic")
 
-        (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-            termination_dic) = self.raw_data
-        zn = Z[complex_dic["zn"], :]
+        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
+         termination_dic) = self.raw_data[chunk_slice]
 
         if potential_dic["kind"] == "infinity":
-            # C1-smooth phase angle for z -> a_d * z**d
-            # G. Billotey
-            k_alpha = 1. / (1. - d)       # -1.0 if N = 2
-            k_beta = - d * k_alpha        # 2.0 if N = 2
-            z_norm = zn * a_d**(-k_alpha) # the normalization coeff
-
+            # Following Jussi Härkönenen - 2007
+            backshift = self.ensure_context(chunk_slice, "backshift")
+            n = self.ensure_context(chunk_slice, "n")
             n_iter_fl = self.n_iter
             swirl_fl = self.swirl
-            t = [np.angle(z_norm)]
-            val = np.zeros_like(t)
             # Geometric serie, last term being damping_ratio * first term
-            damping = self.damping_ratio ** (1. / (n_iter_fl + 1))
-            di = 1.
+            k_arr = np.geomspace(1., self.endpoint_k, num=n_iter_fl) 
+            k_arr = k_arr / np.sum(k_arr)
+    
+            # randomizing the phse angle
             rg = np.random.default_rng(0)
-            dphi_arr = rg.random(n_iter_fl) * swirl_fl * np.pi
-            for i in range(1, n_iter_fl + 1):
-                t += [d * t[i - 1]] # chained list
-                dphi = dphi_arr[i-1]
-                angle = 1. + np.sin(t[i-1] + dphi) + (
-                      k_alpha + k_beta * d**nu_frac) * (
-                      np.sin(t[i] + dphi) - np.sin(t[i-1] + dphi))
-                val += di * angle
-                di *= damping
-            del t
+            phi_arr = rg.random(n_iter_fl) * swirl_fl * np.pi
+
+            if self.fractal.holomorphic:
+                try:
+                    zn = Z[complex_dic["zn_orbit"], :]
+                    is_backward = True
+                    assert backshift is not None
+                except KeyError:
+                    logger.warning(
+                        "No stored backshift field found for key: \"zn_orbit\""
+                        "\ndefaulting to key: \"zn\""
+                    )
+                    zn = Z[complex_dic["zn"], :]
+                    is_backward = False
+                    backshift = 0 # Need the right datatype for jit compiler
+    
+                zn_iterate = self.fractal.zn_iterate
+    
+                val = Fieldlines_pp_infinity(
+                    c_pt, zn, nu_frac, k_arr, phi_arr, zn_iterate,
+                    is_backward, backshift, n
+                )
+            else:
+                # Non-holomorphic case
+                try:
+                    xn = Z[complex_dic["xn_orbit"], :]
+                    yn = Z[complex_dic["yn_orbit"], :]
+                    is_backward = True
+                    assert backshift is not None
+                except KeyError:
+                    logger.warning(
+                        "No stored backshift field found for key: \"zn_orbit\""
+                        "\ndefaulting to key: \"zn\""
+                    )
+                    xn = Z[complex_dic["xn"], :]
+                    yn = Z[complex_dic["yn"], :]
+                    is_backward = False
+                    backshift = 0 # Need the right datatype for jit compiler
+                    
+                xnyn_iterate = self.fractal.xnyn_iterate
+                
+                val = Fieldlines_pp_infinity_BS(
+                    c_pt, xn, yn, nu_frac, k_arr, phi_arr, xnyn_iterate,
+                    is_backward, backshift, n
+                )
+
 
         elif potential_dic["kind"] == "convergent":
+            zn = Z[complex_dic["zn"], :]
             alpha = 1. / Z[complex_dic["attractivity"]]
             z_star = Z[complex_dic["zr"]]
             beta = np.angle(alpha)
             val = np.angle(z_star - zn) + nu_frac * beta
             # We have an issue if z_star == zn...
             val = val * 2.
+
         else:
             raise ValueError(
                 "Unsupported potential '{}' for field lines".format(
@@ -460,37 +504,7 @@ class Fieldlines_pp(Postproc):
 
         return val, {}
 
-#class TIA_pp(Postproc):
-#    def __init__(self, n_iter=5):
-#        """ Triangular average inequality - TODO """
-#        super().__init__()
-#        self.n_iter = n_iter
-#
-#    def __getitem__(self, chunk_slice):
-#        """  Returns 
-#        """
-#        nu_frac = self.ensure_context("nu_frac") #- 2
-#        potential_dic = self.ensure_context("potential_dic")
-#        d = potential_dic["d"]
-#        a_d = potential_dic["a_d"]
-#
-#        (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-#            termination_dic) = self.raw_data# (chunk_slice)
-#        zn = Z[complex_dic["zn"], :]
-#        c = np.ravel(self.fractal.c_chunk(chunk_slice))
-#
-#        if potential_dic["kind"] == "infinity":
-#            val = None
-#            raise NotImplementedError("TODO LIST")
-#
-#        elif potential_dic["kind"] == "convergent":
-#            raise NotImplementedError()
-#        else:
-#            raise ValueError(
-#                "Unsupported potential '{}' for field lines".format(
-#                        potential_dic["kind"]))
-#
-#        return val, {}
+
 
 class DEM_normal_pp(Postproc):
     field_count = 2
@@ -499,7 +513,6 @@ class DEM_normal_pp(Postproc):
         """ 
         Return the 2 components of the distance estimation method derivative
         (*normal map*).
-
         This postproc is normally used in combination with a
         `fractalshades.colors.layers.Normal_map_layer`
 
@@ -508,25 +521,17 @@ class DEM_normal_pp(Postproc):
         `kind`:  str "potential" | "Milnor" | "convergent"
             if "potential" (default) DEM is base on the potential.
             For Mandelbrot power 2, "Milnor" option is also available which 
-            gives similar but esthetically slightly different results.
-            (Use "convergent" for convergent fractals.)
+            gives slightly different results (sharper edges).
+            Use "convergent" for convergent fractals...
 
         Notes
         =====
-
         .. note::
-
-            The Continuous iteration number  shall have been calculated before
+            The Continuous iteration number shall have been calculated before
             in the same `Postproc_batch`
-
-            Alternatively, if kind="Milnor", the following raw complex fields
+            If kind="Milnor", the following raw complex fields
             must be available from the calculation:
-
-                - "zn", "dzndc", "d2zndc2"
-
-        References
-        ==========
-        .. [1] <https://www.math.univ-toulouse.fr/~cheritat/wiki-draw/index.php/Mandelbrot_set>
+            "zn", "dzndc", "d2zndc2"
         """
         super().__init__()
         self.kind = kind
@@ -543,12 +548,12 @@ class DEM_normal_pp(Postproc):
     def __getitem__(self, chunk_slice):
         """  Returns the normal as a complex (x, y, 1) is the normal vec
         """
-        potential_dic = self.ensure_context("potential_dic")
-        (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-            termination_dic) = self.raw_data # (chunk_slice)
+        potential_dic = self.ensure_context(chunk_slice, "potential_dic")
+        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
+         termination_dic) = self.raw_data[chunk_slice]
         zn = self.get_zn(Z, complex_dic) #["zn"], :]
-        
-        if self.kind == "Milnor":   # use only for z -> z**2 + c
+
+        if self.kind == "Milnor":   # use only for z -> z**n + c
 # https://www.math.univ-toulouse.fr/~cheritat/wiki-draw/index.php/Mandelbrot_set
             dzndc = Z[complex_dic["dzndc"], :]
             d2zndc2 = Z[complex_dic["d2zndc2"], :]
@@ -556,7 +561,6 @@ class DEM_normal_pp(Postproc):
             lo = np.log(abs_zn)
             normal = zn * dzndc * ((1+lo)*np.conj(dzndc * dzndc)
                           -lo * np.conj(zn * d2zndc2))
-            # normal = normal / np.abs(normal)
 
         elif self.kind == "potential":
             if potential_dic["kind"] == "infinity":
@@ -614,9 +618,9 @@ class XYCoord_wrapper_pp(Postproc):
             return normal.real, context_update
         elif self.coord == "y":
             # Retrieve imaginary part from context, 
-            val = self.context[self.context_getitem_key]
+            val = self.context[chunk_slice][self.context_getitem_key]
             # Then delete it
-            del self.context[self.context_getitem_key]
+            del self.context[chunk_slice][self.context_getitem_key]
             return val, {}
         else:
             raise ValueError(self.coord)
@@ -642,7 +646,6 @@ class DEM_pp(Postproc):
         =====
     
         .. note::
-
             The Continuous iteration number  shall have been calculated before
             in the same `Postproc_batch`
         """
@@ -651,9 +654,9 @@ class DEM_pp(Postproc):
 
     def __getitem__(self, chunk_slice):
         """  Returns the DEM - """
-        potential_dic = self.ensure_context("potential_dic")
-        (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-            termination_dic) = self.raw_data
+        potential_dic = self.ensure_context(chunk_slice,"potential_dic")
+        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
+         termination_dic) = self.raw_data[chunk_slice]
 
         zn = self.get_zn(Z, complex_dic) #Z[complex_dic["zn"], :]
 
@@ -699,15 +702,12 @@ class Attr_normal_pp(Postproc):
         """ 
         Return the 2 components of the cycle attractivity derivative (*normal
         map*).
-
         This postproc is normally used in combination with a
         `fractalshades.colors.layers.Normal_map_layer`
 
         Notes
         =====
-    
         .. note::
-
             The following complex fields must be available from a previously
             run calculation:
 
@@ -728,8 +728,8 @@ class Attr_normal_pp(Postproc):
     def __getitem__(self, chunk_slice):
         """  Returns the normal as a complex (x, y, 1) is the normal vec
         """
-        (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-            termination_dic) = self.raw_data
+        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
+         termination_dic) = self.raw_data[chunk_slice]
         attr = np.copy(Z[complex_dic["attractivity"], :])
         dattrdc = np.copy(Z[complex_dic["dattrdc"], :])
 
@@ -759,9 +759,7 @@ class Attr_pp(Postproc):
 
         Notes
         =====
-    
         .. note::
-
             The following complex fields must be available from a previously
             run calculation:
 
@@ -774,8 +772,8 @@ class Attr_pp(Postproc):
     def __getitem__(self, chunk_slice):
         """  Returns the normal as a complex (x, y, 1) is the normal vec
         """
-        (chunk_mask, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-            termination_dic) = self.raw_data
+        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
+         termination_dic) = self.raw_data[chunk_slice]
         # Plotting the 'domed' height map for the cycle attractivity
         attr = Z[complex_dic["attractivity"], :]
         abs2_attr = np.real(attr)**2 + np.imag(attr)**2
@@ -787,8 +785,9 @@ class Attr_pp(Postproc):
             val *= (1. / r)
         return val, {}
 
+
 class Fractal_array:
-    def __init__(self, fractal, calc_name, key, func=None):
+    def __init__(self, fractal, calc_name, key, func=None, inv=False):
         """
         Class which provide a direct access to the res data stored (memory
         mapping)  during calculation.
@@ -802,7 +801,7 @@ class Fractal_array:
             The reference fracal object
         calc_name : str 
             The calculation name
-        key : 
+        key :
             The raw data key. Should be one of the *complex_codes*,
             *int_codes*, *termination_codes* for this calculation.
         func: None | callable | a str of variable x (e.g. "np.sin(x)")
@@ -812,9 +811,25 @@ class Fractal_array:
         self.fractal = fractal
         self.calc_name = calc_name
         self.key = key
+
+        try:
+            pickle.dumps(func)
+        except:
+            # Note: possible improvement, see:
+            # https://stackoverflow.com/questions/11878300/serializing-and-deserializing-lambdas
+            # Seems over-the top here, just raising a detailed error
+            source_code = inspect.getsource(func)
+            raise ValueError(
+                "func is unserializable:\n"
+                + f"{source_code}\n"
+                + "Consider passing func definition by string instead"
+                + " (e.g. \"np.sin(x)\")"
+            )
+        self._func = func # stored for future serialization
         self.func = self.parse_func(func)
+
         # Manage ~ notation
-        self.inv = False
+        self.inv = inv
 
     @staticmethod
     def parse_func(func):
@@ -823,12 +838,28 @@ class Fractal_array:
         else:
             return func
 
+    def __reduce__(self):
+        """ Enable standard Python serialization mechanism
+        """
+        args = (self.fractal, self.calc_name, self.key, self._func, self.inv)
+        return (self.__class__, args, None, None, None, None)
+
     def __getitem__(self, chunk_slice):
         """ Returns the raw array, with self.func applied if not None """
         fractal = self.fractal
+
+        if fractal is None:
+            raise ValueError(
+                "Fractal_array without valid Fractal, "
+                "might be an unbound state from unppickling. Use "
+                "self.bind_fractal to rebind"
+            )
+
+        f_class = fractal.__class__
+
         calc_name = self.calc_name
-        (params, codes) = fractal.reload_params(calc_name)
-        kind = fractal.kind_from_code(self.key, codes)
+        codes = fractal._calc_data[calc_name]["saved_codes"]
+        kind = f_class.kind_from_code(self.key, codes)
 
         # localise the pts range for the chunk /!\ use the right calc_name
         if chunk_slice is not None:
@@ -840,17 +871,19 @@ class Fractal_array:
             end = report_mmap[rank, items.index("chunk1d_end")]
 
         # load the data
-        arr_from_kind = {"complex": "Z",
-                         "int": "U",
-                         "stop_reason": "stop_reason",
-                         "stop_iter": "stop_iter"}
+        arr_from_kind = {
+            "complex": "Z",
+             "int": "U",
+             "stop_reason": "stop_reason",
+             "stop_iter": "stop_iter"
+        }
         arr_str = arr_from_kind[kind]
         data_path = fractal.data_path(calc_name)
         mmap = open_memmap(filename=data_path[arr_str], mode='r')
-        
+
         # field from key :
         key = self.key
-        complex_dic, int_dic, termination_dic = fractal.codes_mapping(*codes)
+        (complex_dic, int_dic, termination_dic) = f_class.codes_mapping(*codes)
         if kind == "complex":
             field = complex_dic[key]
         elif kind == "int":
@@ -874,7 +907,191 @@ class Fractal_array:
         return arr
 
     def __invert__(self):
-        """ Allows use of the ~ notation """
-        ret = Fractal_array(self.fractal, self.calc_name, self.key, self.func)
-        ret.inv = True
+        """ Allows use of the ~ notation 'ala numpy' """
+        ret = Fractal_array(
+            self.fractal, self.calc_name, self.key, self.func, not(self.inv)
+        )
         return ret
+
+    def __eq__(self, other):
+        """ Equality testing, useful when pickling / unpickling"""
+        if isinstance(other, self.__class__):
+            eq = (
+                (self._func == other._func)
+                and (self.calc_name == other.calc_name)
+                and (self.key == other.key)
+                and (self.inv == other.inv)
+            )
+            return eq
+        else:
+            return NotImplemented
+
+
+#==============================================================================
+# Numba Nogil implementations
+        
+@numba.njit(nogil=True, fastmath=True)
+def Continuous_iter_pp_infinity(zn, d, a_d, M):
+    k = np.abs(a_d) ** (1. / (d - 1.))
+    # k normaliszation corefficient, because the formula given
+    # in https://en.wikipedia.org/wiki/Julia_set                    
+    # suppose the highest order monome is normalized
+    nu_frac = -(np.log(np.log(np.abs(zn * k)) / np.log(M * k))
+                / np.log(d))
+    return nu_frac
+
+@numba.njit(nogil=True, fastmath=True)
+def Continuous_iter_pp_convergent(zn, eps, attractivity, z_star):
+    alpha = 1. / attractivity
+    nu_frac = + np.log(eps / np.abs(zn - z_star)  # nu frac > 0
+                               ) / np.log(np.abs(alpha))
+    return nu_frac
+
+
+# Catmull-Rom polynomials - C1 Smoothing of an orbit value
+@numba.njit(nogil=True, fastmath=True)
+def cm_H0(x):
+     return 0.5 * x * (-x + x ** 2)
+
+@numba.njit(nogil=True, fastmath=True)
+def cm_H1(x):
+     return 0.5 * x * (1. + 4.* x - 3. * x ** 2)
+
+@numba.njit(nogil=True, fastmath=True)
+def cm_H2(x):
+     return 1. + 0.5 * x * (-5. * x + 3. * x ** 2)
+
+@numba.njit(nogil=True, fastmath=True)
+def cm_H3(x):
+     return 0.5 * x * (-1. + 2. * x - x ** 2)
+
+
+@numba.njit(nogil=True, fastmath=True)
+def Fieldlines_pp_infinity(
+    c_pt, zn, nu_frac, k_arr, phi_arr, zn_iterate,
+    is_backward, backshift, n
+):
+    M_cutoff = 100000.  # To be tuned...
+    n_iter_fl = len(k_arr)
+    assert len(phi_arr) == n_iter_fl
+
+    nvec, = zn.shape
+    orbit_z = np.empty((nvec, n_iter_fl + 3), dtype=zn.dtype)
+    orbit_angle = np.empty((nvec, n_iter_fl + 3), dtype=np.float64) #zn.dtype)
+    val = np.zeros((nvec,), dtype=np.float64)
+    
+    for j in range(nvec):
+        z_loc = zn[j]
+        orbit_z[j, 0] = z_loc
+        orbit_angle[j, 0] = np.angle(z_loc)
+    
+    for i in range(n_iter_fl + 2):
+        for j in range(nvec):
+            z_loc = orbit_z[j, i]
+            if abs(z_loc) > M_cutoff:
+                z_loc = np.exp(orbit_angle[j, i] * 1j) * M_cutoff
+                z_loc = zn_iterate(z_loc, complex(0.))
+                orbit_z[j, i + 1] = z_loc # flag
+                orbit_angle[j, i + 1] = np.angle(z_loc)
+            else:
+                z_loc = zn_iterate(orbit_z[j, i], c_pt[j])
+                orbit_z[j, i + 1] = z_loc
+                orbit_angle[j, i + 1] = np.angle(z_loc)
+    
+    # Now lets do some smoothing with Catmull-Rom polynomials
+    for j in range(nvec):
+        d = -nu_frac[j]
+        # Correction if applying backshift would yield a negative index
+        # in this case we just keep a constant nu_frac to avoid banding
+        if is_backward:
+            if backshift > n[j]:
+                d = 1.
+        # Catmull-Rom spline weighting polynomials.
+        a0 = cm_H0(d)
+        a1 = cm_H1(d)
+        a2 = cm_H2(d)
+        a3 = cm_H3(d)
+        for i in range(n_iter_fl):
+            val_loc = k_arr[i] * (
+                a0 * np.sin(orbit_angle[j, i] + phi_arr[i])
+                + a1 * np.sin(orbit_angle[j, i + 1] + phi_arr[i])
+                + a2 * np.sin(orbit_angle[j, i + 2] + phi_arr[i])
+                + a3 * np.sin(orbit_angle[j, i + 3] + phi_arr[i])
+            )
+            val[j] += val_loc
+
+    return val
+
+#def Fieldlines_pp_infinity_BS(
+#                    c_pt, xn, yn, nu_frac, k_arr, phi_arr, xnyn_iterate,
+#                    is_backward, backshift, n
+#                )
+
+@numba.njit(nogil=True, fastmath=True)
+def Fieldlines_pp_infinity_BS(
+    c_pt, xn, yn, nu_frac, k_arr, phi_arr, xnyn_iterate,
+    is_backward, backshift, n
+):
+    M_cutoff = 100000.  # To be tuned...
+    n_iter_fl = len(k_arr)
+    assert len(phi_arr) == n_iter_fl
+
+    nvec, = xn.shape
+    orbit_x = np.empty((nvec, n_iter_fl + 3), dtype=xn.dtype)
+    orbit_y = np.empty((nvec, n_iter_fl + 3), dtype=yn.dtype)
+    orbit_angle = np.empty((nvec, n_iter_fl + 3), dtype=np.float64)
+    val = np.zeros((nvec,), dtype=np.float64)
+
+    for j in range(nvec):
+        x_loc = xn[j]
+        y_loc = yn[j]
+        orbit_x[j, 0] = x_loc
+        orbit_y[j, 0] = y_loc
+        orbit_angle[j, 0] = np.arctan2(y_loc, x_loc)
+    
+    for i in range(n_iter_fl + 2):
+        for j in range(nvec):
+            aj = c_pt[j].real
+            bj = c_pt[j].imag
+            x_loc = orbit_x[j, i]
+            y_loc = orbit_y[j, i]
+            if np.hypot(x_loc, y_loc) > M_cutoff:
+                
+                x_loc = np.cos(orbit_angle[j, i]) * M_cutoff
+                y_loc = np.sin(orbit_angle[j, i]) * M_cutoff
+                x_loc, y_loc = xnyn_iterate(x_loc, y_loc, 0., 0.)
+
+                orbit_x[j, i + 1] = x_loc # flag
+                orbit_y[j, i + 1] = y_loc # flag
+                orbit_angle[j, i + 1] = np.arctan2(y_loc, x_loc)
+            else:
+                x_loc, y_loc = xnyn_iterate(
+                        orbit_x[j, i], orbit_y[j, i], aj, bj
+                )
+                orbit_x[j, i + 1] = x_loc
+                orbit_y[j, i + 1] = y_loc
+                orbit_angle[j, i + 1] = np.arctan2(y_loc, x_loc)
+    
+    # Now lets do some smoothing with Catmull-Rom polynomials
+    for j in range(nvec):
+        d = -nu_frac[j]
+        # Correction if applying backshift would yield a negative index
+        # in this case we just keep a constant nu_frac to avoid banding
+        if is_backward:
+            if backshift > n[j]:
+                d = 1.
+        # Catmull-Rom spline weighting polynomials.
+        a0 = cm_H0(d)
+        a1 = cm_H1(d)
+        a2 = cm_H2(d)
+        a3 = cm_H3(d)
+        for i in range(n_iter_fl):
+            val_loc = k_arr[i] * (
+                a0 * np.sin(orbit_angle[j, i] + phi_arr[i])
+                + a1 * np.sin(orbit_angle[j, i + 1] + phi_arr[i])
+                + a2 * np.sin(orbit_angle[j, i + 2] + phi_arr[i])
+                + a3 * np.sin(orbit_angle[j, i + 3] + phi_arr[i])
+            )
+            val[j] += val_loc
+
+    return val

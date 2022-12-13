@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import numba as nb
-
 """
 Implements atomic compare-and-swap in user-land using llvm_call() and use it to
 create a lock.

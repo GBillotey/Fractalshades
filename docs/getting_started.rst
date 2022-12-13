@@ -78,7 +78,7 @@ good exploration !
 
   - :doc:`/examples/interactive_deepzoom/D02_run_BS_interactive`.
 
-  - :doc:`/examples/interactive_deepzoom/D03_run_perpendicular_BS_interactive`.
+  - :doc:`/examples/interactive_deepzoom/D03_run_interactive_Mn`.
 
 .. code-block:: console
 

@@ -20,6 +20,9 @@ def acceptable_expr(expr, safe_vars):
 
         elif isinstance(expr, ast.Num):
             return True
+        
+        elif isinstance(expr, ast.UnaryOp):
+            return inner(expr.operand)
 
         elif isinstance(expr, ast.BinOp):
             return (inner(expr.left) and inner(expr.right))
@@ -55,6 +58,7 @@ def acceptable_expr(expr, safe_vars):
 
     return inner(expr)
 
+
 def func_parser(variables, expr):
     """
     variables : array of strings, eg: ["x"], ["x1", "x2", "x3"], ["x", "y"]
@@ -67,32 +71,84 @@ def func_parser(variables, expr):
         if len(var) > 2:
             raise ValueError("Variable {} is more than 2 chars".format(var))
     expr = "lambda " + ", ".join(variables) + ": " + expr
-    e = ast.parse(expr, mode="eval")
+
+    try:
+        e = ast.parse(expr, mode="eval")
+    except SyntaxError:
+        return None
+
     if acceptable_expr(e, safe_vars=variables): #, safe_attrs=safe_attrs):
-        return eval(expr)
+        try:
+            return eval(expr)
+        except SyntaxError:
+            return None
     else:
         return None
 
+class Numpy_expr:
+    # Note: We *could* use typing.Annotated when dropping 3.8 support
+    # See https://docs.python.org/3/library/typing.html#typing.Annotated
+    # https://peps.python.org/pep-0593/
+    # T1 = Annotated[Numpy_expr, Vars("x", "y")]
+    def __init__(self, variables, expr):
+        f"""
+        Defines a numpy expression from a string ; can be used to parse a
+        GUI user-input string.
 
-if __name__ == "__main__":
-#    print(safe_eval("3 + 5 * 2"))
-#
-#    f = safe_eval("lambda x: x * 2.")
-#    print(f)
-#    print(f(1))
-#
-#    f = safe_eval("lambda x: np.sin(x)")
-#    print(f)
+        Parameters:
+        -----------
+        variables: str or str[]
+            The list of variables used in expr. The length of variables names
+            shall be max 2 chars, e.g, "x", "x1", "x2", "y" "z", "xy".
+        expr: str
+            The numerical expression to be evaluated. The standard operations 
+            (+, -, *, /, **) are accepted, and a subset of numpy
+            functions: {SAFE_ATTRS}.
+        """
+        if isinstance(variables, str):
+            variables = [variables]
+        self.variables = variables
+        self.expr = expr
+        self._func = func_parser(variables, expr) 
 
-    f = func_parser(["x"], "np.sin(x) + np.isin(x, (1, 2, 3)) * np.where(x==2, 0., x**x)")
-    print(f)
-    print(f(0))
-    f = func_parser(["x1", "x2", "x3"], "x1 + x2 + x3")
-    print(f)
-    print(f(1, 2, 3))
-    # print(f(1))
+    def validates(self):
+        """
+        Returns True if the Numpy_expr is valid
+        """
+        return self._func is not None
 
-#    e = ast.parse("lambda x: 2. * x", mode="eval")
-#    f = safe_eval(e)
-#    print(f)
-#    print(f(1))
+    @staticmethod
+    def validates_expr(variables, expr):
+        """ Static version - used in GUI validation """
+        return func_parser(variables=variables, expr=expr) is not None
+    
+    def __str__(self):
+        return self.expr
+
+    def __call__(self, *args):
+        if self._func is None:
+            return args
+        return self._func(*args)
+
+    @property
+    def init_kwargs(self):
+        """ Return a dict of parameters used during __init__ call"""
+        init_kwargs = {
+            "variables": self.variables,
+            "expr": self.expr,
+        }
+        return init_kwargs
+
+    def __reduce__(self):
+        """ Serialisation of a Numpy_expr object.
+        """
+        vals = tuple(self.init_kwargs.values())
+        return (self.__class__, vals)
+
+
+class Vars:
+    # Could be used with Numpy_expr, see note above
+    # (typing.Annotated new in Python 3.9)
+    def __init__(self, *args):
+        self.args = args
+

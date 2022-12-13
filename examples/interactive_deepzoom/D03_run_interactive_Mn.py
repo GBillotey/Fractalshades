@@ -1,14 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-========================================================
-S01 - Mandelbrot explorer - Standard precision
-========================================================
+=============================================
+D03 - Mandelbrot arbitrary-precision explorer
+=============================================
 
-This is a simple "toy" template to start exploring the Mandelbrot set with
-the GUI. Resolution limited to approx 1.e-13 due to double (float64) precision
+This is a template to explore the Mandelbrot set power n >= 2
+with arbitrary precision through a GUI.
+It features the main postprocessing options (continuous
+iteration, distance estimation based shading, field-lines)
+
+Good exploration !
+
 
 Reference:
-`fractalshades.models.Mandelbrot`
+`fractalshades.models.Perturbation_mandelbrot_N`
 """
 import os
 
@@ -21,11 +26,11 @@ import fractalshades.gui.guimodel
 
 def plot(plot_dir):
     """
+    GUI-interactive Mn deepzoom example
     """
-    
-    fractal = fsm.Mandelbrot(plot_dir)
-
+    fractal = fsm.Perturbation_mandelbrot_N(plot_dir, exponent=3)
     zooming = fs.gui.guitemplates.std_zooming(fractal)
+
     gui = fs.gui.guimodel.Fractal_GUI(zooming)
     gui.show()
 
@@ -41,4 +46,3 @@ if __name__ == "__main__":
         import tempfile
         with tempfile.TemporaryDirectory() as plot_dir:
             fs.utils.exec_no_output(plot, plot_dir)
-                

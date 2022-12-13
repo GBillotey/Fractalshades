@@ -40,6 +40,7 @@ def plot(plot_dir):
     Coloring based on continuous iteration + lighting with a normal maps from
     distance estimation method
     """
+    fs.settings.enable_multithreading = True
     # Define the parameters for this calculation
     x = -0.746223962861
     y = -0.0959468433527
@@ -59,16 +60,15 @@ def plot(plot_dir):
     # Run the calculation
     f = fsm.Mandelbrot(plot_dir)
     f.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
-           theta_deg=0., projection="cartesian", antialiasing=False)
-    f.base_calc(
+           theta_deg=0., projection="cartesian")
+    f.calc_std_div(
         calc_name=calc_name,
         subset=None,
         max_iter=25000,
         M_divergence=100.,
-        epsilon_stationnary= 0.005,
+        epsilon_stationnary= 0.01,
+        calc_d2zndc2=True
     )
-    # f.clean_up(calc_name) # keep this line if you want to force recalculation
-    f.run()
 
     # Plot the image
     pp = Postproc_batch(f, calc_name)
@@ -84,7 +84,6 @@ def plot(plot_dir):
             func="np.log(x)",
             colormap=colormap,
             probes_z=[1., 2.],
-            probes_kind="absolute",
             output=True
     ))
 
@@ -93,14 +92,15 @@ def plot(plot_dir):
 
     # This is where we define the lighting (here 3 ccolored light sources)
     # and apply the shading
-    light = Blinn_lighting(0.1, np.array([1., 1., 1.]))
+    light = Blinn_lighting(0.25, np.array([1., 1., 1.]))
     light.add_light_source(
         k_diffuse=3.0,
         k_specular=0.1,
         shininess=400.,
-        angles=(45., 40.),
-        coords=None,
-        color=np.array([1.0, 1.0, 1.0]))
+        polar_angle=45.,
+        azimuth_angle=40.,
+        color=np.array([1.0, 1.0, 1.0])
+    )
     plotter["cont_iter"].shade(plotter["DEM_map"], light)
     plotter.plot()
 
