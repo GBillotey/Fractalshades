@@ -31,7 +31,7 @@ jobs:
         echo "*** listing MVS folder"
         dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"
         # dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.32.31326\bin\Hostx86\x64"
-        # dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.32.31326\bin\Hostx86\x64"
+        dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.34.31933\bin\Hostx86\x64"
 
         echo "**** Running python gmpy2 pathch script"
         Get-Childitem –Path "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"  -Include **.dll* -Recurse -ErrorAction SilentlyContinue 
