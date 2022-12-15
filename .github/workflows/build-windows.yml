@@ -14,12 +14,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.8'] #, '3.9', '3.10']
+        python-version: ['3.8', '3.9', '3.10']
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v3
       with:
         python-version: ${{ matrix.python-version }}
 
@@ -30,11 +30,12 @@ jobs:
 
         echo "*** listing MVS folder"
         dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"
-        # dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.32.31326\bin\Hostx86\x64"
         dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.34.31933\bin\Hostx86\x64"
+        # Uncomment this line to get the full list of dlls
+        # Get-Childitem –Path "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"  -Include **.dll* -Recurse -ErrorAction SilentlyContinue 
+
 
         echo "**** Running python gmpy2 pathch script"
-        Get-Childitem –Path "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"  -Include **.dll* -Recurse -ErrorAction SilentlyContinue 
         
         
         python win_build\patch_gmpy2.py
@@ -51,7 +52,7 @@ jobs:
         python setup.py bdist_wheel
 
     - name: Archive production artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: dist-without-markdown
         path: |
