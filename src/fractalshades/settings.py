@@ -2,41 +2,39 @@
 """
 General settings at application-level
 """
-# import os
 import sys
-# this_module is a pointer to the module object instance itself.
-this_module = sys.modules[__name__]
 
-enable_multithreading = True
+enable_multithreading: bool = True
 """Turn on or off multithreading (for debugging purpose)"""
 
-skip_calc = False
+skip_calc: bool = False
 """If True, no calculation "loop" will be performed. Only the data already
 calculated will be post-processed"""
 
-newton_zoom_level = 1.e-5
+newton_zoom_level: float = 1.e-5
 """ Minimal zoom level for activating Newton search. For shallower zoom, a
 fixed critical point will be used (usually 0.)"""
 
-std_zoom_level = 1.e-8
+std_zoom_level: float = 1.e-8
 """ Zoom level at which we drop some perturbation techniques optimisation 
 Chosen as this level squared is ~ precision of float64 """
 
-xrange_zoom_level = 1.e-300
+xrange_zoom_level: float = 1.e-300
 """Zoom level (dx) which triggers Xrange special branches"""
 
-no_newton = False
+no_newton: bool = False
 """Veto all Newton iterations- keep the ref point as is for the full precision
 iterations (usually the center of the image). Useful when the center
 coordinates of a deep zoom are already known."""
 
-inspect_calc = False
-"""Outputs a synthesis files of the calculation done. Useful for debugging"""
+inspect_calc: bool = False
+"""Outputs a synthesis report file of the calculation done by tiles.
+Useful for debugging"""
 
-chunk_size = 200
+chunk_size: int  = 200
 """The size for the basic calculation tile is chunk_size x chunk_size"""
 
-BLA_compression = 3
+BLA_compression: int  = 3
 """ number of BLA levels which are dropped (not stored) """
 
 GUI_image_Mblimit = 0
@@ -44,14 +42,19 @@ GUI_image_Mblimit = 0
 no limit (default). If limit exceeded, the image is still written to disk but 
 will not be interactively displayed in the GUI"""
 
-Disk_image_pixlimit = "xxx"
-"""PIL sets a default output limit to 89478485 pixels and will raise a 
-DecompressionBombWarning if it is exceeded.
-Image size (144000000 pixels) exceeds limit of 89478485 pixels, could be
-decompression bomb DOS attack.
-"""
+def remove_decompression_size_check():
+    """PIL sets a default output limit to 89478485 pixels
+    (1024 * 1024 * 1024 // 4 // 3) and will raise a 
+    DecompressionBombWarning if it is exceeded, and a DecompressionBombError
+    for images that are twice this size.
 
-verbosity = 2
+    This function removes this check, use at your own risk. It will not be
+    made accessible from the GUI and shall be used in batch mode.
+    """
+    from PIL import Image
+    Image.MAX_IMAGE_PIXELS = None
+
+verbosity: int = 2
 """
 Controls the verbosity for the log messages:
 
@@ -60,26 +63,37 @@ Controls the verbosity for the log messages:
     - 2 (default): 
 
         - INFO & higher severity, output to stdout
-        - + DEBUG & higher severity, output to a log file
+        - DEBUG & higher severity, output to a log file
 
-    - 3:
+    - 3 (highest verbosity):
 
         - INFO & higher severity, output to stdout
-        - + all message (incl. NOTSET), output to a log file
+        - ALL message (incl. NOTSET), output to a log file
 
 Note: Severities in descending order:
 CRITICAL, ERROR, WARNING, INFO, DEBUG, NOTSET """
 
-postproc_dtype = "float32"
-""" The float datatype used for post-processing (float32 | float64)"""
+log_directory: str = None
+""" The logging directory for this session - as str"""
 
-def set_RAM_limit(RAM_limit_Gb):
+postproc_dtype: str = "float32"
+"""The float datatype used for post-processing ("float32" | "float64").
+
+For the vast majority of output images, the default "float32" should be
+enough. However, for image with very high iteration number (usually several
+millions of iterations) banding may occur when plotting the continuous
+iteration numbers - as the resolution of float32 format is hit.
+In this case, the solution is to switch to "float64".
+"""
+
+def set_RAM_limit(RAM_limit_Gb: int):
     """
-    Limits the amount of RAM used (mostly for debugging / test purpose)
+    Limits the amount of RAM used by the program
+    (mostly for debugging / test purpose)
 
     Parameters
     ----------
-    RAM_limit_Gb
+    RAM_limit_Gb: int
         RAM limit in Gb, or None for no limit
     """
     import resource
@@ -91,12 +105,9 @@ def set_RAM_limit(RAM_limit_Gb):
     resource.setrlimit(rsrc, (byte_limit, byte_limit))
 
 
-log_directory = None # Working_directory(None)
-""" The logging directory for this session """
-
-# output_context: "doc" True if we are building the doc (Pillow output)
+# output_context: "doc" = True if we are building the doc (Pillow output)
 # "gui_iter" 0 if not in GUI loop otherwise, start at 1 and increment
-# at each GUI plot
+# at each GUI plot - (internal).
 output_context = {
     "doc": False,
     "gui_iter": 0,
@@ -105,11 +116,13 @@ output_context = {
 }
 
 # Signal to interrupt a calculation (during GUI)
-interrupted = False
+interrupted: bool = False
 
 # figures : module-level container used if output_mode == "Pillow"
 # -> the output images are stagged and not directly written to disk.
 # This is used when building the documentation
+# ``this_module`` is a pointer to the module object instance itself.
+this_module = sys.modules[__name__]
 figures = list()
 
 def add_figure(fig):

@@ -17,3 +17,13 @@ Application-level settings
 
    .. autodata:: verbosity
 
+   .. autodata:: postproc_dtype
+
+   .. autodata:: log_directory
+
+   .. autofunction:: remove_decompression_size_check
+
+   .. autodata:: BLA_compression
+
+   .. autodata:: GUI_image_Mblimit
+

@@ -22,25 +22,23 @@ PROJECTION_ENUM = fs.core.PROJECTION_ENUM
 class PerturbationFractal(fs.Fractal):
 
     def __init__(self, directory):
-        """
-Base class for escape-time fractals calculations implementing the 
+        """Base class for escape-time fractals implementing the 
 perturbation technique, with an iteration matching:
 
-    .. math::
+.. math::
 
     z_0 &= 0 \\\\
-    z_{n+1} &= f({z_{n}) + c
-    
-Where f has a critical point at 0. Derived classes should provide specialized 
-implementations for the actual function f
+    z_{n+1} &= f ( z_{n} ) + c
+
+Where :math:`f` has a critical point at 0.
+Derived classes should provide the implementation for the actual function
+:math:`f`.
 
 Parameters
 ----------
 directory : str
     Path for the working base directory"""
         super().__init__(directory)
-        # self.iref = 0 # Only one reference point
-
 
     @fs.utils.zoom_options
     def zoom(

@@ -10,32 +10,38 @@ If you use the GUI pre-made scripts available in the documentation section,
 you will need to update them (i.e., download them again) as the scripts
 running with 0.5.x will not be compatible with version 1.x.y onwards.
 
-- Fractal_plotter now implements `supersampling` and `jitter` parameters
-- 'antialiasing' parameter from zoom method deprecated: use Fractal_plotter
-  `supersampling` options instead
-- `BLA_params` dict-like parameter replaced by a float parameter:
-  `BLA_eps`
-- in `add_light_source method` from `Blin_lighting` class:
-  float 2-uplet parameters 'angles' replaced by 2 float parameters 
-  polar_angle`, `azimuth_angle`
-- in `add_light_source method` from `Blin_lighting` class:
-  `coords` parameter deprecated
-- Fractal class: data files `.params` renamed `.fingerprint`
-- Fieldlines_pp class: implementation entirely rewritten, parameter
-  `damping_ratio` `endpoint_k`
-- `run` method from Fractal removed. One consequence: to clean-up stored
-  calculation files, one shall now use  `clean_up` method before
-  any calculation methd call (previously it was to be used before `run` call)
-- in Color_layer, parameter `probes_kind` suppressed, all probes are now
-  "absolute".
-- Normal map layer: A correction of the "max slope" calculation may impact
-  shaded renderings (especially glossy), usually a smaller slope angle is now
-  to be used to achieve similar result (e.g. 45. -> 30.).
-- Normal map layer: A correction of the "max slope" calculation may impact
-  shaded renderings (especially glossy), usually a smaller slope angle is now
-  to be used to achieve similar result (e.g. 45. -> 30.).
-- Color types: now use a dedicated type fscolors.Color instead of QtGui.QColor:
-  this allows running in batch mode for systems without pyQt6 installed
+- `fractalshades.Fractal_plotter`
+  now implements ``supersampling`` and ``jitter`` parameters
+- ``antialiasing`` parameter from `fractalshades.Fractal.zoom` method
+  deprecated: use `fractalshades.Fractal_plotter`
+  ``supersampling`` parameter instead
+- ``BLA_params`` dict-like parameter replaced by a float parameter:
+  ``BLA_eps``
+- in `fractalshades.colors.layers.Blinn_lighting.add_light_source` method:
+  2-uplet float parameters ``angles`` replaced by 2 float parameters 
+  ``polar_angle``, ``azimuth_angle``
+- in `fractalshades.colors.layers.Blinn_lighting.add_light_source`:
+  ``coords`` parameter deprecated
+- `fractalshades.Fractal` saved data files: files ``*.params`` renamed
+  as ``*.fingerprint``
+- `fractalshades.postproc.Fieldlines_pp` class: implementation entirely
+  rewritten, parameter ``damping_ratio`` renamed ``endpoint_k``
+- ``run`` method from `fractalshades.Fractal` removed. Calculation is
+  automatically trigered through `fractalshades.Fractal_plotter.plot`
+  method
+- in `fractalshades.colors.layers.Color_layer`, parameter
+  ``probes_kind`` suppressed, all probes are now "absolute".
+- `fractalshades.colors.layers.Normal_map_layer` : A correction of the
+  ``max slope`` calculation may impact shaded renderings (especially glossy
+  renders). Usually a smaller slope angle is now needed to be used to achieve
+  visually similar result (e.g. 45. -> 30.).
+- Color parameters typing : now use a dedicated type `fscolors.Color` type
+  is used instead of `QtGui.QColor`:
+  this allows to run batch files on systems without pyQt6 installed.
+- Avoiding banding for very high iteration numbers (banding may occur,
+  usually above 10 million iterations): it is now possible to suppress
+  banding by switching to ``float64`` datatype for the postprocessing
+  phase : see parameter `fractalshades.settings.postproc_dtype`
 
 Regarding the Fractal models implemented:
 
@@ -43,34 +49,47 @@ Regarding the Fractal models implemented:
   precision and accessible from the GUI (in standard precision it
   features calculation of the limit cycle period and attaractivity
   with Newton method.)
-- The different Burning Ship variants have been grouped into a single class
-  with a `flavor` parameter to select the appropriate variant.
+- The different Burning Ship variants have been factored into a single class
+  with a ``flavor`` parameter to select the appropriate variant.
 
 Regarding the Fractal post-processing implemented:
 
-- The `Fieldlines` post-processing has been re-implemented as a truncated
-  orbit average. It shall be used in conjunction with the `calc_orbit`
-  and `backshift` parameters from the basic iteration computations (to
+- The `fractalshades.postproc.Fieldlines_pp` post-processing has
+  been re-implemented as a truncated
+  orbit average. It shall be used together with the ``calc_orbit``
+  and ``backshift`` parameters from the basic iteration computations (to
   define a starting point for the truncated orbit before divergence)
 
 Several changes have also been implemented in the GUI:
 
-- Collapsible paramters groups (main panel) to ease access to parameters
-  (for insyance
-- Dedicated editor for lighting effects
-- Dedicated editor for Fractals - this allows the interactive selection
-  of different fractal variant: exponent for Mandelbrot power n or 
-  variant (`flavor`) of the Burning ship implementation
+- Collapsible parameters groups (main panel) for easier selection
+- Dedicated GUI-editor for `fractalshades.colors.layers.Blinn_lighting`
+  instances
+- Dedicated GUI-editor for `fractalshades.Fractal` subclasses instances.
+  This allows the interactive selection
+  of different fractal variant: exponent for Mandelbrot power n > 2
+  implementations (`fractalshades.models.Mandelbrot_N`, 
+  or `fractalshades.models.Perturbation_mandelbrot_N`)
+  variant -``flavor``- of the Burning ship implementations
+  (`fractalshades.models.Burning_ship`,
+  `fractalshades.models.Perturbation_mandelbrot_N`)
+  `fractalshades.models.Perturbation_burning_ship`)
 - Parametrized "functions" can now be passed (as string)
-- A GUI templating is now available and suitable for most implemented
-  fractals ; as a result lanching a GUI with all options for a fractal
-  is now almost a one-liner (see the updated GUI examples and
-  the `std_zooming` callable).
-- Saving and reloading Colormaps in binary format is now available from the
-  GUI (in addition to the already available python-code format output)
+- A GUI template function `fractalshades.gui.guitemplates.std_zooming` 
+  is now available and suitable for most of the implemented
+  fractal models ; as a result lanching a GUI with all options for a
+  fractal becomes almost a one-liner (see the updated GUI examples).
+- Saving and reloading `fractalshades.colors.Fractal_colormap`
+  in binary format (through Python standard serialization module
+  pickle ) is now available from the GUI (in addition to the already
+  available python source-code format output)
 
-Due to the high number of changes deployed, it is expected that bugfix-revision
-will need to be issued, please report any unexpected behavior at:
+Application-level logging has also been implemented (it may target
+both the standard output pipe and user-defined log files). Refer to
+`fractalshades.settings.log_directory` and
+`fractalshades.log.set_log_handlers` .
+
+Please report any bug or unexpected behavior at:
 https://github.com/GBillotey/Fractalshades/issues
 
 Rev 0.5.6
