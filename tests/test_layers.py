@@ -70,7 +70,6 @@ class Test_layers(unittest.TestCase):
             backshift=3
             )
         
-        #f.run()
         
         cls.colormap = fscolors.Fractal_colormap(
             colors=[[1.        , 0.82352941, 0.25882353],
@@ -101,7 +100,7 @@ class Test_layers(unittest.TestCase):
         )
 
 
-    # @test_config.no_stdout
+    @test_config.no_stdout
     def test_color_basic(self):
         """ Testing basic `Color_layer` plots """
         pp = Postproc_batch(self.f, self.calc_name)
@@ -126,7 +125,7 @@ class Test_layers(unittest.TestCase):
         self.check_current_layer()
 
 
-    # @test_config.no_stdout
+    @test_config.no_stdout
     def test_normal_basic(self):
         """ Testing basic `Normal_map_layer` plots """
         pp = Postproc_batch(self.f, self.calc_name)
@@ -149,7 +148,7 @@ class Test_layers(unittest.TestCase):
         self.check_current_layer()
 
 
-    # @test_config.no_stdout
+    @test_config.no_stdout
     def test_bool_basic(self):
         """ Testing basic `Bool_layer` masked plots """
         for (i, int_color) in enumerate([(0.5, 0., 0.), (0., 0., 0., 0.)]):
@@ -173,7 +172,7 @@ class Test_layers(unittest.TestCase):
                 self.check_current_layer()
 
 
-    # @test_config.no_stdout
+    @test_config.no_stdout
     def test_grey_basic(self):
         """ Testing basic `Bool_layer` masked plots """
 
@@ -191,7 +190,6 @@ class Test_layers(unittest.TestCase):
                 func=None, #lambda x : np.cos(x),
                 curve=None,
                 probes_z=[-0.6879764199256897, 0.6879764199256897],
-                # probes_kind="relative",
                 output=True))
         plotter[layer_name].set_mask(
                 plotter["interior"],
@@ -202,7 +200,7 @@ class Test_layers(unittest.TestCase):
         self.check_current_layer()
 
 
-    # @test_config.no_stdout
+    @test_config.no_stdout
     def test_light_source(self):
         """ Testing basic `Blinn_lighting` plots """
         layer_name = "cont_iter_lighted"
@@ -232,30 +230,24 @@ class Test_layers(unittest.TestCase):
             k_diffuse=0.2,
             k_specular=10.,
             shininess=400.,
-#            angles=(-135., 20.),
             polar_angle=-135.,
             azimuth_angle=20.,
-#            coords=None,
             color=np.array([0.05, 0.05, 1.0])
         )
         light.add_light_source(
             k_diffuse=0.2,
             k_specular=10.,
             shininess=400.,
-#            angles=(135., 20.),
             polar_angle=135.,
             azimuth_angle=20.,
-#            coords=None,
             color=np.array([0.5, 0.5, .4])
         )
         light.add_light_source(
             k_diffuse=1.3,
             k_specular=0.,
             shininess=0.,
-#            angles=(90., 40.),
             polar_angle=90.,
             azimuth_angle=40.,
-#            coords=None,
             color=np.array([1.0, 1.0, 1.0])
         )
         plotter[layer_name].shade(plotter["DEM_map"], light)
@@ -265,7 +257,7 @@ class Test_layers(unittest.TestCase):
         self.check_current_layer()
 
 
-    # @test_config.no_stdout
+    @test_config.no_stdout
     def test_twin(self):
         """ Testing `Color_layer` `twin_field` method """
         layer_name = "cont_iter_twinned"
@@ -312,7 +304,6 @@ class Test_layers(unittest.TestCase):
             max_newton=20,
             eps_newton_cv=1.e-12,
         )
-        # f.clean_up(interior_calc_name)
 
         pp0 = Postproc_batch(f, self.calc_name)
         pp0.add_postproc(layer_name, Continuous_iter_pp())
@@ -335,14 +326,12 @@ class Test_layers(unittest.TestCase):
                 func="np.log(x)",
                 colormap=self.colormap,
                 probes_z=[1.0511069297790527, 3.3979762077331546], # 0..0.4
-                # probes_kind="relative",
                 output=True))
         plotter.add_layer(Color_layer(
                 "attr",
                 func=None, #"np.log(x)",
                 colormap=self.colormap_int,
                 probes_z=[0., 1.],
-                # probes_kind="relative",
                 output=True))
         
         plotter.add_layer(Virtual_layer("fieldlines", func="x * 0.8 ", output=False))
@@ -398,7 +387,7 @@ class Test_layers(unittest.TestCase):
         self.check_current_layer(0.10)
 
         
-    # @test_config.no_stdout
+    @test_config.no_stdout
     @unittest.skip("Should be investigated later")
     def test_curve(self):
         for (i, curve) in enumerate([
