@@ -89,6 +89,7 @@ from PyQt6.QtWidgets import (
 
 import fractalshades as fs
 import fractalshades.colors
+import fractalshades.settings
 from fractalshades.gui import (
     separator,
     collapsible_separator

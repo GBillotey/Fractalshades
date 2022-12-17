@@ -597,7 +597,7 @@ class Fractal_plotter:
             mmap = open_memmap(
                     filename=file_path, 
                     mode='w+',
-                    dtype=dtype,
+                    dtype=np.dtype(dtype),
                     shape=(ny, nx, channel),
                     fortran_order=False,
                     version=None
@@ -1594,7 +1594,7 @@ advanced users when subclassing.
         mmap = open_memmap(
             filename=save_path, 
             mode='w+',
-            dtype=np.int32,
+            dtype=np.dtype(np.int32),
             shape=(chunks_count, report_cols_count),
             fortran_order=False,
             version=None
@@ -1805,7 +1805,7 @@ advanced users when subclassing.
                 open_memmap(
                     filename=data_path[key], 
                     mode='w+',
-                    dtype=data_type[key],
+                    dtype=np.dtype(data_type[key]),
                     shape=data_dim[key],
                     fortran_order=False,
                     version=None
@@ -2278,7 +2278,7 @@ class _Subset_temporary_array:
         mmap = open_memmap(
             filename=subset_path, 
             mode='w+',
-            dtype=np.bool,
+            dtype=np.dtype(bool),
             shape=(npts,),
             fortran_order=False,
             version=None
