@@ -315,7 +315,7 @@ class Fractal_plotter:
                 )
 
         # Clean-up
-        self.close_images()
+#        self.close_images()
         for pbatch in self.postproc_batches:
             if self.postproc_options["final_render"]:
                 if (hasattr(f, "_subset_hook")
@@ -354,7 +354,11 @@ class Fractal_plotter:
         if self.try_recover:
             f = self.fractal
             rank = f.chunk_rank(chunk_slice)
-            is_valid = (self._mmap_status[rank] > 0)
+            _mmap_status = open_memmap(
+                filename=self.mmap_status_path, mode="r+"
+            )
+            is_valid = (_mmap_status[rank] > 0)
+            del _mmap_status
             if is_valid:
                 for i, layer in enumerate(self.layers):
                     # We need the postproc
@@ -442,7 +446,11 @@ class Fractal_plotter:
         # Marking this chunk as valid (in case of 'final render')
         if self.final_render:
             rank = f.chunk_rank(chunk_slice)
-            self._mmap_status[rank] = 1
+            _mmap_status = open_memmap(
+                filename=self.mmap_status_path, mode="r+"
+            )
+            _mmap_status[rank] = 1
+            del _mmap_status
 
         if bool_log:
             self._current_tile["time"] = curr_time
@@ -515,22 +523,20 @@ class Fractal_plotter:
         ("""
         self._im = []
         if self.final_render:
-            self._mmaps = []
             self.open_mmap_status()
         
         for layer in self.layers:
             if layer.output:
                 self._im += [PIL.Image.new(mode=layer.mode, size=self.size)]
-                if self.final_render:
-                    self._mmaps += [self.open_mmap(layer)]
 
             else:
-                self._im += [None]    
-                if self.final_render:
-                    self._mmaps += [None]
+                self._im += [None]
 
         if self.try_recover:
-            valid_chunks = np.count_nonzero(self._mmap_status)
+            _mmap_status = open_memmap(
+                filename=self.mmap_status_path, mode="r+"
+            )
+            valid_chunks = np.count_nonzero(_mmap_status)
             n = self.fractal.chunks_count
             logger.info(
                 "Attempt to restart interrupted calculation,\n"
@@ -538,31 +544,13 @@ class Fractal_plotter:
             )
         elif self.final_render:
             logger.info("Reloading option disabled, all image recomputed")
-    
-    def close_images(self):
-        """ Closing the mmaps (Windows OS) """
-        if self.final_render:
-            try:
-                del self._mmaps
-            except AttributeError:
-                pass
-
-        try: 
-            del self._im
-        except AttributeError:
-            pass
-
-        if self.final_render:
-            self.close_mmap_status()
 
 
     def open_mmap_status(self):
         """ Small array to flag the validated image tiles
         Only for final render """
         n_chunk = self.fractal.chunks_count
-        file_path = os.path.join(
-                self.plot_dir,"data", "final_render" + ".arr"
-        )
+        file_path = self.mmap_status_path
 
         try:
             # Does layer the mmap already exists, and does it seems to suit
@@ -588,10 +576,10 @@ class Fractal_plotter:
             )
             _mmap_status[:] = 0
 
-        self._mmap_status = _mmap_status
-    
-    def close_mmap_status(self):
-        del self._mmap_status
+
+    @property
+    def mmap_status_path(self):
+        return os.path.join(self.plot_dir,"data", "final_render" + ".arr")
 
 
     def open_mmap(self, layer):
@@ -632,7 +620,12 @@ class Fractal_plotter:
             # Here as we didnt find information for this layer, sadly the whole
             # memory mapping is invalidated
             logger.debug(f"No valid data found for layer {file_name}")
-            self._mmap_status[:] = 0
+            
+            _mmap_status = open_memmap(
+                filename=self.mmap_status_path, mode="r+"
+            )
+            _mmap_status[:] = 0
+            del _mmap_status
 
         return mmap
 
@@ -692,7 +685,8 @@ class Fractal_plotter:
         if self.final_render:
             # NOW let's also try to save this beast
             paste_crop_arr = np.asarray(paste_crop)
-            layer_mmap = self._mmaps[ilayer]
+            layer_mmap = self.open_mmap(layer)
+            
             if layer_mmap.shape[2] == 1:
                 # For a 1-channel image, PIL will remove the last dim...
                 layer_mmap[iy: iyy, ix: ixx, 0] = paste_crop_arr
@@ -708,7 +702,8 @@ class Fractal_plotter:
         (ix, ixx, iy, iyy) = chunk_slice
         ny = self.fractal.ny
         crop_slice = (ix, ny-iyy, ixx, ny-iy)
-        layer_mmap = self._mmaps[ilayer]
+        layer_mmap = self.open_mmap(layer)
+        
         paste_crop = PIL.Image.fromarray(layer_mmap[iy: iyy, ix: ixx, :])
         im.paste(paste_crop, box=crop_slice)
 
@@ -1856,7 +1851,7 @@ advanced users when subclassing.
 #                self.dat_memmap_attr(key, calc_name),
 #                open_memmap(
 #                    filename=data_path[key], 
-#                    mode='w+',
+#                    mode='',
 #                    dtype=np.dtype(data_type[key]),
 #                    shape=data_dim[key],
 #                    fortran_order=False,
