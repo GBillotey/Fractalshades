@@ -173,7 +173,7 @@ class Test_layers(unittest.TestCase):
                 self.check_current_layer()
 
 
-    @test_config.no_stdout
+    # @test_config.no_stdout
     def test_grey_basic(self):
         """ Testing basic `Bool_layer` masked plots """
 
