@@ -101,7 +101,7 @@ class Test_layers(unittest.TestCase):
         )
 
 
-    @test_config.no_stdout
+    # @test_config.no_stdout
     def test_color_basic(self):
         """ Testing basic `Color_layer` plots """
         pp = Postproc_batch(self.f, self.calc_name)
@@ -126,7 +126,7 @@ class Test_layers(unittest.TestCase):
         self.check_current_layer()
 
 
-    @test_config.no_stdout
+    # @test_config.no_stdout
     def test_normal_basic(self):
         """ Testing basic `Normal_map_layer` plots """
         pp = Postproc_batch(self.f, self.calc_name)
@@ -149,7 +149,7 @@ class Test_layers(unittest.TestCase):
         self.check_current_layer()
 
 
-    @test_config.no_stdout
+    # @test_config.no_stdout
     def test_bool_basic(self):
         """ Testing basic `Bool_layer` masked plots """
         for (i, int_color) in enumerate([(0.5, 0., 0.), (0., 0., 0., 0.)]):
@@ -202,7 +202,7 @@ class Test_layers(unittest.TestCase):
         self.check_current_layer()
 
 
-    @test_config.no_stdout
+    # @test_config.no_stdout
     def test_light_source(self):
         """ Testing basic `Blinn_lighting` plots """
         layer_name = "cont_iter_lighted"
@@ -398,7 +398,7 @@ class Test_layers(unittest.TestCase):
         self.check_current_layer(0.10)
 
         
-    @test_config.no_stdout
+    # @test_config.no_stdout
     @unittest.skip("Should be investigated later")
     def test_curve(self):
         for (i, curve) in enumerate([
@@ -455,7 +455,7 @@ class Test_layers(unittest.TestCase):
 
 if __name__ == "__main__":
     runner = unittest.TextTestRunner(verbosity=2)
-    full_test = True
+    full_test = False
     if full_test:
         runner.run(test_config.suite([Test_layers]))
     else:
