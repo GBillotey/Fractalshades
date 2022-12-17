@@ -1649,9 +1649,10 @@ advanced users when subclassing.
         mmap[:, items.index("chunk1d_begin")] = full_cumsum[:-1]
         mmap[:, items.index("chunk1d_end")] = full_cumsum[1:]
 
-        # Store as attribute
-        attr = self.report_memmap_attr(calc_name)
-        setattr(self, attr, mmap)
+#        # Store as attribute
+#        attr = self.report_memmap_attr(calc_name)
+        del mmap
+#        setattr(self, attr, mmap)
 
 
     def get_report_memmap(self, calc_name, mode='r+'):
@@ -1673,21 +1674,22 @@ advanced users when subclassing.
         # memory, or read in any data from the disk, until you've actually
         # access the data. And then it only reads small chunks in, not the
         # whole file.
-        attr = self.report_memmap_attr(calc_name)
-        if hasattr(self, attr):
-            return getattr(self, attr) #self._temporary_mmap
-        else:
-            val = open_memmap(
-                filename=self.report_path(calc_name), mode=mode
-            )
-            setattr(self, attr, val)
-            return val
+#        attr = self.report_memmap_attr(calc_name)
+#        if hasattr(self, attr):
+#            return getattr(self, attr) #self._temporary_mmap
+#        else:
+        val = open_memmap(
+            filename=self.report_path(calc_name), mode=mode
+        )
+        # setattr(self, attr, val)
+        return val
 
-    def close_report_mmap(self, calc_name):
-        """ Closes the report memmap - needed under WIN """
-        attr = self.report_memmap_attr(calc_name)
-        if hasattr(self, attr):
-            delattr(self, attr)
+#    def close_report_mmap(self, calc_name):
+#        """ Closes the report memmap - needed under WIN """
+#        pass
+#        attr = self.report_memmap_attr(calc_name)
+#        if hasattr(self, attr):
+#            delattr(self, attr)
         
 
     def report_memmap_attr(self, calc_name):
@@ -2216,7 +2218,7 @@ advanced users when subclassing.
         self.compute_rawdata_dev(calc_name, chunk_slice=None)
         
         # Clean-up phase - needed under Windows
-        self.close_report_mmap(calc_name)
+#        self.close_report_mmap(calc_name)
         self.close_data_mmaps(calc_name)
 
 
