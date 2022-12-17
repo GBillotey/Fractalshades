@@ -1,6 +1,10 @@
 Changelog
 *********
 
+Rev 1.0.1
+~~~~~~~~~
+Bugfix revision, fixing OS Windows different behavior with memory mappings.
+
 Rev 1.0.0
 ~~~~~~~~~
 This revision is a major refactoring of the code, with optimised
