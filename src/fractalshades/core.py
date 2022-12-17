@@ -1843,18 +1843,26 @@ advanced users when subclassing.
         }
 
         for key in keys:
-            setattr(
-                self,
-                self.dat_memmap_attr(key, calc_name),
-                open_memmap(
-                    filename=data_path[key], 
-                    mode='w+',
-                    dtype=np.dtype(data_type[key]),
-                    shape=data_dim[key],
-                    fortran_order=False,
-                    version=None
-                )
+            open_memmap(
+                filename=data_path[key], 
+                mode='w+',
+                dtype=np.dtype(data_type[key]),
+                shape=data_dim[key],
+                fortran_order=False,
+                version=None
             )
+#            setattr(
+#                self,
+#                self.dat_memmap_attr(key, calc_name),
+#                open_memmap(
+#                    filename=data_path[key], 
+#                    mode='w+',
+#                    dtype=np.dtype(data_type[key]),
+#                    shape=data_dim[key],
+#                    fortran_order=False,
+#                    version=None
+#                )
+#            )
         # Store the subset (if there is one) at this stage : it is already
         # known
         # /!\ the size of the subset is always the same, irrespective of
@@ -1871,55 +1879,57 @@ advanced users when subclassing.
                 fortran_order=False,
                 version=None
             )
-            setattr(
-                self,
-                self.dat_memmap_attr("subset", calc_name),
-                mmap
-            )
+#            setattr(
+#                self,
+#                self.dat_memmap_attr("subset", calc_name),
+#                mmap
+#            )
             for rank, chunk_slice in enumerate(self.chunk_slices()):
                 beg, end = self.uncompressed_beg_end(rank) # indep of calc_name
                 mmap[beg:end] = subset[chunk_slice]
 
-    def open_data_mmaps(self, calc_name):
-        """ Reopens existing files"""
-        keys = self.SAVE_ARRS
-        data_path = self.data_path(calc_name)
-        if (self._calc_data[calc_name]["state"]).subset is not None:
-            keys = keys +  ["subset"]
-        for key in keys:
-            setattr(
-                self,
-                self.dat_memmap_attr(key, calc_name),
-                open_memmap(filename=data_path[key], mode='r+')
-            )
+            del mmap
 
-    def close_data_mmaps(self, calc_name):
-        """ Close existing files"""
-        keys = self.SAVE_ARRS
-        if (self._calc_data[calc_name]["state"]).subset is not None:
-            keys = keys +  ["subset"]
-        for key in keys:
-            delattr(
-                self,
-                self.dat_memmap_attr(key, calc_name)
-            )
+#    def open_data_mmaps(self, calc_name):
+#        """ Reopens existing files"""
+#        keys = self.SAVE_ARRS
+#        data_path = self.data_path(calc_name)
+#        if (self._calc_data[calc_name]["state"]).subset is not None:
+#            keys = keys +  ["subset"]
+#        for key in keys:
+#            setattr(
+#                self,
+#                self.dat_memmap_attr(key, calc_name),
+#                open_memmap(filename=data_path[key], mode='r+')
+#            )
+
+#    def close_data_mmaps(self, calc_name):
+#        """ Close existing files"""
+#        keys = self.SAVE_ARRS
+#        if (self._calc_data[calc_name]["state"]).subset is not None:
+#            keys = keys +  ["subset"]
+#        for key in keys:
+#            delattr(
+#                self,
+#                self.dat_memmap_attr(key, calc_name)
+#            )
 
 
     def get_data_memmap(self, calc_name, key, mode='r+'):
         # See "Development Note - Memory mapping "
-        attr = self.dat_memmap_attr(key, calc_name)
-        if hasattr(self, attr):
-            return getattr(self, attr)
-        else:
-            data_path = self.data_path(calc_name)
-            val = open_memmap(
-                filename=data_path[key], mode=mode
-            )
-            setattr(self, attr, val)
-            return val
+#        attr = self.dat_memmap_attr(key, calc_name)
+#        if hasattr(self, attr):
+#            return getattr(self, attr)
+#        else:
+        data_path = self.data_path(calc_name)
+        val = open_memmap(
+            filename=data_path[key], mode=mode
+        )
+#        setattr(self, attr, val)
+        return val
 
-    def dat_memmap_attr(self, key, calc_name):
-        return "_@data_mmap_" + calc_name + "_" + key
+#    def dat_memmap_attr(self, key, calc_name):
+#        return "_@data_mmap_" + calc_name + "_" + key
 
 
     def update_data_mmaps(
@@ -2211,15 +2221,15 @@ advanced users when subclassing.
         if self._calc_data[calc_name]["need_new_mmap"]:
             self.init_report_mmap(calc_name)
             self.init_data_mmaps(calc_name)
-        else:
-            self.open_data_mmaps(calc_name)
+#        else:
+#            self.open_data_mmaps(calc_name)
 
         # Launching the calculation + mmap storing multithreading loop
         self.compute_rawdata_dev(calc_name, chunk_slice=None)
         
         # Clean-up phase - needed under Windows
 #        self.close_report_mmap(calc_name)
-        self.close_data_mmaps(calc_name)
+#        self.close_data_mmaps(calc_name)
 
 
     def postproc(self, postproc_batch, chunk_slice, postproc_options):
