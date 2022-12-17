@@ -368,14 +368,14 @@ zoom_options = _store_kwargs("zoom")
 zoom_options.__doc__ = """ Decorates the method used to define the zooming
 (only one per `fractalshades.Fractal` class).
 The last kwargs passed to the zoom method can be retreived as
-fractal.zoom_kwargs
+:code:`fractal.zoom_kwargs`
 """
 
 calc_options = _store_func_name__add_hook("calc")
 calc_options.__doc__ = """ Decorates the calculation methods
 (there can be several such methods per `fractalshades.Fractal` class)
 The list of such calculation methods can be retrieved as
-fs.utils.calc_options.methods(f.__class__)
+:code:`fs.utils.calc_options.methods(f.__class__)`
 After each call, the calling kwargs and results are forwarded to the Fractal
 instance method `calc_hook` for further processing
 """
@@ -385,5 +385,5 @@ interactive_options.__doc__ = """ Decorates the methods that can be called
 interactively from the GUI 
 (There can be several such methods for a `fractalshades.Fractal` class)
 The list of these methods can be retreived with:
-fs.utils.interactive_options.methods(f.__class__)
+:code:`fs.utils.interactive_options.methods(f.__class__)`
 """
