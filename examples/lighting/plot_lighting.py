@@ -59,7 +59,7 @@ def plot_lighting(lighting_identifier, plot_dir, nx=600, ny=600):
         im.save(os.path.join(plot_dir, lighting_identifier + ".png"))
 
 def plot_lightings(plot_dir):
-    
+
     lighting_register = fscolors.lighting_register
     for lighting_identifier in lighting_register.keys():
         plot_lighting(lighting_identifier, plot_dir)
