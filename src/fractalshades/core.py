@@ -1591,11 +1591,11 @@ advanced users when subclassing.
 
         save_path = self.report_path(calc_name)
         fs.utils.mkdir_p(os.path.dirname(save_path))
-        dn = os.path.dirname(save_path)
-        print("**** in init_report_mmap")
-        print("save_path:", save_path)
-        print("dirname:", dn)
-        print("isdir", os.path.isdir(dn))
+        # dn = os.path.dirname(save_path)
+        # print("**** in init_report_mmap")
+        # print("save_path:", save_path)
+        # print("dirname:", dn)
+        # print("isdir", os.path.isdir(dn))
         mmap = open_memmap(
             filename=save_path, 
             mode='w+',
