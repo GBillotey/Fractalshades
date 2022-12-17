@@ -22,7 +22,6 @@ import fractalshades.gui.guimodel
 def plot(plot_dir):
     """
     """
-    
     fractal = fsm.Mandelbrot(plot_dir)
 
     zooming = fs.gui.guitemplates.std_zooming(fractal)

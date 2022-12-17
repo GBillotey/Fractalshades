@@ -50,6 +50,13 @@ directory : str
         # Orbit 'on the fly' calculation
         self.zn_iterate = M2_iterate
 
+        # Cache for numba compiled implementations
+        self._numba_cache = {}
+        self._numba_iterate_cache = {
+            "calc_std_div": ((), None),
+            "newton_calc": ((), None),
+        } # args, numba_impl
+
 
     @fs.utils.calc_options
     def calc_std_div(self, *,
@@ -141,39 +148,26 @@ directory : str
         Mdiv_sq = M_divergence ** 2
         epscv_sq = epsilon_stationnary ** 2
 
-        @numba.njit
-        def iterate_once(c, Z, U, stop_reason, n_iter):
-            if n_iter >= max_iter:
-                stop_reason[0] = 0
-                return 1
-
-            if calc_d2zndc2:
-               Z[d2zndc2] = 2 * (Z[d2zndc2] * Z[zn] + Z[dzndc] ** 2)
-
-            Z[dzndc] = 2 * Z[dzndc] * Z[zn] + 1.
-            Z[dzndz] = 2 * Z[dzndz] * Z[zn] 
-            Z[zn] = Z[zn] ** 2 + c
-
-            if n_iter == 1:
-                Z[dzndz] = 1.
-
-            if Z[zn].real ** 2 + Z[zn].imag ** 2 > Mdiv_sq:
-                stop_reason[0] = 1
-                return 1
-
-            if Z[dzndz].real ** 2 + Z[dzndz].imag ** 2 < epscv_sq:
-                stop_reason[0] = 2
-                return 1
-
-            return 0
-
+        iterate_once = self.from_numba_cache(
+            "iterate_once",
+            zn, dzndz, dzndc, d2zndc2, calc_d2zndc2,
+            max_iter, Mdiv_sq, epscv_sq
+        )
         zn_iterate = self.zn_iterate
 
         def iterate():
-            return fs.core.numba_iterate(
+            new_args = (
                 calc_orbit, i_znorbit, backshift, zn,
                 iterate_once, zn_iterate
             )
+            args, numba_impl = self._numba_iterate_cache["calc_std_div"]
+            if new_args == args:
+                return numba_impl
+
+            numba_impl = fs.core.numba_iterate(*new_args)
+            self._numba_iterate_cache["calc_std_div"] = (new_args, numba_impl)
+            return numba_impl
+
 
         return {
             "set_state": set_state,
@@ -272,28 +266,88 @@ directory : str
             return numba_init_impl
 
         zn_iterate = self.zn_iterate
-        
-        @numba.njit
-        def iterate_newton_search(d2zrdzdc, dzrdc, dzrdz, zr, c):
-            d2zrdzdc = 2 * (d2zrdzdc * zr + dzrdz * dzrdc)
-            dzrdz = 2. * dzrdz * zr
-            dzrdc = 2 * dzrdc * zr + 1.
-            zr = zr * zr + c
-            return (d2zrdzdc, dzrdc, dzrdz, zr)
+        iterate_newton_search = self.from_numba_cache(
+            "iterate_newton_search",
+            None, None, None, None, None, None, None, None
+        )
 
         def iterate():
-            return fs.core.numba_Newton(
+            new_args = (
                 known_orders, max_order, max_newton, eps_newton_cv,
                 reason_max_order, reason_order_confirmed,
-                izr, idzrdz, idzrdc,  id2zrdzdc, i_partial,  i_zn, iorder,
+                izr, idzrdz, idzrdc,  id2zrdzdc, i_partial, i_zn, iorder,
                 zn_iterate, iterate_newton_search
             )
-        
+            args, numba_impl = self._numba_iterate_cache["calc_std_div"]
+            if new_args == args:
+                return numba_impl
+
+            numba_impl = fs.core.numba_Newton(*new_args)
+            self._numba_iterate_cache["calc_std_div"] = (new_args, numba_impl)
+            return numba_impl
+
+
         return {
             "set_state": set_state,
             "initialize": initialize,
             "iterate": iterate
         }
+
+
+    def from_numba_cache(self, key, zn, dzndz, dzndc, d2zndc2, calc_d2zndc2,
+                         max_iter, Mdiv_sq, epscv_sq):
+        """ Returns the numba implementation if exists to avoid unnecessary
+        recompilation"""
+        cache = self._numba_cache
+        full_key = (key, zn, dzndz, dzndc, d2zndc2, calc_d2zndc2,
+                    max_iter, Mdiv_sq, epscv_sq)
+
+        try:
+            return cache[full_key]
+
+        except KeyError:
+            if key == "iterate_once":
+                @numba.njit
+                def numba_impl(c, Z, U, stop_reason, n_iter):
+                    if n_iter >= max_iter:
+                        stop_reason[0] = 0
+                        return 1
+
+                    if calc_d2zndc2:
+                       Z[d2zndc2] = 2 * (Z[d2zndc2] * Z[zn] + Z[dzndc] ** 2)
+
+                    Z[dzndc] = 2 * Z[dzndc] * Z[zn] + 1.
+                    Z[dzndz] = 2 * Z[dzndz] * Z[zn] 
+                    Z[zn] = Z[zn] ** 2 + c
+
+                    if n_iter == 1:
+                        Z[dzndz] = 1.
+
+                    if Z[zn].real ** 2 + Z[zn].imag ** 2 > Mdiv_sq:
+                        stop_reason[0] = 1
+                        return 1
+
+                    if Z[dzndz].real ** 2 + Z[dzndz].imag ** 2 < epscv_sq:
+                        stop_reason[0] = 2
+                        return 1
+
+                    return 0
+
+            elif key == "iterate_newton_search":
+                @numba.njit
+                def numba_impl(d2zrdzdc, dzrdc, dzrdz, zr, c):
+                    d2zrdzdc = 2 * (d2zrdzdc * zr + dzrdz * dzrdc)
+                    dzrdz = 2. * dzrdz * zr
+                    dzrdc = 2 * dzrdc * zr + 1.
+                    zr = zr * zr + c
+                    return (d2zrdzdc, dzrdc, dzrdz, zr)
+
+            else:
+                raise NotImplementedError(key)
+
+            cache[full_key] = numba_impl
+            return numba_impl
+
 
     @fs.utils.interactive_options
     def coords(self, x, y, pix, dps):
@@ -347,6 +401,8 @@ directory : str
         
         # Cache for numba compiled implementations
         self._numba_cache = {}
+        self._numba_initialize_cache = ((), None) # args, numba_impl
+        self._numba_iterate_cache = ((), None) # args, numba_impl
 
 
     def FP_loop(self, NP_orbit, c0):
@@ -485,7 +541,14 @@ backshift: int (> 0)
         #----------------------------------------------------------------------
         # Defines initialize - jitted implementation
         def initialize():
-            return fs.perturbation.numba_initialize(zn, dzndc, dzndz)
+            new_args = (zn, dzndc, dzndz)
+            args, numba_impl = self._numba_initialize_cache
+            if new_args == args:
+                return numba_impl
+
+            numba_impl = fs.perturbation.numba_initialize(*new_args)
+            self._numba_initialize_cache = (new_args, numba_impl)
+            return numba_impl
 
         #----------------------------------------------------------------------
         # Defines iterate - jitted implementation
@@ -501,7 +564,7 @@ backshift: int (> 0)
 
 
         def iterate():
-            return fs.perturbation.numba_iterate(
+            new_args = (
                 max_iter, M_divergence_sq, epsilon_stationnary_sq,
                 reason_max_iter, reason_M_divergence, reason_stationnary,
                 xr_detect_activated, BLA_activated,
@@ -510,6 +573,13 @@ backshift: int (> 0)
                 calc_dzndc, calc_dzndz,
                 calc_orbit, i_znorbit, backshift, zn_iterate
             )
+            args, numba_impl = self._numba_iterate_cache
+            if new_args == args:
+                return numba_impl
+
+            numba_impl = fs.perturbation.numba_iterate(*new_args)
+            self._numba_iterate_cache = (new_args, numba_impl)
+            return numba_impl
 
         return {
             "set_state": set_state,
@@ -648,15 +718,15 @@ backshift: int (> 0)
         """
 Nucleus size estimate
 
-Parameters:
------------
+Parameters
+----------
 c0 :
     position of the nucleus
 order :
     cycle order
 
-Returns:
---------
+Returns
+-------
 nucleus_size : 
     size estimate of the nucleus
 julia_size : 

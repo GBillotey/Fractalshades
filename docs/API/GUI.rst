@@ -10,4 +10,5 @@ This section describe the object used to launch a GUI explorer.
    :caption: Contents:
 
    gui/Fractal_GUI
+   gui/std_zooming
 

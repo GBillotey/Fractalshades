@@ -4,14 +4,15 @@
 Ligthings: available effects
 ============================
 
-
+A selection of the lightings effects which
+can be obtained with the `fractalshades.colors.layers.Blinn_lighting` class
+and its associated GUI editor. 
 """
 import os
 import sys
 
 import numpy as np
 
-# from fractalshades.colors.layers import Blinn_lighting
 
 if sys.version_info < (3, 9):
 # See :

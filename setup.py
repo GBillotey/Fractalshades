@@ -26,7 +26,6 @@ import gmpy2
 # https://stackoverflow.com/questions/52749662/using-deprecated-numpy-api
 
 
-
 extra_link_args = []
 
 include_dirs = (

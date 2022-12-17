@@ -35,17 +35,30 @@ verbosity_enum =  enum.Enum(
 
 def set_log_handlers(verbosity: typing.Literal[verbosity_enum]):
     """
-    Sets the verbosity level for logging
-    
-    Parameters:
-    -----------
+    Sets the verbosity level for application logs.
+
+    Parameters
+    ----------
     verbosity: str
-      - "warn @ console" only warnings printed in the console
-      - "warn + info @ console" warnings and info printed in the console
-      - "debug @ console + log" warnings, info and debug level in 
-        the console ; starts a new log file and also outputs to it
-      - "debug2 @ console + log" same as above with even lower priority
-        messages written in log file. 
+      Possible values for verbosity string parameter are :
+
+        - "warn @ console" only warnings are printed to the console
+        - "warn + info @ console" warnings and info are printed to the console
+        - "debug @ console + log" warnings, info and debug level printed to 
+          the console ; starts a new log file and outputs to it- same level
+        - "debug2 @ console + log" same as above with lowest priority
+          messages printed to log file.
+
+    Notes
+    -----
+    The directory for the log files shall have been defined before
+    through the `fractalshades.settings.log_directory` parameter.
+    A typical use case is show below:
+
+    ::
+        
+        fs.settings.log_directory = directory
+        fs.set_log_handlers(verbosity="debug @ console + log")
     """
     if isinstance(verbosity, str):
         _verbosity = getattr(verbosity_enum, verbosity).value

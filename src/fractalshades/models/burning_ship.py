@@ -185,6 +185,13 @@ Notes
         self.implements_deepzoom = False
 
         self.xnyn_iterate = BS_iterate(flavor_int)
+        
+        # Cache for numba compiled implementations
+        self._numba_cache = {}
+        self._numba_iterate_cache = {
+            "calc_std_div": ((), None),
+        } # args, numba_impl
+
 
     @fs.utils.calc_options
     def calc_std_div(self, *,
@@ -259,68 +266,29 @@ Notes
                 pass
             return numba_init_impl
 
-
         Mdiv_sq = M_divergence ** 2
         flavor_int = getattr(BS_flavor_enum, self.flavor).value
 
-        @numba.njit
-        def iterate_once(c, Z, U, stop_reason, n_iter):
-            if n_iter >= max_iter:
-                stop_reason[0] = 0
-                return 1
-
-            a = c.real
-            b = c.imag
-            X = Z[xn]
-            Y = Z[yn]
-            dXdA = Z[dxnda]
-            dXdB = Z[dxndb]
-            dYdA = Z[dynda]
-            dYdB = Z[dyndb]
-
-            if flavor_int == 1:
-                # Standard BS implementation
-                Z[xn] = X ** 2 - Y ** 2 + a
-                Z[yn] = 2. * np.abs(X * Y) - b
-                # Jacobian
-                Z[dxnda] = 2 * (X * dXdA - Y * dYdA) + 1.
-                Z[dxndb] = 2 * (X * dXdB - Y * dYdB)
-                Z[dynda] = 2 * (np.abs(X) * sgn(Y) * dYdA + sgn(X) * dXdA * np.abs(Y))
-                Z[dyndb] = 2 * (np.abs(X) * sgn(Y) * dYdB + sgn(X) * dXdB * np.abs(Y)) - 1.
-
-            elif flavor_int == 2:
-                # Perpendicular BS implementation
-                Z[xn] = X ** 2 - Y ** 2 + a
-                Z[yn] = 2. * X * np.abs(Y) - b
-                # Jacobian
-                Z[dxnda] = 2 * (X * dXdA - Y * dYdA) + 1.
-                Z[dxndb] = 2 * (X * dXdB - Y * dYdB)
-                Z[dynda] = 2 * (X * sgn(Y) * dYdA + dXdA * np.abs(Y))
-                Z[dyndb] = 2 * (X * sgn(Y) * dYdB + dXdB * np.abs(Y)) - 1.
-
-            elif flavor_int == 3:
-                # Shark Fin
-                Z[xn] = X ** 2 - Y * np.abs(Y) + a
-                Z[yn] = 2. * X * Y - b
-                # Jacobian
-                Z[dxnda] = 2 * (X * dXdA - np.abs(Y) * dYdA) + 1.
-                Z[dxndb] = 2 * (X * dXdB - np.abs(Y) * dYdB)
-                Z[dynda] = 2 * dXdA * Y + 2 * X * dYdA
-                Z[dyndb] = 2 * dXdB * Y + 2 * X * dYdB - 1.
-
-            if Z[xn] ** 2 + Z[yn] ** 2 > Mdiv_sq:
-                stop_reason[0] = 1
-                return 1
-
-            return 0
-
+        iterate_once = self.from_numba_cache(
+            "iterate_once", flavor_int, xn, yn, dxnda, dxndb, dynda, dyndb,
+            max_iter, Mdiv_sq
+        )
         xnyn_iterate = self.xnyn_iterate
 
         def iterate():
-            return fs.core.numba_iterate_BS(
+            
+            new_args = (
                 calc_orbit, i_xnorbit, i_ynorbit, backshift, xn, yn,
                 iterate_once, xnyn_iterate
             )
+            args, numba_impl = self._numba_iterate_cache["calc_std_div"]
+            if new_args == args:
+                return numba_impl
+
+            numba_impl = fs.core.numba_iterate_BS(*new_args)
+            self._numba_iterate_cache["calc_std_div"] = (new_args, numba_impl)
+            return numba_impl
+
 
         return {
             "set_state": set_state,
@@ -328,10 +296,86 @@ Notes
             "iterate": iterate
         }
 
+
+
+    def from_numba_cache(
+        self, key, flavor_int, xn, yn, dxnda, dxndb, dynda, dyndb,
+        max_iter, Mdiv_sq
+    ):
+        """ Returns the numba implementation if exists to avoid unnecessary
+        recompilation"""
+        cache = self._numba_cache
+        full_key = (key, flavor_int, xn, yn, dxnda, dxndb, dynda, dyndb,
+                    max_iter, Mdiv_sq)
+
+        try:
+            return cache[full_key]
+
+        except KeyError:
+
+            if key == "iterate_once":
+                @numba.njit
+                def numba_impl(c, Z, U, stop_reason, n_iter):
+                    if n_iter >= max_iter:
+                        stop_reason[0] = 0
+                        return 1
+        
+                    a = c.real
+                    b = c.imag
+                    X = Z[xn]
+                    Y = Z[yn]
+                    dXdA = Z[dxnda]
+                    dXdB = Z[dxndb]
+                    dYdA = Z[dynda]
+                    dYdB = Z[dyndb]
+        
+                    if flavor_int == 1:
+                        # Standard BS implementation
+                        Z[xn] = X ** 2 - Y ** 2 + a
+                        Z[yn] = 2. * np.abs(X * Y) - b
+                        # Jacobian
+                        Z[dxnda] = 2 * (X * dXdA - Y * dYdA) + 1.
+                        Z[dxndb] = 2 * (X * dXdB - Y * dYdB)
+                        Z[dynda] = 2 * (np.abs(X) * sgn(Y) * dYdA + sgn(X) * dXdA * np.abs(Y))
+                        Z[dyndb] = 2 * (np.abs(X) * sgn(Y) * dYdB + sgn(X) * dXdB * np.abs(Y)) - 1.
+        
+                    elif flavor_int == 2:
+                        # Perpendicular BS implementation
+                        Z[xn] = X ** 2 - Y ** 2 + a
+                        Z[yn] = 2. * X * np.abs(Y) - b
+                        # Jacobian
+                        Z[dxnda] = 2 * (X * dXdA - Y * dYdA) + 1.
+                        Z[dxndb] = 2 * (X * dXdB - Y * dYdB)
+                        Z[dynda] = 2 * (X * sgn(Y) * dYdA + dXdA * np.abs(Y))
+                        Z[dyndb] = 2 * (X * sgn(Y) * dYdB + dXdB * np.abs(Y)) - 1.
+        
+                    elif flavor_int == 3:
+                        # Shark Fin
+                        Z[xn] = X ** 2 - Y * np.abs(Y) + a
+                        Z[yn] = 2. * X * Y - b
+                        # Jacobian
+                        Z[dxnda] = 2 * (X * dXdA - np.abs(Y) * dYdA) + 1.
+                        Z[dxndb] = 2 * (X * dXdB - np.abs(Y) * dYdB)
+                        Z[dynda] = 2 * dXdA * Y + 2 * X * dYdA
+                        Z[dyndb] = 2 * dXdB * Y + 2 * X * dYdB - 1.
+        
+                    if Z[xn] ** 2 + Z[yn] ** 2 > Mdiv_sq:
+                        stop_reason[0] = 1
+                        return 1
+        
+                    return 0
+
+            else:
+                raise NotImplementedError(key)
+
+            cache[full_key] = numba_impl
+            return numba_impl
+
+
+
     @fs.utils.interactive_options
     def coords(self, x, y, pix, dps):
         return super().coords(x, y, pix, dps)
-
 
 #==============================================================================
 #==============================================================================
@@ -693,6 +737,8 @@ differences in the iteration formula ; among them:
         
         # Cache for numba compiled implementations
         self._numba_cache = {}
+        self._numba_initialize_cache = ((), None) # args, numba_impl
+        self._numba_iterate_cache = ((), None) # args, numba_impl
 
 
     def FP_loop(self, NP_orbit, c0):
@@ -818,9 +864,14 @@ differences in the iteration formula ; among them:
         #----------------------------------------------------------------------
         # Defines initialize - jitted implementation
         def initialize():
-            return fs.perturbation.numba_initialize_BS(
-                xn, yn, dxnda, dxndb, dynda, dyndb
-            )
+            new_args = (xn, yn, dxnda, dxndb, dynda, dyndb)
+            args, numba_impl = self._numba_initialize_cache
+            if new_args == args:
+                return numba_impl
+
+            numba_impl = fs.perturbation.numba_initialize_BS(*new_args)
+            self._numba_initialize_cache = (new_args, numba_impl)
+            return numba_impl
 
         #----------------------------------------------------------------------
         # Defines iterate - jitted implementation
@@ -835,13 +886,22 @@ differences in the iteration formula ; among them:
 
 
         def iterate():
-            return fs.perturbation.numba_iterate_BS(
-                M_divergence_sq, max_iter, reason_max_iter, reason_M_divergence,
+            new_args = (
+                M_divergence_sq, max_iter, reason_max_iter,
+                    reason_M_divergence,
                 xr_detect_activated, BLA_activated,
                 calc_hessian,
                 xn, yn, dxnda, dxndb, dynda, dyndb,
                 p_iter_zn, p_iter_hessian
             )
+            args, numba_impl = self._numba_iterate_cache
+            if new_args == args:
+                return numba_impl
+
+            numba_impl = fs.perturbation.numba_iterate_BS(*new_args)
+            self._numba_iterate_cache = (new_args, numba_impl)
+            return numba_impl
+
 
         return {
             "set_state": set_state,
@@ -956,15 +1016,15 @@ differences in the iteration formula ; among them:
         """
 Nucleus size estimate
 
-Parameters:
------------
+Parameters
+----------
 c0 :
     position of the nucleus
 order :
     cycle order
 
-Returns:
---------
+Returns
+-------
 nucleus_size : 
     size estimate of the nucleus
 julia_size : 

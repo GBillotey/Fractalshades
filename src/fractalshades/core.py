@@ -94,15 +94,17 @@ class Fractal_plotter:
             A single `fractalshades.postproc.Postproc_batch` or a list of 
             theses
         final_render: bool
-            - If False, this is an exploration rendering, the raw arrays will be
-              stored to allow fast modifcation of the plotting parameters
-              - without recomputing.
-            - If True, this is the final rendering, the RGB arrays will
+            - If ``False``, this is an exploration rendering, the raw arrays
+              will be stored to allow fast modifcation of the plotting
+              parameters - without recomputing. High-quality rendering
+              (supersampling, jitter) is disabled.
+            - If ``True``, this is the final rendering, the image tiles will
               be directly computed by chunks on the fly to limit disk usage.
-              high quality rendering options are available only in this case
-              (antialising, jitter)
-
-        supersampling: None | "2x2" | ... | "7x7"
+              High quality rendering options are available only in this case
+              (antialising, jitter). Raw arrays are *not* stored in this case,
+              any change in the plotting parametrers will need a new
+              calculation.
+        supersampling: None | "2x2" | "3x3" | ... | "7x7"
             Used only for the final render. if not None, the final image will
             leverage supersampling (from 4 to 49 pixels computed for 1 pixel in 
             the saved image)
@@ -113,8 +115,8 @@ class Fractal_plotter:
         recovery_mode: bool
             Used only for the final render. If True, will attempt to reload
             the image tiles already computed. Allows to restart an interrupted
-            calculation (this mode will fail if plotting parameters have been 
-            modified)
+            calculation in final render mode (this will fail if plotting
+            parameters have been modified).
 
         Notes
         -----

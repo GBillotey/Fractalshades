@@ -170,8 +170,6 @@ def signature(callable_):
         return inspect.signature(callable_)
 
 
-
-
 class GUItemplate:
     """ Base class for all classes implementing a GUI-template function """
 
@@ -407,14 +405,38 @@ class std_zooming(GUItemplate):
     
     def __init__(self, fractal):
         """
-        A generic zooming explorer for standard or perturbation Fractals
+A generic zooming function to explore standard or perturbation Fractals, 
+intended for use with a GUI `fs.gui.guimodel.Fractal_GUI`
 
-        Compatible with :
-        - holomorphic or non-holomorphic (Burning-ship & al) variants
-        - fieldlines implemented or not
-        - shading implemented or not
-        - optionally, interior plots based on cycle attractivity & order
-        """
+Compatible with :
+
+    - holomorphic or non-holomorphic (Burning-ship & al) variants
+    - optional fieldlines
+    - optional shading
+    - optional interior plots based on cycle attractivity & order
+    - optional deepzoom implementation
+
+Parameters
+----------
+fractal: `fs.Fractal`
+    The fractal object to explore
+
+Notes
+----- 
+
+.. note::
+    
+    A typical use case is show below (see also the interactive examples from
+    the :doc:`../../examples/index/` section):
+
+    ::
+
+        fractal = fsm.Perturbation_mandelbrot(plot_dir)
+        zooming = fs.gui.guitemplates.std_zooming(fractal)
+        gui = fs.gui.guimodel.Fractal_GUI(zooming)
+        gui.show()
+
+"""
         super().__init__(fractal)
 
         badges = (
@@ -619,10 +641,11 @@ class std_zooming(GUItemplate):
     
         _10: fs.gui.collapsible_separator="General settings",
         log_verbosity: typing.Literal[fs.log.verbosity_enum
-                                      ]="debug @ console + log",
+                                      ] = "debug @ console + log",
         enable_multithreading: bool = True,
         inspect_calc: bool = False,
-        no_newton: bool = False
+        no_newton: bool = False,
+        postproc_dtype: typing.Literal["float32", "float64"] = "float32"
     ):
 
         fs.settings.log_directory = os.path.join(fractal.directory, "log")
@@ -630,6 +653,7 @@ class std_zooming(GUItemplate):
         fs.settings.enable_multithreading = enable_multithreading
         fs.settings.inspect_calc = inspect_calc
         fs.settings.no_newton = no_newton
+        fs.settings.postproc_dtype = postproc_dtype
 
 
         zoom_kwargs = {

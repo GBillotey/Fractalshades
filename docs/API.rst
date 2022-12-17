@@ -15,5 +15,6 @@ Ins this section you will find the detailed documentation of the API:
     API/layers.rst
     API/colors.rst
     API/GUI.rst
+    API/logging.rst
 
 

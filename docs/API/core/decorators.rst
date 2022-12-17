@@ -2,8 +2,8 @@ Decorators
 ~~~~~~~~~~
 
 
-.. autodata:: fractalshades.zoom_options
+.. autodecorator:: fractalshades.zoom_options
 
-.. autodata:: fractalshades.calc_options
+.. autodecorator:: fractalshades.calc_options
 
 .. autodata:: fractalshades.interactive_options
