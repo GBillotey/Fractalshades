@@ -6,4 +6,4 @@ Decorators
 
 .. autodecorator:: fractalshades.calc_options
 
-.. autodata:: fractalshades.interactive_options
+.. autodecorator:: fractalshades.interactive_options

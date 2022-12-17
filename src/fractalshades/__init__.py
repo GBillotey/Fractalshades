@@ -25,8 +25,3 @@ if verbosity < 3:
         action="ignore",
         message="overflow encountered in"
     )
-
-## Starts logging
-#import logging
-#logger = logging.getLogger(__name__)
-#set_log_handlers(verbosity, version_info=__version__)
