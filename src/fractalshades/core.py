@@ -314,6 +314,14 @@ class Fractal_plotter:
                     calc_name, final=self.final_render
                 )
 
+        # Clean-up
+        self.close_images()
+        for pbatch in self.postproc_batches:
+            if self.postproc_options["final_render"]:
+                if (hasattr(f, "_subset_hook")
+                        and calc_name in f._subset_hook.keys()):
+                    f.close_subset_mmap(calc_name, self.supersampling)
+
 
     @property
     def try_recover(self):
@@ -530,6 +538,22 @@ class Fractal_plotter:
             )
         elif self.final_render:
             logger.info("Reloading option disabled, all image recomputed")
+    
+    def close_images(self):
+        """ Closing the mmaps (Windows OS) """
+        if self.final_render:
+            try:
+                del self._mmaps
+            except AttributeError:
+                pass
+
+        try: 
+            del self._im
+        except AttributeError:
+            pass
+
+        if self.final_render:
+            self.close_mmap_status()
 
 
     def open_mmap_status(self):
@@ -565,6 +589,9 @@ class Fractal_plotter:
             _mmap_status[:] = 0
 
         self._mmap_status = _mmap_status
+    
+    def close_mmap_status(self):
+        del self._mmap_status
 
 
     def open_mmap(self, layer):
@@ -1511,6 +1538,13 @@ advanced users when subclassing.
         logger.debug(f"Opening subset mmap for: {calc_name_to}")
         self._subset_hook[calc_name_to].init_mmap(supersampling)
 
+    def close_subset_mmap(self, calc_name_to, supersampling): # private
+        """ Closed the memory mapping
+        Format: 1-d UNcompressed per chunk, takes into account supersampling
+        as needed. 
+        """
+        self._subset_hook[calc_name_to].close_mmap(supersampling)
+
     def save_subset_arrays(
             self, calc_name, chunk_slice, postproc_options, ret
     ):
@@ -1648,6 +1682,13 @@ advanced users when subclassing.
             )
             setattr(self, attr, val)
             return val
+
+    def close_report_mmap(self, calc_name):
+        """ Closes the report memmap - needed under WIN """
+        attr = self.report_memmap_attr(calc_name)
+        if hasattr(self, attr):
+            delattr(self, attr)
+        
 
     def report_memmap_attr(self, calc_name):
         return "__report_mmap_" + "_" + calc_name
@@ -1848,6 +1889,17 @@ advanced users when subclassing.
                 self,
                 self.dat_memmap_attr(key, calc_name),
                 open_memmap(filename=data_path[key], mode='r+')
+            )
+
+    def close_data_mmaps(self, calc_name):
+        """ Close existing files"""
+        keys = self.SAVE_ARRS
+        if (self._calc_data[calc_name]["state"]).subset is not None:
+            keys = keys +  ["subset"]
+        for key in keys:
+            delattr(
+                self,
+                self.dat_memmap_attr(key, calc_name)
             )
 
 
@@ -2162,6 +2214,11 @@ advanced users when subclassing.
 
         # Launching the calculation + mmap storing multithreading loop
         self.compute_rawdata_dev(calc_name, chunk_slice=None)
+        
+        # Clean-up phase - needed under Windows
+        self.close_report_mmap(calc_name)
+        self.close_data_mmaps(calc_name)
+
 
     def postproc(self, postproc_batch, chunk_slice, postproc_options):
         """ Computes the output of ``postproc_batch`` for chunk_slice
@@ -2287,6 +2344,12 @@ class _Subset_temporary_array:
         # Storing status (/!\ not thread safe)
         self.supersampling = supersampling
         self._mmap = mmap
+        
+    def close_mmap(self, supersampling):
+        try:
+            del self._mmap
+        except AttributeError:
+            pass
 
     def __setitem__(self, chunk_slice, bool_arr):
         f = self.fractal
