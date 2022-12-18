@@ -702,9 +702,9 @@ class Test_numba_xr(unittest.TestCase):
                     t_numba += time.time()
             
                     _matching(res, expected, almost=True, dtype=np.float64,
-                              ktol=2.)
+                              ktol=4.)
                     _matching(res_np, expected, almost=True, dtype=np.float64,
-                              ktol=2.)
+                              ktol=4.)
                     
 
     def test_constant(self):
