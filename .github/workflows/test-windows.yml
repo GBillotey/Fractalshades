@@ -27,6 +27,7 @@ jobs:
       run: |
         dir
         python -m pip install --upgrade pip
+        python -m pip install --upgrade build
         python -m pip install gmpy2
 
         echo "**** Running python gmpy2 pathch script"
@@ -43,8 +44,7 @@ jobs:
 
     - name: Builds Fractalshades
       run: |
-        python setup.py build bdist_wheel
-        # dir dist
+        python3 -m build --no-isolation
 
     - name: Install Fractalshades from the built wheel
       run: |
