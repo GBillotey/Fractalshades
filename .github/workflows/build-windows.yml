@@ -50,7 +50,7 @@ jobs:
 
     - name: Builds Fractalshades
       run: |
-        python3 -m build
+        python3 -m build --no-isolation
         # python setup.py bdist_wheel
 
     - name: Archive production artifacts
