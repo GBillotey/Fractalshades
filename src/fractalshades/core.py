@@ -537,6 +537,7 @@ class Fractal_plotter:
                 filename=self.mmap_status_path, mode="r+"
             )
             valid_chunks = np.count_nonzero(_mmap_status)
+            del _mmap_status
             n = self.fractal.chunks_count
             logger.info(
                 "Attempt to restart interrupted calculation,\n"
@@ -575,6 +576,7 @@ class Fractal_plotter:
                     version=None
             )
             _mmap_status[:] = 0
+            del _mmap_status
 
 
     @property
@@ -603,19 +605,21 @@ class Fractal_plotter:
                 filename=file_path, mode="r+"
             )
             if mmap.shape != (ny, nx, channel):
+                del mmap
                 raise ValueError("Incompatible shapes for mmap")
             if mmap.dtype != dtype:
+                del mmap
                 raise ValueError("Incompatible dtype for mmap")
 
         except (FileNotFoundError, ValueError):
             # Create a new one...
             mmap = open_memmap(
-                    filename=file_path, 
-                    mode='w+',
-                    dtype=np.dtype(dtype),
-                    shape=(ny, nx, channel),
-                    fortran_order=False,
-                    version=None
+                filename=file_path, 
+                mode='w+',
+                dtype=np.dtype(dtype),
+                shape=(ny, nx, channel),
+                fortran_order=False,
+                version=None
             )
             # Here as we didnt find information for this layer, sadly the whole
             # memory mapping is invalidated
@@ -686,12 +690,14 @@ class Fractal_plotter:
             # NOW let's also try to save this beast
             paste_crop_arr = np.asarray(paste_crop)
             layer_mmap = self.open_mmap(layer)
-            
+
             if layer_mmap.shape[2] == 1:
                 # For a 1-channel image, PIL will remove the last dim...
                 layer_mmap[iy: iyy, ix: ixx, 0] = paste_crop_arr
             else:
                 layer_mmap[iy: iyy, ix: ixx, :] = paste_crop_arr
+
+            del layer_mmap
                 
 
 
@@ -706,6 +712,8 @@ class Fractal_plotter:
         
         paste_crop = PIL.Image.fromarray(layer_mmap[iy: iyy, ix: ixx, :])
         im.paste(paste_crop, box=crop_slice)
+
+        del layer_mmap
 
 
 class _Null_status_wget:
@@ -1162,6 +1170,7 @@ advanced users when subclassing.
         items = self.REPORT_ITEMS
         beg = mmap[rank, items.index("chunk1d_begin")]
         end = mmap[rank, items.index("chunk1d_end")]
+        del mmap
 
         return beg, end
 
@@ -1415,11 +1424,14 @@ advanced users when subclassing.
         if self.res_available(calc_name):
             # There *should* be mmaps available but lets double-check this
             try:
-                self.get_report_memmap(calc_name, mode="r+")
+                mmap = self.get_report_memmap(calc_name, mode="r+")
+                del mmap
                 for key in self.SAVE_ARRS:
-                    self.get_data_memmap(calc_name, key, mode="r+")
+                    mmap = self.get_data_memmap(calc_name, key, mode="r+")
+                    del mmap
                 if subset is not None:
-                    self.get_data_memmap(calc_name, "subset", mode="r+")
+                    mmap = self.get_data_memmap(calc_name, "subset", mode="r+")
+                    del mmap
                 self._calc_data[calc_name]["need_new_mmap"] = False
                 logger.info(
                     f"Found suitable raw results files set for {calc_name}\n"
@@ -1697,6 +1709,7 @@ advanced users when subclassing.
         items = self.REPORT_ITEMS
         chunk_rank = self.chunk_rank(chunk_slice)
         mmap[chunk_rank, items.index("done")] = 1
+        del mmap
 
     def reload_report(self, calc_name, chunk_slice): # public
         """ Return a report extract for the given chunk, as a dict
@@ -1714,6 +1727,7 @@ advanced users when subclassing.
             items,
             (mmap[rank, items.index(it)] for it in items)
         ))
+        del mmap
         return report
 
 
@@ -1838,7 +1852,7 @@ advanced users when subclassing.
         }
 
         for key in keys:
-            open_memmap(
+            mmap = open_memmap(
                 filename=data_path[key], 
                 mode='w+',
                 dtype=np.dtype(data_type[key]),
@@ -1846,6 +1860,7 @@ advanced users when subclassing.
                 fortran_order=False,
                 version=None
             )
+            del mmap
 #            setattr(
 #                self,
 #                self.dat_memmap_attr(key, calc_name),
@@ -1917,11 +1932,11 @@ advanced users when subclassing.
 #            return getattr(self, attr)
 #        else:
         data_path = self.data_path(calc_name)
-        val = open_memmap(
+        mmap = open_memmap(
             filename=data_path[key], mode=mode
         )
 #        setattr(self, attr, val)
-        return val
+        return mmap
 
 #    def dat_memmap_attr(self, key, calc_name):
 #        return "_@data_mmap_" + calc_name + "_" + key
@@ -1977,6 +1992,7 @@ advanced users when subclassing.
         for key in keys:
             mmap = self.get_data_memmap(calc_name, key)
             arr[key] = mmap[:, beg:end]
+            del mmap
 
         state = self._calc_data[calc_name]["state"]
         subset = state.subset
@@ -1986,6 +2002,7 @@ advanced users when subclassing.
             beg, end = self.uncompressed_beg_end(rank) # indep of calc_name
             mmap = self.get_data_memmap(calc_name, "subset")
             arr["subset"] = mmap[beg: end]
+            del mmap
         else:
             arr["subset"] = None
         
@@ -2348,9 +2365,11 @@ class _Subset_temporary_array:
             fortran_order=False,
             version=None
         )
+        del mmap
         # Storing status (/!\ not thread safe)
         self.supersampling = supersampling
-        self._mmap = mmap
+        # del mmap
+        # self._mmap = mmap
         
     def close_mmap(self, supersampling):
         try:
@@ -2366,7 +2385,9 @@ class _Subset_temporary_array:
         if ssg is not None:
             beg *= ssg ** 2
             end *= ssg ** 2
-        self._mmap[beg: end] = bool_arr
+        _mmap = open_memmap(self.path(), mode='r+')
+        _mmap[beg: end] = bool_arr
+        del _mmap
 
     def __getitem__(self, chunk_slice):
         f = self.fractal
@@ -2376,7 +2397,8 @@ class _Subset_temporary_array:
         if ssg is not None:
             beg *= ssg ** 2
             end *= ssg ** 2
-        return self._mmap[beg: end]
+        _mmap = open_memmap(self.path(), mode='r+')
+        return _mmap[beg: end]
 
 
     def save_array(self, chunk_slice, ret):
