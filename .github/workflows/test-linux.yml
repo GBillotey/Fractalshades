@@ -33,8 +33,11 @@ jobs:
         python3 -m pip install pytest
     - name: install Fractalshades
       run: |
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        # Step 1 build
+        python -m pip install -r win_build/build_requirements.txt
         python3 -m build --no-isolation
+        # Step 2 install
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         python3 -m pip install fractalshades --user --force-reinstall --no-deps --no-index --find-links dist
         # Note: an alternative install strategy would be:
         # python -m pip install git+https://github.com/${{ github.repository }}.git@${{ github.sha }}
