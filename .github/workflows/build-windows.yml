@@ -48,7 +48,6 @@ jobs:
     - name: Builds Fractalshades
       run: |
         python3 -m build --no-isolation
-        # python setup.py bdist_wheel
 
     - name: Archive production artifacts
       uses: actions/upload-artifact@v3
