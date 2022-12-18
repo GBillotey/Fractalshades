@@ -33,7 +33,8 @@ jobs:
     - name: install Fractalshades
       run: |
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        python3 setup.py bdist_wheel
+        # python3 setup.py bdist_wheel
+        python3 -m build
         python3 -m pip install fractalshades --user --force-reinstall --no-deps --no-index --find-links dist
         # Note: an alternative install strategy would be:
         # python -m pip install git+https://github.com/${{ github.repository }}.git@${{ github.sha }}
