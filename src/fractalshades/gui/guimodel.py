@@ -83,7 +83,8 @@ from PyQt6.QtWidgets import (
     QSpinBox,
     QStyledItemDelegate,
     QTableWidget,
-    QTableWidgetItem
+    QTableWidgetItem,
+    QAbstractScrollArea
 )
 
 
@@ -216,14 +217,20 @@ QCheckBox::indicator:unchecked {
 }
 """
 
+# https://stackoverflow.com/questions/28255641/how-to-style-qtableview-css
 TABLE_WIDGET_CSS = """
 QTableView {
-selection-background-color: #646464;
+    selection-background-color: #25272c;
+}
+QTableView::item 
+{   
+    background: #25272c;        
 }
 QTableView::item::selected {
-  border: 2px solid red;
-  border-radius: 2px;
+    border: 2px solid red;
+    border-radius: 2px;
 }
+QHeaderView::section { background-color: #646464 }
 """
 
 STATUS_BAR_CSS = """
@@ -483,14 +490,8 @@ class Action_func_widget(QFrame):
         
         ce.set_text(str_assign)
         ce.setWindowTitle("Parameters")
-        ce.show() # exec()
+        ce.show()
 
-#    def show_func_source(self):
-#        sm = self._submodel
-#        ce = Fractal_code_editor()
-#        ce.set_text(sm.getsource())
-#        ce.setWindowTitle("Source code")
-#        ce.exec()
 
     def show_script(self):
         """ Display the script in GUI """
@@ -1775,10 +1776,10 @@ class Base_array_editor(QWidget):
         n_cols = self.n_cols
         self._table.setColumnCount(n_cols)
         self.populate_table()
-
         self._table.setStyleSheet(TABLE_WIDGET_CSS)
 
-        # Setup the delegates
+
+        # Set up the delegates
         for icol in range(n_cols):
             self._table.setItemDelegateForColumn(
                 icol,
@@ -1790,11 +1791,11 @@ class Base_array_editor(QWidget):
 
         h_header = self._table.horizontalHeader()
         h_header.setSectionResizeMode(
-                QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+            QtWidgets.QHeaderView.ResizeMode.ResizeToContents
         )
-        h_header.setSectionResizeMode(
-            self.n_cols - 1, QtWidgets.QHeaderView.ResizeMode.Stretch # was: 3
-        )
+        h_header.setStretchLastSection(False)
+        h_header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft)
+
         self._table.verticalHeader().setSectionResizeMode(
             QtWidgets.QHeaderView.ResizeMode.ResizeToContents
         )
@@ -1804,7 +1805,11 @@ class Base_array_editor(QWidget):
 
         table_layout = QHBoxLayout()
         table_box.setLayout(table_layout)
-        table_layout.addWidget(self._table, stretch=1)
+        table_layout.addWidget(self._table, stretch=0)
+
+
+
+
         return table_box
 
     def populate_table(self):
@@ -2684,7 +2689,7 @@ class Image_widget(QWidget, Zoomable_Drawer_mixin):
         res_display = Fractal_code_editor(self)
         res_display.set_text(res)
         res_display.setWindowTitle(f"{m_name} results")
-        res_display.show() #exec()
+        res_display.show()
 
 
     def pos_tracker(self, kind, val):
@@ -3573,7 +3578,7 @@ class Fractal_MainWindow(QMainWindow):
         ce = Fractal_code_editor()
         ce.set_text(report)
         ce.setWindowTitle(f"Layers info [./{txt_report_file}]")
-        ce.exec()
+        ce.show()
 
 
     def save_cmap(self):

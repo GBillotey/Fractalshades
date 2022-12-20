@@ -315,7 +315,6 @@ class Fractal_plotter:
                 )
 
         # Clean-up
-#        self.close_images()
         for pbatch in self.postproc_batches:
             if self.postproc_options["final_render"]:
                 if (hasattr(f, "_subset_hook")
@@ -466,7 +465,6 @@ class Fractal_plotter:
             arr = self._raw_arr[chunk_slice][post_index, :]
         except KeyError:
             return None
-            # raise ValueError("Data requested for an unexpected chunk")
 
         (ix, ixx, iy, iyy) = chunk_slice
         nx, ny = ixx - ix, iyy - iy
@@ -1656,10 +1654,7 @@ advanced users when subclassing.
         mmap[:, items.index("chunk1d_begin")] = full_cumsum[:-1]
         mmap[:, items.index("chunk1d_end")] = full_cumsum[1:]
 
-#        # Store as attribute
-#        attr = self.report_memmap_attr(calc_name)
         del mmap
-#        setattr(self, attr, mmap)
 
 
     def get_report_memmap(self, calc_name, mode='r+'):
@@ -1681,23 +1676,11 @@ advanced users when subclassing.
         # memory, or read in any data from the disk, until you've actually
         # access the data. And then it only reads small chunks in, not the
         # whole file.
-#        attr = self.report_memmap_attr(calc_name)
-#        if hasattr(self, attr):
-#            return getattr(self, attr) #self._temporary_mmap
-#        else:
         val = open_memmap(
             filename=self.report_path(calc_name), mode=mode
         )
-        # setattr(self, attr, val)
         return val
 
-#    def close_report_mmap(self, calc_name):
-#        """ Closes the report memmap - needed under WIN """
-#        pass
-#        attr = self.report_memmap_attr(calc_name)
-#        if hasattr(self, attr):
-#            delattr(self, attr)
-        
 
     def report_memmap_attr(self, calc_name):
         return "__report_mmap_" + "_" + calc_name
@@ -1861,18 +1844,7 @@ advanced users when subclassing.
                 version=None
             )
             del mmap
-#            setattr(
-#                self,
-#                self.dat_memmap_attr(key, calc_name),
-#                open_memmap(
-#                    filename=data_path[key], 
-#                    mode='',
-#                    dtype=np.dtype(data_type[key]),
-#                    shape=data_dim[key],
-#                    fortran_order=False,
-#                    version=None
-#                )
-#            )
+
         # Store the subset (if there is one) at this stage : it is already
         # known
         # /!\ the size of the subset is always the same, irrespective of
@@ -1889,57 +1861,20 @@ advanced users when subclassing.
                 fortran_order=False,
                 version=None
             )
-#            setattr(
-#                self,
-#                self.dat_memmap_attr("subset", calc_name),
-#                mmap
-#            )
             for rank, chunk_slice in enumerate(self.chunk_slices()):
                 beg, end = self.uncompressed_beg_end(rank) # indep of calc_name
                 mmap[beg:end] = subset[chunk_slice]
 
             del mmap
 
-#    def open_data_mmaps(self, calc_name):
-#        """ Reopens existing files"""
-#        keys = self.SAVE_ARRS
-#        data_path = self.data_path(calc_name)
-#        if (self._calc_data[calc_name]["state"]).subset is not None:
-#            keys = keys +  ["subset"]
-#        for key in keys:
-#            setattr(
-#                self,
-#                self.dat_memmap_attr(key, calc_name),
-#                open_memmap(filename=data_path[key], mode='r+')
-#            )
-
-#    def close_data_mmaps(self, calc_name):
-#        """ Close existing files"""
-#        keys = self.SAVE_ARRS
-#        if (self._calc_data[calc_name]["state"]).subset is not None:
-#            keys = keys +  ["subset"]
-#        for key in keys:
-#            delattr(
-#                self,
-#                self.dat_memmap_attr(key, calc_name)
-#            )
-
 
     def get_data_memmap(self, calc_name, key, mode='r+'):
         # See "Development Note - Memory mapping "
-#        attr = self.dat_memmap_attr(key, calc_name)
-#        if hasattr(self, attr):
-#            return getattr(self, attr)
-#        else:
         data_path = self.data_path(calc_name)
         mmap = open_memmap(
             filename=data_path[key], mode=mode
         )
-#        setattr(self, attr, val)
         return mmap
-
-#    def dat_memmap_attr(self, key, calc_name):
-#        return "_@data_mmap_" + calc_name + "_" + key
 
 
     def update_data_mmaps(
@@ -2233,15 +2168,9 @@ advanced users when subclassing.
         if self._calc_data[calc_name]["need_new_mmap"]:
             self.init_report_mmap(calc_name)
             self.init_data_mmaps(calc_name)
-#        else:
-#            self.open_data_mmaps(calc_name)
 
         # Launching the calculation + mmap storing multithreading loop
         self.compute_rawdata_dev(calc_name, chunk_slice=None)
-        
-        # Clean-up phase - needed under Windows
-#        self.close_report_mmap(calc_name)
-#        self.close_data_mmaps(calc_name)
 
 
     def postproc(self, postproc_batch, chunk_slice, postproc_options):

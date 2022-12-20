@@ -1,6 +1,10 @@
 Changelog
 *********
 
+Rev 1.0.2
+~~~~~~~~~
+Bugfix revision, fixing OS different behavior with memory mappings #2.
+
 Rev 1.0.1
 ~~~~~~~~~
 Bugfix revision, fixing OS Windows different behavior with memory mappings.
