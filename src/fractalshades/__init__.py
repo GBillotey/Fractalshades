@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 __author__ = "G. Billotey"
 __license__ = "MIT"
-__version__ = "1.0.1"
+__version__ = "1.0.3"
 
 import numpy as np
 import warnings

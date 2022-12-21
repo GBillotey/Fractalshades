@@ -125,7 +125,6 @@ def script(source, kwargs, funcname):
         + "\n"
     )
 
-    print("debug, script:\n", script)
     return script
 
 def script_repr(obj, indent=0):
@@ -164,7 +163,6 @@ def signature(callable_):
     """ Return the signature for this callable
     """
     if hasattr(callable_, "signature"):
-        print(list(callable_.signature().parameters.keys()))
         return callable_.signature()
     else:
         return inspect.signature(callable_)
