@@ -3575,7 +3575,7 @@ class Fractal_MainWindow(QMainWindow):
         with open(txt_report_path, "r") as f:
             report = f.read()
 
-        ce = Fractal_code_editor()
+        ce = Fractal_code_editor(self)
         ce.set_text(report)
         ce.setWindowTitle(f"Layers info [./{txt_report_file}]")
         ce.show()

@@ -267,8 +267,15 @@ class Fractal_plotter:
         """
         logger.info(self.plotter_info_str())
         logger.info(self.zoom_info_str())
-        
+
+        # Open the image memory mappings ; open PIL images
         self.open_images()
+        if self.final_render:
+            for i, layer in enumerate(self.layers):
+                if layer.output:
+                    self.create_img_mmap(layer)
+            self.fractal.delete_fingerprint()
+
         self._raw_arr = dict()
         self._current_tile = {
                 "value": 0,
@@ -582,16 +589,21 @@ class Fractal_plotter:
         return os.path.join(self.plot_dir,"data", "final_render" + ".arr")
 
 
-    def open_mmap(self, layer):
-        """ mmap filled in // of the actual image - to allow restart
-        Only for final render 
+    def img_mmap(self, layer):
+        """ The file path for the img memory mapping"""
+        file_name = self.image_name(layer)
+        file_path = os.path.join(self.plot_dir, "data", file_name + "._img")
+        return file_path
+
+    def create_img_mmap(self, layer):
+        """ Just open - or reopen - the image memory mapping
         """
         mode = layer.mode
         dtype = fs.colors.layers.Virtual_layer.DTYPE_FROM_MODE[mode]
         channel = fs.colors.layers.Virtual_layer.N_CHANNEL_FROM_MODE[mode]
         nx, ny = self.size
         file_name = self.image_name(layer)
-        file_path = os.path.join(self.plot_dir, "data", file_name + "._img")
+        file_path = self.img_mmap(layer)
 
         # Does the mmap already exists, and does it seems to suit our need ?
         try:
@@ -618,7 +630,7 @@ class Fractal_plotter:
                 shape=(ny, nx, channel),
                 fortran_order=False,
                 version=None
-            )
+            )                
             # Here as we didnt find information for this layer, sadly the whole
             # memory mapping is invalidated
             logger.debug(f"No valid data found for layer {file_name}")
@@ -629,6 +641,15 @@ class Fractal_plotter:
             _mmap_status[:] = 0
             del _mmap_status
 
+        del mmap
+        
+
+    def open_img_mmap(self, layer):
+        """ mmap filled in // of the actual image - to allow restart
+        Only for final render 
+        """
+        file_path = self.img_mmap(layer)
+        mmap = open_memmap(filename=file_path, mode='r+')
         return mmap
 
 
@@ -637,7 +658,7 @@ class Fractal_plotter:
         for i, layer in enumerate(self.layers):
             if not(layer.output):
                 continue
-            file_name = self.image_name(layer) #"{}_{}".format(type(layer).__name__, layer.postname)
+            file_name = self.image_name(layer)
             base_img_path = os.path.join(self.plot_dir, file_name + ".png")
             self.save_tagged(self._im[i], base_img_path, self.fractal.tag)
 
@@ -687,7 +708,7 @@ class Fractal_plotter:
         if self.final_render:
             # NOW let's also try to save this beast
             paste_crop_arr = np.asarray(paste_crop)
-            layer_mmap = self.open_mmap(layer)
+            layer_mmap = self.open_img_mmap(layer)
 
             if layer_mmap.shape[2] == 1:
                 # For a 1-channel image, PIL will remove the last dim...
@@ -706,7 +727,7 @@ class Fractal_plotter:
         (ix, ixx, iy, iyy) = chunk_slice
         ny = self.fractal.ny
         crop_slice = (ix, ny-iyy, ixx, ny-iy)
-        layer_mmap = self.open_mmap(layer)
+        layer_mmap = self.open_img_mmap(layer)
         
         paste_crop = PIL.Image.fromarray(layer_mmap[iy: iyy, ix: ixx, :])
         im.paste(paste_crop, box=crop_slice)
@@ -1039,7 +1060,6 @@ advanced users when subclassing.
 
         data_dir = os.path.join(self.directory, "data")
         if not os.path.isdir(data_dir):
-
             logger.warning(textwrap.dedent(f"""\
                 Clean-up cancelled, directory not found:
                   {data_dir}"""
@@ -1062,6 +1082,21 @@ advanced users when subclassing.
         for temp_attr in temp_attrs:
             if hasattr(self, temp_attr):
                 delattr(self, temp_attr)
+    
+    def delete_fingerprint(self):
+        """ Deletes the figerprint files """
+        patterns = (
+             "*.fingerprint",
+        )
+        data_dir = os.path.join(self.directory, "data")
+        if not os.path.isdir(data_dir):
+            return
+        for pattern in patterns:
+            with os.scandir(data_dir) as it:
+                for entry in it:
+                    if (fnmatch.fnmatch(entry.name, pattern)):
+                        os.unlink(entry.path)
+                        logger.debug(f"File deleted: {entry.name}")
 
 
     def clean_postproc_attr(self):
@@ -2327,7 +2362,9 @@ class _Subset_temporary_array:
             beg *= ssg ** 2
             end *= ssg ** 2
         _mmap = open_memmap(self.path(), mode='r+')
-        return _mmap[beg: end]
+        ret = _mmap[beg: end]
+        del _mmap
+        return ret
 
 
     def save_array(self, chunk_slice, ret):
