@@ -83,8 +83,7 @@ from PyQt6.QtWidgets import (
     QSpinBox,
     QStyledItemDelegate,
     QTableWidget,
-    QTableWidgetItem,
-    QAbstractScrollArea
+    QTableWidgetItem
 )
 
 
@@ -231,6 +230,7 @@ QTableView::item::selected {
     border-radius: 2px;
 }
 QHeaderView::section { background-color: #646464 }
+QTableCornerButton::section { background-color: #646464 }
 """
 
 STATUS_BAR_CSS = """
