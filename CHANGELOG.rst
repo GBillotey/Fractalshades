@@ -1,7 +1,7 @@
 Changelog
 *********
 
-Rev 1.0.2
+Rev 1.0.3
 ~~~~~~~~~
 Yet another bugfix.
 
