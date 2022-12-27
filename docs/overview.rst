@@ -38,7 +38,7 @@ orders of magnitude.
 Implementation-wise, the core-loops run in parallel on the CPU
 and they use just-in-time compiling through numba.
 Arbitrary precision calculations rely on a dedicated MPFR C-extension compiled
-with Cython (Windows & Linux OS).
+with Cython (Windows, Mac & Linux OS).
 
 For interactive exploration, a GUI is implemented under PyQt6.
 

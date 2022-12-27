@@ -40,12 +40,30 @@ This package relies on the following dependencies:
 .. _PyPI: https://pypi.org/
 .. _pygments: https://pygments.org/
 
-They should install automatically with pip_. A special case is gmpy2 as it
+They should install automatically with pip_. 
+
+A special case is gmpy2_ as it
 needs the most recent versions of GMP, MPFR and MPC multi-precision
-arithmetic libraries. Under Windows 64 bits, the recent wheels of gmpy2
-(rev >= 2.1.2) already ship the latest GMP / MPFR / MPC dll.
-Under Unix / Linux, if your distribution does not include them you will have
-to install them manually:
+arithmetic libraries. Detailed instructions are given below, depending
+on the OS used.
+
+Installing GMP / MPFR / MPC: Windows users
+""""""""""""""""""""""""""""""""""""""""""
+
+Under Windows 64 bits, everything should work out of the box:
+
+ - recent wheels of ``gmpy2`` (rev >= 2.1.2) already ship the latest
+   GMP / MPFR / MPC dlls.
+ - ``fractalshades`` pre-built binaries wheels used by the pip tool (and
+   available for the main python versions) contains a Cython extension
+   built using MSVC and linked to these GMP/MPFR/MPC dlls.
+
+
+Installing GMP / MPFR / MPC: Unix / Linux users
+"""""""""""""""""""""""""""""""""""""""""""""""
+
+Under Unix / Linux, if your distribution does not include recent versions
+of GMP, MPFR and MPC you will have to install them manually:
 
 .. code-block:: console
 
@@ -55,20 +73,17 @@ to install them manually:
     sudo apt-get install libmpc-dev
 
 
-.. [#f1] These instructions describe installation to your Python
-         directory. You could also consider the installation of
-         `Fractalshades` in a virtual environment (a self-contained directory
-         tree that contains a Python installation for a particular version of
-         Python), through venv_.
+Installing GMP / MPFR / MPC: Mac users
+""""""""""""""""""""""""""""""""""""""
 
-.. _venv: https://docs.python.org/3/tutorial/venv.html
-.. _pip: https://pypi.org/project/pip/
+These instructions have been tested under Mac M1.
 
-Installing for M1 Macs
-
-There might be a missing case of gmp header files when installing in M1 Macs. This can be resolved by installing few packages and adding flags while installing them.
-
-Install required packages using homebrew.
+Once again, you will need recent versions
+of GMP, MPFR and MPC otherwise you will get an error 
+complaining about missing gmp header files.
+This can be resolved by installing a few packages and adding
+the appropriate flags while installing them.
+Install using homebrew:
 
 .. code-block:: console
 
@@ -83,7 +98,7 @@ List all packages and check if they are installed correctly.
 
     pkg-config —list-all
 
-For each package installed, get the location
+For each package installed, get the location:
 
 .. code-block:: console
 
@@ -96,10 +111,25 @@ Do this for all packages and install using pip
 
   env "CFLAGS= <ADD ALL FLAGS> “ pip install fractalshades
 
-examples
+Examples:
+
 .. code-block:: console
 
-    env "CFLAGS=-I/opt/homebrew/Cellar/gmp/6.2.1_1/include -L/opt/homebrew/Cellar/gmp/6.2.1_1/lib -lgmp -I/opt/homebrew/Cellar/mpfr/4.1.0-p13/include -L/opt/homebrew/Cellar/mpfr/4.1.0-p13/lib -lmpfr -lgmp -I/opt/homebrew/Cellar/libmpc/1.3.1/include" pip install fractalshades
+    env "CFLAGS=-I/opt/homebrew/Cellar/gmp/6.2.1_1/include -L/opt/homebrew/Cellar/gmp/6.2.1_1/lib
+    -lgmp -I/opt/homebrew/Cellar/mpfr/4.1.0-p13/include -L/opt/homebrew/Cellar/mpfr/4.1.0-p13/lib
+    -lmpfr -lgmp -I/opt/homebrew/Cellar/libmpc/1.3.1/include" pip install fractalshades
+
+
+.. [#f1] These instructions describe installation to your Python
+         directory. You could also consider the installation of
+         `Fractalshades` in a virtual environment (a self-contained directory
+         tree that contains a Python installation for a particular version of
+         Python), through venv_.
+
+.. _venv: https://docs.python.org/3/tutorial/venv.html
+.. _pip: https://pypi.org/project/pip/
+
+
 
 A 5-minutes guide to fractalshades
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
