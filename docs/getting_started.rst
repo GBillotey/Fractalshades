@@ -64,7 +64,42 @@ to install them manually:
 .. _venv: https://docs.python.org/3/tutorial/venv.html
 .. _pip: https://pypi.org/project/pip/
 
+Installing for M1 Macs
 
+There might be a missing case of gmp header files when installing in M1 Macs. This can be resolved by installing few packages and adding flags while installing them.
+
+Install required packages using homebrew.
+
+.. code-block:: console
+
+    brew install gmp
+    brew install mpfr
+    brew install libmpc
+    brew install pkg-config
+
+List all packages and check if they are installed correctly.
+
+.. code-block:: console
+
+    pkg-config —list-all
+
+For each package installed, get the location
+
+.. code-block:: console
+
+    pkg-config --cflags gmp     
+    pkg-config —libs gmp     
+
+Do this for all packages and install using pip
+
+.. code-block:: console
+
+  env "CFLAGS= <ADD ALL FLAGS> “ pip install fractalshades
+
+examples
+.. code-block:: console
+
+    env "CFLAGS=-I/opt/homebrew/Cellar/gmp/6.2.1_1/include -L/opt/homebrew/Cellar/gmp/6.2.1_1/lib -lgmp -I/opt/homebrew/Cellar/mpfr/4.1.0-p13/include -L/opt/homebrew/Cellar/mpfr/4.1.0-p13/lib -lmpfr -lgmp -I/opt/homebrew/Cellar/libmpc/1.3.1/include" pip install fractalshades
 
 A 5-minutes guide to fractalshades
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
