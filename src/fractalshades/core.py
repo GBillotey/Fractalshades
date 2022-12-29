@@ -291,7 +291,7 @@ class Fractal_plotter:
         f = self.fractal
         for pbatch in self.postproc_batches:
             calc_name = pbatch.calc_name
-            f.clean_postproc_attr()
+            f.clean_postproc_attr(when="pre")
             if self.postproc_options["final_render"]:
                 if (hasattr(f, "_subset_hook")
                         and calc_name in f._subset_hook.keys()):
@@ -327,6 +327,7 @@ class Fractal_plotter:
                 if (hasattr(f, "_subset_hook")
                         and calc_name in f._subset_hook.keys()):
                     f.close_subset_mmap(calc_name, self.supersampling)
+        f.clean_postproc_attr(when="post")
 
 
     @property
@@ -1099,14 +1100,16 @@ advanced users when subclassing.
                         logger.debug(f"File deleted: {entry.name}")
 
 
-    def clean_postproc_attr(self):
+    def clean_postproc_attr(self, when="pre"):
         # Deletes the postproc-related temporary attributes, thus forcing
         # a recompute of invalidated data
-        postproc_attrs = ("_uncompressed_beg_end",)
+        if when == "pre":
+            postproc_attrs = ("_uncompressed_beg_end",)
+        elif when == "post":
+            postproc_attrs = ("_subset_hook",)
         for temp_attr in postproc_attrs:
             if hasattr(self, temp_attr):
                 delattr(self, temp_attr)
-
 
     # The various method associated with chunk mgmt ===========================
     def chunk_slices(self): #, chunk_size=None):
