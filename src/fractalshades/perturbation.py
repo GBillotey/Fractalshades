@@ -17,7 +17,7 @@ import fractalshades.numpy_utils.numba_xr as fsxn
 
 logger = logging.getLogger(__name__)
 
-PROJECTION_ENUM = fs.core.PROJECTION_ENUM
+#PROJECTION_ENUM = fs.core.PROJECTION_ENUM
 
 class PerturbationFractal(fs.Fractal):
 
@@ -50,7 +50,8 @@ directory : str
              nx: int,
              xy_ratio: float,
              theta_deg: float,
-             projection: typing.Literal["cartesian"]="cartesian",
+             projection: fs.projection.Projection=fs.projection.Cartesian(),
+             # projection: typing.Literal["cartesian"]="cartesian",
              has_skew: bool=False,
              skew_00: float=1.,
              skew_01: float=0.,
@@ -77,7 +78,7 @@ directory : str
             ratio of dx / dy and nx / ny
         theta_deg : float
             Pre-rotation of the calculation domain, in degree
-        projection : "cartesian"
+        projection : `fs.projection.Projection`
             Kind of projection used (only "cartesian" supported)
         has_skew : bool
             If True, unskew the view base on skew coefficients skew_ij
@@ -97,6 +98,60 @@ directory : str
             self._skew = np.array(
                 ((skew_00, skew_01), (skew_10, skew_11)), dtype=np.float64
             )
+
+        self.lin_proj_impl, self.lin_proj_impl_std = self.get_lin_proj_impl()
+        projection.adjust_to_zoom(self)
+        self.proj_impl  = projection.get_impl()
+
+
+    def get_lin_proj_impl(self):
+        """ Returns a numba-jitted function which apply the linear part of the
+        transformation (rotation, skew, scale)
+        
+        Typical calling chain:
+        lin_proj_impl(proj_impl(pix))
+        """
+        dx = self.dx
+        theta = self.theta_deg / 180. * np.pi
+        skew = self._skew
+        # Defines the linear matrix
+        c = np.cos(theta)
+        s = np.sin(theta)
+        lin_mat = np.array(((c, -s), (s, c)), dtype=np.float64)
+        if skew is not None:
+            lin_mat = np.matmul(skew, lin_mat)    
+
+        # Several options to take into account according to:
+        # - dx is Xrange ?
+        # - the fractal is holomorphic -> handle downstream in
+        #   ref_path_c_from_pix_BS implementation
+        dx_std = float(dx)
+        dx_xr = fsx.mpf_to_Xrange(dx, dtype=np.float64).ravel()
+
+        @numba.njit(numba.complex128(numba.complex128))
+        def numba_impl_std(z):
+            x = z.real
+            y = z.imag
+            x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
+            y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
+            return  dx_std * complex(x1, y1)
+
+        if self.xr_detect_activated:
+            # if self.holomorphic:
+            @numba.njit
+            def numba_impl(z):
+                x = z.real
+                y = z.imag
+                x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
+                y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
+                return  dx_xr[0] * complex(x1, y1)
+
+        else:
+#            if self.holomorphic:
+            numba_impl = numba_impl_std
+
+        return numba_impl, numba_impl_std
+
 
     def new_status(self, wget):
         """ Return a dictionnary that can hold the current progress status """
@@ -153,18 +208,24 @@ directory : str
         """ Return the c complex value from c_pix - standard precision """
         n_pts, = c_pix.shape  # Z of shape [n_Z, n_pts]
         # Explicit casting to complex / float
-        dx = float(self.dx)
+#        dx = float(self.dx)
         center = complex(self.x + 1j * self.y)
-        ref_point = complex(self.FP_params["ref_point"])
-        drift = complex((self.x + 1j * self.y) - ref_point)
+#        ref_point = complex(self.FP_params["ref_point"])
+#        drift = complex((self.x + 1j * self.y) - ref_point)
 
-        xy_ratio = self.xy_ratio
-        theta = self.theta_deg / 180. * np.pi # used for expmap
-        projection = getattr(PROJECTION_ENUM, self.projection).value
+#        xy_ratio = self.xy_ratio
+#        theta = self.theta_deg / 180. * np.pi # used for expmap
+#        projection = getattr(PROJECTION_ENUM, self.projection).value
+
+
         cpt = np.empty((n_pts,), dtype=c_pix.dtype)
+
         fill1d_std_C_from_pix(
-            c_pix, dx, center, drift, xy_ratio, theta, projection, cpt
+#            c_pix, dx, center, drift, xy_ratio, theta, projection, cpt
+            c_pix, self.proj_impl, self.lin_proj_impl_std, center, cpt
         )
+        
+
         return cpt
 
 
@@ -498,7 +559,7 @@ directory : str
                 initialize, iterate,
                 Zn_path, dZndc_path, dZndz_path,
                 has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
-                drift_xr, dx_xr,
+                drift_xr, dx_xr, self.proj_impl, self.lin_proj_impl,
                 kc, M_bla, r_bla, bla_len, stages_bla, # suppressed  P, n_iter
                 self._interrupted
             )
@@ -508,7 +569,7 @@ directory : str
                 initialize, iterate,
                 Zn_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
                 has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
-                driftx_xr, drifty_xr, dx_xr,
+                driftx_xr, drifty_xr, dx_xr, self.proj_impl, self.lin_proj_impl,
                 kc, M_bla, r_bla, bla_len, stages_bla, # suppressed  P, n_iter
                 self._interrupted
             )
@@ -927,7 +988,7 @@ def numba_cycles_perturb(
     initialize, iterate,
     Zn_path, dZndc_path, dZndz_path,
     has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
-    drift_xr, dx_xr,
+    drift_xr, dx_xr, proj_impl, lin_proj_impl,
     kc, M_bla, r_bla, bla_len, stages_bla, # suppressed  P, n_iter_init
     _interrupted
 ):
@@ -957,7 +1018,10 @@ def numba_cycles_perturb(
 
         Zpt = Z[:, ipt]
         Upt = U[:, ipt]
-        cpt, c_xr = ref_path_c_from_pix(c_pix[ipt], dx_xr, drift_xr)
+        cpt, c_xr = ref_path_c_from_pix(
+                # c_pix[ipt], dx_xr, drift_xr
+                c_pix[ipt], proj_impl, lin_proj_impl, drift_xr
+        )
         stop_pt = stop_reason[:, ipt]
 
         initialize(c_xr, Zpt, Z_xr, Z_xr_trigger, Upt, kc, dx_xr)
@@ -1329,7 +1393,7 @@ def numba_cycles_perturb_BS(
     initialize, iterate,
     Zn_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
     has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
-    driftx_xr, drifty_xr, dx_xr,
+    driftx_xr, drifty_xr, dx_xr, proj_impl, lin_proj_impl,
     kc, M_bla, r_bla, bla_len, stages_bla, # suppressed P, n_iter_init
     _interrupted
 ):
@@ -1347,7 +1411,8 @@ def numba_cycles_perturb_BS(
         Zpt = Z[:, ipt]
         Upt = U[:, ipt]
         apt, bpt, a_xr, b_xr = ref_path_c_from_pix_BS(
-            c_pix[ipt], dx_xr, driftx_xr, drifty_xr
+            # c_pix[ipt], dx_xr, driftx_xr, drifty_xr
+            c_pix[ipt], proj_impl, lin_proj_impl, driftx_xr, drifty_xr
         )
         stop_pt = stop_reason[:, ipt]
 
@@ -2104,9 +2169,11 @@ def ensure_xr_BS(val_std, valx_xr, valy_xr, is_xr):
         )
 
 @numba.njit
-def ref_path_c_from_pix(pix, dx, drift):
+def ref_path_c_from_pix(pix, proj_impl, lin_proj_impl, drift):
+        #pix, dx, drift):
     """
     Returns the true c (coords from ref point) from the pixel coords
+    ie c = C - refp
     
     Parameters
     ----------
@@ -2117,16 +2184,18 @@ def ref_path_c_from_pix(pix, dx, drift):
     -------
     c, c_xr : c value as complex and as Xrange
     """
-    c_xr = (pix * dx[0]) + drift[0]
+    # c_xr = (pix * dx[0]) + drift[0]
+    c_xr = lin_proj_impl(proj_impl(pix)) + drift[0]
     return fsxn.to_standard(c_xr), c_xr
 
 
-proj_cartesian = PROJECTION_ENUM.cartesian.value
-proj_spherical = PROJECTION_ENUM.spherical.value
-proj_expmap = PROJECTION_ENUM.expmap.value
+#proj_cartesian = PROJECTION_ENUM.cartesian.value
+#proj_spherical = PROJECTION_ENUM.spherical.value
+#proj_expmap = PROJECTION_ENUM.expmap.value
 
 @numba.njit
-def std_C_from_pix(pix, dx, center, drift, xy_ratio, theta, projection):
+def std_C_from_pix(pix, proj_impl, lin_proj_impl, center):
+#def std_C_from_pix(pix, dx, center, drift, xy_ratio, theta, projection):
     """
     Returns the true C (C = cref + dc) from the pixel coords
 
@@ -2140,25 +2209,29 @@ def std_C_from_pix(pix, dx, center, drift, xy_ratio, theta, projection):
     C : Full C value, as complex
     """
     # Case cartesian
-    if projection == proj_cartesian:
-        offset = (pix * dx) # resp. to ref_pt
+#    if projection == proj_cartesian:
+#        offset = (pix * dx) # resp. to ref_pt
 
 #    offset -= drift    # center - ref_pt DO not take into account here...
-    return offset + center
+    return center + lin_proj_impl(proj_impl(pix)) # offset + center
 
 @numba.njit
-def fill1d_std_C_from_pix(c_pix, dx, center, drift, xy_ratio, theta, projection,
-                               c_out):
+def fill1d_std_C_from_pix(
+        c_pix, proj_impl, lin_proj_impl, center, c_out):
+#def fill1d_std_C_from_pix(c_pix, dx, center, drift, xy_ratio, theta, projection,
+#                               c_out):
     """ same as std_C_from_pix but fills in-place a 1d vec """
     nx = c_pix.shape[0]
     for i in range(nx):
         c_out[i] = std_C_from_pix(
-            c_pix[i], dx, center, drift, xy_ratio, theta, projection
+            c_pix[i], proj_impl, lin_proj_impl, center
         )
 
 
 @numba.njit
-def ref_path_c_from_pix_BS(pix, dx, driftx_xr, drifty_xr):
+def ref_path_c_from_pix_BS(
+        pix, proj_impl, lin_proj_impl, driftx_xr, drifty_xr):
+# (pix, dx, driftx_xr, drifty_xr):
     """
     Returns the true a + i b (coords from ref point) from the pixel coords
 
@@ -2173,8 +2246,11 @@ def ref_path_c_from_pix_BS(pix, dx, driftx_xr, drifty_xr):
     -------
     a, b, a_xr, b_xr : c value as complex and as Xrange
     """
-    a_xr = (pix.real * dx[0]) + driftx_xr[0]
-    b_xr = (pix.imag * dx[0]) + drifty_xr[0]
+    c_xr = lin_proj_impl(proj_impl(pix))
+    a_xr = np.real(c_xr) + driftx_xr[0]
+    b_xr = np.imag(c_xr) + drifty_xr[0]
+#    a_xr = (pix.real * dx[0]) + driftx_xr[0]
+#    b_xr = (pix.imag * dx[0]) + drifty_xr[0]
     return fsxn.to_standard(a_xr), fsxn.to_standard(b_xr), a_xr, b_xr
 
 @numba.njit

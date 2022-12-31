@@ -18,6 +18,7 @@ import numpy as np
 
 import fractalshades as fs
 import fractalshades.models as fsm
+import fractalshades.projection
 
 import fractalshades.colors as fscolors
 from fractalshades.postproc import (
@@ -39,6 +40,8 @@ from fractalshades.colors.layers import (
 def plot(plot_dir):
     fs.settings.enable_multithreading = True
     fs.settings.inspect_calc = True
+    fs.settings.log_directory = os.path.join(plot_dir, "log")
+    fs.set_log_handlers(verbosity="debug @ console + log")
 
     # A simple showcase using perturbation technique
     calc_name = 'test'
@@ -87,7 +90,7 @@ def plot(plot_dir):
     # f.clean_up()
 
     fractal.zoom(precision=dps, x=x, y=y, dx=dx, nx=nx, xy_ratio=xy_ratio,
-                 theta_deg=theta_deg, projection="cartesian",
+                 theta_deg=theta_deg, projection=fs.projection.Cartesian(),
                  has_skew=has_skew, skew_00=skew_00, skew_01=skew_01,
                  skew_10=skew_10, skew_11=skew_11
             )

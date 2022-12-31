@@ -442,7 +442,7 @@ cdef mpc_t_to_Xrange(mpc_t z_t):
 
 cdef mpfr_t_to_Xrange(mpfr_t x_t):
     """
-    Convert a mpc_t to a fsx.Xrange_array
+    Convert a mpfr_t to a fsx.Xrange_array
     """
     cdef:
         long x_exp = 0
@@ -451,7 +451,7 @@ cdef mpfr_t_to_Xrange(mpfr_t x_t):
 
     x_mantissa = mpfr_get_d_2exp(x_exp_ptr, x_t, MPFR_RNDN)
     x_Xr = fsx.Xrange_array([x_mantissa], x_exp, DTYPE_COMPLEX)
-    return x_Xr 
+    return x_Xr
 
 
 def perturbation_mandelbrot_nucleus_size_estimate(
@@ -894,8 +894,6 @@ def perturbation_mandelbrot_ball_method_legacy(
     mpfr_clear(tmp_real2)
     
     return ret
-
-
 
 
 def perturbation_mandelbrot_find_nucleus(

@@ -697,7 +697,6 @@ Reference:
 
         return out
 
-
     @staticmethod
     def _abs(inputs, out=None):
         """ x -> np.abs(x) """

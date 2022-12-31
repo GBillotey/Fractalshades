@@ -33,6 +33,8 @@ def plot(plot_dir):
     coloring
     """
     fs.settings.enable_multithreading = True
+    fs.settings.log_directory = os.path.join(plot_dir, "log")
+    fs.set_log_handlers(verbosity="debug @ console + log")
     # Define the parameters for this calculation
     x = -1.0
     y = -0.0
@@ -45,7 +47,7 @@ def plot(plot_dir):
     # Run the calculation
     f = fsm.Mandelbrot(plot_dir)
     f.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
-           theta_deg=0., projection="cartesian")
+           theta_deg=0.)
     f.calc_std_div(
         calc_name=calc_name,
         subset=None,

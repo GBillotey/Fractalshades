@@ -597,6 +597,31 @@ def extended_power(op0, op1):
         raise TypingError("extended_power: Datatype not accepted"
                           f"{op0} {op1}")
 
+@overload(np.real)
+def extended_real(op0):
+    """ sqrt of a Record fields """
+    if op0 in xr_types:
+        def impl(op0):
+            exp = op0.exp
+            m = op0.mantissa
+            return Xrange_scalar(m.real, exp)
+        return impl
+    else:
+        raise TypingError("xr_real: Datatype not accepted ({})".format(
+            op0))
+
+@overload(np.imag)
+def extended_imag(op0):
+    """ sqrt of a Record fields """
+    if op0 in xr_types:
+        def impl(op0):
+            exp = op0.exp
+            m = op0.mantissa
+            return Xrange_scalar(m.imag, exp)
+        return impl
+    else:
+        raise TypingError("xr_real: Datatype not accepted ({})".format(
+            op0))
 
 @generated_jit(nopython=True)
 def geom_mean(xr_min, xr_max):
