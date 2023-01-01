@@ -964,7 +964,8 @@ advanced users when subclassing.
 
         self.lin_proj_impl = self.get_lin_proj_impl()
         projection.adjust_to_zoom(self)
-        self.proj_impl = projection.get_impl()
+        self.proj_impl = projection.f
+        # get_impl()
 
 
     def get_lin_proj_impl(self):
@@ -990,6 +991,7 @@ advanced users when subclassing.
             y = z.imag
             x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
             y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
+
             return  dx * complex(x1, y1)
 
         return numba_impl
@@ -2247,7 +2249,6 @@ advanced users when subclassing.
         loop"""
         # Note: at this point res_available(calc_name) IS True, however
         # mmaps might not have been created.
-        print("DEBUG _calc_data", self._calc_data, self._calc_data.keys())
         if self._calc_data[calc_name]["need_new_mmap"]:
             self.init_report_mmap(calc_name)
             self.init_data_mmaps(calc_name)
@@ -2278,10 +2279,11 @@ advanced users when subclassing.
         codes = self._calc_data[calc_name]["saved_codes"]
         complex_dic, int_dic, termination_dic = self.codes_mapping(*codes)
 
-        # Compute c from cpix
-        c_pt = self.get_std_cpt(c_pix)
+#        # Compute c from cpix
+#        c_pt = self.get_std_cpt(c_pix) This is not "cheap, so moving this to 
+#        postproc
 
-        postproc_batch.set_chunk_data(chunk_slice, subset, c_pt, Z, U,
+        postproc_batch.set_chunk_data(chunk_slice, subset, c_pix, Z, U,
             stop_reason, stop_iter, complex_dic, int_dic, termination_dic)
 
         # Output data
@@ -2385,7 +2387,7 @@ class _Subset_temporary_array:
         self.supersampling = supersampling
         # del mmap
         # self._mmap = mmap
-        
+
     def close_mmap(self, supersampling):
         try:
             del self._mmap
@@ -2692,12 +2694,14 @@ def numba_Newton(
 @numba.njit
 def apply_unskew_1d(skew, arrx, arry):
     """Unskews the view for contravariant coordinates e.g. normal vec
-    Used in postproc.py to keep good orientation for the shadings 
+    Used in postproc.py to keep the right orientation for the shadings 
     """
     n = arrx.shape[0]
     for i in range(n):
         nx = arrx[i]
         ny = arry[i]
+        # Note: this is a product by the transposed matrix
+        # *Contravariant* indexing
         arrx[i] = skew[0, 0] * nx + skew[1, 0] * ny
         arry[i] = skew[0, 1] * nx + skew[1, 1] * ny
 

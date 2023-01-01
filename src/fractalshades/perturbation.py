@@ -101,7 +101,8 @@ directory : str
 
         self.lin_proj_impl, self.lin_proj_impl_std = self.get_lin_proj_impl()
         projection.adjust_to_zoom(self)
-        self.proj_impl  = projection.get_impl()
+        self.proj_impl = projection.f
+        # get_impl()
 
 
     def get_lin_proj_impl(self):
@@ -479,10 +480,14 @@ directory : str
         self.set_status("Reference", "completed")
 
         # 2) compute the orbit derivatives if needed
+        # Note: this is where the "scale" of the derivative is chosen
+        # If there is a projection-induced scale, we need to use it here.
+        dx_xr = dx_xr * self.projection.scale
+        
         dZndc_path = None
         (dXnda_path, dXndb_path, dYnda_path, dYndb_path) = (None,) * 4
         if calc_deriv_c:
-            dx_xr = fsx.mpf_to_Xrange(self.dx, dtype=self.float_type).ravel()
+            # dx_xr = fsx.mpf_to_Xrange(self.dx, dtype=self.float_type).ravel() Looks already done...
             xr_detect_activated = self.xr_detect_activated
 
             if holomorphic:
@@ -504,17 +509,15 @@ directory : str
                     dx_xr, xr_detect_activated #, self.reverse_y
                 )
                 if xr_detect_activated:
-                    dXnda_path = dXnda_xr_path        # Jitted function used in numba inner-loop 
+                    dXnda_path = dXnda_xr_path
                     dXndb_path = dXndb_xr_path
                     dYnda_path = dYnda_xr_path
                     dYndb_path = dYndb_xr_path
 
         # 2') compute the orbit derivatives wrt z if needed
-        # (interior detection)
+        # (interior detection - only for holomorphic case)
         dZndz_path = None
         if calc_dZndz:
-            # print("new: interior detection at deep zoom")
-            dx_xr = fsx.mpf_to_Xrange(self.dx, dtype=self.float_type).ravel()
             xr_detect_activated = self.xr_detect_activated
 
             dZndz_path, dZndz_xr_path = numba_dZndz_path(
@@ -545,12 +548,7 @@ directory : str
             eps = self.BLA_eps
             M_bla, r_bla, bla_len, stages_bla = self.get_BLA_tree(
                     Zn_path, eps)
-            self.set_status("Bilin. approx", "completed")
-
-
-#        # Jitted function used in numba inner-loop
-#        initialize = self.initialize()
-#        iterate = self.iterate()   
+            self.set_status("Bilin. approx", "completed")   
 
 
         if holomorphic:
