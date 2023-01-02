@@ -965,7 +965,7 @@ advanced users when subclassing.
                 subclasses instead. Defaulting to
                 `fractalshades.projection.Cartesian()`"""
             ))
-            projection = fractalshades.projection.Cartesian()
+            projection = fs.projection.Cartesian()
 
         # Stores the skew matrix
         self._skew = None

@@ -92,6 +92,17 @@ directory : str
         self.x = mpmath.mpf(x)
         self.y = mpmath.mpf(y)
         self.dx = mpmath.mpf(dx)
+        
+        # Backward compatibility: also accept projection = "cartesian"
+        if isinstance(projection, str):
+            logger.warning(textwrap.dedent(
+                """\
+                Use of str for projection is deprecated, and might be
+                removed. Please use `fractalshades.projection.Projection`
+                subclasses instead. Defaulting to
+                `fractalshades.projection.Cartesian()`"""
+            ))
+            projection = fs.projection.Cartesian()
 
         # Stores the skew matrix
         self._skew = None
