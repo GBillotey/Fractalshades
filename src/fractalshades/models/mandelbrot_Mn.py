@@ -187,7 +187,7 @@ directory : str
             eps_newton_cv: float = 1.e-12
     ):
         """
-    Newton iterations for Mandelbrot standard set interior (power n).
+    Newton iterations for Mandelbrot standard set interior (power N).
 
     Parameters
     ==========
@@ -388,12 +388,12 @@ class Perturbation_mandelbrot_N(fs.PerturbationFractal):
     
     def __init__(self, directory: str, exponent: int):
         """
-An arbitrary precision power-2 Mandelbrot Fractal. 
+An arbitrary precision power-N Mandelbrot Fractal. 
 
 .. math::
 
     z_0 &= 0 \\\\
-    z_{n+1} &= z_{n}^2 + c
+    z_{n+1} &= {z_{n}}^N + c
 
 This class implements arbitrary precision for the reference orbit, ball method
 period search, newton search, perturbation method, chained billinear
@@ -474,7 +474,7 @@ directory : str
     ):
         """
 Perturbation iterations (arbitrary precision) for Mandelbrot standard set
-(power n).
+(power N).
 
 Parameters
 ==========
@@ -495,7 +495,7 @@ epsilon_stationnary: float
     points belonging to a minibrot, based on dzndz1 value.
     If reached, the loop is exited with exit code "stationnary"
 BLA_eps: None | float
-    Relative error criteriafor BiLinear Approximation (default: 1.e-6)
+    Relative error criteria for Bilinear Approximation (default: 1.e-6)
     if `None` BLA is not activated.
 interior_detect: bool
     If True, activates interior points early detection.

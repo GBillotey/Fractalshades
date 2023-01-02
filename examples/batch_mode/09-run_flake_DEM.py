@@ -22,6 +22,7 @@ import fractalshades as fs
 import fractalshades.models as fsm
 import fractalshades.settings as settings
 import fractalshades.colors as fscolors
+import fractalshades.projection
 
 
 from fractalshades.postproc import (
@@ -61,7 +62,7 @@ def plot(directory):
             nx=nx,
             xy_ratio=1.0,
             theta_deg=0., 
-            projection="cartesian",
+            projection=fs.projection.Cartesian()
     )
 
     f.calc_std_div(

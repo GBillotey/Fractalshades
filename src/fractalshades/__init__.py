@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 __author__ = "G. Billotey"
 __license__ = "MIT"
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 import numpy as np
 import warnings
@@ -24,4 +24,8 @@ if verbosity < 3:
     warnings.filterwarnings(
         action="ignore",
         message="overflow encountered in"
+    )
+    warnings.filterwarnings(
+        action="ignore",
+        message="All-NaN slice encountered"
     )

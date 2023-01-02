@@ -10,11 +10,8 @@ This section describe the objects provided to map reals to colors.
 human-readable input source code).
 
 For convenience, a few template colomaps are provided (blue and orange-brown
-tones), see the full list under :doc:`../examples/index`.
+tones), see the full list under :doc:`../examples/colormaps/plot_cmaps`.
 
-.. toctree::
-   :maxdepth: 1
-   :caption: Contents:
-
-   colors/Fractal_colormap
+.. autoclass:: fractalshades.colors.Fractal_colormap
+    :members: __init__
 

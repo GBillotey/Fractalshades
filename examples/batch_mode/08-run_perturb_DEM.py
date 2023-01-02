@@ -61,7 +61,7 @@ def plot(directory):
             nx=nx,
             xy_ratio=1.0,
             theta_deg=0., 
-            projection="cartesian",
+            projection=fs.projection.Cartesian()
     )
 
     f.calc_std_div(

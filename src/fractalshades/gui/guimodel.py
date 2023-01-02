@@ -125,6 +125,9 @@ def QImageReader_setAllocationLimit(mblimit: int):
     os.environ['QT_IMAGEIO_MAXALLOC'] = str(mblimit)
 QImageReader_setAllocationLimit(fs.settings.GUI_image_Mblimit)
 
+# Devlopement note: to know the actual pyQt version used:
+# from PyQt6 import QtCore
+# PyQt6.QtCore.qVersion()
 
 # QMainWindow
 MAIN_WINDOW_CSS = """

@@ -43,13 +43,15 @@ def plot(plot_dir):
     y = 0.96946619217
     dx = 0.6947111395902539
     nx = 2400
+    projection = fs.projection.Cartesian()
+
     calc_name="mandelbrot"
     colormap = fscolors.cmap_register["dawn"]
 
     # Run the calculation
     f = fsm.Mandelbrot(plot_dir)
     f.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
-           theta_deg=0., projection="cartesian")
+           theta_deg=0., projection=projection)
     f.calc_std_div(
         calc_name=calc_name,
         subset=None,

@@ -16,6 +16,7 @@ import numpy as np
 
 import fractalshades as fs
 import fractalshades.models as fsm
+import fractalshades.projection
 
 import fractalshades.colors as fscolors
 from fractalshades.postproc import (
@@ -37,6 +38,8 @@ from fractalshades.colors.layers import (
 def plot(plot_dir):
     fs.settings.enable_multithreading = True
     fs.settings.inspect_calc = True
+    fs.settings.log_directory = os.path.join(plot_dir, "log")
+    fs.set_log_handlers(verbosity="debug @ console + log")
 
     # A simple showcase using perturbation technique
     x = '0.533551593577038561769721161491702555962775680136595415306315189524970818968817900068355227861158570104764433694'
@@ -73,7 +76,7 @@ def plot(plot_dir):
         nx=nx,
         xy_ratio=xy_ratio,
         theta_deg=-2., 
-        projection="cartesian",
+        projection=fs.projection.Cartesian(),
         has_skew=has_skew,
         skew_00=skew_00,
         skew_01=skew_01,

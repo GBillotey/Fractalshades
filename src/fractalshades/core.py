@@ -22,6 +22,7 @@ import fractalshades as fs
 import fractalshades.settings
 import fractalshades.utils
 import fractalshades.postproc
+import fractalshades.projection
 
 from fractalshades.mthreading import Multithreading_iterator
 import fractalshades.numpy_utils.expr_parser as fs_parser
@@ -729,8 +730,14 @@ class Fractal_plotter:
         ny = self.fractal.ny
         crop_slice = (ix, ny-iyy, ixx, ny-iy)
         layer_mmap = self.open_img_mmap(layer)
+        crop_arr = layer_mmap[iy: iyy, ix: ixx, :]
         
-        paste_crop = PIL.Image.fromarray(layer_mmap[iy: iyy, ix: ixx, :])
+        # If crop_arr has only 1 channel, like grey or bool, Pillow won't
+        # handle it...
+        if crop_arr.shape[2] <= 1:
+            crop_arr = np.squeeze(crop_arr, axis=2)
+
+        paste_crop = PIL.Image.fromarray(crop_arr)
         im.paste(paste_crop, box=crop_slice)
 
         del layer_mmap
@@ -751,13 +758,13 @@ class _Null_status_wget:
         self._status[key]["str_val"] = str_val
 
 
-PROJECTION_ENUM = enum.Enum(
-    "PROJECTION_ENUM",
-    ("cartesian", "spherical", "expmap"),
-    module=__name__
-)
-projection_type = typing.Literal[PROJECTION_ENUM]
-
+#PROJECTION_ENUM = enum.Enum(
+#    "PROJECTION_ENUM",
+#    ("cartesian", "spherical", "expmap"),
+#    module=__name__
+#)
+#projection_type = typing.Literal[PROJECTION_ENUM]
+# cartesian = fs.projection.Cartesian()
 
 class Fractal:
 
@@ -912,7 +919,7 @@ advanced users when subclassing.
              nx: int = 800,
              xy_ratio: float = 1.,
              theta_deg: float = 0.,
-             projection: projection_type="cartesian",
+             projection: fs.projection.Projection=fs.projection.Cartesian(),
              has_skew: bool = False,
              skew_00:float = 1.0,
              skew_01: float = 0.0,
@@ -922,7 +929,7 @@ advanced users when subclassing.
         """
         Define and stores as class-attributes the zoom parameters for the next
         calculation.
-        
+
         Parameters
         ----------
         x : float
@@ -937,8 +944,9 @@ advanced users when subclassing.
             ratio of dx / dy and nx / ny
         theta_deg : float
             Pre-rotation of the calculation domain, in degree
-        projection : "cartesian" | "spherical" | "exp_map"
-            Kind of projection used (default to cartesian)
+        projection : `fractalshades.projection.Projection`
+            Kind of projection used (default to 
+            `fractalshades.projection.Cartesian`)
         has_skew : bool
             If True, unskew the view base on skew coefficients skew_ij
         skew_ij : float
@@ -948,12 +956,58 @@ advanced users when subclassing.
         if isinstance(x, str) or isinstance(y, str) or isinstance(dx, str):
             raise RuntimeError("Float expected for x, y, dx")
 
+        # Backward compatibility: also accept projection = "cartesian"
+        if isinstance(projection, str):
+            logger.warning(textwrap.dedent(
+                """\
+                Use of str for projection is deprecated, and might be
+                removed. Please use `fractalshades.projection.Projection`
+                subclasses instead. Defaulting to
+                `fractalshades.projection.Cartesian()`"""
+            ))
+            projection = fractalshades.projection.Cartesian()
+
         # Stores the skew matrix
         self._skew = None
         if has_skew:
             self._skew = np.array(
                 ((skew_00, skew_01), (skew_10, skew_11)), dtype=np.float64
             )
+
+        self.lin_proj_impl = self.get_lin_proj_impl()
+        projection.adjust_to_zoom(self)
+        self.proj_impl = projection.f
+        # get_impl()
+
+
+    def get_lin_proj_impl(self):
+        """ Returns a numba-jitted function which apply the linear part of the
+        transformation (rotation, skew, scale)
+        """
+        dx = self.dx
+#        if isinstance(dx, mpmath.mpf):
+#            dx = fsx.mpf_to_Xrange(dx)
+        theta = self.theta_deg / 180. * np.pi
+        skew = self._skew
+
+        # Defines the linear matrix
+        c = np.cos(theta)
+        s = np.sin(theta)
+        lin_mat = np.array(((c, -s), (s, c)), dtype=np.float64)
+        if skew is not None:
+            lin_mat = np.matmul(skew, lin_mat)
+
+        @numba.njit(numba.complex128(numba.complex128))
+        def numba_impl(z):
+            x = z.real
+            y = z.imag
+            x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
+            y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
+
+            return  dx * complex(x1, y1)
+
+        return numba_impl
+
 
     def new_status(self, wget):
         """ Return a dictionnary that can hold the current progress status """
@@ -1243,7 +1297,7 @@ advanced users when subclassing.
         """
         data_type = self.float_type
 
-        theta = self.theta_deg / 180. * np.pi
+#        theta = self.theta_deg / 180. * np.pi
         (nx, ny) = (self.nx, self.ny)
         (ix, ixx, iy, iyy) = chunk_slice
 
@@ -1297,12 +1351,13 @@ advanced users when subclassing.
 
         dy_vec /= self.xy_ratio
 
-        # Apply the Linear part of the tranformation
-        if theta != 0 and self.projection != "expmap":
-            apply_rot_2d(theta, dx_vec, dy_vec)
-
-        if self.skew is not None:
-            apply_skew_2d(self.skew, dx_vec, dy_vec)
+#        # Apply the Linear part of the tranformation
+#        # Moved to after the NL part
+#        if theta != 0 and self.projection != "expmap":
+#            apply_rot_2d(theta, dx_vec, dy_vec)
+#
+#        if self.skew is not None:
+#            apply_skew_2d(self.skew, dx_vec, dy_vec)
 
         res = dx_vec + 1j * dy_vec
 
@@ -1508,16 +1563,19 @@ advanced users when subclassing.
         When not a perturbation rendering:
         This is just a diggest of the zoom and calculation parameters
         """
-        dx = self.dx
+#        dx = self.dx
         center = self.x + 1j * self.y
-        xy_ratio = self.xy_ratio
-        theta = self.theta_deg / 180. * np.pi # used for expmap
-        projection = getattr(PROJECTION_ENUM, self.projection).value
-        # was : self.PROJECTION_ENUM[self.projection]
+#        xy_ratio = self.xy_ratio
+#        theta = self.theta_deg / 180. * np.pi # used for expmap
+#        projection = getattr(PROJECTION_ENUM, self.projection).value
+#         was : self.PROJECTION_ENUM[self.projection]
+        
+         
 
         return (
             initialize, iterate,
-            dx, center, xy_ratio, theta, projection,
+            # dx, center, xy_ratio, theta, projection, ## refactored
+            center, self.proj_impl, self.lin_proj_impl,
             self._interrupted
         )
     
@@ -2233,10 +2291,11 @@ advanced users when subclassing.
         codes = self._calc_data[calc_name]["saved_codes"]
         complex_dic, int_dic, termination_dic = self.codes_mapping(*codes)
 
-        # Compute c from cpix
-        c_pt = self.get_std_cpt(c_pix)
+#        # Compute c from cpix
+#        c_pt = self.get_std_cpt(c_pix) This is not "cheap, so moving this to 
+#        postproc
 
-        postproc_batch.set_chunk_data(chunk_slice, subset, c_pt, Z, U,
+        postproc_batch.set_chunk_data(chunk_slice, subset, c_pix, Z, U,
             stop_reason, stop_iter, complex_dic, int_dic, termination_dic)
 
         # Output data
@@ -2259,14 +2318,17 @@ advanced users when subclassing.
         """ Return the c complex value from c_pix """
         n_pts, = c_pix.shape  # Z of shape [n_Z, n_pts]
         # Explicit casting to complex / float
-        dx = float(self.dx)
+#        dx = float(self.dx)
         center = complex(self.x + 1j * self.y)
-        xy_ratio = self.xy_ratio
-        theta = self.theta_deg / 180. * np.pi # used for expmap
-        projection = getattr(PROJECTION_ENUM, self.projection).value
+#        xy_ratio = self.xy_ratio
+#        theta = self.theta_deg / 180. * np.pi # used for expmap
+#        projection = getattr(PROJECTION_ENUM, self.projection).value
+        
+
         cpt = np.empty((n_pts,), dtype=c_pix.dtype)
         fill1d_c_from_pix(
-            c_pix, dx, center, xy_ratio, theta, projection, cpt
+            # c_pix, dx, center, xy_ratio, theta, projection, cpt
+            c_pix, self.proj_impl, self.lin_proj_impl, center, cpt
         )
         return cpt
         
@@ -2337,7 +2399,7 @@ class _Subset_temporary_array:
         self.supersampling = supersampling
         # del mmap
         # self._mmap = mmap
-        
+
     def close_mmap(self, supersampling):
         try:
             del self._mmap
@@ -2416,7 +2478,8 @@ USER_INTERRUPTED = 1
 def numba_cycles(
     c_pix, Z, U, stop_reason, stop_iter,
     initialize, iterate,
-    dx, center, xy_ratio, theta, projection,
+    #  dx, center, xy_ratio, theta, projection, ## refactored
+    center, proj_impl, lin_proj_impl,
     _interrupted
 ):
     # Full iteration for a set of points - calls numba_cycle
@@ -2426,7 +2489,7 @@ def numba_cycles(
         Zpt = Z[:, ipt]
         Upt = U[:, ipt]
         cpt = c_from_pix(
-            c_pix[ipt], dx, center, xy_ratio, theta, projection
+            c_pix[ipt], proj_impl, lin_proj_impl, center
         )
         stop_pt = stop_reason[:, ipt]
 
@@ -2624,92 +2687,106 @@ def numba_Newton(
     return numba_impl
 
 
-proj_cartesian = PROJECTION_ENUM.cartesian.value
-proj_spherical = PROJECTION_ENUM.spherical.value
-proj_expmap = PROJECTION_ENUM.expmap.value
+#proj_cartesian = PROJECTION_ENUM.cartesian.value
+#proj_spherical = PROJECTION_ENUM.spherical.value
+#proj_expmap = PROJECTION_ENUM.expmap.value
 
-@numba.njit
-def apply_skew_2d(skew, arrx, arry):
-    "Unskews the view"
-    nx = arrx.shape[0]
-    ny = arrx.shape[1]
-    for ix in range(nx):
-        for iy in range(ny):
-            tmpx = arrx[ix, iy]
-            tmpy = arry[ix, iy]
-            arrx[ix, iy] = skew[0, 0] * tmpx + skew[0, 1] * tmpy
-            arry[ix, iy] = skew[1, 0] * tmpx + skew[1, 1] * tmpy
+#@numba.njit
+#def apply_skew_2d(skew, arrx, arry):
+#    "Unskews the view"
+#    nx = arrx.shape[0]
+#    ny = arrx.shape[1]
+#    for ix in range(nx):
+#        for iy in range(ny):
+#            tmpx = arrx[ix, iy]
+#            tmpy = arry[ix, iy]
+#            arrx[ix, iy] = skew[0, 0] * tmpx + skew[0, 1] * tmpy
+#            arry[ix, iy] = skew[1, 0] * tmpx + skew[1, 1] * tmpy
 
 @numba.njit
 def apply_unskew_1d(skew, arrx, arry):
-    "Unskews the view for contravariant coordinates e.g. normal vec"
+    """Unskews the view for contravariant coordinates e.g. normal vec
+    Used in postproc.py to keep the right orientation for the shadings 
+    """
     n = arrx.shape[0]
     for i in range(n):
         nx = arrx[i]
         ny = arry[i]
+        # Note: this is a product by the transposed matrix
+        # *Contravariant* indexing
         arrx[i] = skew[0, 0] * nx + skew[1, 0] * ny
         arry[i] = skew[0, 1] * nx + skew[1, 1] * ny
 
-@numba.njit
-def apply_rot_2d(theta, arrx, arry):
-    s = np.sin(theta)
-    c = np.cos(theta)
-    nx = arrx.shape[0]
-    ny = arrx.shape[1]
-    for ix in range(nx):
-        for iy in range(ny):
-            tmpx = arrx[ix, iy]
-            tmpy = arry[ix, iy]
-            arrx[ix, iy] = c * tmpx - s * tmpy
-            arry[ix, iy] = s * tmpx + c * tmpy
+#@numba.njit
+#def apply_rot_2d(theta, arrx, arry):
+#    s = np.sin(theta)
+#    c = np.cos(theta)
+#    nx = arrx.shape[0]
+#    ny = arrx.shape[1]
+#    for ix in range(nx):
+#        for iy in range(ny):
+#            tmpx = arrx[ix, iy]
+#            tmpy = arry[ix, iy]
+#            arrx[ix, iy] = c * tmpx - s * tmpy
+#            arry[ix, iy] = s * tmpx + c * tmpy
 
 
 @numba.njit
-def c_from_pix(pix, dx, center, xy_ratio, theta, projection):
+def c_from_pix(pix, proj_impl, lin_proj_impl, center):
     """
-    Returns the true c from the pixel coords - Note: to be reimplemnted for 
-    pertubation theory, as C = cref + dc
+    Returns the true c from the pixel coords
+    Note: to be re-implemented for pertubation theory, as C = cref + dc
 
     Parameters
     ----------
     pix :  complex
         pixel location in fraction of dx
+    center : coordinates of the image center
+    proj_impl : numba func 
+        Non-linear part of the projection (for a "cartesian projection" this
+        is simply a pass-through)
+    proj_impl : numba func 
+        Non-linear part of the projection. Includes the following effects:
+            - scaling (with dx)
+            - rotation (with theta)
+            - skew
 
     Returns
     -------
     c : c value as complex
     """
-    # Case cartesian
-    if projection == proj_cartesian:
-        offset = (pix * dx)
+    return center + lin_proj_impl(proj_impl(pix))
 
-    elif projection == proj_spherical:
-        dr_sc = np.abs(pix) * np.pi
-        if dr_sc >= np.pi * 0.5:
-            k = np.nan
-        elif dr_sc < 1.e-12:
-            k = 1.
-        else:
-            k = np.tan(dr_sc) / dr_sc
-        offset = (pix * k * dx)
+#    if projection == proj_cartesian:
+#        offset = (pix * dx)
+#
+#    elif projection == proj_spherical:
+#        dr_sc = np.abs(pix) * np.pi
+#        if dr_sc >= np.pi * 0.5:
+#            k = np.nan
+#        elif dr_sc < 1.e-12:
+#            k = 1.
+#        else:
+#            k = np.tan(dr_sc) / dr_sc
+#        offset = (pix * k * dx)
+#
+#    elif projection == proj_expmap:
+#        dy = dx * xy_ratio
+#        h_max = 2. * np.pi * xy_ratio # max h reached on the picture
+#        xbar = (pix.real + 0.5 - xy_ratio) * h_max  # 0 .. hmax
+#        ybar = pix.imag / dy * 2. * np.pi           # -pi .. +pi
+#        rho = dx * 0.5 * np.exp(xbar)
+#        phi = ybar + theta
+#        offset = rho * (np.cos(phi) + 1j * np.sin(phi))
 
-    elif projection == proj_expmap:
-        dy = dx * xy_ratio
-        h_max = 2. * np.pi * xy_ratio # max h reached on the picture
-        xbar = (pix.real + 0.5 - xy_ratio) * h_max  # 0 .. hmax
-        ybar = pix.imag / dy * 2. * np.pi           # -pi .. +pi
-        rho = dx * 0.5 * np.exp(xbar)
-        phi = ybar + theta
-        offset = rho * (np.cos(phi) + 1j * np.sin(phi))
-
-    return offset + center
 
 @numba.njit
-def fill1d_c_from_pix(c_pix, dx, center, xy_ratio, theta, projection,
-                               c_out):
+def fill1d_c_from_pix(c_pix, proj_impl, lin_proj_impl, center, c_out):
+#def fill1d_c_from_pix(c_pix, dx, center, xy_ratio, theta, projection,
+#                               c_out):
     """ Same as c_from_pix but fills in-place a 1d vec """
     nx = c_pix.shape[0]
     for i in range(nx):
         c_out[i] = c_from_pix(
-            c_pix[i], dx, center, xy_ratio, theta, projection
+            c_pix[i], proj_impl, lin_proj_impl, center
         )

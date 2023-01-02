@@ -132,6 +132,18 @@ def numba_test_abs(xa, out):
     n, = xa.shape
     for i in range(n):
         out[i] = np.abs(xa[i])
+        
+@numba.njit
+def numba_test_real(xa, out):
+    n, = xa.shape
+    for i in range(n):
+        out[i] = np.real(xa[i])
+        
+@numba.njit
+def numba_test_imag(xa, out):
+    n, = xa.shape
+    for i in range(n):
+        out[i] = np.imag(xa[i])
 
 @numba.njit
 def numba_test_abs2(xa, out):
@@ -603,10 +615,46 @@ class Test_numba_xr(unittest.TestCase):
                 res = Xrange_array.empty(xa.shape, dtype=dtype)
                 expected = np.abs(stda) ** 2
 
-                numba_test_abs(xa, res)
+                numba_test_abs2(xa, res)
                 # Numba timing without compilation
                 t_numba = - time.time()
                 numba_test_abs2(xa, res)
+                t_numba += time.time()
+                
+                _matching(res, expected, almost=True, dtype=np.float64,
+                          ktol=4.)
+
+    def test_real(self):
+        for dtype in (np.float64, np.complex128): # np.complex64 np.float32
+            with self.subTest(dtype=dtype):
+                nvec = 10000
+                xa, stda = generate_random_xr(dtype, nvec=nvec, max_bin_exp=75)
+                xa = xa.view(Xrange_array)
+                res = Xrange_array.empty(xa.shape, dtype=dtype)
+                expected = np.real(stda)
+
+                numba_test_real(xa, res)
+                # Numba timing without compilation
+                t_numba = - time.time()
+                numba_test_real(xa, res)
+                t_numba += time.time()
+                
+                _matching(res, expected, almost=True, dtype=np.float64,
+                          ktol=4.)
+
+    def test_imag(self):
+        for dtype in (np.float64, np.complex128): # np.complex64 np.float32
+            with self.subTest(dtype=dtype):
+                nvec = 10000
+                xa, stda = generate_random_xr(dtype, nvec=nvec, max_bin_exp=75)
+                xa = xa.view(Xrange_array)
+                res = Xrange_array.empty(xa.shape, dtype=dtype)
+                expected = np.imag(stda)
+
+                numba_test_imag(xa, res)
+                # Numba timing without compilation
+                t_numba = - time.time()
+                numba_test_imag(xa, res)
                 t_numba += time.time()
                 
                 _matching(res, expected, almost=True, dtype=np.float64,
@@ -750,7 +798,7 @@ class Test_numba_xr(unittest.TestCase):
 
 if __name__ == "__main__":
     import test_config
-    full_test = True
+    full_test = False
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([
@@ -758,7 +806,8 @@ if __name__ == "__main__":
         ]))
     else:
         suite = unittest.TestSuite()
-        suite.addTest(Test_numba_xr("test_power"))
+        suite.addTest(Test_numba_xr("test_real"))
+        suite.addTest(Test_numba_xr("test_imag"))
         runner.run(suite)
 
 

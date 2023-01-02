@@ -20,7 +20,7 @@ class Postproc_batch:
         which share the same Fractal & calculation (*calc_name*)
         
         It is usefull to have such container to avoid re-calculation of data
-        that can be shared between several post-proicessing objects.
+        that can be shared between several post-processing objects.
         
         Parameters
         ==========
@@ -28,8 +28,6 @@ class Postproc_batch:
             The shared fractal object
         calc_name : str 
             The string identifier for the shared calculation
-            
-        
         """
         self.fractal = fractal
         self.calc_name = calc_name
@@ -47,9 +45,9 @@ class Postproc_batch:
 
     def add_postproc(self, postname, postproc):
         """
-        Add successive postprocessing and ensure they have consistent
-        fractal & calc_name
-        
+        Add successive postprocessing and ensure they share identical
+        *fractal* & *calc_name*
+
         Parameters
         ==========
         postname : str
@@ -57,6 +55,7 @@ class Postproc_batch:
             post-processing object
         postproc : `Postproc` instance
             The post-processing object to be added
+
         Notes
         =====
         .. warning::
@@ -86,11 +85,12 @@ class Postproc_batch:
             )
 
 
-    def set_chunk_data(self, chunk_slice, chunk_mask, c_pt, Z, U, stop_reason,
-            stop_iter, complex_dic, int_dic, termination_dic):
+    def set_chunk_data(self, chunk_slice, chunk_mask, c_pix,
+            Z, U, stop_reason, stop_iter, complex_dic, int_dic, termination_dic
+    ):
         # self.chunk_slice = chunk_slice
         self.raw_data[chunk_slice] = (
-            chunk_mask, c_pt, Z, U, stop_reason, stop_iter,
+            chunk_mask, c_pix, Z, U, stop_reason, stop_iter,
             complex_dic, int_dic, termination_dic
         )
         self.context[chunk_slice] = dict()
@@ -98,6 +98,7 @@ class Postproc_batch:
 
     def update_context(self, chunk_slice, context_update):
         self.context[chunk_slice].update(context_update)
+
 
     def clear_chunk_data(self, chunk_slice):
         """ Temporary data shared by postproc items when iterating a given
@@ -180,15 +181,37 @@ class Postproc:
         else:
             return Z[complex_dic["xn"], :] + 1j * Z[complex_dic["yn"], :]
         
-    def get_dzndc(self, Z, complex_dic):
+    def get_dzndc(self, Z, c_pix, complex_dic):
+        """ Returns the derivatives taking into account potential scaling
+        due to transfomation
+        """
+        proj = self.fractal.projection
+
         if self.holomorphic:
-            return Z[complex_dic["dzndc"], :]
+            dzndc = Z[complex_dic["dzndc"], :]
+            if proj.df is not None:
+                return apply_df(proj.df, c_pix, dzndc)
+            else:
+                return dzndc
+
         else:
             dXdA = Z[complex_dic["dxnda"], :]
             dXdB = Z[complex_dic["dxndb"], :]
             dYdA = Z[complex_dic["dynda"], :]
             dYdB = Z[complex_dic["dyndb"], :]
-            return dXdA, dXdB, dYdA, dYdB
+
+            if proj.dfBS is not None:
+                return apply_dfBS(proj.dfBS, c_pix, dXdA, dXdB, dYdA, dYdB)
+            else:
+                return dXdA, dXdB, dYdA, dYdB
+
+
+    def get_std_cpt(self, c_pix):
+        """ image pixel -> c mapping
+        """
+        # Note: we *could* store this at pp batch level but for the moment it
+        # is only used for 1 postproc kind (Fieldlines) so not worth the effort
+        return self.fractal.get_std_cpt(c_pix)
 
 
 class Raw_pp(Postproc):
@@ -220,8 +243,8 @@ class Raw_pp(Postproc):
         key = self.key
         # (params, codes) = fractal.reload_params(calc_name)
         codes = fractal._calc_data[calc_name]["saved_codes"]
-        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-         termination_dic) = self.raw_data[chunk_slice]
+        (chunk_mask, c_pix, Z, U, stop_reason, stop_iter, complex_dic,
+         int_dic, termination_dic) = self.raw_data[chunk_slice]
         
         kind = fractal.kind_from_code(self.key, codes)
         if kind == "complex":
@@ -278,10 +301,10 @@ class Continuous_iter_pp(Postproc):
         Notes
         =====
         .. note::
-            Usually it is not recommended to pass any parameter ; 
-            if a parameter <param>
+            Usually it is not needed to set any parameter ; 
+            if a parameter ``param``
             is not provided, it will defaut to the attribute of 
-            the fractal with name "potential_<param>", which should be the 
+            the fractal with name ``potential_<param>``, which should be the 
             recommended value.
         """
         super().__init__()
@@ -330,8 +353,8 @@ class Continuous_iter_pp(Postproc):
     def __getitem__(self, chunk_slice):
         """  Returns the real Iteration number
         """
-        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-         termination_dic) = self.raw_data[chunk_slice]
+        (chunk_mask, c_pix, Z, U, stop_reason, stop_iter, complex_dic,
+         int_dic, termination_dic) = self.raw_data[chunk_slice]
 
         n = stop_iter[0, :]
         potential_dic = self.potential_dic
@@ -409,6 +432,7 @@ class Fieldlines_pp(Postproc):
             A geometric serie is used for scaling individual orbit points,
             this parameters is the ratio between the last and the first scaling
             (For an arithmetic mean over the truncated orbit, use 1.)
+
         Notes
         =====
         .. note::
@@ -426,8 +450,9 @@ class Fieldlines_pp(Postproc):
         nu_frac = self.ensure_context(chunk_slice, "nu_frac")
         potential_dic = self.ensure_context(chunk_slice, "potential_dic")
 
-        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-         termination_dic) = self.raw_data[chunk_slice]
+        (chunk_mask, c_pix, Z, U, stop_reason, stop_iter, complex_dic,
+         int_dic, termination_dic) = self.raw_data[chunk_slice]
+        c_pt = self.get_std_cpt(c_pix)
 
         if potential_dic["kind"] == "infinity":
             # Following Jussi Härkönenen - 2007
@@ -549,14 +574,18 @@ class DEM_normal_pp(Postproc):
         """  Returns the normal as a complex (x, y, 1) is the normal vec
         """
         potential_dic = self.ensure_context(chunk_slice, "potential_dic")
-        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-         termination_dic) = self.raw_data[chunk_slice]
+#        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
+#         termination_dic) = self.raw_data[chunk_slice]
+        (chunk_mask, c_pix, Z, U, stop_reason, stop_iter, complex_dic,
+         int_dic, termination_dic) = self.raw_data[chunk_slice]
         zn = self.get_zn(Z, complex_dic) #["zn"], :]
 
         if self.kind == "Milnor":   # use only for z -> z**n + c
 # https://www.math.univ-toulouse.fr/~cheritat/wiki-draw/index.php/Mandelbrot_set
-            dzndc = Z[complex_dic["dzndc"], :]
-            d2zndc2 = Z[complex_dic["d2zndc2"], :]
+            # dzndc = Z[complex_dic["dzndc"], :]
+            dzndc = self.get_dzndc(Z, c_pix, complex_dic)
+            # TODO: d2zndc2 may fail if a projection is used
+            d2zndc2 = Z[complex_dic["d2zndc2"], :] 
             abs_zn = np.abs(zn)
             lo = np.log(abs_zn)
             normal = zn * dzndc * ((1+lo)*np.conj(dzndc * dzndc)
@@ -567,10 +596,12 @@ class DEM_normal_pp(Postproc):
                 # pulls back the normal direction from an approximation of 
                 # potential: phi = log(|zn|) / 2**n
                 if self.holomorphic:
-                    dzndc = self.get_dzndc(Z, complex_dic) #, :]
+                    dzndc = self.get_dzndc(Z, c_pix, complex_dic) #, :]
                     normal = zn / dzndc
                 else:
-                    (dXdA, dXdB, dYdA, dYdB) = self.get_dzndc(Z, complex_dic)
+                    (dXdA, dXdB, dYdA, dYdB) = self.get_dzndc(
+                            Z, c_pix, complex_dic
+                    )
                     # J = [dXdA dXdB]    J.T = [dXdA dYdA]   n = J.T * zn
                     #     [dYdA dYdB]          [dXdB dYdB]
                     normal = (
@@ -582,7 +613,8 @@ class DEM_normal_pp(Postproc):
             # pulls back the normal direction from an approximation of
             # potential (/!\ need to derivate zr w.r.t. c...)
             # phi = 1. / (abs(zn - zr) * abs(alpha))
-                dzndc = Z[complex_dic["dzndc"], :]
+                # dzndc = Z[complex_dic["dzndc"], :]
+                dzndc = self.get_dzndc(Z, c_pix, complex_dic)
                 zr = Z[complex_dic["zr"], :]
                 dzrdc = Z[complex_dic["dzrdc"], :]
                 normal = - (zr - zn) / (dzrdc - dzndc)
@@ -595,6 +627,7 @@ class DEM_normal_pp(Postproc):
             fs.core.apply_unskew_1d(skew, nx, ny)
 
         normal = normal / np.abs(normal)
+#        angle = np.exp(1jnp.angle(normal)
 
         return normal, None
 
@@ -655,8 +688,10 @@ class DEM_pp(Postproc):
     def __getitem__(self, chunk_slice):
         """  Returns the DEM - """
         potential_dic = self.ensure_context(chunk_slice,"potential_dic")
-        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-         termination_dic) = self.raw_data[chunk_slice]
+#        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
+#         termination_dic) = self.raw_data[chunk_slice]
+        (chunk_mask, c_pix, Z, U, stop_reason, stop_iter, complex_dic,
+         int_dic, termination_dic) = self.raw_data[chunk_slice]
 
         zn = self.get_zn(Z, complex_dic) #Z[complex_dic["zn"], :]
 
@@ -664,10 +699,12 @@ class DEM_pp(Postproc):
             abs_zn = np.abs(zn)
 
             if self.holomorphic:
-                abs_dzndc = np.abs(self.get_dzndc(Z, complex_dic)) #, :]
+                abs_dzndc = np.abs(self.get_dzndc(Z, c_pix, complex_dic)) #, :]
                 # val = abs_zn * np.log(abs_zn) / abs_dzndc
             else:
-                (dXdA, dXdB, dYdA, dYdB) = self.get_dzndc(Z, complex_dic)
+                (dXdA, dXdB, dYdA, dYdB) = self.get_dzndc(
+                        Z, c_pix, complex_dic
+                )
                 # In which direction for an abs value ? 
                 # Lets take the maximal singular value
 # https://scicomp.stackexchange.com/questions/8899/robust-algorithm-for-2-times-2-svd
@@ -681,7 +718,7 @@ class DEM_pp(Postproc):
 
         elif potential_dic["kind"] == "convergent":
             assert self.holomorphic
-            dzndc = self.get_dzndc(Z, complex_dic)
+            dzndc = self.get_dzndc(Z, c_pix, complex_dic)
             zr = Z[complex_dic["zr"]]
             dzrdc = Z[complex_dic["dzrdc"], :]
             val = np.abs((zr - zn) / (dzrdc - dzndc))
@@ -728,8 +765,10 @@ class Attr_normal_pp(Postproc):
     def __getitem__(self, chunk_slice):
         """  Returns the normal as a complex (x, y, 1) is the normal vec
         """
-        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-         termination_dic) = self.raw_data[chunk_slice]
+#        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
+#         termination_dic) = self.raw_data[chunk_slice]
+        (chunk_mask, c_pix, Z, U, stop_reason, stop_iter, complex_dic,
+         int_dic, termination_dic) = self.raw_data[chunk_slice]
         attr = np.copy(Z[complex_dic["attractivity"], :])
         dattrdc = np.copy(Z[complex_dic["dattrdc"], :])
 
@@ -772,8 +811,10 @@ class Attr_pp(Postproc):
     def __getitem__(self, chunk_slice):
         """  Returns the normal as a complex (x, y, 1) is the normal vec
         """
-        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-         termination_dic) = self.raw_data[chunk_slice]
+#        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
+#         termination_dic) = self.raw_data[chunk_slice]
+        (chunk_mask, c_pix, Z, U, stop_reason, stop_iter, complex_dic,
+         int_dic, termination_dic) = self.raw_data[chunk_slice]
         # Plotting the 'domed' height map for the cycle attractivity
         attr = Z[complex_dic["attractivity"], :]
         abs2_attr = np.real(attr)**2 + np.imag(attr)**2
@@ -929,7 +970,35 @@ class Fractal_array:
 
 #==============================================================================
 # Numba Nogil implementations
-        
+@numba.njit(nogil=True, fastmath=False)
+def apply_df(df, c_pix, dzndc):
+    nvec, = c_pix.shape
+    ret = np.empty((nvec,), dtype=dzndc.dtype)
+    for i in range(nvec):
+        ret[i] = df(c_pix[i]) * dzndc[i]
+    return ret
+
+@numba.njit(nogil=True, fastmath=False)
+def apply_dfBS(dfBS, c_pix, dXdA, dXdB, dYdA, dYdB):
+    nvec, = c_pix.shape
+    dt = dXdA.dtype
+    dXdpixa = np.empty((nvec,), dtype=dt)
+    dXdpixb = np.empty((nvec,), dtype=dt)
+    dYdpixa = np.empty((nvec,), dtype=dt)
+    dYdpixb = np.empty((nvec,), dtype=dt)
+    for i in range(nvec):
+        m00, m01, m10, m11 = dfBS(c_pix[i])
+        # mapping is defined as : pixa, pixb -f-> AB
+        # we want dXdpixa
+        # See fs.core.apply_unskew_1d(skew, nx, ny)
+        # Matricial product - contravariant
+        dXdpixa[i] = dXdA[i] * m00 + dXdB[i] * m10
+        dXdpixb[i] = dXdA[i] * m01 + dXdB[i] * m11
+        dYdpixa[i] = dYdA[i] * m00 + dYdB[i] * m10
+        dYdpixb[i] = dYdA[i] * m01 + dYdB[i] * m11
+    return dXdpixa, dXdpixb, dYdpixa, dYdpixb
+
+
 @numba.njit(nogil=True, fastmath=True)
 def Continuous_iter_pp_infinity(zn, d, a_d, M):
     k = np.abs(a_d) ** (1. / (d - 1.))

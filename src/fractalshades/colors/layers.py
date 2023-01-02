@@ -642,16 +642,32 @@ class Grey_layer(Virtual_layer):
 
 class Disp_layer(Grey_layer):
     """
-    Grey layer with 32-bits precision.
-    
-    Same functionnality as a `Grey_layer` but the image export is with 32-bits
+    Grey layer with 16-bits precision.
+
+    Same functionnality as a `Grey_layer` but the image export is with 16-bits
     precision (useful when used as an height map for 3d processing like
     Blender)
     """
     mode = "I"
-    # According to Pillow doc
-    # "a 32-bit signed integer has a range of 0-65535". why? cf source code:
+    # According to Pillow doc I mode has range 0-65535 ie 16 bits
+    # why? cf source code:
     # https://github.com/python-pillow/Pillow/blob/7bf5246b93cc89cfb9d6cca78c4719a943b10585/src/PIL/PngImagePlugin.py#L693-L708
+    # _OUTMODES = {
+    # # supported PIL modes, and corresponding rawmodes/bits/color combinations
+    # "1":    ("1",       b'\x01\x00'),
+    # "L;1":  ("L;1",     b'\x01\x00'),
+    # "L;2":  ("L;2",     b'\x02\x00'),
+    # "L;4":  ("L;4",     b'\x04\x00'),
+    # "L":    ("L",       b'\x08\x00'),
+    # "LA":   ("LA",      b'\x08\x04'),
+    # "I":    ("I;16B",   b'\x10\x00'),
+    # "P;1":  ("P;1",     b'\x01\x03'),
+    # "P;2":  ("P;2",     b'\x02\x03'),
+    # "P;4":  ("P;4",     b'\x04\x03'),
+    # "P":    ("P",       b'\x08\x03'),
+    # "RGB":  ("RGB",     b'\x08\x02'),
+    # "RGBA": ("RGBA",    b'\x08\x06'),
+    # }
     k_int = 65535
 
 

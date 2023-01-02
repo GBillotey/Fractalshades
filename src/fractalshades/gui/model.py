@@ -665,8 +665,8 @@ class Presenter(QtCore.QObject):
 #------------------------------------------------------------------------------
 
 class Array_presenter_mixin:
-    """ Mixin for presenters displaying a class instance with tabular data
-    presented class shall implement the following interface
+    """ Mixin for presenters displaying a class instance with tabular data.
+    The presented class shall implement the following interface
       - n_rows property
       - col_data(self, col_key)
       - adjust_size(val)
@@ -692,7 +692,7 @@ class Array_presenter_mixin:
     def old_col_data(self, col_key):
         """ Return the data column to be shown """
         return self.old_data.col_data(col_key)
-    
+
     def adjust_size(self, new_size):
         """
         Adjust in place the size of the referenced data array

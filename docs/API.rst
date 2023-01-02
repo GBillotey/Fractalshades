@@ -8,8 +8,9 @@ Ins this section you will find the detailed documentation of the API:
     :maxdepth: 2
     :caption: Contents:
 
-    API/core.rst
     API/settings.rst
+    API/core.rst
+    API/projection.rst
     API/models.rst
     API/postproc.rst
     API/layers.rst

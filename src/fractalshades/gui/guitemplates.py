@@ -16,6 +16,7 @@ import fractalshades as fs
 import fractalshades.settings
 import fractalshades.colors
 import fractalshades.gui
+import fractalshades.projection
 
 from fractalshades.postproc import (
     Postproc_batch,
@@ -60,6 +61,7 @@ import fractalshades as fs
 import fractalshades.models as fsm
 import fractalshades.gui as fsgui
 import fractalshades.colors as fscolors
+import fractalshades.projection
 
 from fractalshades.postproc import (
     Postproc_batch,
@@ -82,6 +84,9 @@ from fractalshades.colors.layers import (
     Blinn_lighting,
     Overlay_mode
 )
+
+# Note: edit this line in batch mode to change the local projection
+projection = fs.projection.Cartesian()
 
 def plot(plot_dir):"""
 
@@ -399,6 +404,8 @@ colormap_int = fs.colors.Fractal_colormap(
     extent='mirror'
 )
 
+projection = fs.projection.Cartesian()
+
 class std_zooming(GUItemplate):
     
     def __init__(self, fractal):
@@ -661,12 +668,12 @@ Notes
             "nx": nx,
             "xy_ratio": xy_ratio,
             "theta_deg": theta_deg,
-            "projection": "cartesian",
             "has_skew": has_skew,
             "skew_00": skew_00,
             "skew_01": skew_01,
             "skew_10": skew_10,
-            "skew_11": skew_11
+            "skew_11": skew_11,
+            "projection": projection
         }
         if fractal.implements_deepzoom:
             zoom_kwargs["precision"] = dps
