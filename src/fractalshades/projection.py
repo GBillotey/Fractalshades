@@ -6,6 +6,8 @@ import numpy as np
 import numba
 import mpmath
 
+import fractalshades as fs
+import fractalshades.settings
 import fractalshades.numpy_utils.xrange as fsx
 
 
@@ -22,16 +24,35 @@ import fractalshades.numpy_utils.xrange as fsx
 
 class Projection:
     """
-    A Projection instance is a container for:
-        - numba-compiled mappings relative to the screen-coords
-          [0.5, 0.5] x [-0.5..0.5]
-          ie mapping x_pix, y_pix --> dx, dy = phi(x_pix, y_pic) ; 
-          implemented for both
-          complex (z) and 2 x real (x, y) coords
-        - a setter for fractal property (e.g, for exmap xy_ratio is imposed to
-          the value needed for y coords to span 2 * pi)
+    A Projection defines a mapping acting on the screen-pixels before
+    iteration.
+    It implements the associated modifications of the derivatives, when
+    needed (for distance estimation or shading).
 
-    (X, Y) = center + (dx, dy) = center + phi(dx, dy)
+    For a `xy_ratio` - zoom parameter - equal to 1, screen pixels are defined
+    in :math:`[0.5, 0.5] \\times [-0.5, 0.5]`
+    
+    More generally, the screen is a
+    rectangle and pixel coordinates take values in:
+    
+    .. math::
+
+        [0.5, 0.5] \\times \\left[ -\\frac{0.5}{xy\\_ratio},
+        \\frac{0.5}{xy\\_ratio} \\right]
+
+    The projection is defined as:
+        
+    .. math::
+
+        (\\bar{x}_{pix}, \\bar{y}_{pix}) =  f(x_{pix}, y_{pix})
+    
+    or alternatively with complex notations:
+        
+    .. math::
+
+        \\bar{z}_{pix} =  f(z_{pix})
+
+    Derived classes shall implement the actual  :math:`f` function
     """
     @property
     def init_kwargs(self):
@@ -98,7 +119,14 @@ class Projection:
 #==============================================================================
 class Cartesian(Projection):
     def __init__(self):
-        """ Creates a Cartesian projection """
+        """
+        A Cartesian projection. This is simply the identity function:
+        
+        .. math::
+
+            \\bar{z}_{pix} =  z_{pix}
+
+        """
         self.make_impl()
 
     def make_f_impl(self):
@@ -116,41 +144,49 @@ class Cartesian(Projection):
 
 #==============================================================================
 class Expmap(Projection):
-    def __init__(self, hmin, hmax, is_xrange=False, rotates_df=True):
+    def __init__(self, hmin, hmax, rotates_df=True):
         """ 
-        An exponential mapping will map :
-            - x axis to r=exp(hmin)..exp(hmax) with nx points
-            - y axis to theta=0..2pi with ny points
-        xy_ratio of the fractal will be adjusted to ensure an almost conformal
-        mapping
+        An exponential mapping will map :math:`z_{pix}` as follows:
 
-        Parameters:
-        -----------
+        .. math::
+
+            \\bar{z}_{pix} = \\exp(h_{moy}) \\cdot \\exp(dh \\cdot z_{pix}) 
+
+        where:
+            
+        .. math::
+
+            h_{moy} &= \\frac{1}{2} \\cdot (h_{min} + h_{max}) \\\\
+            dh &= h_{max} - h_{min}
+
+        `xy_ratio` of the fractal will be adjusted to ensure that
+        :math:`\\bar{y}_{pix}` extends from :math:`- \\pi` to  :math:`\\pi`.
+
+        Parameters
+        ==========
         hmin: str or float or mpmath.mpf
-            scaling for the lower end of the y axis (absolute value is
-            dx * hmin) 
+            scaling at the lower end of the x-axis
         hmax: str or float or mpmath.mpf
-            scaling for the higher end of the y axis (absolute value is
-            dx * hmax)
-        is_xrange: bool
-            If true, hmin / hmax should be input as mpf or floats and are
-            stored internally as Xrange
+            scaling at the higher end of the x-axis
         rotates_df: bool
-            If true, the derivative will be scaled but also rotated according
-            to the scaling. A rule of thumb is this value shall be set to True
-            for a standalone picture, and to False if used as input for a video
-            making tool.
+            If ``True``, the derivative will be scaled but also rotated
+            according to the mapping. Otherwise, only the scaling will be taken
+            into account.
+            A rule of thumb is this value shall be set to ``True``
+            for a standalone picture, and to ``False`` if used as input for a
+            movie making tool.
         """
-        self.is_xrange = is_xrange
         self.rotates_df = rotates_df
-
-        if is_xrange:
-            # We store as xrange to allow use in numba function
-            # str -> mpf -> Xrange conversion
-            self.hmin = fsx.mpf_to_Xrange(mpmath.mpf(hmin))
-            self.hmax = fsx.mpf_to_Xrange(mpmath.mpf(hmax))
+        
+        hmin = fsx.mpf_to_Xrange(mpmath.mpf(hmin))
+        hmax = fsx.mpf_to_Xrange(mpmath.mpf(hmax))
+        
+        if hmax > (1. / fs.settings.xrange_zoom_level):
+            # We store internally as Xrange
+            self.hmin = fsx.mpf_to_Xrange(hmin)
+            self.hmax = fsx.mpf_to_Xrange(hmax)
         else:
-            # str -> float64
+            # We store internally as float
             self.hmin = float(hmin)
             self.hmax = float(hmax)
 

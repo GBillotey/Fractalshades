@@ -4,24 +4,36 @@ Postprocessing fields
 To make the link between the raw calculation data and the colored layers,
 generic postprocessing are availables. This section describes them.
 
-
 .. module:: fractalshades.postproc
 
+.. autoclass:: fractalshades.postproc.Postproc_batch
+    :members: __init__, add_postproc
 
-.. toctree::
-   :maxdepth: 1
-   :caption: Contents:
+.. autoclass:: fractalshades.postproc.Postproc
 
-   postproc/Postproc
-   postproc/Raw_pp
-   postproc/Continuous_iter_pp
-   postproc/Fieldlines_pp
-   postproc/DEM_normal_pp
-   postproc/DEM_pp
-   postproc/Attr_normal_pp
-   postproc/Attr_pp
-   postproc/Postproc_batch
-   postproc/Fractal_array
+.. autoclass:: fractalshades.postproc.Raw_pp
+    :members:  __init__
+
+.. autoclass:: fractalshades.postproc.Continuous_iter_pp
+    :members:  __init__
+
+.. autoclass:: fractalshades.postproc.Fieldlines_pp
+    :members:  __init__
+
+.. autoclass:: fractalshades.postproc.DEM_pp
+    :members:  __init__
+
+.. autoclass:: fractalshades.postproc.DEM_normal_pp
+    :members:  __init__
+
+.. autoclass:: fractalshades.postproc.Attr_pp
+    :members:  __init__
+
+.. autoclass:: fractalshades.postproc.Attr_normal_pp
+    :members:  __init__
+
+.. autoclass:: fractalshades.postproc.Fractal_array
+    :members:  __init__
 
 
 

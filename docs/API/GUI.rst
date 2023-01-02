@@ -3,12 +3,10 @@ GUI
 
 .. module:: fractalshades.gui
 
-This section describe the object used to launch a GUI explorer.
+This section describe the objects used to launch a GUI explorer.
 
-.. toctree::
-   :maxdepth: 1
-   :caption: Contents:
+.. autoclass:: fractalshades.gui.guimodel.Fractal_GUI
+    :members: __init__, connect_mouse, connect_image, show
 
-   gui/Fractal_GUI
-   gui/std_zooming
-
+.. autoclass:: fractalshades.gui.guitemplates.std_zooming
+    :members: __init__

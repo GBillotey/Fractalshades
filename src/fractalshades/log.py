@@ -105,7 +105,7 @@ def set_log_handlers(verbosity: typing.Literal[verbosity_enum]):
             file_prefix = now.strftime("%Y-%m-%d_%Hh%M_%S")
             file_config = os.path.join(
                     fs.settings.log_directory,
-                    f'{file_prefix}_factalshades.log'
+                    f'{file_prefix}_fractalshades.log'
             )
 
             # if directory for the log does not exists, creates it

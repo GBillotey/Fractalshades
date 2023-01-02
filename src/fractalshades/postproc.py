@@ -20,7 +20,7 @@ class Postproc_batch:
         which share the same Fractal & calculation (*calc_name*)
         
         It is usefull to have such container to avoid re-calculation of data
-        that can be shared between several post-proicessing objects.
+        that can be shared between several post-processing objects.
         
         Parameters
         ==========
@@ -28,8 +28,6 @@ class Postproc_batch:
             The shared fractal object
         calc_name : str 
             The string identifier for the shared calculation
-            
-        
         """
         self.fractal = fractal
         self.calc_name = calc_name
@@ -47,9 +45,9 @@ class Postproc_batch:
 
     def add_postproc(self, postname, postproc):
         """
-        Add successive postprocessing and ensure they have consistent
-        fractal & calc_name
-        
+        Add successive postprocessing and ensure they share identical
+        *fractal* & *calc_name*
+
         Parameters
         ==========
         postname : str
@@ -57,6 +55,7 @@ class Postproc_batch:
             post-processing object
         postproc : `Postproc` instance
             The post-processing object to be added
+
         Notes
         =====
         .. warning::
@@ -302,10 +301,10 @@ class Continuous_iter_pp(Postproc):
         Notes
         =====
         .. note::
-            Usually it is not recommended to pass any parameter ; 
-            if a parameter <param>
+            Usually it is not needed to set any parameter ; 
+            if a parameter ``param``
             is not provided, it will defaut to the attribute of 
-            the fractal with name "potential_<param>", which should be the 
+            the fractal with name ``potential_<param>``, which should be the 
             recommended value.
         """
         super().__init__()
@@ -433,6 +432,7 @@ class Fieldlines_pp(Postproc):
             A geometric serie is used for scaling individual orbit points,
             this parameters is the ratio between the last and the first scaling
             (For an arithmetic mean over the truncated orbit, use 1.)
+
         Notes
         =====
         .. note::

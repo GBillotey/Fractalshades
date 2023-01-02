@@ -78,8 +78,9 @@ directory : str
             ratio of dx / dy and nx / ny
         theta_deg : float
             Pre-rotation of the calculation domain, in degree
-        projection : `fs.projection.Projection`
-            Kind of projection used (only "cartesian" supported)
+        projection : `fractalshades.projection.Projection`
+            Kind of projection used (default to
+            `fractalshades.projection.Cartesian`)
         has_skew : bool
             If True, unskew the view base on skew coefficients skew_ij
         skew_ij : float

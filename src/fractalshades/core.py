@@ -945,7 +945,8 @@ advanced users when subclassing.
         theta_deg : float
             Pre-rotation of the calculation domain, in degree
         projection : `fractalshades.projection.Projection`
-            Kind of projection used (default to cartesian)
+            Kind of projection used (default to 
+            `fractalshades.projection.Cartesian`)
         has_skew : bool
             If True, unskew the view base on skew coefficients skew_ij
         skew_ij : float
@@ -954,6 +955,17 @@ advanced users when subclassing.
         # Safeguard in case the GUI inputs were strings
         if isinstance(x, str) or isinstance(y, str) or isinstance(dx, str):
             raise RuntimeError("Float expected for x, y, dx")
+
+        # Backward compatibility: also accept projection = "cartesian"
+        if isinstance(projection, str):
+            logger.warning(textwrap.dedent(
+                """\
+                Use of str for projection is deprecated, and might be
+                removed. Please use `fractalshades.projection.Projection`
+                subclasses instead. Defaulting to
+                `fractalshades.projection.Cartesian()`"""
+            ))
+            projection = fractalshades.projection.Cartesian()
 
         # Stores the skew matrix
         self._skew = None
