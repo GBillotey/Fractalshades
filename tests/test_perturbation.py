@@ -41,6 +41,9 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         dir_ref = os.path.join(test_config.ref_data_dir, "perturb_REF")
         fsutils.mkdir_p(dir_ref)
         cls.dir_ref = dir_ref
+        
+        fs.settings.log_directory = os.path.join(dir_ref, "log")
+        fs.set_log_handlers(verbosity="debug @ console + log")
 
         purple = np.array([150, 7, 71]) / 255.
         gold = np.array([229, 182, 31]) / 255.
@@ -726,7 +729,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
              nx=nx,
              xy_ratio=xy_ratio,
              theta_deg=0.,
-             projection="cartesian"
+             projection=fs.projection.Cartesian()
         )
         mandelbrot.clean_up(calc_name)
 
@@ -773,7 +776,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         self.assertTrue(err < err_max)
 
 if __name__ == "__main__":
-    full_test = True
+    full_test = False
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_Perturbation_mandelbrot]))

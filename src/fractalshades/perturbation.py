@@ -102,7 +102,7 @@ directory : str
                 subclasses instead. Defaulting to
                 `fractalshades.projection.Cartesian()`"""
             ))
-            projection = fs.projection.Cartesian()
+            self.projection = projection = fs.projection.Cartesian()
 
         # Stores the skew matrix
         self._skew = None
