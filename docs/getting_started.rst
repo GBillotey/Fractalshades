@@ -157,7 +157,7 @@ kinds of component each implementing a different functionality:
     stores the intermediate raw results. This is typically done in a subclass
     of `fractalshades.Fractal` base class.
     The list of the available fractal models is found here :
-    :doc:`API/models`.
+    :doc:`API/arbitrary_models` and :doc:`API/standard_models`.
 
   - The plotting components will open the raw results and apply user-selected
     post-processing, to generate the image output. The base class for this

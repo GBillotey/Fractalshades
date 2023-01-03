@@ -181,8 +181,8 @@ class Expmap(Projection):
         hmin = fsx.mpf_to_Xrange(mpmath.mpf(hmin))
         hmax = fsx.mpf_to_Xrange(mpmath.mpf(hmax))
         
-        if hmax > (1. / fs.settings.xrange_zoom_level):
-            # We store internally as Xrange
+        if mpmath.exp(hmax) > (1. / fs.settings.xrange_zoom_level):
+            # Or ~ hmax > 690... We store internally as Xrange
             self.hmin = fsx.mpf_to_Xrange(hmin)
             self.hmax = fsx.mpf_to_Xrange(hmax)
         else:

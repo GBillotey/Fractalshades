@@ -1,18 +1,22 @@
 Core components
 ~~~~~~~~~~~~~~~
 
-This section describes the core components.
+This section describes the core components of the application.
 
 .. module:: fractalshades
 
+.. autoclass:: fractalshades.Fractal
+    :members: __init__, zoom, clean_up
 
-.. toctree::
-   :maxdepth: 1
-   :caption: Contents:
+.. autoclass:: fractalshades.PerturbationFractal
+    :members:  __init__, zoom
 
-   core/Fractal
-   core/PerturbationFractal
-   core/Fractal_plotter
-   core/decorators
+.. autoclass:: fractalshades.Fractal_plotter
+    :members:  __init__, add_layer, plot
 
+.. autodecorator:: fractalshades.zoom_options
+
+.. autodecorator:: fractalshades.calc_options
+
+.. autodecorator:: fractalshades.interactive_options
 
