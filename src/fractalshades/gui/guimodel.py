@@ -496,14 +496,14 @@ class Action_func_widget(QFrame):
         ce.show()
 
 
-    def show_script(self):
+    def show_script(self, movie=False):
         """ Display the script in GUI """
         sm = self._submodel
-        script = sm.getscript()
-        ce = Fractal_code_editor()
+        script = sm.getscript(movie=movie)
+        ce = Fractal_code_editor(self)
         ce.set_text(script)
         ce.setWindowTitle("Script")
-        ce.exec()
+        ce.show()
 
 
 class Layout_col_synchronizer(QtCore.QObject):
@@ -3451,6 +3451,12 @@ class Fractal_MainWindow(QMainWindow):
                        load_cmap_cbar))
       cmap.triggered[QAction].connect(self.actiontrig)
 
+
+      movie = bar.addMenu("Movie")
+      movie_source = QAction('Movie making template', movie)
+      movie.addActions((movie_source,))
+      movie.triggered[QAction].connect(self.actiontrig)
+
       about = bar.addMenu("About")
       license_txt = QAction('License', about)
       about.addAction(license_txt)
@@ -3476,6 +3482,8 @@ class Fractal_MainWindow(QMainWindow):
             self.load_cmap()
         elif txt == "License":
             self.show_license()
+        elif txt == "Movie making template":
+            self.show_movie_source()
         else:
             print("Unknow actiontrig")
 
@@ -3496,7 +3504,11 @@ class Fractal_MainWindow(QMainWindow):
         msg.setInformativeText(license_str.splitlines()[2])
         msg.setDetailedText(license_str)
         msg.exec()
-    
+
+    def show_movie_source(self):
+        self._func_wget.show_script(movie=True)
+
+
     def gui_file_path(self, _filter=None, mode="open"):
         """
         Load a file, browsing from the __main__ directory 

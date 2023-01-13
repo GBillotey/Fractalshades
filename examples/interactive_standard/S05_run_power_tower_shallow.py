@@ -91,6 +91,11 @@ def plot(plot_dir):
          zmax: float=zmax,
          zshift: float=0.0,
          attr_strength: float =attr_strength,
+         _4: fs.gui.collapsible_separator="High-quality rendering options",
+         final_render: bool=False,
+         supersampling: fs.core.supersampling_type = "None",
+         jitter: bool = False,
+         recovery_mode: bool = False,
          
     ):
 
@@ -116,7 +121,13 @@ def plot(plot_dir):
                         func=lambda x: x != 1)
         )
 
-        plotter = fs.Fractal_plotter(pp)   
+        plotter = fs.Fractal_plotter(
+            pp,
+            final_render=final_render,
+            supersampling=supersampling,
+            jitter=jitter,
+            recovery_mode=recovery_mode
+        )   
         plotter.add_layer(Bool_layer("interior", output=False))
         plotter.add_layer(Color_layer(
                 layer_name,

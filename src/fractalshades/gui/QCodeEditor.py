@@ -4,7 +4,10 @@ from PyQt6.QtWidgets import (
     QDialog,
     QVBoxLayout,
     QTextEdit,
+    QFileDialog,
+    QMenuBar
 )
+from PyQt6.QtGui import QAction
 
 from pygments import highlight
 from pygments.lexers import get_lexer_by_name
@@ -24,6 +27,14 @@ QWidget {{
 }}
 """
 
+# QMenuBar
+MENUBAR_CSS = """
+QMenuBar {
+  background-color: #646464;
+  spacing: 3px; /* spacing between menu bar items */
+}
+"""
+
 class Fractal_code_editor(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -33,15 +44,56 @@ class Fractal_code_editor(QDialog):
 
         self.setStyleSheet(TEXT_EDIT_CSS.format("#1e1e27"))
         self.ce = Fractal_code_widget(self)
+        self._text = ""
+
+        menubar = self.create_menu()
+
         _layout = QVBoxLayout()
+        _layout.addWidget(menubar, stretch=0)
         _layout.addWidget(self.ce, stretch=1)
         self.setLayout(_layout)
+        
 
     def set_text(self, text):
+        self._text = text
         self.ce.setText(text)
-    
+
     def sizeHint(self):
         return QtCore.QSize(650, 650)
+
+    def create_menu(self):
+        bar = QMenuBar(self) #self.menuBar()
+        bar.setStyleSheet(MENUBAR_CSS)
+        save = bar.addMenu("Save file")
+        save_as = QAction('Save as...', save)
+        save.addActions((save_as,))
+        save.triggered[QAction].connect(self.actiontrig)
+        return bar
+
+    def actiontrig(self, action):
+        """  Dispatch the action to the matching method
+        """
+        txt = action.text()
+        if txt == "Save as...":
+            self.save_as()
+        else:
+            print("Unknow actiontrig")
+
+    def save_as(self):
+        """ Dialog to save the text to file """
+        file_path = QFileDialog.getSaveFileName(
+            self,
+            directory=None,
+            caption="Save File",
+            filter=None
+        )
+        if isinstance(file_path, tuple):
+            file_path = file_path[0]
+        if file_path == "":
+            return
+        with open(file_path, 'w') as out_file:
+            out_file.write(self._text)
+
 
 
 class Fractal_code_widget(QTextEdit):
@@ -50,6 +102,7 @@ class Fractal_code_widget(QTextEdit):
         self.setStyleSheet(TEXT_EDIT_CSS.format("#1e1e27"))
         self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
                            QtWidgets.QSizePolicy.Policy.Expanding)
+        self.setReadOnly(True)
 
         self.lexer = get_lexer_by_name(
             "python3",
@@ -64,6 +117,7 @@ class Fractal_code_widget(QTextEdit):
 
         # Event binding
         self.textChanged.connect(self.highlighter)
+        
 
     def highlighter(self):
         text = self.toPlainText()

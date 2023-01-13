@@ -43,7 +43,7 @@ class Virtual_layer:
     def __init__(self, postname, func, output=True):
         """ 
     Base class for all layer objects.
-    
+
     Parameters
     ----------
     postname : str
@@ -178,21 +178,21 @@ class Virtual_layer:
         dtype = plotter.post_dtype
         (ix, ixx, iy, iyy) = chunk_slice
         nx, ny = ixx - ix, iyy - iy
-        
+
         ssg = plotter.supersampling
         if ssg is not None:
             nx *= ssg
             ny *= ssg
-        
+
         field_count, post_index = self.get_postproc_index()
-        
+
         if field_count == 1:
             arr = np.empty((nx, ny), dtype)
             ret = plotter.get_2d_arr(post_index, chunk_slice)
             if ret is None:
                 return None
             arr[:] = ret
-    
+
         elif field_count == 2:
             (post_index_x, post_index_y) = post_index
             arr = np.empty((2, nx, ny), dtype)
@@ -200,9 +200,9 @@ class Virtual_layer:
             ret1 = plotter.get_2d_arr(post_index_y, chunk_slice)
             if (ret0 is None) or (ret1 is None):
                 return None
-            arr[0, :] = ret0
-            arr[1, :] = ret1
-            
+            arr[0, :, :] = ret0 # TODO Shouldnt it be arr[0, :, :] ???
+            arr[1, :, :] = ret1
+
         return arr
 
     def update_scaling(self, chunk_slice):
@@ -230,7 +230,7 @@ class Virtual_layer:
 
         elif n_fields == 2: # case of normal maps
             # Normalizing by its module
-            arr = arr[0, :, :]**2 + arr[1, :, :]**2
+            arr = arr[0, :, :] ** 2 + arr[1, :, :] ** 2
             max_chunk = self.nanmax_with_mask(arr, chunk_slice)
             max_chunk = np.sqrt(max_chunk)
             self.max = np.nanmax([self.max, max_chunk])
@@ -277,6 +277,25 @@ class Virtual_layer:
         Subclasses should implement"""
         raise NotImplementedError("Derivate classes should implement "
                                   "this method")
+
+    @property
+    def field_count(self):
+        """ number of fields for database mmap"""
+        # The array passed to a layer is plotter.get_2d_arr and fill_raw_arr
+        # which is casted to post_dtype (float32 or float64)
+        # Switching to float64 format allows to represent any integer
+        # below 2**53 ~ 9.E15 / So it seems reasonably safe to follow this
+        # format also for db, and less hassle than managing a ad-hoc structured
+        # datatype (mixing float, bools etc)
+        # We should however be careful for 2-fields layers(like normal fields)
+
+        field_count, post_index = self.get_postproc_index()
+        return field_count
+
+    def db_crop(self, chunk_slice):
+        """ Array to be used for database mmap"""
+        return self[chunk_slice]
+
 
     @staticmethod
     def np2PIL(arr):

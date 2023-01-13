@@ -658,7 +658,7 @@ class XYCoord_wrapper_pp(Postproc):
         else:
             raise ValueError(self.coord)
 
-    def link_sibling(self, sibling):  # Needed ??
+    def link_sibling(self, sibling):
         """ The other coord """
         self.sibling = sibling
 

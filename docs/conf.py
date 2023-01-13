@@ -22,8 +22,8 @@ sys.path.insert(0, fs_dir)
 # -- Project information -----------------------------------------------------
 
 project = 'Fractalshades'
-copyright = '2021, Geoffroy Billotey'
-author = 'Geoffroy Billotey'
+copyright = '2023, Fractalshades development team'
+author = 'G. Billotey'
 
 # The short X.Y version
 version = fractalshades.__version__
@@ -267,7 +267,7 @@ sphinx_gallery_conf = {
      'gallery_dirs': 'examples',       # path to where to save gallery generated output
      'within_subsection_order': FileNameSortKey,
      'filename_pattern': r'\.py',     # all python files r'\.py',
-     'ignore_pattern': r'sgskip\.py', # except those ending with sgskip
+     'ignore_pattern': r'skip\.py', # except those ending with skip
      'image_scrapers': (fractalshades_scraper),
      # 'plot_gallery': 'False',  # Activate this to skip the calculation
 }

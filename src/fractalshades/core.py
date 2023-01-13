@@ -85,7 +85,7 @@ class Fractal_plotter:
     ):
         """
         The base plotting class.
-        
+
         A Fractal plotter is a container for 
         `fractalshades.postproc.Postproc_batch` and fractal layers.
          
@@ -175,7 +175,8 @@ class Fractal_plotter:
         self.postproc_batches += [postproc_batch]
         self.posts.update(postproc_batch.posts)
         self.postnames_2d += postproc_batch.postnames_2d
-    
+
+
     def register_postprocs(self):
         """
         Freezing of the postprocs - call might be delayed after a plotter
@@ -245,20 +246,23 @@ class Fractal_plotter:
         raise KeyError("Layer {} not in available layers: {}".format(
                 layer_name, list(l.postname for l in self.layers)))
 
-    def plotter_info_str(self):
-        str_info = "Plotting images: plotter options"
+    def plotter_info_str(self, to_db=False):
+        if to_db:
+            str_info = "Output to database: plotter options"
+        else:
+            str_info = "Plotting images: plotter options"
         for k, v in self.postproc_options.items():
             str_info += f"\n    {k}: {v}"
         str_info += ("\n  /!\\ supersampling and jitter only activated "
                      + "for final render")
         return str_info
-    
+
     def zoom_info_str(self):
         str_info = "Plotting images: zoom kwargs"
         for k, v in self.fractal.zoom_kwargs.items():
             str_info += f"\n    {k}: {v}"
         return str_info
-    
+
     def plot(self):
         """
         The base method to produce images.
@@ -266,15 +270,37 @@ class Fractal_plotter:
         When called, it will got through all the instance-registered layers
         and plot each layer for which the `output` attribute is set to `True`.
         """
+        self.process(mode="img")
+        
+
+    def process(self, mode):
+        """
+        mode: "img" "db"
+        """
         logger.info(self.plotter_info_str())
         logger.info(self.zoom_info_str())
+        
+#        if mode == "img":
+#            img_mode = True
+#        elif mode == "db":
+#            img_mode = False
+#        else:
+#            raise ValueError(f"Unknown mode {mode}")
+        assert mode in ["img", "db"]
 
-        # Open the image memory mappings ; open PIL images
-        self.open_images()
+        # Open the image memory mappings; open PIL images
+        if mode == "img":
+            self.open_images()
+            if self.final_render:
+                for i, layer in enumerate(self.layers):
+                    if layer.output:
+                        self.create_img_mmap(layer)
+        else:
+            self.open_db()
+
         if self.final_render:
-            for i, layer in enumerate(self.layers):
-                if layer.output:
-                    self.create_img_mmap(layer)
+            # We need to delete because if will not be recomputed in the
+            # calc process
             self.fractal.delete_fingerprint()
 
         self._raw_arr = dict()
@@ -306,10 +332,14 @@ class Fractal_plotter:
         # if "dev" (= not final) render, we already know the 'raw' arrays, so
         # just a postprocessing step
         # if "final" render, we compute on the fly
-        self.plot_tiles(chunk_slice=None)
+        self.process_tiles(chunk_slice=None, mode=mode)
 
-        self.save_images()
-        logger.info("Plotting images: done")
+        if mode == "img":
+            self.save_images()
+            logger.info("Plotting images: done")
+        else:
+            logger.info("Saved layer database to XXXXX: done")
+            
 
         # Output data file
         self.write_postproc_report()
@@ -354,12 +384,12 @@ class Fractal_plotter:
     @Multithreading_iterator(
         iterable_attr="chunk_slices", iter_kwargs="chunk_slice"
     )
-    def plot_tiles(self, chunk_slice):
+    def process_tiles(self, chunk_slice, mode):
         """
         
         """
-        # early exit if already computed
-        if self.try_recover:
+        # 0) early exit if already computed: push the image tiles
+        if self.try_recover and mode == "img":
             f = self.fractal
             rank = f.chunk_rank(chunk_slice)
             _mmap_status = open_memmap(
@@ -370,16 +400,16 @@ class Fractal_plotter:
             if is_valid:
                 for i, layer in enumerate(self.layers):
                     # We need the postproc
-                    # TODO what about 'update scaling' ???
-                    # It is invalid as we lost the data...
                     self.push_reloaded(
                         chunk_slice, layer=layer, im=self._im[i], ilayer=i
                     )
+                    # TODO  'update scaling' may be invalid as we lost the
+                    # data... would need a separate mmap to store min / max
                 f.incr_tiles_status(which="Plot tiles")
                 self.incr_tiles_status(chunk_slice)
                 return
 
-        # 1) Compute the postprocs for this field
+        # 1) Compute the raw postprocs for this field
         n_pp = len(self.posts)
         (ix, ixx, iy, iyy) = chunk_slice
         npts = (ixx - ix) * (iyy - iy)
@@ -407,10 +437,13 @@ class Fractal_plotter:
         # 2) Push each layer crop to the relevant image 
         for i, layer in enumerate(self.layers):
             layer.update_scaling(chunk_slice)
-            if layer.output:
-                self.push_cropped(
-                    chunk_slice, layer=layer, im=self._im[i], ilayer=i
-                )
+            if mode == "img":
+                if layer.output:
+                    self.push_cropped(
+                        chunk_slice, layer=layer, im=self._im[i], ilayer=i
+                    )
+            else:
+                self.push_db(chunk_slice, layer=layer)
 
         # clean-up
         self.incr_tiles_status(chunk_slice) # mmm not really but...
@@ -432,7 +465,7 @@ class Fractal_plotter:
 
         post_array, subset = ret
         arr_1d = f.reshape1d(
-            post_array, subset, chunk_slice,self.supersampling
+            post_array, subset, chunk_slice, self.supersampling
         )
         n_posts, _ = arr_1d.shape
         raw_arr[inc: (inc + n_posts), :] = arr_1d
@@ -535,7 +568,6 @@ class Fractal_plotter:
         for layer in self.layers:
             if layer.output:
                 self._im += [PIL.Image.new(mode=layer.mode, size=self.size)]
-
             else:
                 self._im += [None]
 
@@ -695,7 +727,7 @@ class Fractal_plotter:
             return
         
         if self.supersampling:
-            # Here, we should apply a resizig filter
+            # Here, we should apply a resizing filter
             # Image.resize(size, resample=None, box=None, reducing_gap=None)
             resample = PIL.Image.LANCZOS
             paste_crop = paste_crop.resize(
@@ -706,7 +738,7 @@ class Fractal_plotter:
             )
 
         im.paste(paste_crop, box=crop_slice)
-        
+
         if self.final_render:
             # NOW let's also try to save this beast
             paste_crop_arr = np.asarray(paste_crop)
@@ -741,6 +773,125 @@ class Fractal_plotter:
         im.paste(paste_crop, box=crop_slice)
 
         del layer_mmap
+
+#------------------------------------------------------------------------------
+
+    def save_db(self, db_directory=None):
+        """
+        Instead of image outputs, stores the *postproc* data in a numpy 
+        structured memmap.
+        
+        When called, it will got through all the instance-registered layers
+        """
+        if db_directory is None:
+            db_directory = os.path.join(self.fractal.directory)
+        self.db_directory = db_directory
+        self.process(mode="db")
+
+
+    @property
+    def db_status_path(self):
+        return os.path.join(self.db_directory, "layer_status.db")
+
+    @property
+    def db_path(self):
+        return os.path.join(self.db_directory, "layer.db")
+
+
+    def open_db(self):
+        """ Open 
+         - the database memory mappings
+         - its associated "progress tracking" db_status
+        """
+        self.open_db_status()   # from self.open_mmap_status()
+
+        if self.try_recover:
+            _mmap_status = open_memmap(
+                filename=self.db_status_path, mode="r+"
+            )
+            valid_chunks = np.count_nonzero(_mmap_status)
+            del _db_status
+            n = self.fractal.chunks_count
+            logger.info(
+                "Attempt to restart interrupted calculation,\n"
+                f"    Valid database tiles found: {valid_chunks} / {n}"
+            )
+        elif self.final_render:
+            logger.info("Reloading option disabled, all database recomputed")
+
+        # Structured dtype: np.dtype([('x', np.float64), ('y', 'f4')])
+#        structured_fields = []
+#        for layer in self.layers:
+#            structured_fields += [layer.name, layer.db_dtype]
+#        db_dtype = np.dtype(structured_fields)
+        db_field_count = len(self.postnames) # Accounting for 2-fields layers
+        db_dtype = self.post_dtype
+
+        # Creates the datatase == structured memory mapping
+        fs.utils.mkdir_p(os.path.dirname(self.db_path))
+        _mmap_db = open_memmap(
+            filename=self.db_path, 
+            mode='w+',
+            dtype=db_dtype,
+            shape=(db_field_count,) + self.size,
+            fortran_order=False,
+            version=None
+        )
+        del _mmap_db
+
+    def open_db_status(self):
+        """ Small mmap array to flag the validated db tiles
+        """
+        n_chunk = self.fractal.chunks_count
+        file_path = self.db_status_path
+        fs.utils.mkdir_p(os.path.dirname(file_path))
+
+        try:
+            # Does layer the mmap already exists, and does it seems to suit
+            # our need ?
+            if not(self.try_recover):
+                raise ValueError("Invalidated mmap_status")
+            _db_status = open_memmap(
+                filename=file_path, mode="r+"
+            )
+            if (_db_status.shape != (n_chunk,)):
+                raise ValueError("Incompatible shapes for plotter mmap_status")
+
+        except (FileNotFoundError, ValueError):
+            # Lets create it from scratch
+            logger.debug(f"No valid plotter status file found - recompute img")
+            _db_status = open_memmap(
+                    filename=file_path, 
+                    mode='w+',
+                    dtype=np.int32,
+                    shape=(n_chunk,),
+                    fortran_order=False,
+                    version=None
+            )
+            _db_status[:] = 0
+            del _db_status
+
+
+    def push_db(self, chunk_slice, layer):
+        """ push "postprocessed data" (from the layer's postproc field)
+        to the db memory mapping
+        """
+        (ix, ixx, iy, iyy) = chunk_slice
+        field_count, post_index = layer.get_postproc_index()
+        db_crop = layer.db_crop(chunk_slice)
+        
+        if self.supersampling:
+            # Here, we should apply a resizing filter
+            # db_crop = Decimate_filter.resize(db_crop, self.supersampling)
+            raise NotImplementedError("Resampling filter not implemented")
+
+        db_mmap = open_memmap(filename=self.db_path, mode='r+')
+        if field_count == 1:
+            db_mmap[post_index, ix:ixx, iy:iyy] = db_crop
+        elif field_count == 2:
+            db_mmap[post_index[0], ix:ixx, iy:iyy] = db_crop[0, :, :]
+            db_mmap[post_index[1], ix:ixx, iy:iyy] = db_crop[1, :, :]
+        del db_mmap
 
 
 class _Null_status_wget:
@@ -901,12 +1052,15 @@ advanced users when subclassing.
     def script_repr(self, indent):
         """String used to serialize this instance in GUI-generated scripts
         """
-        # Mainly a call to __init__ with the directory tuned to variable
-        # `plot_dir`
+        # Mainly a call to __init__ with the directory tuned to be the 
+        # local variable `plot_dir`
         fullname = fs.utils.Code_writer.fullname(self.__class__)
+
         kwargs = self.init_kwargs
         kwargs["directory"] = fs.utils.Rawcode("plot_dir") # get rid of quotes
-        kwargs_code = fs.utils.Code_writer.func_args(kwargs, 1)
+        kwargs_code = fs.utils.Code_writer.func_args(kwargs, indent + 1)
+        kwargs_code  += " " * 4 * indent 
+
         str_call_init = f"{fullname}(\n{kwargs_code})"
         return str_call_init
 
@@ -977,7 +1131,6 @@ advanced users when subclassing.
         self.lin_proj_impl = self.get_lin_proj_impl()
         projection.adjust_to_zoom(self)
         self.proj_impl = projection.f
-        # get_impl()
 
 
     def get_lin_proj_impl(self):
@@ -985,8 +1138,6 @@ advanced users when subclassing.
         transformation (rotation, skew, scale)
         """
         dx = self.dx
-#        if isinstance(dx, mpmath.mpf):
-#            dx = fsx.mpf_to_Xrange(dx)
         theta = self.theta_deg / 180. * np.pi
         skew = self._skew
 
@@ -1563,18 +1714,9 @@ advanced users when subclassing.
         When not a perturbation rendering:
         This is just a diggest of the zoom and calculation parameters
         """
-#        dx = self.dx
         center = self.x + 1j * self.y
-#        xy_ratio = self.xy_ratio
-#        theta = self.theta_deg / 180. * np.pi # used for expmap
-#        projection = getattr(PROJECTION_ENUM, self.projection).value
-#         was : self.PROJECTION_ENUM[self.projection]
-        
-         
-
         return (
             initialize, iterate,
-            # dx, center, xy_ratio, theta, projection, ## refactored
             center, self.proj_impl, self.lin_proj_impl,
             self._interrupted
         )
@@ -2278,7 +2420,7 @@ advanced users when subclassing.
         if postproc_batch.fractal is not self:
             raise ValueError("Postproc batch from a different factal provided")
         calc_name = postproc_batch.calc_name
-        
+
         if postproc_options["final_render"]:
             self.set_status("Calc tiles", "No [final]", bool_log=True)
 
@@ -2291,9 +2433,6 @@ advanced users when subclassing.
         codes = self._calc_data[calc_name]["saved_codes"]
         complex_dic, int_dic, termination_dic = self.codes_mapping(*codes)
 
-#        # Compute c from cpix
-#        c_pt = self.get_std_cpt(c_pix) This is not "cheap, so moving this to 
-#        postproc
 
         postproc_batch.set_chunk_data(chunk_slice, subset, c_pix, Z, U,
             stop_reason, stop_iter, complex_dic, int_dic, termination_dic)
@@ -2317,17 +2456,11 @@ advanced users when subclassing.
     def get_std_cpt(self, c_pix):
         """ Return the c complex value from c_pix """
         n_pts, = c_pix.shape  # Z of shape [n_Z, n_pts]
-        # Explicit casting to complex / float
-#        dx = float(self.dx)
+        # Explicit casting to complex
         center = complex(self.x + 1j * self.y)
-#        xy_ratio = self.xy_ratio
-#        theta = self.theta_deg / 180. * np.pi # used for expmap
-#        projection = getattr(PROJECTION_ENUM, self.projection).value
-        
 
         cpt = np.empty((n_pts,), dtype=c_pix.dtype)
         fill1d_c_from_pix(
-            # c_pix, dx, center, xy_ratio, theta, projection, cpt
             c_pix, self.proj_impl, self.lin_proj_impl, center, cpt
         )
         return cpt
