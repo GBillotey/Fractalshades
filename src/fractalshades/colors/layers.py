@@ -71,6 +71,7 @@ class Virtual_layer:
         self.func = self.parse_func(func)
         self.output = output
         self.mask = None
+        self.interpolate_params = None
 
     @staticmethod
     def parse_func(func):
@@ -80,7 +81,9 @@ class Virtual_layer:
             return func
 
     def link_plotter(self, plotter):
+        """ Define the layer -> Fractal plotter link """
         self.plotter = plotter
+
 
     @property
     def fractal(self, fractal):
@@ -200,7 +203,7 @@ class Virtual_layer:
             ret1 = plotter.get_2d_arr(post_index_y, chunk_slice)
             if (ret0 is None) or (ret1 is None):
                 return None
-            arr[0, :, :] = ret0 # TODO Shouldnt it be arr[0, :, :] ???
+            arr[0, :, :] = ret0 
             arr[1, :, :] = ret1
 
         return arr
@@ -272,11 +275,13 @@ class Virtual_layer:
         else:
             raise ValueError(mask_kind) 
 
-    def crop(chunk_slice):
+    def crop(self, chunk_slice):
         """ Return the image for this chunk
-        Subclasses should implement"""
-        raise NotImplementedError("Derivate classes should implement "
-                                  "this method")
+        Subclasses should implement `aux_crop` """
+        arr = self[chunk_slice]
+        
+        return self.child_crop(chunk_slice, arr)
+
 
     @property
     def field_count(self):
@@ -427,11 +432,8 @@ class Color_layer(Virtual_layer):
             if self.mask is not None:
                 layer.set_mask(self.mask[0])
 
-    def crop(self, chunk_slice):
-        """ private - Return the image for this chunk"""
-        # 1) The "base" image
-        arr = self[chunk_slice]
-        
+    def child_crop(self, chunk_slice, arr):
+        """ aux function """
         # If a user-mapping is defined, apply it
         if self.func is not None:
             arr = self.func(arr)
@@ -575,10 +577,12 @@ class Grey_layer(Virtual_layer):
             mask_color = self.default_mask_color
         self.mask = (layer, mask_color)
 
-    def crop(self, chunk_slice):
-        """ Return the image for this chunk"""
-        # 1) The "base" image
-        arr = self[chunk_slice]
+
+    def child_crop(self, chunk_slice, arr):
+        """ aux function """
+        # If a user-mapping is defined, apply it
+        if self.func is not None:
+            arr = self.func(arr)
 
         # If a user-mapping is defined, apply it
         if self.func is not None:
@@ -716,12 +720,10 @@ class Normal_map_layer(Color_layer):
         """
         super().__init__(postname, None, colormap=None, output=output)
         self.max_slope = max_slope * np.pi / 180
-    
-    def crop(self, chunk_slice):
-        """ Return the image for this chunk"""
-        # 1) The "base" image
-        arr = self[chunk_slice]
 
+
+    def child_crop(self, chunk_slice, arr):
+        """ aux function """
         # Note: rgb = np.uint8(rgb * 255)
         (ix, ixx, iy, iyy) = chunk_slice
         nx, ny = ixx - ix, iyy - iy
@@ -781,11 +783,9 @@ class Bool_layer(Virtual_layer):
         bool_arr = np.array(arr, dtype=bool)
         return bool_arr
 
-    def crop(self, chunk_slice):
-        """ Return the image for this bool layer chunk"""
-        # 1) The "base" image
-        arr = self[chunk_slice]
 
+    def child_crop(self, chunk_slice, arr):
+        """ aux function """
         crop_mask = PIL.Image.fromarray(self.np2PIL(arr))
         return crop_mask
 
@@ -885,7 +885,7 @@ class Blinn_lighting:
         # Normal vector coordinates
         nx = normal.real
         ny = normal.imag
-        nz = np.sqrt(1. - nx**2 - ny**2) # cos of max_slope
+        nz = np.sqrt(1. - nx ** 2 - ny ** 2) # cos of max_slope
         lambert = LSx * nx + LSy * ny + LSz * nz
         np.putmask(lambert, lambert < 0., 0.)
 

@@ -35,7 +35,7 @@ from fractalshades.colors.layers import (
     Blinn_lighting,
     Overlay_mode
 )
-import fractalshades.db 
+import fractalshades.db
 
 
 class Test_layers(unittest.TestCase):
@@ -59,8 +59,24 @@ class Test_layers(unittest.TestCase):
         cls.f = f = fsm.Mandelbrot(db_dir)
         f.clean_up(cls.calc_name)
 
-        f.zoom(x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
-               theta_deg=0., projection="cartesian")
+        cls.zoom_kwargs = zoom_kwargs = {
+            "x": x,
+            "y": y,
+            "dx": dx,
+            "nx": nx,
+            "xy_ratio": 1.0,
+            "theta_deg": 0.,
+            "projection": "cartesian"
+        }
+
+        f.zoom(**zoom_kwargs)
+        cls.frame = fs.db.Frame(
+            x=0., y=0., dx=0.5,
+            nx=zoom_kwargs["nx"],
+            xy_ratio=zoom_kwargs["xy_ratio"]
+        )
+            # x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
+            # theta_deg=0., projection="cartesian")
     
         f.calc_std_div(
             calc_name=cls.calc_name,
@@ -70,7 +86,7 @@ class Test_layers(unittest.TestCase):
             epsilon_stationnary= 0.001,
             calc_orbit=True,
             backshift=3
-            )
+        )
         
         
         cls.colormap = fscolors.Fractal_colormap(
@@ -102,7 +118,7 @@ class Test_layers(unittest.TestCase):
         )
 
 
-    @test_config.no_stdout
+    # @test_config.no_stdout
     def test_db_color_basic(self):
         """ Testing basic `Color_layer` plots from a saved database """
         pp = Postproc_batch(self.f, self.calc_name)
@@ -131,10 +147,11 @@ class Test_layers(unittest.TestCase):
             db,
             plot_dir=os.path.join(self.db_dir, "dbplot")
         )
-        dbl.plot()
+
+        dbl.plot(self.frame)
         
 
-    @test_config.no_stdout
+    # @test_config.no_stdout
     def test_overlay1(self):
         """ Testing a complex multilayer plot from a saved database """
 
@@ -238,7 +255,8 @@ class Test_layers(unittest.TestCase):
             db,
             plot_dir=os.path.join(self.db_dir, "dbplot")
         )
-        dbl.plot()
+
+        dbl.plot(self.frame)
 
 
 

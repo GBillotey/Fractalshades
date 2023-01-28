@@ -1,6 +1,13 @@
 Changelog
 *********
 
+Rev 1.1.0
+~~~~~~~~~
+added mappings
+added filters
+added databse export
+added movie making
+
 Rev 1.0.3
 ~~~~~~~~~
 Yet another bugfix.

@@ -23,6 +23,7 @@ import fractalshades.settings
 import fractalshades.utils
 import fractalshades.postproc
 import fractalshades.projection
+import fractalshades.numpy_utils.filters as fsfilters
 
 from fractalshades.mthreading import Multithreading_iterator
 import fractalshades.numpy_utils.expr_parser as fs_parser
@@ -234,6 +235,7 @@ class Fractal_plotter:
                     postname, list(self.postnames) + self.postnames_2d
                 )
             )
+
         self.layers += [layer]
         layer.link_plotter(self)
 
@@ -279,13 +281,7 @@ class Fractal_plotter:
         """
         logger.info(self.plotter_info_str())
         logger.info(self.zoom_info_str())
-        
-#        if mode == "img":
-#            img_mode = True
-#        elif mode == "db":
-#            img_mode = False
-#        else:
-#            raise ValueError(f"Unknown mode {mode}")
+
         assert mode in ["img", "db"]
 
         # Open the image memory mappings; open PIL images
@@ -297,6 +293,10 @@ class Fractal_plotter:
                         self.create_img_mmap(layer)
         else:
             self.open_db()
+            if self.supersampling is not None:
+                self.lf2 = fsfilters.Lanczos_decimator().get_impl(
+                        2, self.supersampling
+                )
 
         if self.final_render:
             # We need to delete because if will not be recomputed in the
@@ -406,8 +406,24 @@ class Fractal_plotter:
                     # TODO  'update scaling' may be invalid as we lost the
                     # data... would need a separate mmap to store min / max
                 f.incr_tiles_status(which="Plot tiles")
-                self.incr_tiles_status(chunk_slice)
+                self.incr_tiles_status(chunk_slice, mode)
                 return
+        
+        if mode == "db":
+            f = self.fractal
+            rank = f.chunk_rank(chunk_slice)
+            
+            _db_status = open_memmap(
+                filename=self.db_status_path, mode="r+"
+            )
+            is_valid = (_db_status[rank] > 0)
+            del _db_status
+            if is_valid:
+                # Nothing to compute here, skipping this CALC
+                logger.debug(f"Skipping db calculation for tile {chunk_slice}")
+                print("**** SKIP db calc")
+                return
+
 
         # 1) Compute the raw postprocs for this field
         n_pp = len(self.posts)
@@ -446,7 +462,7 @@ class Fractal_plotter:
                 self.push_db(chunk_slice, layer=layer)
 
         # clean-up
-        self.incr_tiles_status(chunk_slice) # mmm not really but...
+        self.incr_tiles_status(chunk_slice, mode) # mmm not really but...
         del self._raw_arr[chunk_slice]
 
 
@@ -472,7 +488,7 @@ class Fractal_plotter:
         return 0 # OK
 
 
-    def incr_tiles_status(self, chunk_slice):
+    def incr_tiles_status(self, chunk_slice, mode):
         f = self.fractal
         curr_val = self._current_tile["value"] + 1
         self._current_tile["value"] = curr_val
@@ -485,13 +501,22 @@ class Fractal_plotter:
         bool_log = ((time_diff > 1) or (curr_val == 1) or (curr_val == ntiles))
         
         # Marking this chunk as valid (in case of 'final render')
-        if self.final_render:
+        if self.final_render and (mode == "img"):
             rank = f.chunk_rank(chunk_slice)
             _mmap_status = open_memmap(
                 filename=self.mmap_status_path, mode="r+"
             )
             _mmap_status[rank] = 1
             del _mmap_status
+        
+        if mode == "db":
+            rank = f.chunk_rank(chunk_slice)
+            _db_status = open_memmap(
+                filename=self.db_status_path, mode="r+"
+            )
+            _db_status[rank] = 1
+            del _db_status
+
 
         if bool_log:
             self._current_tile["time"] = curr_time
@@ -596,7 +621,9 @@ class Fractal_plotter:
             # Does layer the mmap already exists, and does it seems to suit
             # our need ?
             if not(self.try_recover):
-                raise ValueError("Invalidated mmap_status")
+                raise ValueError(
+                    "Invalidated mmap_status as *try_recover* is set to False"
+                )
             _mmap_status = open_memmap(
                 filename=file_path, mode="r+"
             )
@@ -780,13 +807,15 @@ class Fractal_plotter:
         """
         Instead of image outputs, stores the *postproc* data in a numpy 
         structured memmap.
-        
+
         When called, it will got through all the instance-registered layers
         """
         if db_directory is None:
             db_directory = os.path.join(self.fractal.directory)
         self.db_directory = db_directory
         self.process(mode="db")
+
+        return self.db_path
 
 
     @property
@@ -803,31 +832,42 @@ class Fractal_plotter:
          - the database memory mappings
          - its associated "progress tracking" db_status
         """
-        self.open_db_status()   # from self.open_mmap_status()
+        self.open_db_status()
 
-        if self.try_recover:
-            _mmap_status = open_memmap(
+        try:
+            if not(self.try_recover):
+                raise ValueError(
+                    "Invalidated db, as *try_recover* is set to False"
+                )
+            _mmap_db = open_memmap(
+                filename=self.db_path, mode='r'
+            )
+            _db_status = open_memmap(
                 filename=self.db_status_path, mode="r+"
             )
-            valid_chunks = np.count_nonzero(_mmap_status)
+            valid_chunks = np.count_nonzero(_db_status)
             del _db_status
+            del _mmap_db
             n = self.fractal.chunks_count
+
+            if n == 0:
+                raise ValueError(
+                    "Invalidated db, as no tile is valid anyway"
+                )
             logger.info(
                 "Attempt to restart interrupted calculation,\n"
                 f"    Valid database tiles found: {valid_chunks} / {n}"
             )
-        elif self.final_render:
-            logger.info("Reloading option disabled, all database recomputed")
+            return
 
-        # Structured dtype: np.dtype([('x', np.float64), ('y', 'f4')])
-#        structured_fields = []
-#        for layer in self.layers:
-#            structured_fields += [layer.name, layer.db_dtype]
-#        db_dtype = np.dtype(structured_fields)
+        except (FileNotFoundError, ValueError):
+            logger.info(
+                "Invalidated db, recomputing full db"
+            )
+
         db_field_count = len(self.postnames) # Accounting for 2-fields layers
         db_dtype = self.post_dtype
-
-        # Creates the datatase == structured memory mapping
+        # Creates the new datatase == structured memory mapping
         fs.utils.mkdir_p(os.path.dirname(self.db_path))
         _mmap_db = open_memmap(
             filename=self.db_path, 
@@ -850,7 +890,9 @@ class Fractal_plotter:
             # Does layer the mmap already exists, and does it seems to suit
             # our need ?
             if not(self.try_recover):
-                raise ValueError("Invalidated mmap_status")
+                raise ValueError(
+                    "Invalidated db_status, as *try_recover* is set to False"
+                )
             _db_status = open_memmap(
                 filename=file_path, mode="r+"
             )
@@ -859,7 +901,7 @@ class Fractal_plotter:
 
         except (FileNotFoundError, ValueError):
             # Lets create it from scratch
-            logger.debug(f"No valid plotter status file found - recompute img")
+            logger.debug(f"No valid db status file found - recompute db")
             _db_status = open_memmap(
                     filename=file_path, 
                     mode='w+',
@@ -879,11 +921,20 @@ class Fractal_plotter:
         (ix, ixx, iy, iyy) = chunk_slice
         field_count, post_index = layer.get_postproc_index()
         db_crop = layer.db_crop(chunk_slice)
-        
-        if self.supersampling:
-            # Here, we should apply a resizing filter
-            # db_crop = Decimate_filter.resize(db_crop, self.supersampling)
-            raise NotImplementedError("Resampling filter not implemented")
+        s = self.supersampling
+
+        if s:
+            # Here, we apply a homemade Lanczos-2 resizing filter
+            # We apply it for each field (1 or 2)
+            lf2 = self.lf2 # Avoid recompiling a filter for each iteration
+            if field_count == 1:
+                db_crop = lf2(db_crop)
+            elif field_count == 2:
+                _, cx, cy = db_crop.shape
+                _db_crop = np.empty((2, cx // s, cy // s), dtype=db_crop.dtype)
+                _db_crop[0, :, :] = lf2(db_crop[0, :, :])
+                _db_crop[1, :, :] = lf2(db_crop[1, :, :])
+                db_crop = _db_crop
 
         db_mmap = open_memmap(filename=self.db_path, mode='r+')
         if field_count == 1:
@@ -908,14 +959,6 @@ class _Null_status_wget:
         """
         self._status[key]["str_val"] = str_val
 
-
-#PROJECTION_ENUM = enum.Enum(
-#    "PROJECTION_ENUM",
-#    ("cartesian", "spherical", "expmap"),
-#    module=__name__
-#)
-#projection_type = typing.Literal[PROJECTION_ENUM]
-# cartesian = fs.projection.Cartesian()
 
 class Fractal:
 
