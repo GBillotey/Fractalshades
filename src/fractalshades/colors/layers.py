@@ -854,14 +854,14 @@ class Blinn_lighting:
             angle (phi) of light source direction, in degree
             phi = 0 if incoming light is in xOy plane
         """
-        angles = (polar_angle, azimuth_angle)
+        # angles = (polar_angle, azimuth_angle)
         self.light_sources += [{
             "k_diffuse": np.asarray(k_diffuse),
             "k_specular": np.asarray(k_specular),
             "shininess": shininess,
             "polar_angle": polar_angle,
             "azimuth_angle": azimuth_angle,
-            "angles_radian": tuple(a * np.pi / 180. for a in angles),
+            # "angles_radian": tuple(a * np.pi / 180. for a in angles),
             "color": np.asarray(color),
             "material_specular_color": material_specular_color
         }]
@@ -875,7 +875,8 @@ class Blinn_lighting:
         return _2d_XYZ_to_rgb(XYZ_shaded, nx, ny)
 
     def partial_shade(self, ls, XYZ, normal):
-        theta_LS, phi_LS = ls['angles_radian']
+        theta_LS = ls['polar_angle'] * np.pi / 180.
+        phi_LS = ls['azimuth_angle'] * np.pi / 180.
 
         # Light source coordinates
         LSx = np.cos(theta_LS) * np.cos(phi_LS)
@@ -948,16 +949,17 @@ class Blinn_lighting:
         # Keep aligned the angles in radian
         else:
             self.light_sources[irow][col_key] = float(value)
-            if col_key == "polar_angle":
-                self.light_sources[irow]["angles_radian"] = (
-                    float(value) * np.pi / 180.,
-                    self.light_sources[irow]["angles_radian"][1]
-                )
-            if col_key == "azimuth_angle":
-                self.light_sources[irow]["angles_radian"] = (
-                    self.light_sources[irow]["angles_radian"][0],
-                    float(value) * np.pi / 180.,
-                )
+#            if col_key in ["polar_angle", "azimuth_angle"]:
+#                self.light_sources[irow][col_key] = float(value)
+#                    float(value) * np.pi / 180.,
+#                    self.light_sources[irow]["angles_radian"][1]
+#                )
+#            if col_key == "azimuth_angle":
+#                self.light_sources[irow]["azimuth_angle"] = float(value)
+                #(
+#                    self.light_sources[irow]["angles_radian"][0],
+#                    float(value) * np.pi / 180.,
+#                )
 
 
     def col_data(self, col_key):

@@ -408,7 +408,7 @@ class Fractal_plotter:
                 f.incr_tiles_status(which="Plot tiles")
                 self.incr_tiles_status(chunk_slice, mode)
                 return
-        
+
         if mode == "db":
             f = self.fractal
             rank = f.chunk_rank(chunk_slice)
@@ -421,7 +421,6 @@ class Fractal_plotter:
             if is_valid:
                 # Nothing to compute here, skipping this CALC
                 logger.debug(f"Skipping db calculation for tile {chunk_slice}")
-                print("**** SKIP db calc")
                 return
 
 

@@ -24,10 +24,19 @@ def make_movie(plot_dir):
     db_path = plotter.save_db()
     db = fs.db.Db(db_path)
 
-    db.freeze(plotter, layer_name, try_reload=True)
 
+    frozen_fb = True
+    supersampling = False
+    if frozen_fb:
+        db.freeze(plotter, layer_name, try_reload=True)
+        movie = fs.movie.Movie(
+            plotter, None, size=(1280, 720), fps=40, supersampling=supersampling
+        ) # 1920, 1080 | 720, 480 | 1280, 720
+    else:
+        movie = fs.movie.Movie(
+            plotter, layer_name, size=(720, 480), fps=30, supersampling=supersampling
+        ) # 1920, 1080 | 720, 480 | 1280, 720
 
-    movie = fs.movie.Movie(plotter, layer_name, size=(1920, 1080), fps=30, supersampling=False) # 1920, 1080 | 720, 480 | 1280, 720
     # Pan in 10 seconds
     t = [0., 10.]
     x = [-.25, .25]
@@ -39,7 +48,7 @@ def make_movie(plot_dir):
 
     print("plot DIR", plot_dir)
     movie.make(os.path.join(plot_dir, "test.mp4"))
-    # movie.debug(os.path.join(plot_dir, "debug2"), 0, 2)
+    movie.debug(os.path.join(plot_dir, "debug2"), 30, 32)
 
 
 if __name__ == "__main__":

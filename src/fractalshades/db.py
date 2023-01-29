@@ -9,19 +9,20 @@ from numpy.lib.format import open_memmap
 
 import fractalshades as fs
 import fractalshades.utils
-from fractalshades.lib.fast_interp import interp2d
+# from fractalshades.lib.fast_interp import interp2d
+from fractalshades.numpy_utils.interp2d import (
+    Grid_lin_interpolator as fsGrid_lin_interpolator
+)
+
 import fractalshades.numpy_utils.filters as fsfilters
 from fractalshades.mthreading import Multithreading_iterator
 
 logger = logging.getLogger(__name__)
 
-SCIPY_INTERPOLANT = False
-import scipy
 
-
-# TODO: a frame could handle 2x supersampling + Lanczos filter ?
 class Frame:
-    def __init__(self, x, y, dx, nx, xy_ratio, supersampling):
+    def __init__(self, x, y, dx, nx, xy_ratio, supersampling,
+                 t, plotting_modifier):
         """
     A frame is used to describe a specific data window to extract / interpolate
     from a db
@@ -39,8 +40,12 @@ class Frame:
     xy_ratio: float
         width / height ratio of the interpolated frame 
     supersampling: bool
-        If True, uses a 2x2 supersampling
-    
+        If True, uses a 2x2 supersampling + Lanczos-2 decimation filter
+    t: Optionnal float
+        time [s] of this frame in the movie
+    plotting_modifier: Optionnal callable
+        a plotting_modifier associated with this Frame
+
     Note:
     -----
     For a simple pass-through db -> Frame:
@@ -57,6 +62,8 @@ class Frame:
         self.nx = nx
         self.xy_ratio = xy_ratio
         self.supersampling = supersampling
+        self.t = t
+        self.plotting_modifier = plotting_modifier
         
         self.ny = int(self.nx / self.xy_ratio + 0.5)
         self.dy = dy = self.dx / self.xy_ratio
@@ -93,7 +100,7 @@ class Plot_template:
         frame: Frame
             The frame-specific data holder
         """
-        # Internal plotting object, reparented for frame-specific
+        # Internal plotterobject, layers reparented for frame-specific
         # functionnality
         self.plotter = copy.deepcopy(plotter)
         for layer in self.plotter.layers:
@@ -104,6 +111,11 @@ class Plot_template:
 
     def __getattr__(self, attr):
         return getattr(self.plotter, attr)
+
+    def __getitem__(self, layer_name):
+        """ Get the layer by its postname
+        """
+        return self.plotter.__getitem__(layer_name)
 
     @property
     def supersampling(self):
@@ -135,7 +147,7 @@ class Db:
         self.path = path
         # self.zoom_kw = zoom_kw
         self.init_model()
-        
+
         # Cache for interpolating classes
         self._interpolator = {}
 
@@ -245,12 +257,9 @@ class Db:
             del mmap
 
         k = 1
-        p = [False, False]
-        c = [False, False]
-        e = [0, 0]
-        interpolator = interp2d(a, b, h, f, k, p, c, e)
-
+        interpolator = fsGrid_lin_interpolator(a, b, h, f)
         bounds = (a, b)
+
         return interpolator, bounds
     
 # --------------- db freezing interface ---------------------------------------
@@ -262,8 +271,8 @@ class Db:
 
     def freeze(self, plotter, layer_name, try_reload):
         """
-        Freeze a database by storing the postprocessed layer image as a numpy
-        array. The layer shall be a RGB layer.
+        Freeze a database by storing a postprocessed layer image as a numpy
+        array (1 data point = 1 pixel). The layer shall be a RGB(A) layer.
 
         Parameters:
         -----------
@@ -281,7 +290,7 @@ class Db:
         # Create a mmap for the layer
         layer = plotter[layer_name]
         mode = layer.mode
-        if not(mode in "RGB", "rgba"):
+        if not(mode in "RGB", "RGBA"):
             raise ValueError(
                 f"Only a RGB(A) layer can be used to freeze a db"
                 + f"found: {mode}"
@@ -332,10 +341,6 @@ class Db:
         del fr_mmap
 
         plot_template = Plot_template(plotter, self, frame=None)
-        # Reparenting the layers to _Plot_template
-        for layer in plot_template.layers:
-            layer.link_plotter(plot_template)
-
         self.process_for_freeze(plot_template, out_postname=layer_name)
         self.is_frozen = True
 
@@ -347,7 +352,7 @@ class Db:
         """ Freeze (stores) the RGB array for this layer"""
 
         (ix, ixx, iy, iyy) = db_chunk
-        mmap = open_memmap(filename=self.path, mode='r+')
+        # mmap = open_memmap(filename=self.path, mode='r+')
         fr_mmap = open_memmap(filename=self.frozen_path, mode='r+')
 
         pasted = False
@@ -368,7 +373,7 @@ class Db:
                 + f"not found in {plot_template.postnames}"
             )
 
-        del mmap
+        # del mmap
         del fr_mmap
 
 
@@ -413,7 +418,6 @@ class Db_loader:
     capacity.
 
     Note : “full HD” is 1920 x 1080 pixels.
-    
     """
     def __init__(self, plotter, db, plot_dir):
         """
@@ -447,9 +451,7 @@ class Db_loader:
         chunk_slice: Not used
             Not used - uses frame instead
         """
-#        mmap = open_memmap(filename=self.db.path, mode="r+")
         ret = self.db.get_interpolator(frame, post_index)(*frame.pts)
-#        del mmap
 
         if frame.supersampling:
             sps_size = (2 * frame.nx, 2 * frame.ny)
@@ -475,19 +477,29 @@ class Db_loader:
         Return:
         -------
         img
-            PIL.Image object
+            PIL.Image object if out_postname is provided, or mapping 
+            postnames -> PIL.Image objects (for all layer postnames for which
+            output property is set to True)
+        
+        Notes:
+        ------
+        If the underlying db is 'frozen', frame-specific post-processing is
+        bypassed and only the frozen layer picture is returned.
         """
         # Is the db frozen ?
         if self.db.is_frozen:
             return self.plot_frozen(frame)
 
         plot_template = Plot_template(self.plotter, self, frame)
-        # Reparenting the layers to _Plot_template
-        for layer in plot_template.layers:
-            layer.link_plotter(plot_template)
 
-#        if out_mode == "file":
-#            out_postname = None
+        plotting_modifier = frame.plotting_modifier
+        if plotting_modifier is not None:
+            plotting_modifier(plot_template, frame.t)
+
+        print("after modifier", frame.t)
+        ls0 = plot_template['continuous_iter']._modifiers[0][2].light_sources[0]
+        print("ls0 angle", ls0["polar_angle"])
+
         imgs = []
         im_layers = []
 
@@ -527,34 +539,25 @@ class Db_loader:
         """
         dtype = self.db.frozen_props["dtype"]
         n_channel = self.db.frozen_props["n_channel"]
-#        mode = self.db.frozen_props["mode"]
-
         nx, ny = frame.size
-        ret = np.empty((ny, nx, n_channel), dtype=dtype)
-        # print("dtype", dtype, "shape", nx, ny)
+        if frame.supersampling:
+            im_size = (2 * nx, 2 * ny)
+        else:
+            im_size = (nx, ny)
+        ret = np.empty(im_size[::-1] + (n_channel,), dtype=dtype)
 
         for ic in range(n_channel): #3): #n_channel):
-            channel_ret = self.db.get_interpolator(frame, ic)(*frame.pts)
-            if frame.supersampling:
-                sps_size = (2 * frame.nx, 2 * frame.ny)
-                channel_ret = self.lf2(channel_ret.reshape(sps_size))
-            else:
-                channel_ret = channel_ret.reshape(frame.size)
-                # print("channel_ret", channel_ret.dtype, channel_ret.shape)
+            channel_ret = self.db.get_interpolator(frame, ic)(*frame.pts
+            ).reshape(im_size)
             # Numpy -> PILLOW
             ret[:, :, ic] = np.swapaxes(channel_ret, 0 , 1)[::-1, :]
+            im = PIL.Image.fromarray(ret)
 
-        im = PIL.Image.fromarray(ret)
+        if frame.supersampling:
+            resample = PIL.Image.LANCZOS
+            im = im.resize(size=(nx, ny), resample=resample) 
+
         return im
-#        chunk_slice = (0, nx, 0, ny)
-#        crop_slice = (0, 0, nx, ny)
-
-#        if out_mode == "file":
-
-#        if out_mode == "data":
-#            return im
-#        else:
-#            raise NotImplementedError(out_mode)
 
 
     def process(self, plot_template, frame, imgs, im_layers):
@@ -602,6 +605,14 @@ class Db_loader:
 class Exp_db:
     """ Database for an expmap plot """
     pass
+
+
+
+
+
+
+
+
 
 
 class Exp_db_loader(Db_loader):

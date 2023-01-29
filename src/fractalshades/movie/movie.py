@@ -2,6 +2,7 @@
 #import copy
 import logging
 import os
+import concurrent.futures
 
 import numpy as np
 #import numba
@@ -42,21 +43,33 @@ logger = logging.getLogger(__name__)
 class Movie():
 
     def __init__(self, plotter, postname, size=(720, 480), fps=24,
-                 supersampling=None):
+                 supersampling=None, plotting_modifier=None,
+                 reload_frozen=False):
         """
         A movie-making class
         
         Parameters:
         -----------
-        plotter: fs.Fractal_plotter
+        plotter: `fs.Fractal_plotter`
             The base plotter for this movie
         postname: str
             The string indentifier for the layer used to make the movie
         size: (int, int)
-            movie screen size in pixels. Default to 1920 x 1080 
+            Movie screen size in pixels. Default to 720 x 480 
         fps: int
             movie frame-count per second
-
+        supersampling: bool
+            If `True`, a 2 x 2 supersampling will be applied for each frame
+            calculation 
+        plotting_modifier: Optionnal, callable(plotter, time)
+            A callback which will modify the plotter instance before each time
+            step. Defaults to None, which allows to 'freeze' in place the
+            database postprocessad image and interpolate directly in the image.
+            Using this option open a lot of possibilities but is also much
+            more computer-intensive
+        reload_frozen: bool
+            Used only if plotting_modifier is None
+            If True, will try to reload any previousy computed frozen db image
         """
         # Note:
         # Standard 16:9 resolutions can be:
@@ -72,7 +85,9 @@ class Movie():
         self.plotter = plotter
         self.postname = postname
         self.supersampling = supersampling
-        
+        self.plotting_modifier = plotting_modifier
+        self.reload_frozen = reload_frozen
+
         self.width = size[0]
         self.height = size[1]
         self.fps = fps
@@ -205,27 +220,13 @@ class Camera_move:
         self.nx = self.movie.width
         self.xy_ratio = self.movie.width / self.movie.height
         self.supersampling = self.movie.supersampling
-
-#    @property
-#    def nframe(self):
-#        """ Number of frames for this camera move"""
-#        t = self.t
-#        return int((t[-1] - t[0]) * self.fps)
-#
-#    @property
-#    def fps(self):
-#        """ Number of frames for this camera move"""
-#        return self.movie.fps
-#
-#    @property
-#    def nx(self):
-#        """ image width in pixels """
-#        return self.movie.width
-#
-#    @property
-#    def xy_ratio(self):
-#        """ frame ratio width / height """
-#        return self.movie.width / self.movie.height
+        self.plotting_modifier = self.movie.plotting_modifier
+        
+        if self.plotting_modifier is None:
+            # we can freeze the db and interpolate in the frozen image
+            logger.info("Database will be frozen for camera move")
+            self.db.freeze(movie.plotter, movie.postname,
+                           try_reload=movie.reload_frozen)
 
 
 class Camera_pan(Camera_move):
@@ -264,7 +265,9 @@ class Camera_pan(Camera_move):
             dx=frame_dx,
             nx=self.nx,
             xy_ratio=self.xy_ratio,
-            supersampling=self.supersampling
+            supersampling=self.supersampling,
+            t=t_frame,
+            plotting_modifier=self.plotting_modifier
         )
 
     def picture(self, iframe):
@@ -272,10 +275,44 @@ class Camera_pan(Camera_move):
         return self.db_loader.plot(
             frame=self.get_frame(iframe), out_postname=self.out_postname
         )
+    
+    def _picture(self, iframe):
+        return iframe, self.picture(iframe)
 
-    def pictures(self):
-        for iframe in range(self.nframe):
-            yield self.picture(iframe)
+    def pictures(self, istart=None, istop=None):
+        """
+        yields successively the Camera_pan images.
+        If provided, starts at frame istart and stops at istop otherwise yields
+        the full frame range
+        """
+        if istart is None:
+            istart = 0
+        if istop is None:
+            istop = self.nframe
+
+        frame_iterable = range(istart, istop)
+        fig_cache = {}
+        awaited = istart
+        max_workers = os.cpu_count() - 1 # Leave one CPU for encoding
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers
+        ) as threadpool:
+            futures = (
+                threadpool.submit(self._picture, iframe)
+                for iframe in frame_iterable
+            )
+
+            for fut in concurrent.futures.as_completed(futures):
+                iframe, fig = fut.result()
+                fig_cache[iframe] = fig
+                can_flush = (awaited in fig_cache.keys())
+                while can_flush:
+                    yield fig_cache[awaited]
+                    del fig_cache[awaited]
+                    awaited += 1
+                    can_flush = (awaited in fig_cache.keys())
+
+
 
 
 #------------------------------------------------------------------------------
@@ -286,28 +323,53 @@ class Camera_pan(Camera_move):
 #        fs.movie.Camera_zoom(db, t, h)
 #    )
 #    
-#class Camera_zoom(Camera_move):
-#    
-#    def __init__(self, db, t, h):
-#        """
-#        Parameters:
-#        ----------
-#        t: 1d array-like
-#            time for the trajectories
-#        h: 1d array-like, > 0
-#            trajectory of zoom logarithmic factor h
-#            The screen is scaled by np.exp(h) 
-#        """
-#        super().__init__(db, t)
-#        self.x = np.asarray(x, dtype=np.float64)
-#        self.y = np.asarray(y, dtype=np.float64)
-#        self.dx = np.asarray(dx, dtype=np.float64)
-#
-#        self.x_func = PchipInterpolator(self.t, self.x)
-#        self.y_func = PchipInterpolator(self.t, self.y)
-#        self.dx_func = PchipInterpolator(self.t, self.dx)
+class Camera_zoom(Camera_move):
+    
+    def __init__(self, db, t, h):
+        """
+        Parameters:
+        ----------
+        t: 1d array-like
+            time for the trajectories
+        h: 1d array-like, > 0
+            trajectory of zoom logarithmic factor h
+            The screen is scaled by np.exp(h) 
+        """
+        super().__init__(db, t)
+        self.h = np.asarray(h, dtype=np.float64)
+        self.h_func = PchipInterpolator(self.t, self.h)
 
-            
+    def get_frame(self, iframe):
+        """ Parameter for the ith-frame frame to be interpolated """
+        t_frame = self.t[0] + self.t[1] * iframe / self.nframe
+        frame_h = self.h_func(t_frame)
+        return fs.db.Exp_Frame(
+            h=frame_h,
+            nx=self.nx,
+            xy_ratio=self.xy_ratio,
+            supersampling=self.supersampling
+        )
+
+    def set_movie(self, movie):
+        """
+        
+        
+        Parameters:
+        ----------
+        movie: fs.movie.Movie
+        """
+        super().set_movie(movie)
+        self.db_loader = fs.db.Exp_Db_loader(
+            movie.plotter, self.db, plot_dir=None
+        )
+#        self.out_postname = movie.postname
+#
+#        t = self.t
+#        self.fps = self.movie.fps
+#        self.nframe = int((t[-1] - t[0]) * self.fps)
+#        self.nx = self.movie.width
+#        self.xy_ratio = self.movie.width / self.movie.height
+#        self.supersampling = self.movie.supersampling
 #
 #class Camera_zoom(Camera_move):
 #
