@@ -55,7 +55,7 @@ class Test_layers(unittest.TestCase):
         x = -0.5
         y = 0.
         dx = 5.
-        nx = 600
+        nx = 1800
         cls.f = f = fsm.Mandelbrot(db_dir)
         f.clean_up(cls.calc_name)
 
@@ -66,29 +66,30 @@ class Test_layers(unittest.TestCase):
             "nx": nx,
             "xy_ratio": 1.0,
             "theta_deg": 0.,
-            "projection": "cartesian"
+            "projection": fs.projection.Cartesian()
         }
 
         f.zoom(**zoom_kwargs)
         cls.frame = fs.db.Frame(
-            x=0., y=0., dx=0.5,
+            x=0.,
+            y=0.,
+            dx=1.0,
             nx=zoom_kwargs["nx"],
             xy_ratio=zoom_kwargs["xy_ratio"]
         )
             # x=x, y=y, dx=dx, nx=nx, xy_ratio=1.0,
             # theta_deg=0., projection="cartesian")
-    
+
         f.calc_std_div(
             calc_name=cls.calc_name,
             subset=None,
-            max_iter=1000,
+            max_iter=20000,
             M_divergence=100.,
             epsilon_stationnary= 0.001,
             calc_orbit=True,
             backshift=3
         )
-        
-        
+
         cls.colormap = fscolors.Fractal_colormap(
             colors=[[1.        , 0.82352941, 0.25882353],
                     [0.70980392, 0.15686275, 0.38823529],
@@ -120,12 +121,15 @@ class Test_layers(unittest.TestCase):
 
     # @test_config.no_stdout
     def test_db_color_basic(self):
-        """ Testing basic `Color_layer` plots from a saved database """
+        """ Testing basic `Color_layer` plots from a saved database 
+        Note: works also with supersampling
+        """
         pp = Postproc_batch(self.f, self.calc_name)
         pp.add_postproc("cont_iter", Continuous_iter_pp())
         pp.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
-        plotter = fs.Fractal_plotter(pp)   
-        plotter.add_layer(Bool_layer("interior", output=False))
+        plotter = fs.Fractal_plotter(pp, final_render=True, supersampling="3x3")   
+        # plotter.add_layer(Grey_layer("interior", func=None, output=True))
+        plotter.add_layer(Bool_layer("interior", output=True))
         plotter.add_layer(Color_layer(
                 "cont_iter",
                 func="np.log(x)",
@@ -139,21 +143,27 @@ class Test_layers(unittest.TestCase):
                 mask_color=(0., 0., 0.)
         )
         plotter.save_db()
-        
-        db_path = os.path.join(self.db_dir, "layer.db")
-        db = fs.db.Db(db_path, self.f.zoom_kwargs)
-        dbl = fs.db.Db_loader(
-            plotter,
-            db,
-            plot_dir=os.path.join(self.db_dir, "dbplot")
-        )
 
-        dbl.plot(self.frame)
+        db_path = os.path.join(self.db_dir, "layer.db")
+        db = fs.db.Db(db_path) # self.f.zoom_kwargs)
+        db.set_plotter(plotter, "interior")
+        db.set_plotter(plotter, "cont_iter")
+        img = db.plot(self.frame)
+        img.save(os.path.join(self.db_dir, "test_db_color_basic.png"))
         
 
     # @test_config.no_stdout
-    def test_overlay1(self):
-        """ Testing a complex multilayer plot from a saved database """
+    def test_db_overlay1(self):
+        """ Testing a complex multilayered plot (with alpha compositing) from a
+        saved database 
+
+        Note: supersampling works but need carefull use of masks for the base
+        layer:
+            - masking at database creation for correct down-sampling
+            - then un-masking for alpha_compositing (otherwise the mask being
+              applied in the last step, will just erase the
+              alpha-compositing
+        """
 
         layer_name = "overlay1"
         interior_calc_name = self.calc_name + "_over-1"
@@ -164,13 +174,14 @@ class Test_layers(unittest.TestCase):
             calc_name=interior_calc_name,
             subset=interior,
             known_orders=None,
-            max_order=250,
+            max_order=5000,
             max_newton=20,
-            eps_newton_cv=1.e-12,
+            eps_newton_cv=1.e-8,
         )
 
         pp0 = Postproc_batch(f, self.calc_name)
         pp0.add_postproc(layer_name, Continuous_iter_pp())
+        pp0.add_postproc("interior", Raw_pp("stop_reason", func="x != 1."))
         pp0.add_postproc("DEM_map", DEM_normal_pp(kind="potential"))
         pp0.add_postproc("div", Raw_pp("stop_reason", func="x == 1."))
         pp0.add_postproc(
@@ -182,9 +193,12 @@ class Test_layers(unittest.TestCase):
         pp.add_postproc("attr_map", Attr_normal_pp())
         pp.add_postproc("attr", Attr_pp())
 
-        plotter = fs.Fractal_plotter([pp0, pp])
+        plotter = fs.Fractal_plotter(
+            [pp0, pp], final_render=True, supersampling="3x3"
+        )
 
         plotter.add_layer(Bool_layer("div", output=False))
+        plotter.add_layer(Bool_layer("interior", output=True))
         plotter.add_layer(Color_layer(
                 layer_name,
                 func="np.log(x)",
@@ -197,7 +211,7 @@ class Test_layers(unittest.TestCase):
                 colormap=self.colormap_int,
                 probes_z=[0., 1.],
                 output=True))
-        
+
         plotter.add_layer(Virtual_layer("fieldlines", func="x * 0.8 ", output=False))
         plotter[layer_name].set_twin_field(plotter["fieldlines"], 0.65)#1925)
 
@@ -244,19 +258,24 @@ class Test_layers(unittest.TestCase):
         # Overlay : alpha composite
         overlay_mode = Overlay_mode("alpha_composite")
         plotter[layer_name].shade(plotter["DEM_map"], light)
+        plotter[layer_name].set_mask(
+                plotter["interior"],
+                mask_color=(0., 0., 0.)
+        )
         plotter[layer_name].overlay(plotter["attr"], overlay_mode=overlay_mode)
 
         plotter.save_db()
         
-        db_path = os.path.join(self.db_dir, "layer.db")
-        db = fs.db.Db(db_path, self.f.zoom_kwargs)
-        dbl = fs.db.Db_loader(
-            plotter,
-            db,
-            plot_dir=os.path.join(self.db_dir, "dbplot")
-        )
+        # Now delete the mask for alpha-compositing
+        plotter[layer_name].mask = None
 
-        dbl.plot(self.frame)
+        db_path = os.path.join(self.db_dir, "layer.db")
+        db = fs.db.Db(db_path) # , self.f.zoom_kwargs)
+        
+        db.set_plotter(plotter, layer_name)
+        img = db.plot(self.frame)
+        img.save(os.path.join(self.db_dir, "test_db_overlay1.png"))
+        
 
 
 
@@ -280,5 +299,6 @@ if __name__ == "__main__":
         runner.run(test_config.suite([Test_layers]))
     else:
         suite = unittest.TestSuite()
-        suite.addTest(Test_layers("test_overlay1"))
+        # suite.addTest(Test_layers("test_db_color_basic"))
+        suite.addTest(Test_layers("test_db_overlay1"))
         runner.run(suite)

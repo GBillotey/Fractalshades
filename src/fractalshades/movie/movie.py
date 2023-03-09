@@ -9,24 +9,17 @@ import numpy as np
 
 import fractalshades as fs
 import fractalshades.db
-#import fractalshades.settings
-#import fractalshades.colors
 import fractalshades.utils
-#import fractalshades.postproc
-#import fractalshades.projection
-
-#from fractalshades.lib.fast_interp import interp1d
 
 
 try:
     from scipy.interpolate import PchipInterpolator
 except ImportError:
-    raise RuntimeError("Scipy is needed for movie maker- please install with: "
+    raise RuntimeError("Scipy is needed for movie maker, install with: "
                        "'pip install scipy'")
-# Note: Scipy used for monotonic cubic interpolant, we could remove this 
-# dependency with reimplementing:
+# Note: Scipy is used only for its monotonic cubic interpolant, we could remove
+# this dependency if we reimplement it:
 # https://math.stackexchange.com/questions/45218/implementation-of-monotone-cubic-interpolation
-
 
 try:
     import av
@@ -39,7 +32,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-        
+
 class Movie():
 
     def __init__(self, plotter, postname, size=(720, 480), fps=24,
@@ -120,36 +113,43 @@ class Movie():
             for pic in cm.pictures():
                 yield pic
 
-    def make(self, out_file, pix_fmt="yuv444p", crf=22):
+
+    def make(self, out_file, pix_fmt="yuv420p", crf=22):
         """
-        Make a mp4 movie - Codec AVC standard (H.264)
+        Make a .mp4 movie - Uses Codec AVC standard (H.264)
 
         Parameters:
         -----------
         out_file: str
             The path to output file
         pix_fmt: "yuv444p" | "yuv420p"
-            The pixel format’s name - default: "yuv444p"
+            The pixel format’s name - default: "yuv420p"
         crf: int, 0 - 51
             The "Constant Rate Factor" - default: 22 (51 = lowest quality)
         """
-        # Credit:
+        # See several examples:
 # https://stackoverflow.com/questions/73609006/how-to-create-a-video-out-of-frames-without-saving-it-to-disk-using-python
-
+# https://github.com/PyAV-Org/PyAV/blob/develop/scratchpad/encode_frames.py
+# https://stackoverflow.com/questions/61260182/how-to-output-x265-compressed-video-with-cv2-videowriter
+# https://github.com/kkroening/ffmpeg-python
+# https://github.com/NVIDIA/cuda-python
+# https://github.com/AiueoABC/CompressedVideoGenerationExample/issues/1
         fs.utils.mkdir_p(os.path.dirname(out_file))
 
         with open(out_file, "wb") as f:
             # Use PyAV to open out_file as MP4 video
             # output_memory_file = io.BytesIO()
             output = av.open(f, 'w', format="mp4")
+            codec_name = 'h264'
     
             # Advanced Video Coding (AVC), also referred to as H.264 or
             # MPEG-4 Part 10, is a video compression standard based on
             # block-oriented, motion-compensated coding.
-            stream = output.add_stream('h264', str(self.fps))
+            stream = output.add_stream(codec_name, rate=str(self.fps))
             stream.width = self.width
             stream.height = self.height
             stream.pix_fmt = pix_fmt
+            # https://ffmpeg.org/ffmpeg.html#Video-Options
             stream.options = {'crf': str(crf)}
 
             # Iterate the PIL images, convert image to PyAV VideoFrame, encode,
@@ -163,6 +163,7 @@ class Movie():
             packet = stream.encode(None)
             output.mux(packet)
             output.close()
+
 
     def debug(self, out_file, first, last):
         """
@@ -188,95 +189,51 @@ class Movie():
             pic.save(os.path.join(head, suffixed))
 
 
-
 class Camera_move:
-    """ 
-    Time is relative to the whole movie
-    Frame index is relative to this Cam move
-    """
-    def __init__(self, db, t):
+    def __init__(self, db, tmin, tmax):
+        """
+        Base class for classes implementing a movie sequence
+        
+        Time is relative to the whole movie
+        Frame index is relative to this Cam move
+        """
         self.db = db
-        self.t = np.asarray(t, dtype=np.float64)
+        self.tmin = tmin
+        self.tmax = tmax
+        self.dt = tmax - tmin
         self.movie = None # add to a movie with movie.add_frame
 
-    def pictures(self):
-        raise NotImplementedError("Derived frames shall implement")
 
     def set_movie(self, movie):
         """
+        Link this camera move to a movie objects and adjust its internals
+        properties accordingly.
+
         Parameters:
         ----------
         movie: fs.movie.Movie
         """
         self.movie = movie
-        self.db_loader = fs.db.Db_loader(
-            movie.plotter, self.db, plot_dir=None
+        self.db.set_plotter(
+            movie.plotter, movie.postname,
+            movie.plotting_modifier, movie.reload_frozen
         )
-        self.out_postname = movie.postname
-
-        t = self.t
         self.fps = self.movie.fps
-        self.nframe = int((t[-1] - t[0]) * self.fps)
+        self.nframe = int((self.tmax - self.tmin) * self.fps)
+
         self.nx = self.movie.width
         self.xy_ratio = self.movie.width / self.movie.height
         self.supersampling = self.movie.supersampling
         self.plotting_modifier = self.movie.plotting_modifier
         
-        if self.plotting_modifier is None:
-            # we can freeze the db and interpolate in the frozen image
-            logger.info("Database will be frozen for camera move")
-            self.db.freeze(movie.plotter, movie.postname,
-                           try_reload=movie.reload_frozen)
-
-
-class Camera_pan(Camera_move):
-
-    def __init__(self, db, t, x, y, dx):
-        """
-        Parameters:
-        ----------
-        t: 1d array-like
-            time for the trajectories
-        x: 1d array-like
-            trajectory of x in db screen coordinates
-        y: 1d array-like
-            trajectory of y in db screen coordinates
-        dx: 1d array-like
-            trajectory of dx in db screen coordinates
-        """
-        super().__init__(db, t)
-        self.x = np.asarray(x, dtype=np.float64)
-        self.y = np.asarray(y, dtype=np.float64)
-        self.dx = np.asarray(dx, dtype=np.float64)
-
-        self.x_func = PchipInterpolator(self.t, self.x)
-        self.y_func = PchipInterpolator(self.t, self.y)
-        self.dx_func = PchipInterpolator(self.t, self.dx)
-
-    def get_frame(self, iframe):
-        """ Parameter for the ith-frame frame to be interpolated """
-        t_frame = self.t[0] + self.t[1] * iframe / self.nframe
-        frame_x = self.x_func(t_frame)
-        frame_y = self.y_func(t_frame)
-        frame_dx = self.dx_func(t_frame)
-        return fs.db.Frame(
-            x=frame_x,
-            y=frame_y,
-            dx=frame_dx,
-            nx=self.nx,
-            xy_ratio=self.xy_ratio,
-            supersampling=self.supersampling,
-            t=t_frame,
-            plotting_modifier=self.plotting_modifier
-        )
+        self.make_grids()
 
     def picture(self, iframe):
         """ Returns the ith-frame as a PIL.Image object """
-        return self.db_loader.plot(
-            frame=self.get_frame(iframe), out_postname=self.out_postname
-        )
-    
-    def _picture(self, iframe):
+        return self.db.plot(frame=self.get_frame(iframe))
+
+    def async_picture(self, iframe):
+        # keeps trac of the frame index for async accumulation & flushing
         return iframe, self.picture(iframe)
 
     def pictures(self, istart=None, istop=None):
@@ -298,13 +255,15 @@ class Camera_pan(Camera_move):
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers
         ) as threadpool:
             futures = (
-                threadpool.submit(self._picture, iframe)
+                threadpool.submit(self.async_picture, iframe)
                 for iframe in frame_iterable
             )
 
             for fut in concurrent.futures.as_completed(futures):
                 iframe, fig = fut.result()
                 fig_cache[iframe] = fig
+
+                # Flushing the cache to the video maker
                 can_flush = (awaited in fig_cache.keys())
                 while can_flush:
                     yield fig_cache[awaited]
@@ -313,189 +272,115 @@ class Camera_pan(Camera_move):
                     can_flush = (awaited in fig_cache.keys())
 
 
+class Camera_pan(Camera_move):
 
-
-#------------------------------------------------------------------------------
-    # Zoom in 10 seconds
-#    t = [0., 10.]
-#    h = [10., 0.]   # exp(10.) is ~ 22000
-#    movie.add_camera_move(
-#        fs.movie.Camera_zoom(db, t, h)
-#    )
-#    
-class Camera_zoom(Camera_move):
-    
-    def __init__(self, db, t, h):
+    def __init__(self, db, x_evol, y_evol, dx_evol):
         """
         Parameters:
         ----------
+        db: fs.db.Db
+            The underlying database
+        x: couple of 1d array-like - (x_t, x)
+            trajectory of x in db screen coordinates
+        y: couple of 1d array-like - (y_t, y)
+            trajectory of y in db screen coordinates
+        dx: couple of 1d array-like - (dx_t, dx)
+            trajectory of dx in db screen coordinates
+        """
+        x_t, x = x_evol
+        y_t, y = y_evol
+        dx_t, dx = dx_evol
+
+        x_t = np.asarray(x_t)
+        y_t = np.asarray(y_t)
+        dx_t = np.asarray(dx_t)
+        x = np.asarray(x)
+        y = np.asarray(y)
+        dx = np.asarray(dx)
+
+        tmin = x_t[0]
+        tmax = x_t[-1]
+        if (y_t[0] != tmin) or (y_t[-1] != tmax):
+            raise ValueError("Unexpected t span for y_t")
+        if (dx_t[0] != tmin) or (dx_t[-1] != tmax):
+            raise ValueError("Unexpected t span for dx_t")
+
+        super().__init__(db, tmin, tmax)
+
+        self.x_func = PchipInterpolator(x_t, x)
+        self.y_func = PchipInterpolator(y_t, y)
+        self.dx_func = PchipInterpolator(dx_t, dx)
+
+
+    def get_frame(self, iframe):
+        """ Parameter for the ith-frame frame to be interpolated """
+        t_frame = self.tmin + self.dt * iframe / self.nframe
+        frame_x = self.x_func(t_frame)
+        frame_y = self.y_func(t_frame)
+        frame_dx = self.dx_func(t_frame)
+
+        return fs.db.Frame(
+            x=frame_x,
+            y=frame_y,
+            dx=frame_dx,
+            nx=self.nx,
+            xy_ratio=self.xy_ratio,
+            supersampling=self.supersampling,
+            t=t_frame,
+            plotting_modifier=self.plotting_modifier
+        )
+    
+    def make_grids(self):
+        # No added value, faster to recompute
+        pass
+
+
+class Camera_zoom(Camera_move):
+    
+    def __init__(self, db, h_evol):
+        """
+        Continuous zomming, to use in conjonction with a fs.db.Exp_Db in order
+        to unwrap a pre-stored Exponential mapping.
+
+        Parameters:
+        ----------
+        db: fs.db.Exp_Db
+            The underlying database
         t: 1d array-like
             time for the trajectories
         h: 1d array-like, > 0
             trajectory of zoom logarithmic factor h
             The screen is scaled by np.exp(h) 
         """
-        super().__init__(db, t)
-        self.h = np.asarray(h, dtype=np.float64)
-        self.h_func = PchipInterpolator(self.t, self.h)
+        if not(isinstance(db, fs.db.Exp_db)):
+            raise ValueError("Camera_zoom shall be used with fs.db.Exp_Db")
+
+        h_t, h = h_evol
+        h_t = np.asarray(h_t)
+        h = np.asarray(h)
+        tmin = h_t[0]
+        tmax = h_t[-1]
+        super().__init__(db, tmin, tmax)
+
+        self.h_func = PchipInterpolator(h_t, h)
+
 
     def get_frame(self, iframe):
         """ Parameter for the ith-frame frame to be interpolated """
-        t_frame = self.t[0] + self.t[1] * iframe / self.nframe
+        t_frame = self.tmin + self.dt * iframe / self.nframe
         frame_h = self.h_func(t_frame)
-        return fs.db.Exp_Frame(
+        return fs.db.Exp_frame(
             h=frame_h,
             nx=self.nx,
             xy_ratio=self.xy_ratio,
-            supersampling=self.supersampling
+            supersampling=self.supersampling,
+            pts=self.pts
         )
 
-    def set_movie(self, movie):
-        """
-        
-        
-        Parameters:
-        ----------
-        movie: fs.movie.Movie
-        """
-        super().set_movie(movie)
-        self.db_loader = fs.db.Exp_Db_loader(
-            movie.plotter, self.db, plot_dir=None
+    def make_grids(self):
+        self.pts = fs.db.Exp_frame.make_exp_grid(
+            self.nx, self.xy_ratio, self.supersampling
         )
-#        self.out_postname = movie.postname
-#
-#        t = self.t
-#        self.fps = self.movie.fps
-#        self.nframe = int((t[-1] - t[0]) * self.fps)
-#        self.nx = self.movie.width
-#        self.xy_ratio = self.movie.width / self.movie.height
-#        self.supersampling = self.movie.supersampling
-#
-#class Camera_zoom(Camera_move):
-#
-#    def __init__(self, movie, exp_arr):
-#        """
-#        Based on exponential mapping
-#        
-#        Parameters
-#        ----------
-#        time_arr:
-#            The time points, strictly increasing
-#        exp_arr:
-#            The scaling coefficients (in log scale). The image at time time_arr[i]
-#            will be at zoom_args + scaling of  exp(exp_arr[i])
-#            Positive numbers (>= 0.)
-#        """
-#        self.time_arr = np.asarray(time_arr, dtype=np.float64)
-#        self.exp_arr = np.asarray(exp_arr, dtype=np.float64)
-#        # Will be set when adding to a Movie_maker
-#        self.mov = None
-#
-#    def set_movie(self, mov):
-#        """ mov: Movie_maker"""
-#        self.mov = mov
-#        self.compute_frame_data()
-#
-#    @property
-#    def ref_zoom_kwargs(self):
-#        return self.mov.ref_zoom_kwargs
-#
-#    def compute_frame_data(self):
-#        frame_indices = np.arange(self.nframe)
-#        interp = scipy.interpolate.PchipInterpolator(
-#            (self.time_arr - self.t0) * self.mov.fps,
-#            self.exp_arr
-#        )
-#        self.frame_exp = interp(frame_indices)
-#        
-#
-#    @property
-#    def t0(self):
-#        """ Time at start of the zoom """
-#        return self.time_arr[0]
-#
-#    @property
-#    def tf(self):
-#        """ Time at end of the zoom """
-#        return self.time_arr[-1]
-#
-#    @property
-#    def dh(self):
-#        """ The needed h range for Expmap. [0, hmax]"""
-#        fexp = self.frame_exp
-#        zkw = self.ref_zoom_kwargs
-#        # Final image computed as a square (size dx x dx) and used 
-#        # for pixels inside the dx-diameter circle.
-#        # zpix ->  exp(hmin) : hmin == 0.
-#        # zpix ->  exp(hmax) : hmax == np.max(fexp) * np.log(diag)
-#        diag = np.sqrt((1. / zkw["xy_ratio"]) ** 2 + 1.)
-#        return np.max(fexp) * np.log(diag)
-#
-#
-#    @property
-#    def nframe(self):
-#        "Number of frames used for this zoom sequence"
-#        return (self.tf - self.t0) * self.mov.fps
-#    
-#    def iframe(self, t):
-#        """ The frame just before time t - index for this local zoom sequence
-#        """
-#        return int((t - self.t0) * self.mov.fps)
-#
-##    def exp_scale(self, iframe):
-##        """ exp_scale at frame i """
-##        t = self.to + iframe / self.mov.fps
-#
-#
-#    def expmap_zoom_kwargs(self):
-#        """ Returns the kwargs needed for the zoom of the Expmap projection """
-#        # We just need to adjust the dx and to set the projection
-#        zkw = copy.deepcopy(self.ref_zoom_kwargs)
-#
-#        # lowest expmap pixel density in the cartesian image (in pt per unit)
-#        diag = np.sqrt((1. / zkw["xy_ratio"]) ** 2 + 1.)
-#        ny_expmap = zkw["nx"] * np.pi * diag # Adjusting to same pix density
-#        # dh = 2. * np.pi * xy_ratio
-#        xy_ratio_expmap = self.dh / (2. * np.pi)
-#        nx_expmap = ny_expmap * xy_ratio_expmap
-#
-#        # First, the dx if given thrgh the required pixel numbers fpr [-pi, pi]
-#        zkw["nx"] = nx_expmap
-#        zkw["projection"] = fs.projection.Expmap(
-#                hmin=0., hmax=self.dh, rotates_df=False
-#        )
-#        return zkw
-#
-#
-#    def final_frame_kwargs(self):
-#        """ Returns the kwargs needed for the zoom of the final projection """
-#        # We just need to adjust the dx and to set the projection
-#        zkw = copy.deepcopy(self.ref_zoom_kwargs)
-#        zkw["xy_ratio"] = 1.0
-#        zkw["projection"] = fs.projection.Cartesian()
-#        return zkw
-#
-#
-#    def frame_interpolator(self, iframe):
-#        """
-#        return a numba compiled function numba_impl for the frame i
-#        numba_impl(frame, x_pix, y_pix, data_out)
-#        """
-#        fps = self.fps
-#        exp = self.frame_exp[iframe]
-#
-#        # Need to open the needed mmap range, as numba cannot use it
-#        # pixels from the 2 memory mappings available
-#
-#
-#        @numba.njit
-#        def numba_impl(mmap_exp, mmap_final, data_out):
-#            
-#            y_pix
-#
-#        return numba_impl
 
-
-
-
+        # TODO: store the 2-supersampled grid - if we want to support this
 

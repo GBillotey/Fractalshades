@@ -584,7 +584,7 @@ class DEM_normal_pp(Postproc):
 # https://www.math.univ-toulouse.fr/~cheritat/wiki-draw/index.php/Mandelbrot_set
             # dzndc = Z[complex_dic["dzndc"], :]
             dzndc = self.get_dzndc(Z, c_pix, complex_dic)
-            # TODO: d2zndc2 may fail if a projection is used
+            # TODO: d2zndc2 may fail if a projection is used - not tested
             d2zndc2 = Z[complex_dic["d2zndc2"], :] 
             abs_zn = np.abs(zn)
             lo = np.log(abs_zn)
@@ -780,7 +780,7 @@ class Attr_normal_pp(Postproc):
         # Now let's take the total differential of this
         # While not totally exact this gives good results :
         normal = attr * np.conj(dattrdc) / np.abs(dattrdc)
-        
+
         return normal, None
 
 
@@ -847,7 +847,7 @@ class Fractal_array:
             *int_codes*, *termination_codes* for this calculation.
         func: None | callable | a str of variable x (e.g. "np.sin(x)")
               will be applied as a pre-processing step to the raw data if not
-              `None`
+              `None` - use of str form is recommended
         """
         self.fractal = fractal
         self.calc_name = calc_name
@@ -861,7 +861,7 @@ class Fractal_array:
             # Seems over-the top here, just raising a detailed error
             source_code = inspect.getsource(func)
             raise ValueError(
-                "func is unserializable:\n"
+                "func is not provied in a serializable form:\n"
                 + f"{source_code}\n"
                 + "Consider passing func definition by string instead"
                 + " (e.g. \"np.sin(x)\")"

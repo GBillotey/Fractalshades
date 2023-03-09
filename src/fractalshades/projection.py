@@ -14,14 +14,6 @@ import fractalshades.numpy_utils.xrange as fsx
 # Log attributes
 # https://docs.python.org/2/library/logging.html#logrecord-attributes
 
-#PROJECTION_ENUM = enum.Enum(
-#    "PROJECTION_ENUM",
-#    ("cartesian", "spherical", "expmap"),
-#    module=__name__
-#)
-#projection_type = typing.Literal[PROJECTION_ENUM]
-
-
 class Projection:
     """
     A Projection defines a mapping acting on the screen-pixels before
@@ -67,8 +59,11 @@ class Projection:
         return init_kwargs
 
     def __eq__(self, other):
-        """ 2 Projections are equal if they are instances from the SAME
-        subclass and have been created with the same init_kwargs
+        """
+        2 `Projections` are equal if:
+
+            - they are instances from the same subclass
+            - they have been created with the same init_kwargs
         """
         return (
             other.__class__ == self.__class__
@@ -125,15 +120,14 @@ class Cartesian(Projection):
         .. math::
 
             \\bar{z}_{pix} =  z_{pix}
-
         """
         self.make_impl()
 
     def make_f_impl(self):
         """ A cartesian projection just let pass-through the coordinates"""
         @numba.njit(numba.complex128(numba.complex128))
-        def numba_impl(dz):
-            return dz
+        def numba_impl(z):
+            return z
         self.f = numba_impl
 
     def make_df_impl(self):
@@ -177,10 +171,7 @@ class Expmap(Projection):
             movie making tool.
         """
         self.rotates_df = rotates_df
-        
-        hmin = fsx.mpf_to_Xrange(mpmath.mpf(hmin))
-        hmax = fsx.mpf_to_Xrange(mpmath.mpf(hmax))
-        
+
         if mpmath.exp(hmax) > (1. / fs.settings.xrange_zoom_level):
             # Or ~ hmax > 690... We store internally as Xrange
             self.hmin = fsx.mpf_to_Xrange(hmin)
@@ -200,6 +191,7 @@ class Expmap(Projection):
         match hmax - hmin """
         # target: dh = 2. * np.pi * xy_ratio 
         fractal.xy_ratio = self.dh / (np.pi * 2.)
+        fractal.zoom_kwargs["xy_ratio"] = fractal.xy_ratio
 
     def make_f_impl(self):
         hmoy = self.hmoy
@@ -212,7 +204,7 @@ class Expmap(Projection):
             h = hmoy + dh * z.real
             # t linearly interpolated between -pi and pi
             t = dh * z.imag
-            return  np.exp(complex(h, t))
+            return np.exp(complex(h, t))
 
         self.f = numba_impl
 

@@ -294,9 +294,9 @@ class Fractal_plotter:
         else:
             self.open_db()
             if self.supersampling is not None:
-                self.lf2 = fsfilters.Lanczos_decimator().get_impl(
-                        2, self.supersampling
-                )
+                dc = fsfilters.Lanczos_decimator()
+                self.lf2 = dc.get_impl(2, self.supersampling)
+                self.lf2_masked = dc.get_masked_impl(2, self.supersampling)
 
         if self.final_render:
             # We need to delete because if will not be recomputed in the
@@ -802,16 +802,34 @@ class Fractal_plotter:
 
 #------------------------------------------------------------------------------
 
-    def save_db(self, db_directory=None):
+    def save_db(self, relpath=None):
         """
-        Instead of image outputs, stores the *postproc* data in a numpy 
-        structured memmap.
+        Stores the *postproc* data in a numpy structured memmap.
 
-        When called, it will got through all the instance-registered layers
+        Goes through all the registered layers and stores the results in a 
+        (nposts, nx, ny) memory mapping - applies for supersampling if
+        requested (Lanczos-2 decimation filter).
+
+        Parameters
+        ----------
+        relpath: Optional, str
+            path relative to self.fractal.directory. If not provided, the path
+            defaults to os.path.join(self.fractal.directory, "layer.db")
+            (ie the relative path dafault to ./layer.db)
         """
-        if db_directory is None:
-            db_directory = os.path.join(self.fractal.directory)
-        self.db_directory = db_directory
+        if relpath is None:
+            self.db_path = os.path.join(self.fractal.directory, "layer.db")
+        else:
+            self.db_path = os.path.normpath(os.path.join(
+                self.fractal.directory, relpath
+            ))
+        self.db_directory = os.path.dirname(self.db_path)
+#        print("self.db_path", self.db_path)
+#        print("self.db_directory", self.db_directory)
+        # self.db_path /home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/examples/movie/M2_plotter_bis/expmap.db
+        # self.db_directory /home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/examples/movie/M2_plotter_bis
+
+        
         self.process(mode="db")
 
         return self.db_path
@@ -819,11 +837,12 @@ class Fractal_plotter:
 
     @property
     def db_status_path(self):
-        return os.path.join(self.db_directory, "layer_status.db")
+        root, ext = os.path.splitext(self.db_path)
+        return root + "_status" + ext
 
-    @property
-    def db_path(self):
-        return os.path.join(self.db_directory, "layer.db")
+#    @property
+#    def db_path(self):
+#        return os.path.join(self.db_directory, "layer.db")
 
 
     def open_db(self):
@@ -841,6 +860,13 @@ class Fractal_plotter:
             _mmap_db = open_memmap(
                 filename=self.db_path, mode='r'
             )
+            
+            # Checking that the size matches...
+            expected_shape = (len(self.postnames),) + self.size
+            valid = (expected_shape == _mmap_db.shape)
+            if not(valid):
+                raise ValueError("Invalid db")
+
             _db_status = open_memmap(
                 filename=self.db_status_path, mode="r+"
             )
@@ -924,15 +950,37 @@ class Fractal_plotter:
 
         if s:
             # Here, we apply a homemade Lanczos-2 resizing filter
-            # We apply it for each field (1 or 2)
-            lf2 = self.lf2 # Avoid recompiling a filter for each iteration
+            # We apply it for each field (1 or 2) if available
+            # We will also take into account masked values
+            if layer.mask is not None:
+                masked = True
+                mask_crop = layer.mask[0].db_crop(chunk_slice)
+                lf2 = self.lf2_masked
+                # print("mask crop in push_db", mask_crop.dtype, mask_crop.shape)
+            else:
+                masked = False
+                lf2 = self.lf2
+
+            
+            # print("**db crop in push_db", db_crop.dtype, db_crop.shape)
+            db_crop = db_crop.astype(self.post_dtype, copy=False)
+            # print("**>>db crop in push_db", db_crop.dtype, db_crop.shape)
+
             if field_count == 1:
-                db_crop = lf2(db_crop)
+                if masked:
+                    db_crop = lf2(db_crop, mask_crop)
+                else:
+                    db_crop = lf2(db_crop)
+
             elif field_count == 2:
                 _, cx, cy = db_crop.shape
                 _db_crop = np.empty((2, cx // s, cy // s), dtype=db_crop.dtype)
-                _db_crop[0, :, :] = lf2(db_crop[0, :, :])
-                _db_crop[1, :, :] = lf2(db_crop[1, :, :])
+                if masked:
+                    _db_crop[0, :, :] = lf2(db_crop[0, :, :], mask_crop)
+                    _db_crop[1, :, :] = lf2(db_crop[1, :, :], mask_crop)
+                else:
+                    _db_crop[0, :, :] = lf2(db_crop[0, :, :])
+                    _db_crop[1, :, :] = lf2(db_crop[1, :, :])
                 db_crop = _db_crop
 
         db_mmap = open_memmap(filename=self.db_path, mode='r+')
@@ -1030,14 +1078,14 @@ advanced users when subclassing.
 .. note::
 
     **Saved data**
-    
+
         The calculation raw results (raw output of the inner loop at exit) are
         saved to disk and internally accessed during plotting phase through
         memory-mapping. They are however not saved for a final render.
         These arrays are:
 
         subset    
-            boolean - alias for `subset`
+            boolean
             Saved to disk as ``calc_name``\_Z.arr in ``data`` folder
         Z
             Complex fields, several fields can be defined and accessed through
@@ -2862,23 +2910,7 @@ def numba_Newton(
     return numba_impl
 
 
-#proj_cartesian = PROJECTION_ENUM.cartesian.value
-#proj_spherical = PROJECTION_ENUM.spherical.value
-#proj_expmap = PROJECTION_ENUM.expmap.value
-
-#@numba.njit
-#def apply_skew_2d(skew, arrx, arry):
-#    "Unskews the view"
-#    nx = arrx.shape[0]
-#    ny = arrx.shape[1]
-#    for ix in range(nx):
-#        for iy in range(ny):
-#            tmpx = arrx[ix, iy]
-#            tmpy = arry[ix, iy]
-#            arrx[ix, iy] = skew[0, 0] * tmpx + skew[0, 1] * tmpy
-#            arry[ix, iy] = skew[1, 0] * tmpx + skew[1, 1] * tmpy
-
-@numba.njit
+@numba.njit(fastmath=True, nogil=True, cache=True)
 def apply_unskew_1d(skew, arrx, arry):
     """Unskews the view for contravariant coordinates e.g. normal vec
     Used in postproc.py to keep the right orientation for the shadings 
@@ -2892,21 +2924,8 @@ def apply_unskew_1d(skew, arrx, arry):
         arrx[i] = skew[0, 0] * nx + skew[1, 0] * ny
         arry[i] = skew[0, 1] * nx + skew[1, 1] * ny
 
-#@numba.njit
-#def apply_rot_2d(theta, arrx, arry):
-#    s = np.sin(theta)
-#    c = np.cos(theta)
-#    nx = arrx.shape[0]
-#    ny = arrx.shape[1]
-#    for ix in range(nx):
-#        for iy in range(ny):
-#            tmpx = arrx[ix, iy]
-#            tmpy = arry[ix, iy]
-#            arrx[ix, iy] = c * tmpx - s * tmpy
-#            arry[ix, iy] = s * tmpx + c * tmpy
 
-
-@numba.njit
+@numba.njit(fastmath=True, nogil=True, cache=True)
 def c_from_pix(pix, proj_impl, lin_proj_impl, center):
     """
     Returns the true c from the pixel coords
@@ -2932,33 +2951,9 @@ def c_from_pix(pix, proj_impl, lin_proj_impl, center):
     """
     return center + lin_proj_impl(proj_impl(pix))
 
-#    if projection == proj_cartesian:
-#        offset = (pix * dx)
-#
-#    elif projection == proj_spherical:
-#        dr_sc = np.abs(pix) * np.pi
-#        if dr_sc >= np.pi * 0.5:
-#            k = np.nan
-#        elif dr_sc < 1.e-12:
-#            k = 1.
-#        else:
-#            k = np.tan(dr_sc) / dr_sc
-#        offset = (pix * k * dx)
-#
-#    elif projection == proj_expmap:
-#        dy = dx * xy_ratio
-#        h_max = 2. * np.pi * xy_ratio # max h reached on the picture
-#        xbar = (pix.real + 0.5 - xy_ratio) * h_max  # 0 .. hmax
-#        ybar = pix.imag / dy * 2. * np.pi           # -pi .. +pi
-#        rho = dx * 0.5 * np.exp(xbar)
-#        phi = ybar + theta
-#        offset = rho * (np.cos(phi) + 1j * np.sin(phi))
 
-
-@numba.njit
+@numba.njit(fastmath=True, nogil=True, cache=True)
 def fill1d_c_from_pix(c_pix, proj_impl, lin_proj_impl, center, c_out):
-#def fill1d_c_from_pix(c_pix, dx, center, xy_ratio, theta, projection,
-#                               c_out):
     """ Same as c_from_pix but fills in-place a 1d vec """
     nx = c_pix.shape[0]
     for i in range(nx):
