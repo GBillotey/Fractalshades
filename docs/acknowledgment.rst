@@ -23,3 +23,5 @@ you might also want to check the following projects:
   - Kalles Fraktaler 2 + https://mathr.co.uk/kf/kf.html
 
   - Nanobrot https://github.com/flutomax/nanobrot
+
+  - Imagina https://github.com/5E-324/Imagina

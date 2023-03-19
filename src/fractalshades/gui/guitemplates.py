@@ -51,7 +51,7 @@ Save to `<file>.py` and run as a python script:
 usage_movie = f"""# -*- coding: utf-8 -*-
 \"\"\"============================================================================
 Auto-generated from fractalshades GUI, version {fs.__version__}.
-Save to `<file>.py` and use from the movie making main script
+Save to `<file>.py` and use its plotter in the movie making main script
     > from <file> import get_plotter, plot_kwargs
 ============================================================================\"\"\"
 """
@@ -93,16 +93,22 @@ from fractalshades.colors.layers import (
     Overlay_mode
 )
 
-# Note: You may edit this line in batch mode to change the directory
+# Note: in batch mode, edit this line to change the base directory
 plot_dir = os.path.splitext(os.path.realpath(__file__))[0]
 
-# Note: You may edit this line in batch mode to change the local projection
+# Note: in batch mode, edit this line to change the local projection
+# you may also call `plot` with a modified `batch_params` parameters
+# (the latter allows to call from another module)
 projection = fs.projection.Cartesian()
+
+batch_params = {
+    "projection": projection
+}
 """
 
 script_footer = """
 if __name__ == "__main__":
-    plot(**plot_kwargs)
+    plot(**plot_kwargs, batch_params=batch_params)
 """
 
 def script_title_sep(title, indent=0):
@@ -403,21 +409,34 @@ class GUItemplate:
             if p_name == "self":
                 continue
 
-            decl, val = v.split("=") # dec -> <pname: annotation> / val -> <val>
+            # print("** v<", v, ">")
+            decl, val = v.split("=", 1) # dec -> <pname: annotation> / val -> <val>
 
             if p_name in my_defaults.keys():
                 val = " " + Code_writer.var_tocode(
-                        my_defaults[p_name], indent=1) + ","
-            elif p_name in my_vals.keys():
+                        my_defaults[p_name], indent=1)
+
+            if p_name in my_vals.keys():
                 val = " " + Code_writer.var_tocode(
-                        my_vals[p_name], indent=1) + ","
-            elif p_name in my_annots.keys():
-                decl = "    \n" + p_name + ": " +  my_annots[p_name]
-                val = val + ","
-            else:
-                val = val + ","
-            v = decl + "=" + val
+                        my_vals[p_name], indent=1)
+
+            if p_name in my_annots.keys():
+                decl = "\n    " + p_name + " : " +  my_annots[p_name] + " "
+
+            v = decl + "=" + val + ","
             str_params += v
+
+        # Remove final ","
+        str_params = str_params[:-1]
+
+        # Remove final "\n" if applicable (due to delimitation of last item)
+        # Note: https://docs.python.org/2/library/stdtypes.html#str.splitlines
+        last_char = str_params[-1]
+        if len(str.splitlines(last_char)[0]) == 0:
+            str_params = str_params[:-1]
+
+        # Adds additional "batch" parameters:
+        str_params += ",\n    batch_params=batch_params\n"
 
         return func_name + str_params + func_body
 
@@ -448,19 +467,10 @@ class GUItemplate:
         return split_source(source, base_sgn)
 
 #==============================================================================
-colormap_int = fs.colors.Fractal_colormap(
-    colors=[
-        [1.        , 1.        , 1.        ],
-        [0.16862746, 0.16862746, 0.16862746],
-        [0.        , 0.        , 0.        ]
-    ],
-    kinds=['Lch', 'Lch'],
-    grad_npts=[8, 8],
-    grad_funcs=['x', 'x'],
-    extent='mirror'
-)
 
-projection = fs.projection.Cartesian()
+# A list of non Gui-editable parameters, which we want to be able to pass
+# as parameters in batch mode
+batch_params = {}
 
 class std_zooming(GUItemplate):
     
@@ -653,7 +663,17 @@ Notes
             "attractivity", "order", "attr / order"
         ]="attractivity",
         colormap_int: fs.colors.Fractal_colormap = (
-                colormap_int
+            fs.colors.Fractal_colormap(
+                colors=[
+                    [1.        , 1.        , 1.        ],
+                    [0.16862746, 0.16862746, 0.16862746],
+                    [0.        , 0.        , 0.        ]
+                ],
+                kinds=['Lch', 'Lch'],
+                grad_npts=[8, 8],
+                grad_funcs=['x', 'x'],
+                extent='mirror'
+            )
         ),
         cmap_func_int: fs.numpy_utils.Numpy_expr = (
                 fs.numpy_utils.Numpy_expr("x", "x")
@@ -729,7 +749,9 @@ Notes
             "skew_01": skew_01,
             "skew_10": skew_10,
             "skew_11": skew_11,
-            "projection": projection
+            "projection": batch_params.get(
+                "projection", fs.projection.Cartesian()
+            )
         }
         if fractal.implements_deepzoom:
             zoom_kwargs["precision"] = dps

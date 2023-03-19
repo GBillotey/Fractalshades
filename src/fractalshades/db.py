@@ -26,11 +26,11 @@ class Frame:
     def __init__(self, x, y, dx, nx, xy_ratio, supersampling=False,
                  t=None, plotting_modifier=None):
         """
-    A frame is used to describe a specific data window and used to interpolate
+    A frame is used to describe a specific data window and for interpolating
     inside a db.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     x: float
         center x-coord of the window (in screen coordinates)
     y: float
@@ -48,11 +48,13 @@ class Frame:
     plotting_modifier: Optionnal callable
         a plotting_modifier associated with this Frame
 
-    Note:
+    Notes
     -----
     A simple pass-through Frame, extracting the raw ``my_db`` data is:
+        
+    ::
 
-        fs.db.Frame(
+        fractalshades.db.Frame(
             x=0., y=0., dx=1.0,
             nx=my_db.zoom_kwargs["nx"],
             xy_ratio=my_db.zoom_kwargs["xy_ratio"]
@@ -140,7 +142,7 @@ class Db:
 
         The array is of shape (nposts, nx, ny) where nposts is the number of 
         post-processing fields, and is usually created through a
-        ``fractalshades.Fractal_plotter.save_db`` call.
+        `fractalshades.Fractal_plotter.save_db` call.
 
         Note: datatype might be ``np.float32`` or ``np.float64`` 
 
@@ -253,7 +255,7 @@ class Db:
         a = [self.xgrid0[ind_xmin], self.ygrid0[ind_ymin]]
         b = [self.xgrid0[ind_xmax], self.ygrid0[ind_ymax]]
         h = [self.xh0, self.yh0]
-        
+
         if self.is_frozen:
             fr_mmap = open_memmap(filename=self.frozen_path, mode="r")
             f = fr_mmap[ind_xmin:ind_xmax, ind_ymin:ind_ymax, post_index]
@@ -283,8 +285,8 @@ class Db:
         Freeze a database by storing a postprocessed layer image as a numpy
         array (1 data point = 1 pixel). The layer shall be a RGB(A) layer.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         plotter: fs.Fractal_plotter
             A plotter to be used
         layer_name: str
@@ -412,9 +414,9 @@ class Db:
         """
         Define the plotting properties
 
-        Parameters:
-        -----------
-        plotter: fs.Fractal_plotter
+        Parameters
+        ----------
+        plotter: `fs.Fractal_plotter`
             A plotter to be used as template
         postname: str
             The string indentifier of the layer used for plotting
@@ -444,11 +446,11 @@ class Db:
     def get_2d_arr(self, post_index, frame, chunk_slice):
         """ get_2d_arr with frame-specific functionnality
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         post_index: int
             the index for this post-processing field in self.plotter
-        frame: fs.db.Frame
+        frame: `fs.db.Frame`
             Frame localisation for interpolation
         chunk_slice: 4-uplet float
             chunk_slice = (ix, ixx, iy, iyy) is the sub-array to reload
@@ -475,19 +477,19 @@ class Db:
 
     def plot(self, frame=None):
         """
-        Parameters:
-        -----------
-        frame: fs.db.Frame, Optional
+        Parameters
+        ----------
+        frame: `fractalshades.db.Frame`, Optional
             Defines the area to plot. If not provided, the full db will be
             plotted
 
-        Return:
+        Returns
         -------
-        img: PIL.Image
+        img: `PIL.Image`
             The plotted image
 
-        Notes:
-        ------
+        Notes
+        -----
         Plotting settings as defined by set_plotter method
         """
         if frame is None:
@@ -594,10 +596,10 @@ class Exp_frame:
                  t=None, plotting_modifier=None, pts=None):
         """
     A Exp_frame is used to describe a specific data window and used to
-    interpolate inside a Expmap db.
+    interpolate inside a `fractalshades.db.Exp_db`.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     h: float >= 0.
         zoom level. A zoom level of 0. denotes that dx = dx0 fully zoomed-in
         frame - for h > 0, dx = dx0 * np.exp(h) 
@@ -686,33 +688,29 @@ class Exp_frame:
 
 
 class Exp_db:
-    """ Database for an expmap plot """
     HCHUNK = 400
 
     def __init__(self, path_expmap, path_final):
         """ Wrapper around the raw array data stored at ``path_expmap`` and
         ``path_final``.
 
-        The expmap array is of shape (nposts, nh, nt) where nposts is the number
-        of  post-processing fields, and is usually stored  by a
-        ``fractalshades.Fractal_plotter.save_db`` called on a fractal using a
-         ``Expmap`` projection
-
-        The final array is of shape (nposts, nx, ny) where nposts is the number
-        of  post-processing fields, and is usually stored  by a
-        ``fractalshades.Fractal_plotter.save_db`` call (with a standard
-        ``Cartesian`` projection). It shall be square (nx == ny).
-
-        datatype might be np.float32 or np.float64
+        datatype might be ``np.float32`` or ``np.float64``.
 
         Parameters
         ----------
         path_expmap: str
             The path for the expmap raw data
-            The array is of shape (nposts, nh, nt) 
+            The expmap array is of shape (nposts, nh, nt) where nposts is the
+            number of  post-processing fields, and is usually stored  by a
+            `fractalshades.Fractal_plotter.save_db` called on a fractal
+            using a `fractalshades.projection.Expmap` projection.
         path_expmap: str
             The path for the final raw data
-            The array is of shape (nposts, nx, ny) with nx = ny
+            The final array is of shape (nposts, nx, ny) where nposts is the
+            number of post-processing fields, and is usually stored  by a
+            `fractalshades.Fractal_plotter.save_db` call (with a standard
+            `fractalshades.projection.Cartesian` projection). It shall be
+            square (nx == ny).
         """
         self.path_expmap = path_expmap
         self.path_final = path_final
@@ -1096,8 +1094,8 @@ class Exp_db:
         """
         Return the number of subsampling data levels stored for this db.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         kind: "exp" | "final"
             The source db
         """
@@ -1152,8 +1150,8 @@ class Exp_db:
         Creates a memory mapping at filename and populates it with subsampled
         data from source.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         filename: str
             path for the new mmap
         source: str
@@ -1168,8 +1166,8 @@ class Exp_db:
         kind: "exp" | "final"
             The kinf of mem mapping
 
-        Returns:
-        --------
+        Returns
+        -------
         ss_shapes:
             shapes (nx, ny) of the nested subsampled arrays
         ss_bounds
@@ -1265,8 +1263,8 @@ class Exp_db:
         """
         In parallel, apply the subsampling for (ipost, lvl).
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         mmap: memory mapping for the output
         source_mmap: memory mapping for the source (used if lvl == 0)
         channel_dim: the dim used for posts / channel in source
@@ -1353,8 +1351,8 @@ class Exp_db:
         Freeze a database by storing a postprocessed layer image as a numpy
         array (1 data point = 1 pixel). The layer shall be a RGB(A) layer.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         plotter: fs.Fractal_plotter
             A plotter to be used
         layer_name: str
@@ -1566,9 +1564,9 @@ class Exp_db:
         """
         Define the plotting properties
 
-        Parameters:
-        -----------
-        plotter: fs.Fractal_plotter
+        Parameters
+        ----------
+        plotter: `fractalshades.Fractal_plotter`
             A plotter to be used as template
         postname: str
             The string indentifier of the layer used for plotting
@@ -1600,8 +1598,8 @@ class Exp_db:
     def get_2d_arr(self, post_index, frame, chunk_slice):
         """ get_2d_arr with frame-specific functionnality
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         post_index: int
             the index for this post-processing field in self.plotter
         frame: fs.db.Frame
@@ -1640,18 +1638,18 @@ class Exp_db:
 
     def plot(self, frame=None):
         """
-        Parameters:
-        -----------
-        frame: fs.db.Exp_frame
-            Defines the area to plot. 
+        Parameters
+        ----------
+        frame: `fractalshades.db.Exp_frame`
+            Defines the area to plot.
 
-        Return:
+        Returns
         -------
-        img: PIL.Image
+        img: `PIL.Image`
             The plotted image
 
-        Notes:
-        ------
+        Notes
+        -----
         Plotting settings as defined by set_plotter method
         """
         
@@ -1757,8 +1755,8 @@ class Multilevel_exp_interpolator:
             - nested set of multilvel exponential 2d grids
             - nested set of cartesian 2d grids for the final image (h_tot < 0)
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         a_exp: float array of shape (lvl_exp, 2)
             The lower h, t bounds of the interpolation region for each exp mapping
             level
@@ -1841,7 +1839,7 @@ class Multilevel_exp_interpolator:
         """
         Interpolates at pts_x, pts_y
 
-        Parameters:
+        Parameters
         ----------
         pts_x: 1d-array
             x-coord of interpolating point location

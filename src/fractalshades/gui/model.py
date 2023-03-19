@@ -565,11 +565,6 @@ class Func_submodel(Submodel):
         kwargs = self.getkwargs()
         source = self.getsource(movie=movie)
 
-#        try:
-#            funcname = self._func.__name__
-#        except AttributeError: # func may also be a callable class instance
-#            funcname = self._func.__class__.__name__
-
         script = fractalshades.gui.guitemplates.script(
             source, kwargs, movie=movie
         )

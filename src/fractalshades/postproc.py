@@ -770,7 +770,12 @@ class Attr_normal_pp(Postproc):
         (chunk_mask, c_pix, Z, U, stop_reason, stop_iter, complex_dic,
          int_dic, termination_dic) = self.raw_data[chunk_slice]
         attr = np.copy(Z[complex_dic["attractivity"], :])
+        
         dattrdc = np.copy(Z[complex_dic["dattrdc"], :])
+        proj = self.fractal.projection
+        if proj.df is not None:
+            dattrdc = apply_df(proj.df, c_pix, dattrdc)
+
 
         invalid = (np.abs(attr) > 1.)
         np.putmask(attr, invalid, 1.)

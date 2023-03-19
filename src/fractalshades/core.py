@@ -777,7 +777,6 @@ class Fractal_plotter:
                 layer_mmap[iy: iyy, ix: ixx, :] = paste_crop_arr
 
             del layer_mmap
-                
 
 
     def push_reloaded(self, chunk_slice, layer, im, ilayer):
@@ -789,7 +788,7 @@ class Fractal_plotter:
         crop_slice = (ix, ny-iyy, ixx, ny-iy)
         layer_mmap = self.open_img_mmap(layer)
         crop_arr = layer_mmap[iy: iyy, ix: ixx, :]
-        
+
         # If crop_arr has only 1 channel, like grey or bool, Pillow won't
         # handle it...
         if crop_arr.shape[2] <= 1:
@@ -801,21 +800,24 @@ class Fractal_plotter:
         del layer_mmap
 
 #------------------------------------------------------------------------------
-
     def save_db(self, relpath=None):
         """
-        Stores the *postproc* data in a numpy structured memmap.
+        Saves the post-processed data in a numpy structured memmap.
 
         Goes through all the registered layers and stores the results in a 
-        (nposts, nx, ny) memory mapping - applies for supersampling if
-        requested (Lanczos-2 decimation filter).
+        (nposts, nx, ny) memory mapping. This will applies downsampling if
+        requested (Lanczos-2 decimation filter) and the downsampling takes
+        into account the layer mask.
+        A companion text file <relpath>.info is also written: it provides a
+        short description of the data structure.
 
         Parameters
         ----------
         relpath: Optional, str
             path relative to self.fractal.directory. If not provided, the path
-            defaults to os.path.join(self.fractal.directory, "layer.db")
-            (ie the relative path dafault to ./layer.db)
+            defaults to
+            :code:`os.path.join(self.fractal.directory, "layer.db")`
+            (ie the relative path defaults to ./layer.db)
         """
         if relpath is None:
             self.db_path = os.path.join(self.fractal.directory, "layer.db")
@@ -824,26 +826,28 @@ class Fractal_plotter:
                 self.fractal.directory, relpath
             ))
         self.db_directory = os.path.dirname(self.db_path)
-#        print("self.db_path", self.db_path)
-#        print("self.db_directory", self.db_directory)
-        # self.db_path /home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/examples/movie/M2_plotter_bis/expmap.db
-        # self.db_directory /home/geoffroy/Pictures/math/github_fractal_rep/Fractal-shades/examples/movie/M2_plotter_bis
-
-        
         self.process(mode="db")
 
-        return self.db_path
+        # Writes a short description of the db
+        info_path = self.db_path + ".info"
+        with open(info_path, 'w+') as info_file:
+            info_file.write("Db file description\n")
+            now = datetime.datetime.now()
+            info_file.write(f"written time: {now}\n\n")
+            info_file.write("*array description*\n")
+            info_file.write(f"  dtype: {self.post_dtype}\n")
+            shape = (len(self.postnames),) + self.size
+            info_file.write(f"  shape: {shape}\n\n")
+            info_file.write("*fields description*\n")
+            for pn in self.postnames:
+                info_file.write(f"  {pn}\n")
 
+        return self.db_path
 
     @property
     def db_status_path(self):
         root, ext = os.path.splitext(self.db_path)
         return root + "_status" + ext
-
-#    @property
-#    def db_path(self):
-#        return os.path.join(self.db_directory, "layer.db")
-
 
     def open_db(self):
         """ Open 
@@ -860,7 +864,7 @@ class Fractal_plotter:
             _mmap_db = open_memmap(
                 filename=self.db_path, mode='r'
             )
-            
+
             # Checking that the size matches...
             expected_shape = (len(self.postnames),) + self.size
             valid = (expected_shape == _mmap_db.shape)
@@ -885,9 +889,9 @@ class Fractal_plotter:
             )
             return
 
-        except (FileNotFoundError, ValueError):
+        except (FileNotFoundError, ValueError) as e:
             logger.info(
-                "Invalidated db, recomputing full db"
+                f"Invalidated db, recomputing full db:\n    {e}"
             )
 
         db_field_count = len(self.postnames) # Accounting for 2-fields layers
@@ -1062,18 +1066,6 @@ advanced users when subclassing.
         interactively from the GUI (right-click then context menu selection).
         The coordinates of the click are passed to the called method.
 
-.. note::
-    
-    **Calculation parameters**
-
-    To launch a calculation, call `~fractalshades.Fractal.run`. The parameters
-    from the last 
-    @ `fractalshades.zoom_options` call and last 
-    @ `fractalshades.calc_options` call will be used. 
-    They are stored as class attributes, above a list of such attributes and
-    their  meaning (non-exhaustive as derived class cmay define their own).
-    Note that they should normally not be directly accessed but defined in
-    derived class through zoom and calc methods.
 
 .. note::
 
@@ -1097,8 +1089,8 @@ advanced users when subclassing.
             Saved to disk as ``calc_name``\_U.arr in ``data`` folder
         stop_reason
             Byte codes: the reasons for loop exit (max iteration reached ?
-            overflow ? other ?) A string identifier
-            Saved to disk as ``calc_name``\_stop_reason.arr in ``data`` folder
+            overflow ? other ?)
+            Saved to disk as ``calc_name_stop_reason.arr`` in ``data`` folder
         stop_iter
             Integer: iterations count at loop exit
             Saved to disk as ``calc_name``\_stop_iter.arr in ``data`` folder
@@ -1148,10 +1140,12 @@ advanced users when subclassing.
 
         kwargs = self.init_kwargs
         kwargs["directory"] = fs.utils.Rawcode("plot_dir") # get rid of quotes
-        kwargs_code = fs.utils.Code_writer.func_args(kwargs, indent + 1)
-        kwargs_code  += " " * 4 * indent 
+        kwargs_code = fs.utils.Code_writer.func_args(
+            kwargs, indent + 1, False
+        )
+        shift  = " " * 4 * indent 
 
-        str_call_init = f"{fullname}(\n{kwargs_code})"
+        str_call_init = f"{fullname}(\n{kwargs_code}{shift})"
         return str_call_init
 
 
@@ -1247,6 +1241,7 @@ advanced users when subclassing.
 
             return  dx * complex(x1, y1)
 
+#        self._linproj_data = (key_linproj, numba_impl) # storing
         return numba_impl
 
 
@@ -2925,7 +2920,7 @@ def apply_unskew_1d(skew, arrx, arry):
         arry[i] = skew[0, 1] * nx + skew[1, 1] * ny
 
 
-@numba.njit(fastmath=True, nogil=True, cache=True)
+@numba.njit(fastmath=True, nogil=True)
 def c_from_pix(pix, proj_impl, lin_proj_impl, center):
     """
     Returns the true c from the pixel coords
@@ -2952,7 +2947,7 @@ def c_from_pix(pix, proj_impl, lin_proj_impl, center):
     return center + lin_proj_impl(proj_impl(pix))
 
 
-@numba.njit(fastmath=True, nogil=True, cache=True)
+@numba.njit(fastmath=True, nogil=True)
 def fill1d_c_from_pix(c_pix, proj_impl, lin_proj_impl, center, c_out):
     """ Same as c_from_pix but fills in-place a 1d vec """
     nx = c_pix.shape[0]

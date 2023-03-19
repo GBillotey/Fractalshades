@@ -1065,8 +1065,8 @@ class Blinn_lighting:
             "{})"
         ).format(k_ambient_str, color_ambient_str, lightings_str)
 
-        shift = " " * (4 * (indent + 1))
-        ret.replace("\n", "\n" + shift)
+        shift = " " * (4 * (indent))
+        ret = ret.replace("\n", "\n" + shift)
         return ret
 
 

@@ -97,7 +97,7 @@ class Test_layers(unittest.TestCase):
 
         pp = Postproc_batch(self.f, self.interior_calc_name)
         pp.add_postproc("order", Raw_pp("order",
-                        func=lambda x: (x + 13) * 117 * np.pi % 90))
+                        func=lambda x: x))#lambda x: (x + 13) * 117 * np.pi % 90))
         pp.add_postproc("newton_cv", Raw_pp("stop_reason", func=lambda x: x != 1))
         pp.add_postproc("attr_map", Attr_normal_pp())
 
@@ -197,7 +197,7 @@ class Test_layers(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    full_test = True
+    full_test = False
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_layers]))
