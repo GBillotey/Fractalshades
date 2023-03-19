@@ -39,8 +39,8 @@ def set_log_handlers(verbosity: typing.Literal[verbosity_enum]):
 
     Parameters
     ----------
-    verbosity: str
-      Possible values for verbosity string parameter are :
+    verbosity: str or int
+      Possible values for `verbosity` string parameter are :
 
         - "warn @ console" only warnings are printed to the console
         - "warn + info @ console" warnings and info are printed to the console
@@ -49,6 +49,9 @@ def set_log_handlers(verbosity: typing.Literal[verbosity_enum]):
         - "debug2 @ console + log" same as above with lowest priority
           messages printed to log file.
 
+      The `verbosity` level may also be passed as an int in the range 0 to 3
+      (3 being the most verbose)
+
     Notes
     -----
     The directory for the log files shall have been defined before
@@ -56,7 +59,7 @@ def set_log_handlers(verbosity: typing.Literal[verbosity_enum]):
     A typical use case is show below:
 
     ::
-        
+    
         fs.settings.log_directory = directory
         fs.set_log_handlers(verbosity="debug @ console + log")
     """

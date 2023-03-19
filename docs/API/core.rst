@@ -12,7 +12,7 @@ This section describes the core components of the application.
     :members:  __init__, zoom
 
 .. autoclass:: fractalshades.Fractal_plotter
-    :members:  __init__, add_layer, plot
+    :members:  __init__, add_layer, plot, save_db
 
 .. autodecorator:: fractalshades.zoom_options
 

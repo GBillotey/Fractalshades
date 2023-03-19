@@ -51,6 +51,7 @@ def method(self, *args, iter_kwarg=None, **otherkwargs):
             max_workers=os.cpu_count()
         ) as threadpool:
             full_args = (instance,) + args
+
             def get_kwargs(key):
                 kwargs[self.iter_kwargs] = key
                 return kwargs

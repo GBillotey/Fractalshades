@@ -23,6 +23,7 @@ import fractalshades.settings
 import fractalshades.utils
 import fractalshades.postproc
 import fractalshades.projection
+import fractalshades.numpy_utils.filters as fsfilters
 
 from fractalshades.mthreading import Multithreading_iterator
 import fractalshades.numpy_utils.expr_parser as fs_parser
@@ -85,7 +86,7 @@ class Fractal_plotter:
     ):
         """
         The base plotting class.
-        
+
         A Fractal plotter is a container for 
         `fractalshades.postproc.Postproc_batch` and fractal layers.
          
@@ -175,7 +176,8 @@ class Fractal_plotter:
         self.postproc_batches += [postproc_batch]
         self.posts.update(postproc_batch.posts)
         self.postnames_2d += postproc_batch.postnames_2d
-    
+
+
     def register_postprocs(self):
         """
         Freezing of the postprocs - call might be delayed after a plotter
@@ -233,6 +235,7 @@ class Fractal_plotter:
                     postname, list(self.postnames) + self.postnames_2d
                 )
             )
+
         self.layers += [layer]
         layer.link_plotter(self)
 
@@ -245,20 +248,23 @@ class Fractal_plotter:
         raise KeyError("Layer {} not in available layers: {}".format(
                 layer_name, list(l.postname for l in self.layers)))
 
-    def plotter_info_str(self):
-        str_info = "Plotting images: plotter options"
+    def plotter_info_str(self, to_db=False):
+        if to_db:
+            str_info = "Output to database: plotter options"
+        else:
+            str_info = "Plotting images: plotter options"
         for k, v in self.postproc_options.items():
             str_info += f"\n    {k}: {v}"
         str_info += ("\n  /!\\ supersampling and jitter only activated "
                      + "for final render")
         return str_info
-    
+
     def zoom_info_str(self):
         str_info = "Plotting images: zoom kwargs"
         for k, v in self.fractal.zoom_kwargs.items():
             str_info += f"\n    {k}: {v}"
         return str_info
-    
+
     def plot(self):
         """
         The base method to produce images.
@@ -266,15 +272,35 @@ class Fractal_plotter:
         When called, it will got through all the instance-registered layers
         and plot each layer for which the `output` attribute is set to `True`.
         """
+        self.process(mode="img")
+        
+
+    def process(self, mode):
+        """
+        mode: "img" "db"
+        """
         logger.info(self.plotter_info_str())
         logger.info(self.zoom_info_str())
 
-        # Open the image memory mappings ; open PIL images
-        self.open_images()
+        assert mode in ["img", "db"]
+
+        # Open the image memory mappings; open PIL images
+        if mode == "img":
+            self.open_images()
+            if self.final_render:
+                for i, layer in enumerate(self.layers):
+                    if layer.output:
+                        self.create_img_mmap(layer)
+        else:
+            self.open_db()
+            if self.supersampling is not None:
+                dc = fsfilters.Lanczos_decimator()
+                self.lf2 = dc.get_impl(2, self.supersampling)
+                self.lf2_masked = dc.get_masked_impl(2, self.supersampling)
+
         if self.final_render:
-            for i, layer in enumerate(self.layers):
-                if layer.output:
-                    self.create_img_mmap(layer)
+            # We need to delete because if will not be recomputed in the
+            # calc process
             self.fractal.delete_fingerprint()
 
         self._raw_arr = dict()
@@ -306,10 +332,14 @@ class Fractal_plotter:
         # if "dev" (= not final) render, we already know the 'raw' arrays, so
         # just a postprocessing step
         # if "final" render, we compute on the fly
-        self.plot_tiles(chunk_slice=None)
+        self.process_tiles(chunk_slice=None, mode=mode)
 
-        self.save_images()
-        logger.info("Plotting images: done")
+        if mode == "img":
+            self.save_images()
+            logger.info("Plotting images: done")
+        else:
+            logger.info("Saved layer database to XXXXX: done")
+            
 
         # Output data file
         self.write_postproc_report()
@@ -354,12 +384,12 @@ class Fractal_plotter:
     @Multithreading_iterator(
         iterable_attr="chunk_slices", iter_kwargs="chunk_slice"
     )
-    def plot_tiles(self, chunk_slice):
+    def process_tiles(self, chunk_slice, mode):
         """
         
         """
-        # early exit if already computed
-        if self.try_recover:
+        # 0) early exit if already computed: push the image tiles
+        if self.try_recover and mode == "img":
             f = self.fractal
             rank = f.chunk_rank(chunk_slice)
             _mmap_status = open_memmap(
@@ -370,16 +400,31 @@ class Fractal_plotter:
             if is_valid:
                 for i, layer in enumerate(self.layers):
                     # We need the postproc
-                    # TODO what about 'update scaling' ???
-                    # It is invalid as we lost the data...
                     self.push_reloaded(
                         chunk_slice, layer=layer, im=self._im[i], ilayer=i
                     )
+                    # TODO  'update scaling' may be invalid as we lost the
+                    # data... would need a separate mmap to store min / max
                 f.incr_tiles_status(which="Plot tiles")
-                self.incr_tiles_status(chunk_slice)
+                self.incr_tiles_status(chunk_slice, mode)
                 return
 
-        # 1) Compute the postprocs for this field
+        if mode == "db":
+            f = self.fractal
+            rank = f.chunk_rank(chunk_slice)
+            
+            _db_status = open_memmap(
+                filename=self.db_status_path, mode="r+"
+            )
+            is_valid = (_db_status[rank] > 0)
+            del _db_status
+            if is_valid:
+                # Nothing to compute here, skipping this CALC
+                logger.debug(f"Skipping db calculation for tile {chunk_slice}")
+                return
+
+
+        # 1) Compute the raw postprocs for this field
         n_pp = len(self.posts)
         (ix, ixx, iy, iyy) = chunk_slice
         npts = (ixx - ix) * (iyy - iy)
@@ -407,13 +452,16 @@ class Fractal_plotter:
         # 2) Push each layer crop to the relevant image 
         for i, layer in enumerate(self.layers):
             layer.update_scaling(chunk_slice)
-            if layer.output:
-                self.push_cropped(
-                    chunk_slice, layer=layer, im=self._im[i], ilayer=i
-                )
+            if mode == "img":
+                if layer.output:
+                    self.push_cropped(
+                        chunk_slice, layer=layer, im=self._im[i], ilayer=i
+                    )
+            else:
+                self.push_db(chunk_slice, layer=layer)
 
         # clean-up
-        self.incr_tiles_status(chunk_slice) # mmm not really but...
+        self.incr_tiles_status(chunk_slice, mode) # mmm not really but...
         del self._raw_arr[chunk_slice]
 
 
@@ -432,14 +480,14 @@ class Fractal_plotter:
 
         post_array, subset = ret
         arr_1d = f.reshape1d(
-            post_array, subset, chunk_slice,self.supersampling
+            post_array, subset, chunk_slice, self.supersampling
         )
         n_posts, _ = arr_1d.shape
         raw_arr[inc: (inc + n_posts), :] = arr_1d
         return 0 # OK
 
 
-    def incr_tiles_status(self, chunk_slice):
+    def incr_tiles_status(self, chunk_slice, mode):
         f = self.fractal
         curr_val = self._current_tile["value"] + 1
         self._current_tile["value"] = curr_val
@@ -452,13 +500,22 @@ class Fractal_plotter:
         bool_log = ((time_diff > 1) or (curr_val == 1) or (curr_val == ntiles))
         
         # Marking this chunk as valid (in case of 'final render')
-        if self.final_render:
+        if self.final_render and (mode == "img"):
             rank = f.chunk_rank(chunk_slice)
             _mmap_status = open_memmap(
                 filename=self.mmap_status_path, mode="r+"
             )
             _mmap_status[rank] = 1
             del _mmap_status
+        
+        if mode == "db":
+            rank = f.chunk_rank(chunk_slice)
+            _db_status = open_memmap(
+                filename=self.db_status_path, mode="r+"
+            )
+            _db_status[rank] = 1
+            del _db_status
+
 
         if bool_log:
             self._current_tile["time"] = curr_time
@@ -535,7 +592,6 @@ class Fractal_plotter:
         for layer in self.layers:
             if layer.output:
                 self._im += [PIL.Image.new(mode=layer.mode, size=self.size)]
-
             else:
                 self._im += [None]
 
@@ -564,7 +620,9 @@ class Fractal_plotter:
             # Does layer the mmap already exists, and does it seems to suit
             # our need ?
             if not(self.try_recover):
-                raise ValueError("Invalidated mmap_status")
+                raise ValueError(
+                    "Invalidated mmap_status as *try_recover* is set to False"
+                )
             _mmap_status = open_memmap(
                 filename=file_path, mode="r+"
             )
@@ -695,7 +753,7 @@ class Fractal_plotter:
             return
         
         if self.supersampling:
-            # Here, we should apply a resizig filter
+            # Here, we should apply a resizing filter
             # Image.resize(size, resample=None, box=None, reducing_gap=None)
             resample = PIL.Image.LANCZOS
             paste_crop = paste_crop.resize(
@@ -706,7 +764,7 @@ class Fractal_plotter:
             )
 
         im.paste(paste_crop, box=crop_slice)
-        
+
         if self.final_render:
             # NOW let's also try to save this beast
             paste_crop_arr = np.asarray(paste_crop)
@@ -719,7 +777,6 @@ class Fractal_plotter:
                 layer_mmap[iy: iyy, ix: ixx, :] = paste_crop_arr
 
             del layer_mmap
-                
 
 
     def push_reloaded(self, chunk_slice, layer, im, ilayer):
@@ -731,7 +788,7 @@ class Fractal_plotter:
         crop_slice = (ix, ny-iyy, ixx, ny-iy)
         layer_mmap = self.open_img_mmap(layer)
         crop_arr = layer_mmap[iy: iyy, ix: ixx, :]
-        
+
         # If crop_arr has only 1 channel, like grey or bool, Pillow won't
         # handle it...
         if crop_arr.shape[2] <= 1:
@@ -741,6 +798,202 @@ class Fractal_plotter:
         im.paste(paste_crop, box=crop_slice)
 
         del layer_mmap
+
+#------------------------------------------------------------------------------
+    def save_db(self, relpath=None):
+        """
+        Saves the post-processed data in a numpy structured memmap.
+
+        Goes through all the registered layers and stores the results in a 
+        (nposts, nx, ny) memory mapping. This will applies downsampling if
+        requested (Lanczos-2 decimation filter) and the downsampling takes
+        into account the layer mask.
+        A companion text file <relpath>.info is also written: it provides a
+        short description of the data structure.
+
+        Parameters
+        ----------
+        relpath: Optional, str
+            path relative to self.fractal.directory. If not provided, the path
+            defaults to
+            :code:`os.path.join(self.fractal.directory, "layer.db")`
+            (ie the relative path defaults to ./layer.db)
+        """
+        if relpath is None:
+            self.db_path = os.path.join(self.fractal.directory, "layer.db")
+        else:
+            self.db_path = os.path.normpath(os.path.join(
+                self.fractal.directory, relpath
+            ))
+        self.db_directory = os.path.dirname(self.db_path)
+        self.process(mode="db")
+
+        # Writes a short description of the db
+        info_path = self.db_path + ".info"
+        with open(info_path, 'w+') as info_file:
+            info_file.write("Db file description\n")
+            now = datetime.datetime.now()
+            info_file.write(f"written time: {now}\n\n")
+            info_file.write("*array description*\n")
+            info_file.write(f"  dtype: {self.post_dtype}\n")
+            shape = (len(self.postnames),) + self.size
+            info_file.write(f"  shape: {shape}\n\n")
+            info_file.write("*fields description*\n")
+            for pn in self.postnames:
+                info_file.write(f"  {pn}\n")
+
+        return self.db_path
+
+    @property
+    def db_status_path(self):
+        root, ext = os.path.splitext(self.db_path)
+        return root + "_status" + ext
+
+    def open_db(self):
+        """ Open 
+         - the database memory mappings
+         - its associated "progress tracking" db_status
+        """
+        self.open_db_status()
+
+        try:
+            if not(self.try_recover):
+                raise ValueError(
+                    "Invalidated db, as *try_recover* is set to False"
+                )
+            _mmap_db = open_memmap(
+                filename=self.db_path, mode='r'
+            )
+
+            # Checking that the size matches...
+            expected_shape = (len(self.postnames),) + self.size
+            valid = (expected_shape == _mmap_db.shape)
+            if not(valid):
+                raise ValueError("Invalid db")
+
+            _db_status = open_memmap(
+                filename=self.db_status_path, mode="r+"
+            )
+            valid_chunks = np.count_nonzero(_db_status)
+            del _db_status
+            del _mmap_db
+            n = self.fractal.chunks_count
+
+            if n == 0:
+                raise ValueError(
+                    "Invalidated db, as no tile is valid anyway"
+                )
+            logger.info(
+                "Attempt to restart interrupted calculation,\n"
+                f"    Valid database tiles found: {valid_chunks} / {n}"
+            )
+            return
+
+        except (FileNotFoundError, ValueError) as e:
+            logger.info(
+                f"Invalidated db, recomputing full db:\n    {e}"
+            )
+
+        db_field_count = len(self.postnames) # Accounting for 2-fields layers
+        db_dtype = self.post_dtype
+        # Creates the new datatase == structured memory mapping
+        fs.utils.mkdir_p(os.path.dirname(self.db_path))
+        _mmap_db = open_memmap(
+            filename=self.db_path, 
+            mode='w+',
+            dtype=db_dtype,
+            shape=(db_field_count,) + self.size,
+            fortran_order=False,
+            version=None
+        )
+        del _mmap_db
+
+    def open_db_status(self):
+        """ Small mmap array to flag the validated db tiles
+        """
+        n_chunk = self.fractal.chunks_count
+        file_path = self.db_status_path
+        fs.utils.mkdir_p(os.path.dirname(file_path))
+
+        try:
+            # Does layer the mmap already exists, and does it seems to suit
+            # our need ?
+            if not(self.try_recover):
+                raise ValueError(
+                    "Invalidated db_status, as *try_recover* is set to False"
+                )
+            _db_status = open_memmap(
+                filename=file_path, mode="r+"
+            )
+            if (_db_status.shape != (n_chunk,)):
+                raise ValueError("Incompatible shapes for plotter mmap_status")
+
+        except (FileNotFoundError, ValueError):
+            # Lets create it from scratch
+            logger.debug(f"No valid db status file found - recompute db")
+            _db_status = open_memmap(
+                    filename=file_path, 
+                    mode='w+',
+                    dtype=np.int32,
+                    shape=(n_chunk,),
+                    fortran_order=False,
+                    version=None
+            )
+            _db_status[:] = 0
+            del _db_status
+
+
+    def push_db(self, chunk_slice, layer):
+        """ push "postprocessed data" (from the layer's postproc field)
+        to the db memory mapping
+        """
+        (ix, ixx, iy, iyy) = chunk_slice
+        field_count, post_index = layer.get_postproc_index()
+        db_crop = layer.db_crop(chunk_slice)
+        s = self.supersampling
+
+        if s:
+            # Here, we apply a homemade Lanczos-2 resizing filter
+            # We apply it for each field (1 or 2) if available
+            # We will also take into account masked values
+            if layer.mask is not None:
+                masked = True
+                mask_crop = layer.mask[0].db_crop(chunk_slice)
+                lf2 = self.lf2_masked
+                # print("mask crop in push_db", mask_crop.dtype, mask_crop.shape)
+            else:
+                masked = False
+                lf2 = self.lf2
+
+            
+            # print("**db crop in push_db", db_crop.dtype, db_crop.shape)
+            db_crop = db_crop.astype(self.post_dtype, copy=False)
+            # print("**>>db crop in push_db", db_crop.dtype, db_crop.shape)
+
+            if field_count == 1:
+                if masked:
+                    db_crop = lf2(db_crop, mask_crop)
+                else:
+                    db_crop = lf2(db_crop)
+
+            elif field_count == 2:
+                _, cx, cy = db_crop.shape
+                _db_crop = np.empty((2, cx // s, cy // s), dtype=db_crop.dtype)
+                if masked:
+                    _db_crop[0, :, :] = lf2(db_crop[0, :, :], mask_crop)
+                    _db_crop[1, :, :] = lf2(db_crop[1, :, :], mask_crop)
+                else:
+                    _db_crop[0, :, :] = lf2(db_crop[0, :, :])
+                    _db_crop[1, :, :] = lf2(db_crop[1, :, :])
+                db_crop = _db_crop
+
+        db_mmap = open_memmap(filename=self.db_path, mode='r+')
+        if field_count == 1:
+            db_mmap[post_index, ix:ixx, iy:iyy] = db_crop
+        elif field_count == 2:
+            db_mmap[post_index[0], ix:ixx, iy:iyy] = db_crop[0, :, :]
+            db_mmap[post_index[1], ix:ixx, iy:iyy] = db_crop[1, :, :]
+        del db_mmap
 
 
 class _Null_status_wget:
@@ -757,14 +1010,6 @@ class _Null_status_wget:
         """
         self._status[key]["str_val"] = str_val
 
-
-#PROJECTION_ENUM = enum.Enum(
-#    "PROJECTION_ENUM",
-#    ("cartesian", "spherical", "expmap"),
-#    module=__name__
-#)
-#projection_type = typing.Literal[PROJECTION_ENUM]
-# cartesian = fs.projection.Cartesian()
 
 class Fractal:
 
@@ -821,30 +1066,18 @@ advanced users when subclassing.
         interactively from the GUI (right-click then context menu selection).
         The coordinates of the click are passed to the called method.
 
-.. note::
-    
-    **Calculation parameters**
-
-    To launch a calculation, call `~fractalshades.Fractal.run`. The parameters
-    from the last 
-    @ `fractalshades.zoom_options` call and last 
-    @ `fractalshades.calc_options` call will be used. 
-    They are stored as class attributes, above a list of such attributes and
-    their  meaning (non-exhaustive as derived class cmay define their own).
-    Note that they should normally not be directly accessed but defined in
-    derived class through zoom and calc methods.
 
 .. note::
 
     **Saved data**
-    
+
         The calculation raw results (raw output of the inner loop at exit) are
         saved to disk and internally accessed during plotting phase through
         memory-mapping. They are however not saved for a final render.
         These arrays are:
 
         subset    
-            boolean - alias for `subset`
+            boolean
             Saved to disk as ``calc_name``\_Z.arr in ``data`` folder
         Z
             Complex fields, several fields can be defined and accessed through
@@ -856,8 +1089,8 @@ advanced users when subclassing.
             Saved to disk as ``calc_name``\_U.arr in ``data`` folder
         stop_reason
             Byte codes: the reasons for loop exit (max iteration reached ?
-            overflow ? other ?) A string identifier
-            Saved to disk as ``calc_name``\_stop_reason.arr in ``data`` folder
+            overflow ? other ?)
+            Saved to disk as ``calc_name_stop_reason.arr`` in ``data`` folder
         stop_iter
             Integer: iterations count at loop exit
             Saved to disk as ``calc_name``\_stop_iter.arr in ``data`` folder
@@ -901,13 +1134,18 @@ advanced users when subclassing.
     def script_repr(self, indent):
         """String used to serialize this instance in GUI-generated scripts
         """
-        # Mainly a call to __init__ with the directory tuned to variable
-        # `plot_dir`
+        # Mainly a call to __init__ with the directory tuned to be the 
+        # local variable `plot_dir`
         fullname = fs.utils.Code_writer.fullname(self.__class__)
+
         kwargs = self.init_kwargs
         kwargs["directory"] = fs.utils.Rawcode("plot_dir") # get rid of quotes
-        kwargs_code = fs.utils.Code_writer.func_args(kwargs, 1)
-        str_call_init = f"{fullname}(\n{kwargs_code})"
+        kwargs_code = fs.utils.Code_writer.func_args(
+            kwargs, indent + 1, False
+        )
+        shift  = " " * 4 * indent 
+
+        str_call_init = f"{fullname}(\n{kwargs_code}{shift})"
         return str_call_init
 
 
@@ -977,7 +1215,6 @@ advanced users when subclassing.
         self.lin_proj_impl = self.get_lin_proj_impl()
         projection.adjust_to_zoom(self)
         self.proj_impl = projection.f
-        # get_impl()
 
 
     def get_lin_proj_impl(self):
@@ -985,8 +1222,6 @@ advanced users when subclassing.
         transformation (rotation, skew, scale)
         """
         dx = self.dx
-#        if isinstance(dx, mpmath.mpf):
-#            dx = fsx.mpf_to_Xrange(dx)
         theta = self.theta_deg / 180. * np.pi
         skew = self._skew
 
@@ -1006,6 +1241,7 @@ advanced users when subclassing.
 
             return  dx * complex(x1, y1)
 
+#        self._linproj_data = (key_linproj, numba_impl) # storing
         return numba_impl
 
 
@@ -1563,18 +1799,9 @@ advanced users when subclassing.
         When not a perturbation rendering:
         This is just a diggest of the zoom and calculation parameters
         """
-#        dx = self.dx
         center = self.x + 1j * self.y
-#        xy_ratio = self.xy_ratio
-#        theta = self.theta_deg / 180. * np.pi # used for expmap
-#        projection = getattr(PROJECTION_ENUM, self.projection).value
-#         was : self.PROJECTION_ENUM[self.projection]
-        
-         
-
         return (
             initialize, iterate,
-            # dx, center, xy_ratio, theta, projection, ## refactored
             center, self.proj_impl, self.lin_proj_impl,
             self._interrupted
         )
@@ -2278,7 +2505,7 @@ advanced users when subclassing.
         if postproc_batch.fractal is not self:
             raise ValueError("Postproc batch from a different factal provided")
         calc_name = postproc_batch.calc_name
-        
+
         if postproc_options["final_render"]:
             self.set_status("Calc tiles", "No [final]", bool_log=True)
 
@@ -2291,9 +2518,6 @@ advanced users when subclassing.
         codes = self._calc_data[calc_name]["saved_codes"]
         complex_dic, int_dic, termination_dic = self.codes_mapping(*codes)
 
-#        # Compute c from cpix
-#        c_pt = self.get_std_cpt(c_pix) This is not "cheap, so moving this to 
-#        postproc
 
         postproc_batch.set_chunk_data(chunk_slice, subset, c_pix, Z, U,
             stop_reason, stop_iter, complex_dic, int_dic, termination_dic)
@@ -2317,17 +2541,11 @@ advanced users when subclassing.
     def get_std_cpt(self, c_pix):
         """ Return the c complex value from c_pix """
         n_pts, = c_pix.shape  # Z of shape [n_Z, n_pts]
-        # Explicit casting to complex / float
-#        dx = float(self.dx)
+        # Explicit casting to complex
         center = complex(self.x + 1j * self.y)
-#        xy_ratio = self.xy_ratio
-#        theta = self.theta_deg / 180. * np.pi # used for expmap
-#        projection = getattr(PROJECTION_ENUM, self.projection).value
-        
 
         cpt = np.empty((n_pts,), dtype=c_pix.dtype)
         fill1d_c_from_pix(
-            # c_pix, dx, center, xy_ratio, theta, projection, cpt
             c_pix, self.proj_impl, self.lin_proj_impl, center, cpt
         )
         return cpt
@@ -2687,23 +2905,7 @@ def numba_Newton(
     return numba_impl
 
 
-#proj_cartesian = PROJECTION_ENUM.cartesian.value
-#proj_spherical = PROJECTION_ENUM.spherical.value
-#proj_expmap = PROJECTION_ENUM.expmap.value
-
-#@numba.njit
-#def apply_skew_2d(skew, arrx, arry):
-#    "Unskews the view"
-#    nx = arrx.shape[0]
-#    ny = arrx.shape[1]
-#    for ix in range(nx):
-#        for iy in range(ny):
-#            tmpx = arrx[ix, iy]
-#            tmpy = arry[ix, iy]
-#            arrx[ix, iy] = skew[0, 0] * tmpx + skew[0, 1] * tmpy
-#            arry[ix, iy] = skew[1, 0] * tmpx + skew[1, 1] * tmpy
-
-@numba.njit
+@numba.njit(fastmath=True, nogil=True, cache=True)
 def apply_unskew_1d(skew, arrx, arry):
     """Unskews the view for contravariant coordinates e.g. normal vec
     Used in postproc.py to keep the right orientation for the shadings 
@@ -2717,21 +2919,8 @@ def apply_unskew_1d(skew, arrx, arry):
         arrx[i] = skew[0, 0] * nx + skew[1, 0] * ny
         arry[i] = skew[0, 1] * nx + skew[1, 1] * ny
 
-#@numba.njit
-#def apply_rot_2d(theta, arrx, arry):
-#    s = np.sin(theta)
-#    c = np.cos(theta)
-#    nx = arrx.shape[0]
-#    ny = arrx.shape[1]
-#    for ix in range(nx):
-#        for iy in range(ny):
-#            tmpx = arrx[ix, iy]
-#            tmpy = arry[ix, iy]
-#            arrx[ix, iy] = c * tmpx - s * tmpy
-#            arry[ix, iy] = s * tmpx + c * tmpy
 
-
-@numba.njit
+@numba.njit(fastmath=True, nogil=True)
 def c_from_pix(pix, proj_impl, lin_proj_impl, center):
     """
     Returns the true c from the pixel coords
@@ -2757,33 +2946,9 @@ def c_from_pix(pix, proj_impl, lin_proj_impl, center):
     """
     return center + lin_proj_impl(proj_impl(pix))
 
-#    if projection == proj_cartesian:
-#        offset = (pix * dx)
-#
-#    elif projection == proj_spherical:
-#        dr_sc = np.abs(pix) * np.pi
-#        if dr_sc >= np.pi * 0.5:
-#            k = np.nan
-#        elif dr_sc < 1.e-12:
-#            k = 1.
-#        else:
-#            k = np.tan(dr_sc) / dr_sc
-#        offset = (pix * k * dx)
-#
-#    elif projection == proj_expmap:
-#        dy = dx * xy_ratio
-#        h_max = 2. * np.pi * xy_ratio # max h reached on the picture
-#        xbar = (pix.real + 0.5 - xy_ratio) * h_max  # 0 .. hmax
-#        ybar = pix.imag / dy * 2. * np.pi           # -pi .. +pi
-#        rho = dx * 0.5 * np.exp(xbar)
-#        phi = ybar + theta
-#        offset = rho * (np.cos(phi) + 1j * np.sin(phi))
 
-
-@numba.njit
+@numba.njit(fastmath=True, nogil=True)
 def fill1d_c_from_pix(c_pix, proj_impl, lin_proj_impl, center, c_out):
-#def fill1d_c_from_pix(c_pix, dx, center, xy_ratio, theta, projection,
-#                               c_out):
     """ Same as c_from_pix but fills in-place a 1d vec """
     nx = c_pix.shape[0]
     for i in range(nx):

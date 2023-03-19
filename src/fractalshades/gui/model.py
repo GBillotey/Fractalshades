@@ -555,23 +555,18 @@ class Func_submodel(Submodel):
                     self._keys + tuple([key]), oldval, val
             )
 
-    def getsource(self):
+    def getsource(self, movie=False):
         """ Returns the function source code """
         # return inspect.getsource(self._func)
-        return fs.gui.guitemplates.getsource(self._func)
-    
-    def getscript(self):
+        return fs.gui.guitemplates.getsource(self._func, movie=movie)
+
+    def getscript(self, movie=False):
         """ Returns a script that can be run """
         kwargs = self.getkwargs()
-        source = self.getsource()
-
-        try:
-            funcname = self._func.__name__
-        except AttributeError: # func may also be a callable class instance
-            funcname = self._func.__class__.__name__
+        source = self.getsource(movie=movie)
 
         script = fractalshades.gui.guitemplates.script(
-                source, kwargs, funcname
+            source, kwargs, movie=movie
         )
         return script
 

@@ -18,5 +18,6 @@ Ins this section you will find the detailed documentation of the API:
     API/colors.rst
     API/GUI.rst
     API/logging.rst
+    API/db.rst
 
 

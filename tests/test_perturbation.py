@@ -784,7 +784,7 @@ if __name__ == "__main__":
         suite = unittest.TestSuite()
         suite.addTest(Test_Perturbation_mandelbrot("test_M2_E20"))
         # suite.addTest(Test_Perturbation_mandelbrot("test_ultradeep_interior_detect"))
-        # suite.addTest(Test_Perturbation_mandelbrot("test_supersampling"))
+        suite.addTest(Test_Perturbation_mandelbrot("test_supersampling"))
         # suite.addTest(Test_Perturbation_mandelbrot("test_M2_E20"))
         runner.run(suite)
 

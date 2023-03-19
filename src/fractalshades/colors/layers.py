@@ -43,7 +43,7 @@ class Virtual_layer:
     def __init__(self, postname, func, output=True):
         """ 
     Base class for all layer objects.
-    
+
     Parameters
     ----------
     postname : str
@@ -68,9 +68,13 @@ class Virtual_layer:
         self.min = np.inf     # neutral value for np.nanmin
         self.max = -np.inf    # neutral value for np.nanmax
         self._func_arg = func # kept for the record
-        self.func = self.parse_func(func)
+        if func is None:
+            self.func = None
+        else:
+            self.func = self.parse_func(func)
         self.output = output
         self.mask = None
+        self.interpolate_params = None
 
     @staticmethod
     def parse_func(func):
@@ -80,7 +84,9 @@ class Virtual_layer:
             return func
 
     def link_plotter(self, plotter):
+        """ Define the layer -> Fractal plotter link """
         self.plotter = plotter
+
 
     @property
     def fractal(self, fractal):
@@ -178,21 +184,21 @@ class Virtual_layer:
         dtype = plotter.post_dtype
         (ix, ixx, iy, iyy) = chunk_slice
         nx, ny = ixx - ix, iyy - iy
-        
+
         ssg = plotter.supersampling
         if ssg is not None:
             nx *= ssg
             ny *= ssg
-        
+
         field_count, post_index = self.get_postproc_index()
-        
+
         if field_count == 1:
             arr = np.empty((nx, ny), dtype)
             ret = plotter.get_2d_arr(post_index, chunk_slice)
             if ret is None:
                 return None
             arr[:] = ret
-    
+
         elif field_count == 2:
             (post_index_x, post_index_y) = post_index
             arr = np.empty((2, nx, ny), dtype)
@@ -200,9 +206,9 @@ class Virtual_layer:
             ret1 = plotter.get_2d_arr(post_index_y, chunk_slice)
             if (ret0 is None) or (ret1 is None):
                 return None
-            arr[0, :] = ret0
-            arr[1, :] = ret1
-            
+            arr[0, :, :] = ret0 
+            arr[1, :, :] = ret1
+
         return arr
 
     def update_scaling(self, chunk_slice):
@@ -230,7 +236,7 @@ class Virtual_layer:
 
         elif n_fields == 2: # case of normal maps
             # Normalizing by its module
-            arr = arr[0, :, :]**2 + arr[1, :, :]**2
+            arr = arr[0, :, :] ** 2 + arr[1, :, :] ** 2
             max_chunk = self.nanmax_with_mask(arr, chunk_slice)
             max_chunk = np.sqrt(max_chunk)
             self.max = np.nanmax([self.max, max_chunk])
@@ -272,11 +278,32 @@ class Virtual_layer:
         else:
             raise ValueError(mask_kind) 
 
-    def crop(chunk_slice):
+    def crop(self, chunk_slice):
         """ Return the image for this chunk
-        Subclasses should implement"""
-        raise NotImplementedError("Derivate classes should implement "
-                                  "this method")
+        Subclasses should implement `aux_crop` """
+        arr = self[chunk_slice]
+        
+        return self.child_crop(chunk_slice, arr)
+
+
+    @property
+    def field_count(self):
+        """ number of fields for database mmap"""
+        # The array passed to a layer is plotter.get_2d_arr and fill_raw_arr
+        # which is casted to post_dtype (float32 or float64)
+        # Switching to float64 format allows to represent any integer
+        # below 2**53 ~ 9.E15 / So it seems reasonably safe to follow this
+        # format also for db, and less hassle than managing a ad-hoc structured
+        # datatype (mixing float, bools etc)
+        # We should however be careful for 2-fields layers(like normal fields)
+
+        field_count, post_index = self.get_postproc_index()
+        return field_count
+
+    def db_crop(self, chunk_slice):
+        """ Array to be used for database mmap"""
+        return self[chunk_slice]
+
 
     @staticmethod
     def np2PIL(arr):
@@ -338,15 +365,15 @@ class Color_layer(Virtual_layer):
     def mode(self):
         if self.mask_kind is None:
             return "RGB"
-        elif self.mask_kind == "bool":
+        elif self.mask_kind in ["bool", "float"]:
             maskcolorlen = len(self.mask[1])
             mode_from_maskcolorlen = {
                 3: "RGB",
                 4: "RGBA"
             }
             return mode_from_maskcolorlen[maskcolorlen]
-        elif self.mask_kind == "float":
-            return "RGBA"
+#        elif self.mask_kind == "float":
+#            return "RGBA"
         else:
             raise ValueError(self.mask_kind)
 
@@ -380,7 +407,7 @@ class Color_layer(Virtual_layer):
 
     def set_twin_field(self, layer, scale):
         """ 
-        Combine two postprocessing in one.
+        Combine two postprocessing fields in one layer.
 
         Combine the current layer with another layer *before* color-mapping.
         (i.e. add directly the underlying float
@@ -408,11 +435,8 @@ class Color_layer(Virtual_layer):
             if self.mask is not None:
                 layer.set_mask(self.mask[0])
 
-    def crop(self, chunk_slice):
-        """ private - Return the image for this chunk"""
-        # 1) The "base" image
-        arr = self[chunk_slice]
-        
+    def child_crop(self, chunk_slice, arr):
+        """ aux function """
         # If a user-mapping is defined, apply it
         if self.func is not None:
             arr = self.func(arr)
@@ -455,33 +479,63 @@ class Color_layer(Virtual_layer):
 
         crop_size = (nx, ny)
         mask_layer, mask_color = self.mask
-        self.apply_mask(crop, crop_size,  mask_layer[chunk_slice], mask_color)
+        self.apply_mask(
+            crop, crop_size,
+            mask_layer.getitem_fullprecision(chunk_slice),
+            mask_color
+        )
         return crop
 
     def apply_mask(self, crop, crop_size, mask_arr, mask_color):
         """ private - apply the mask to the image
         """
-        mask_kind = self.mask_kind
-        crop_mask = PIL.Image.fromarray(self.np2PIL(
-                                        np.uint8(255 * mask_arr)))
+        # print("in apply mask mask_arr", self.mask_kind, mask_arr.dtype, mask_arr.shape, np.min(mask_arr), np.max(mask_arr))
+        
+        lx, ly = crop_size
+        # print("mask_color", mask_color, len(mask_color), self.mode)
+        mask_colors = np.tile(
+            np.array(mask_color), crop_size).reshape([lx, ly, len(mask_color)]
+        )
+        mask_colors = self.np2PIL(np.uint8(255 * mask_colors))
+        # print("mask_colors", mask_colors.dtype, mask_colors.shape)
+        mask_colors = PIL.Image.fromarray(mask_colors, mode=self.mode)
+#        mask_kind = self.mask_kind
 
-        if mask_kind == "bool":
-            lx, ly = crop_size
-            mask_colors = np.tile(np.array(mask_color), crop_size
-                                  ).reshape([lx, ly, len(mask_color)])
-            mask_colors = self.np2PIL(np.uint8(255 * mask_colors))
-            mask_colors = PIL.Image.fromarray(mask_colors, mode=self.mode)
+        # if mask_kind == "bool":
+        if self.mode == "RGBA":
+            crop.putalpha(255)
+#            crop_mask = PIL.Image.fromarray(self.np2PIL(np.uint8(255 * mask_arr)))
+#            crop.paste(mask_colors, (0, 0), crop_mask)
+        
+        crop_mask = PIL.Image.fromarray(
+            self.np2PIL(np.uint8(np.clip(255 * mask_arr, 0, 255)))
+        )
+#        im = PIL.Image.composite(mask_colors, crop, crop_mask)
+#        crop.paste(im, (0, 0)) #, crop_mask)
+        crop.paste(mask_colors, (0, 0), crop_mask)
 
-            if self.mode == "RGBA":
-                crop.putalpha(255)
-            crop.paste(mask_colors, (0, 0), crop_mask)
+#        elif mask_kind == "float":
+#            # TODO Not tested
+##            red_color = (1., 0., 0.)
+##            red_colors = np.tile(
+##                np.array(red_color), crop_size).reshape([lx, ly, len(red_color)]
+##            )
+##            red_colors = self.np2PIL(np.uint8(255 * red_colors))
+##            red_colors = PIL.Image.fromarray(red_colors, mode=self.mode)
+#
+##            mask_colors = self.np2PIL(mask_colors)
+##            mask_colors = PIL.Image.fromarray(mask_colors, mode=self.mode)
+#            # crop.putalpha(crop_mask)
+#            crop_mask = PIL.Image.fromarray(
+#                self.np2PIL(np.uint8(np.clip(255 * mask_arr, 0, 255)))
+#            )
+#            im = PIL.Image.composite(mask_colors, crop, crop_mask)
+#            crop.paste(im, (0, 0)) #, crop_mask)
+#            # crop.paste(mask_colors, (0, 0), crop_mask)
+#            # crop.paste(im, (0, 0)) #, crop_mask)
 
-        elif mask_kind == "float":
-            # TODO Not tested 
-            crop.putalpha(crop_mask)
-
-        else:
-            raise ValueError(mask_kind)
+#        else:
+#            raise ValueError(mask_kind)
 
     @staticmethod
     def apply_shade(rgb, layer, lighting, chunk_slice):
@@ -556,10 +610,12 @@ class Grey_layer(Virtual_layer):
             mask_color = self.default_mask_color
         self.mask = (layer, mask_color)
 
-    def crop(self, chunk_slice):
-        """ Return the image for this chunk"""
-        # 1) The "base" image
-        arr = self[chunk_slice]
+
+    def child_crop(self, chunk_slice, arr):
+        """ aux function """
+        # If a user-mapping is defined, apply it
+        if self.func is not None:
+            arr = self.func(arr)
 
         # If a user-mapping is defined, apply it
         if self.func is not None:
@@ -609,7 +665,8 @@ class Grey_layer(Virtual_layer):
         """ private - 3 possiblilities : 
                 - no mask (returns None)
                 - boolean mask (return "bool")
-                - greyscale i.e. float mask (return "float) """
+        greyscale i.e. float mask not allowed
+        """
         if self.mask is None:
             return None
         layer, mask_color = self.mask
@@ -697,12 +754,10 @@ class Normal_map_layer(Color_layer):
         """
         super().__init__(postname, None, colormap=None, output=output)
         self.max_slope = max_slope * np.pi / 180
-    
-    def crop(self, chunk_slice):
-        """ Return the image for this chunk"""
-        # 1) The "base" image
-        arr = self[chunk_slice]
 
+
+    def child_crop(self, chunk_slice, arr):
+        """ aux function """
         # Note: rgb = np.uint8(rgb * 255)
         (ix, ixx, iy, iyy) = chunk_slice
         nx, ny = ixx - ix, iyy - iy
@@ -762,11 +817,12 @@ class Bool_layer(Virtual_layer):
         bool_arr = np.array(arr, dtype=bool)
         return bool_arr
 
-    def crop(self, chunk_slice):
-        """ Return the image for this bool layer chunk"""
-        # 1) The "base" image
-        arr = self[chunk_slice]
+    def getitem_fullprecision(self, chunk_slice):
+        # Activates greyscale in case of mask + supersampling
+        return super().__getitem__(chunk_slice)
 
+    def child_crop(self, chunk_slice, arr):
+        """ aux function """
         crop_mask = PIL.Image.fromarray(self.np2PIL(arr))
         return crop_mask
 
@@ -835,14 +891,14 @@ class Blinn_lighting:
             angle (phi) of light source direction, in degree
             phi = 0 if incoming light is in xOy plane
         """
-        angles = (polar_angle, azimuth_angle)
+        # angles = (polar_angle, azimuth_angle)
         self.light_sources += [{
             "k_diffuse": np.asarray(k_diffuse),
             "k_specular": np.asarray(k_specular),
             "shininess": shininess,
             "polar_angle": polar_angle,
             "azimuth_angle": azimuth_angle,
-            "angles_radian": tuple(a * np.pi / 180. for a in angles),
+            # "angles_radian": tuple(a * np.pi / 180. for a in angles),
             "color": np.asarray(color),
             "material_specular_color": material_specular_color
         }]
@@ -856,7 +912,8 @@ class Blinn_lighting:
         return _2d_XYZ_to_rgb(XYZ_shaded, nx, ny)
 
     def partial_shade(self, ls, XYZ, normal):
-        theta_LS, phi_LS = ls['angles_radian']
+        theta_LS = ls['polar_angle'] * np.pi / 180.
+        phi_LS = ls['azimuth_angle'] * np.pi / 180.
 
         # Light source coordinates
         LSx = np.cos(theta_LS) * np.cos(phi_LS)
@@ -866,7 +923,7 @@ class Blinn_lighting:
         # Normal vector coordinates
         nx = normal.real
         ny = normal.imag
-        nz = np.sqrt(1. - nx**2 - ny**2) # cos of max_slope
+        nz = np.sqrt(1. - nx ** 2 - ny ** 2) # cos of max_slope
         lambert = LSx * nx + LSy * ny + LSz * nz
         np.putmask(lambert, lambert < 0., 0.)
 
@@ -929,16 +986,17 @@ class Blinn_lighting:
         # Keep aligned the angles in radian
         else:
             self.light_sources[irow][col_key] = float(value)
-            if col_key == "polar_angle":
-                self.light_sources[irow]["angles_radian"] = (
-                    float(value) * np.pi / 180.,
-                    self.light_sources[irow]["angles_radian"][1]
-                )
-            if col_key == "azimuth_angle":
-                self.light_sources[irow]["angles_radian"] = (
-                    self.light_sources[irow]["angles_radian"][0],
-                    float(value) * np.pi / 180.,
-                )
+#            if col_key in ["polar_angle", "azimuth_angle"]:
+#                self.light_sources[irow][col_key] = float(value)
+#                    float(value) * np.pi / 180.,
+#                    self.light_sources[irow]["angles_radian"][1]
+#                )
+#            if col_key == "azimuth_angle":
+#                self.light_sources[irow]["azimuth_angle"] = float(value)
+                #(
+#                    self.light_sources[irow]["angles_radian"][0],
+#                    float(value) * np.pi / 180.,
+#                )
 
 
     def col_data(self, col_key):
@@ -1007,8 +1065,8 @@ class Blinn_lighting:
             "{})"
         ).format(k_ambient_str, color_ambient_str, lightings_str)
 
-        shift = " " * (4 * (indent + 1))
-        ret.replace("\n", "\n" + shift)
+        shift = " " * (4 * (indent))
+        ret = ret.replace("\n", "\n" + shift)
         return ret
 
 
@@ -1102,8 +1160,9 @@ class Overlay_mode:
                     "layer - Add a mask to overlay layer or provide the "
                     "mask separately through alpha_mask parameter."
             )
-            # This is safer than using the A-channel from the image
-            mask_arr = overlay.mask[0][chunk_slice][:, :, np.newaxis]
+            # This is safer than using the A-channel from the image :
+            mask_arr = overlay.mask[0].getitem_fullprecision(
+                chunk_slice)[:, :, np.newaxis]
 
         inverse_mask = opt.get("inverse_mask", False)
         if inverse_mask:
@@ -1117,12 +1176,13 @@ class Overlay_mode:
         crop = np.array(overlay.crop(chunk_slice))
         rgb2 = Virtual_layer.PIL2np(crop)[:, :, :3] / 255.
         XYZ_2 = _2d_rgb_to_XYZ(rgb2, nx, ny)
-        
+
         # Apply the alpha_composite
         res = mask_arr * XYZ + (1. - mask_arr) * XYZ_2
+
         # Second pass needed to handle Nan values
-        res = np.where(mask_arr==0, XYZ_2, res)
-        res = np.where(mask_arr==1, XYZ, res)
+        res = np.where(mask_arr == 0., XYZ_2, res)
+        res = np.where(mask_arr == 1., XYZ, res)
         alpha_composite = _2d_XYZ_to_rgb(res, nx, ny)
 
         return alpha_composite
@@ -1195,12 +1255,12 @@ class Overlay_mode:
         b = Lab[:, :, 2]
         lighten = shade > 0
 
-        Lab[:, :, 0] = np.where(lighten,
-                                L  + shade * (100. - L),  L * (1. +  shade))
-        Lab[:, :, 1] = np.where(lighten,
-                                a  - shade**2 * a, a * (1. -  shade**2))
-        Lab[:, :, 2] = np.where(lighten,
-                                b  - shade**2 * b, b * (1. -  shade**2))
+        Lab[:, :, 0] = np.where(
+            lighten, L  + shade * (100. - L),  L * (1. +  shade))
+        Lab[:, :, 1] = np.where(
+            lighten, a  - shade**2 * a, a * (1. -  shade**2))
+        Lab[:, :, 2] = np.where(
+            lighten,b  - shade**2 * b, b * (1. -  shade**2))
 
         return _2d_CIELab_to_XYZ(Lab, nx, ny)
         

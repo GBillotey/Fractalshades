@@ -20,6 +20,14 @@ def mkdir_p(path):
         else:
             raise exc
 
+def is_iterable(item):
+    """ Check wether an item is iterable """
+    try:
+        _ = iter(item)
+    except TypeError:
+        return False
+    return True
+
 
 def dic_flatten(nested_dic, key_prefix="", sep="@"):
     """
@@ -64,8 +72,10 @@ class Rawcode:
         """ Utility class for a user-specified code fragment """
         self._str = raw_code_str
 
-    def script_repr(self, indent):
-        return " " * (4 * indent) + self._str
+    def script_repr(self, indent, firstline=True):
+        shift = " " * (4 * indent)
+        shift_bool = not(firstline)
+        return  shift * shift_bool + self._str
 
 
 class Code_writer:
@@ -74,7 +84,7 @@ class Code_writer:
     """
 
     @staticmethod
-    def var_tocode(var, indent=0):
+    def var_tocode(var, indent=0, firstline=True):
         """
         Returns a string of python source code to serialize the variable var.
 
@@ -89,56 +99,70 @@ class Code_writer:
                 Class
         indent: int
             The current indentation level
+        firstline: bool
+            The indentation level does not apply for the first line
+            (managed by the caller)
         """
         shift = " " * (4 * indent)
+        shift_bool = not(firstline)
 
         if var is None:
-            return "None"
+            return shift_bool * shift + "None"
+
         if isinstance(var, numbers.Number):
-            return repr(var)
+            return shift_bool * shift + repr(var)
+
         if isinstance(var, str):
-            return f'"{var}"'
+            return shift_bool * shift + f'"{var}"'
+
         if isinstance(var, mpmath.mpf):
-            return repr(var)
+            return shift_bool * shift + repr(var)
+
         if isinstance(var, dict):
-            shift_inc = shift + " " * 4
-            ret = (shift_inc).join([
-                f"{Code_writer.var_tocode(k, indent+1)}: "
-                f"{Code_writer.var_tocode(v, indent+1)},\n"
+            # shift_inc = shift + " " * 4
+            ret = "".join([
+                f"{Code_writer.var_tocode(k, indent+1, False)}: "
+                f"{Code_writer.var_tocode(v, indent+1, True)},\n"
                 for (k, v) in var.items()
             ])
-            ret = f"{{\n{shift_inc}{ret}{shift}}}" # {{ for \{ in f-string
-            return ret
+            ret = f"{{\n{ret}{shift}}}" # {{ for \{ in f-string
+            return shift_bool * shift + ret
+
         if isinstance(var, list):
-            shift_inc = shift + " " * 4
-            ret = (shift_inc).join([
-                f"{Code_writer.var_tocode(v, indent+1)},\n"
+            # shift_inc = shift + " " * 4
+            ret = "".join([
+                f"{Code_writer.var_tocode(v, indent+1, False)},\n"
                 for v in var
             ])
-            ret = f"[\n{shift_inc}{ret}{shift}]" # {{ for \{ in f-string
-            return ret
+            ret = f"[\n{ret}{shift}]" # {{ for \{ in f-string
+            return shift_bool * shift + ret
+
         if isinstance(var, tuple):
-            shift_inc = shift + " " * 4
-            ret = (shift_inc).join([
-                f"{Code_writer.var_tocode(v, indent+1)},\n"
+            # shift_inc = shift + " " * 4
+            ret = "".join([
+                f"{Code_writer.var_tocode(v, indent+1, False)},\n"
                 for v in var
             ])
-            ret = f"(\n{shift_inc}{ret}{shift})" # {{ for \{ in f-string
-            return ret
+            ret = f"(\n{ret}{shift})" # {{ for \{ in f-string
+            return shift_bool * shift + ret
 
         if inspect.isclass(var):
             ret = f"{Code_writer.fullname(var)}"
-            return ret
+            return shift_bool * shift + ret
 
         if hasattr(var, "script_repr"):
             # Complex object: check first if has a dedicated script_repr
             # implementation
-            return var.script_repr(indent)
+            return shift_bool * shift + var.script_repr(indent)
 
         if hasattr(var, "init_kwargs"):
             # Complex object: defauts implementation serialize by calling the 
             # __init__ method
-            return Code_writer.instance_tocode(var, indent)
+            return (
+                shift_bool * shift + Code_writer.instance_tocode(
+                    var, indent, True
+                )
+            )
 
         else:
             raise NotImplementedError(var)
@@ -154,50 +178,55 @@ class Code_writer:
 
 
     @staticmethod
-    def instance_tocode(obj, indent=0):
+    def instance_tocode(obj, indent=0, firstline=True):
         """ Unserialize by calling init method
         """
         shift = " " * (4 * indent)
+        shift_bool = not(firstline)
+
         fullname = Code_writer.fullname(obj.__class__)
         kwargs = obj.init_kwargs
-        kwargs_code = Code_writer.func_args(kwargs, indent + 1)
-        str_call_init = f"{shift}{fullname}(\n{kwargs_code}{shift})"
-        return str_call_init
+        kwargs_code = Code_writer.func_args(kwargs, indent + 1, False)
+        str_call_init = f"{fullname}(\n{kwargs_code}{shift})"
+
+        return shift * shift_bool + str_call_init
 
 
     @staticmethod
-    def write_assignment(varname, value, indent=0):
+    def write_assignment(varname, value, indent=0, firstline=True):
         """
         %varname = %value
         """
         shift = " " * (4 * indent)
+        shift_bool = not(firstline)
 
         try:
             var_str = Code_writer.var_tocode(value, indent)
         except NotImplementedError: # rethrow with hopefully better descr
             raise NotImplementedError(varname, value)
         str_assignment = f"{shift}{varname} = {var_str}\n"
-        return str_assignment
+        return shift * shift_bool + str_assignment
 
 
     @staticmethod
-    def func_args(kwargs, indent=0):
+    def func_args(kwargs, indent=0, firstline=True):
         """
            key1=value1,
            key2=value2,
         """
         shift = " " * (4 * indent)
+        shift_bool = not(firstline)
+
         try:
             ret = shift.join([
-                f"{k}={Code_writer.var_tocode(v)},\n"
+                f"{k}={Code_writer.var_tocode(v, indent, True)},\n"
                 for (k, v) in kwargs.items()
             ])
         except NotImplementedError:
             etype, evalue, etraceback = sys.exc_info()
             raise  NotImplementedError(f"{evalue}  raised from {kwargs}")
 
-        return shift + ret
-
+        return shift * shift_bool + ret
 
 
 def exec_no_output(func, *args, **kwargs):
@@ -240,7 +269,7 @@ def _store_kwargs(indentifier):
             for key, val in kwargs_dic.items():
                 # If attributes are modified, we do not want to track
                 # So, passing a copy.
-                setattr(self, key, copy.deepcopy(val))
+                setattr(self, key, val) # copy.deepcopy(val))
             return method(self, *args, **kwargs)
         return wrapper
     return wraps
@@ -335,7 +364,7 @@ class _store_func_name:
     - stores the individual kwargs as instance attributes
     - stores a (deep) copy of the kwargs as an instance-attribute
       dictionary: instance.dic_name
-    - stores the name of the last decorated methos called as instance-attribute
+    - stores the name of the last decorated method called as instance-attribute
       string (dic_name + "_lastcall")
 
     Note that:

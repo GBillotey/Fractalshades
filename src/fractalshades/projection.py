@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import inspect
 #import enum
+import copy
 
 import numpy as np
 import numba
@@ -13,14 +14,6 @@ import fractalshades.numpy_utils.xrange as fsx
 
 # Log attributes
 # https://docs.python.org/2/library/logging.html#logrecord-attributes
-
-#PROJECTION_ENUM = enum.Enum(
-#    "PROJECTION_ENUM",
-#    ("cartesian", "spherical", "expmap"),
-#    module=__name__
-#)
-#projection_type = typing.Literal[PROJECTION_ENUM]
-
 
 class Projection:
     """
@@ -67,8 +60,11 @@ class Projection:
         return init_kwargs
 
     def __eq__(self, other):
-        """ 2 Projections are equal if they are instances from the SAME
-        subclass and have been created with the same init_kwargs
+        """
+        2 `Projections` are equal if:
+
+            - they are instances from the same subclass
+            - they have been created with the same init_kwargs
         """
         return (
             other.__class__ == self.__class__
@@ -125,16 +121,12 @@ class Cartesian(Projection):
         .. math::
 
             \\bar{z}_{pix} =  z_{pix}
-
         """
         self.make_impl()
 
     def make_f_impl(self):
         """ A cartesian projection just let pass-through the coordinates"""
-        @numba.njit(numba.complex128(numba.complex128))
-        def numba_impl(dz):
-            return dz
-        self.f = numba_impl
+        self.f = cartesian_numba_impl
 
     def make_df_impl(self):
         self.df = None
@@ -142,25 +134,32 @@ class Cartesian(Projection):
     def make_dfBS_impl(self):
         self.dfBS = None
 
+@numba.njit(nogil=True, fastmath=True)
+def cartesian_numba_impl(z):
+    return z
+
 #==============================================================================
 class Expmap(Projection):
     def __init__(self, hmin, hmax, rotates_df=True):
         """ 
-        An exponential mapping will map :math:`z_{pix}` as follows:
+        An exponential projection will map :math:`z_{pix}` as follows:
 
         .. math::
 
             \\bar{z}_{pix} = \\exp(h_{moy}) \\cdot \\exp(dh \\cdot z_{pix}) 
 
         where:
-            
+
         .. math::
 
             h_{moy} &= \\frac{1}{2} \\cdot (h_{min} + h_{max}) \\\\
             dh &= h_{max} - h_{min}
 
-        `xy_ratio` of the fractal will be adjusted to ensure that
-        :math:`\\bar{y}_{pix}` extends from :math:`- \\pi` to  :math:`\\pi`.
+        The `xy_ratio` of the zoom will be adjusted (during run time) to ensure
+        that :math:`\\bar{y}_{pix}` extends from :math:`- \\pi`
+        to :math:`\\pi`.
+
+        This class can be used with arbitrary-precision deep zooms.
 
         Parameters
         ==========
@@ -177,10 +176,7 @@ class Expmap(Projection):
             movie making tool.
         """
         self.rotates_df = rotates_df
-        
-        hmin = fsx.mpf_to_Xrange(mpmath.mpf(hmin))
-        hmax = fsx.mpf_to_Xrange(mpmath.mpf(hmax))
-        
+
         if mpmath.exp(hmax) > (1. / fs.settings.xrange_zoom_level):
             # Or ~ hmax > 690... We store internally as Xrange
             self.hmin = fsx.mpf_to_Xrange(hmin)
@@ -200,19 +196,17 @@ class Expmap(Projection):
         match hmax - hmin """
         # target: dh = 2. * np.pi * xy_ratio 
         fractal.xy_ratio = self.dh / (np.pi * 2.)
+        fractal.zoom_kwargs["xy_ratio"] = fractal.xy_ratio
+
 
     def make_f_impl(self):
         hmoy = self.hmoy
         dh = self.dh
 
         @numba.njit(numba.complex128(numba.complex128),
-                    nogil=True, fastmath=False)
+                        nogil=True, fastmath=False)
         def numba_impl(z):
-            # h linearly interpolated between hmin and hmax
-            h = hmoy + dh * z.real
-            # t linearly interpolated between -pi and pi
-            t = dh * z.imag
-            return  np.exp(complex(h, t))
+            return expmap_numba_impl(z, hmoy, dh)
 
         self.f = numba_impl
 
@@ -256,6 +250,233 @@ class Expmap(Projection):
 
         self.dfBS = numba_impl
 
+
     @property
     def scale(self):
         return np.exp(self.hmoy)
+
+
+@numba.njit(nogil=True, fastmath=False) #, cache=True)
+def expmap_numba_impl(z, hmoy, dh):
+    # h linearly interpolated between hmin and hmax
+    h = hmoy + dh * z.real
+    # t linearly interpolated between -pi and pi
+    t = dh * z.imag
+    return np.exp(complex(h, t))
+
+
+#============================================================================== 
+
+class Generic_mapping(Projection):
+    def __init__(self, f, df):
+        """ 
+        This class allows the user to provide a custom mapping defined
+        on the complex plane.
+
+        The transformation between the complex plane and local pixel
+        coordinates (map :math:`z_{pix}`, according to the zoom level)
+        is managed internally.
+
+        Known limitations:
+
+         - currently only differentiable mappings of the
+           complex variable (aka holomorphic / meromorphic functions) are
+           supported.
+         - not suitable for arbitray precision fractals at deep zoom.
+
+
+        Parameters
+        ==========
+        f: numba jitted function numba.complex128 -> numba.complex128
+            The complex function defining the mapping. If a tuple (f1, f2) or
+            (f1, f2, f3) is provided the composition will be applied (f1 o f2)
+        df: numba jitted function numba.complex128 -> numba.complex128
+            The differential of f. If a tuple (df1, df2) or (df1, df2, df3) is
+            provided the composition will be applied according to the 
+            differentiation chain rule.
+        """
+        self.f = f
+        self.df = df
+
+        _f = f if fs.utils.is_iterable(f) else (f,)
+        _df = df if fs.utils.is_iterable(df) else (df,)
+
+        if (len(_df) != len(_f)):
+            raise ValueError("len(f) and len(df) shall match")
+        self.n_func = len(_f)
+
+        self.P_f_numba = copy.copy(_f)
+        self.P_df_numba = copy.copy(_df)
+
+
+    def make_phi(self):
+        """
+        phi : pixel to C-plane
+        phi_inv: C-plane to pixel
+        """
+        z_center = self.z_center 
+        dx = self.dx
+
+        @numba.njit(nogil=True, fastmath=False)
+        def numba_phi_impl(zpix):
+            return  z_center + zpix * dx
+
+        @numba.njit(nogil=True, fastmath=False)
+        def numba_phi_inv_impl(z):
+            return  (z - z_center) / dx
+
+        self.phi = numba_phi_impl
+        self.phi_inv = numba_phi_inv_impl
+
+
+    def adjust_to_zoom(self, fractal):
+        """ JIT compilation is delayed until we know the zoom
+        parameters"""
+        self.z_center = complex(fractal.x, fractal.y)
+        self.dx = fractal.dx
+
+        self.make_phi()
+        self.make_impl()
+
+
+    def make_f_impl(self):
+        n_func = self.n_func
+        phi = self.phi
+        phi_inv = self.phi_inv
+        P_f_numba = self.P_f_numba
+        
+        if n_func == 1:
+            f0 = P_f_numba[0]
+            @numba.njit(numba.complex128(numba.complex128),
+                        nogil=True, fastmath=False)
+            def numba_impl(z):
+                zz = phi(z) # pix -> P
+                zz = f0(zz)
+                zz = phi_inv(zz) # P -> pix
+                return zz
+
+        elif n_func == 2:
+            f0 = P_f_numba[0]
+            f1 = P_f_numba[1]
+            @numba.njit(numba.complex128(numba.complex128),
+                        nogil=True, fastmath=False)
+            def numba_impl(z):
+                zz = phi(z) # pix -> P
+                zz = f0(zz)
+                zz = f1(zz)
+                zz = phi_inv(zz) # P -> pix
+                return zz
+            
+        elif n_func == 3:
+            f0 = P_f_numba[0]
+            f1 = P_f_numba[1]
+            f2 = P_f_numba[2]
+            @numba.njit(numba.complex128(numba.complex128),
+                        nogil=True, fastmath=False)
+            def numba_impl(z):
+                zz = phi(z) # pix -> P
+                zz = f0(zz)
+                zz = f1(zz)
+                zz = f2(zz)
+                zz = phi_inv(zz) # P -> pix
+                return zz
+
+        else:
+            raise NotImplementedError("Composition allowed up to 3 funcs only")
+
+        self.f = numba_impl
+
+    def make_df_impl(self):
+        n_func = self.n_func
+        phi = self.phi
+        P_f_numba = self.P_f_numba
+        P_df_numba = self.P_df_numba
+
+        if n_func == 1:
+            df0 = P_df_numba[0]
+            @numba.njit(numba.complex128(numba.complex128),
+                        nogil=True, fastmath=False)
+            def numba_impl(z):
+                zz = phi(z) # pix -> P
+                dzz = df0(zz)
+                return dzz
+
+        elif n_func == 2:
+            df0 = P_df_numba[0]
+            f0 = P_f_numba[0]
+            df1 = P_df_numba[1]
+            @numba.njit(numba.complex128(numba.complex128),
+                        nogil=True, fastmath=False)
+            def numba_impl(z):
+                zz = phi(z) # pix -> P
+                dzz = df0(zz)
+                zz = f0(zz)
+                dzz *= df1(zz)
+                return dzz
+
+        elif n_func == 3:
+            df0 = P_df_numba[0]
+            f0 = P_f_numba[0]
+            df1 = P_df_numba[1]
+            f1 = P_f_numba[1]
+            df2 = P_df_numba[2]
+            @numba.njit(numba.complex128(numba.complex128),
+                        nogil=True, fastmath=False)
+            def numba_impl(z):
+                zz = phi(z) # pix -> P
+                dzz = df0(zz)
+                zz = f0(zz)
+                dzz *= df1(zz)
+                zz = f1(zz)
+                dzz *= df2(zz)
+                return dzz
+
+        else:
+            raise NotImplementedError("Composition allowed up to 3 funcs only")
+
+        self.df = numba_impl
+
+
+    def make_dfBS_impl(self):
+        """ Currently not implemented, will raise an assertion error if 
+        called in LLVM """
+
+        @numba.njit(nogil=True, fastmath=False)
+        def numba_impl(z):
+            assert False
+            return z
+
+        self.dfBS = numba_impl
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

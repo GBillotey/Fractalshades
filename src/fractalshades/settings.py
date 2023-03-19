@@ -34,6 +34,9 @@ Useful for debugging"""
 chunk_size: int  = 200
 """The size for the basic calculation tile is chunk_size x chunk_size"""
 
+db_chunk_size: int  = 400
+"""The size for a database freezing tile is db_chunk_size x db_chunk_size"""
+
 BLA_compression: int  = 3
 """ number of BLA levels which are dropped (not stored) """
 

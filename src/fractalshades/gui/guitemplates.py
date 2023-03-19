@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Catalogue of functions to be used for GUI exploration
-
-The following are implemented:
-- Deepzoom_holomorphic
+"""Generic functions to be used for GUI exploration
 """
 import inspect
 import typing
@@ -43,12 +40,23 @@ from fractalshades.colors.layers import (
 from fractalshades.utils import Code_writer
 
 
-script_header = f"""# -*- coding: utf-8 -*-
-\"""============================================================================
+usage = f"""# -*- coding: utf-8 -*-
+\"\"\"============================================================================
 Auto-generated from fractalshades GUI, version {fs.__version__}.
 Save to `<file>.py` and run as a python script:
     > python <file>.py
-============================================================================\"""
+============================================================================\"\"\"
+"""
+
+usage_movie = f"""# -*- coding: utf-8 -*-
+\"\"\"============================================================================
+Auto-generated from fractalshades GUI, version {fs.__version__}.
+Save to `<file>.py` and use its plotter in the movie making main script
+    > from <file> import get_plotter, plot_kwargs
+============================================================================\"\"\"
+"""
+
+script_header = """
 import os
 import typing
 
@@ -85,23 +93,27 @@ from fractalshades.colors.layers import (
     Overlay_mode
 )
 
-# Note: edit this line in batch mode to change the local projection
+# Note: in batch mode, edit this line to change the base directory
+plot_dir = os.path.splitext(os.path.realpath(__file__))[0]
+
+# Note: in batch mode, edit this line to change the local projection
+# you may also call `plot` with a modified `batch_params` parameters
+# (the latter allows to call from another module)
 projection = fs.projection.Cartesian()
 
-def plot(plot_dir):"""
+batch_params = {
+    "projection": projection
+}
+"""
 
 script_footer = """
 if __name__ == "__main__":
-    # Sets `plot_dir` to the local directory where is saved this script, and
-    # run the script
-    realpath = os.path.realpath(__file__)
-    plot_dir = os.path.splitext(realpath)[0]
-    plot(plot_dir)
+    plot(**plot_kwargs, batch_params=batch_params)
 """
 
 def script_title_sep(title, indent=0):
     """ Return a script comment line with the given title """
-    sep_line = " " * 4 * indent + "#" + ">" * (78 - 4 * indent) + "\n"
+    sep_line = " " * 4 * indent + "#" + "-" * (78 - 4 * indent) + "\n"
     return (
         "\n\n"
         + sep_line
@@ -110,23 +122,23 @@ def script_title_sep(title, indent=0):
     )
 
 
-def script(source, kwargs, funcname):
+def script(source, kwargs, movie=False):
     """ Writes source code for this script """
-    func_params_str = script_assignments(kwargs, indent=1)
-    source = (" " * 4) + source.replace("\n", "\n" + " " * 4)
-    call_str = ",\n        ".join(k + " = " + k for k in kwargs.keys())
-    call_str = f"    {funcname}(" + call_str + "\n    )\n"
+    if movie:
+        full_header = usage_movie + script_header
+    else:
+        full_header = usage + script_header
+
+    func_params_str = "plot_kwargs = " + script_repr(kwargs, indent=0)
+    source = (" " * 0) + source.replace("\n", "\n" + " " * 0)
 
     script = (
-        script_header
-        + script_title_sep("Parameters", 1)
+        full_header
+        + script_title_sep("Parameters - user editable ", 0)
         + func_params_str
-        + script_title_sep("Plotting function", 1)
+        + script_title_sep("Function - /!\ do not modify this section", 0)
         + source
-        + script_title_sep("Plotting call", 1)
-        + call_str
-        + script_title_sep("Footer", 0)
-        + script_footer
+        + ("" if movie else script_footer)
         + "\n"
     )
 
@@ -154,15 +166,129 @@ def script_assignments(kwargs, indent=0):
     return ret
 
 
-def getsource(callable_):
+def getsource(callable_, movie=False):
     """ Return the source code for this callable
     """
     if hasattr(callable_, "getsource"):
-        return callable_.getsource()
+        return callable_.getsource(movie=movie)
     else:
         # Default: use inspect - use dedent to get consistent indentation level
-        return textwrap.dedent(inspect.getsource(callable_))
+        if movie:
+            raise RuntimeError(
+                "Movie plotter-script not implemented for a GUI based on "
+                "a standard function, construct the plotter script "
+                "manually, or switch to a GUItemplate implementation."
+            )
+        # Changes the function name to: `plot` (to get consistent call)
+        # remove the default values - to avoid potential scoping issues
+        source = textwrap.dedent(inspect.getsource(callable_))
+        sgn = signature(callable_)
+        func_name, func_params, func_body = split_source(source, sgn)
+        str_params = get_str_params(func_params)
+        return "def plot(" + str_params + func_body
 
+
+def split_source(func_source, func_signature):
+    """
+    Parameters
+    ----------
+    func_source: string
+        Function source code  to be parsed
+    func_signature: Signature
+        Signature of this function
+
+    Returns
+    -------
+    (func_name, func_params, func_body)
+
+    func_name: str
+        The extracted string "def func_name"
+
+    func_params: mapping
+        param -> param_txt where param_txt is the text
+        describing the parameter in the function source code ie:
+        "param_x: type = xxx" (as delimited by quotes)
+
+    func_body: str
+        the func body including the closing parameters parenthesis
+    """
+    paren_stack = []  # stack for ()
+    bracket_stack = []  # stack for []
+    braces_stack = []  # stack for {}
+    
+    name_ic = 0 # index of the first opening (
+    func_params = {}
+    body_ic = 0 # index of the matching )
+
+    param_beg = 0 # position of the , or the ( for the forst param
+    iparam = 0 # next_expected parameter
+    
+    param_names = list(func_signature.parameters.keys())
+    n_params = len(param_names)
+    
+    started = False
+    
+    for ic, c in enumerate(func_source):
+        if not started:
+            if c == "(":
+                started = True
+                paren_stack.append(ic)
+                name_ic = param_beg = ic
+            continue
+        # Here we are in the parameters
+        if c in "([{}])":
+            if c == ")":
+                paren_stack.pop()
+            elif c == "]":
+                bracket_stack.pop()
+            elif c == "]":
+                braces_stack.pop()
+            elif c == "(":
+                paren_stack.append(ic)
+            elif c == "[":
+                bracket_stack.append(ic)
+            elif c == "{":
+                braces_stack.append(ic)
+            if len(paren_stack) == 0:
+                body_ic = ic
+                pname = param_names[iparam]
+                func_params[pname] = func_source[param_beg + 1: ic]
+                break # finished reading the parameter block
+
+        may_end_param = (
+            len(paren_stack) == 1
+            and len(bracket_stack) == 0
+            and len(braces_stack) == 0
+        )
+
+        if c == "," and may_end_param:
+            # This is the end of a param declaration
+            pname = param_names[iparam]
+            func_params[pname] = func_source[param_beg + 1: ic]
+            iparam += 1
+            if iparam == n_params:
+                # because might have a last comma...
+                body_ic = ic
+                break
+            param_beg = ic
+        
+    func_name = func_source[:name_ic]
+    func_body = func_source[body_ic:]
+    
+    # Drop everything from the body before the ")" - avoid a potential 
+    # ",," if the original params source code ends with ","
+    incipit = func_body.find(")")
+    func_body = func_body[incipit:]
+
+    return func_name, func_params, func_body
+
+def get_str_params(func_params):
+    """ Remove the parameters default values from the signature """
+    str_params = ""
+    for p_name, v in func_params.items():
+        decl, val = v.split("=") # dec -> <pname: annotation> / val -> <val>
+        str_params += decl + ","
+    return str_params
 
 def signature(callable_):
     """ Return the signature for this callable
@@ -186,7 +312,7 @@ class GUItemplate:
     def set_default(self, pname, value):
         """ Change the default for param pname to tuned_annotations"""
         self.tuned_defaults[pname] = value
-        
+
     def set_annotation(self, pname, tuned_annotations, annot_str):
         """ Change the annotation for param pname to tuned_annotations
 
@@ -216,7 +342,7 @@ class GUItemplate:
     def signature(self):
         """
         Signature used as a base for the GUI-display
-        
+
         Returns:
         --------
         sgn, taking into account
@@ -259,19 +385,23 @@ class GUItemplate:
         )
         return sgn
 
-    def getsource(self):
+    def getsource(self, movie=False):
         """ Returns the source code defining the function
         """
         base_source = textwrap.dedent(inspect.getsource(self.__call__))
         func_name, func_params, func_body = self.split_source(base_source)
-        
+
+        if movie:
+            look_for, replace_by = self.movie_source_modifiers()
+            cut_index = func_body.find(look_for)
+            func_body = func_body[:cut_index] + replace_by
+
         my_defaults = self.tuned_defaults
         my_annots = self.tuned_annotations_str
         my_vals = self.partial_vals 
         
-        # func name: changed from __call__ to the name of the class (mimics
-        # a python function)
-        func_name = f"def {self.__class__.__name__}(" 
+        # func name: changed from __call__ to "plot" or "get_plotter"
+        func_name = "def get_plotter(" if movie else "def plot("
 
         # func parameters:
         str_params = ""
@@ -279,19 +409,34 @@ class GUItemplate:
             if p_name == "self":
                 continue
 
-            decl, val = v.split("=") # dec -> <pname: annotation> / val -> <val>
+            # print("** v<", v, ">")
+            decl, val = v.split("=", 1) # dec -> <pname: annotation> / val -> <val>
 
             if p_name in my_defaults.keys():
-                val = " " + Code_writer.var_tocode(my_defaults[p_name]) + ","
-            elif p_name in my_vals.keys():
-                val = " " + Code_writer.var_tocode(my_vals[p_name]) + ","
-            elif p_name in my_annots.keys():
-                decl = "    \n" + p_name + ": " +  my_annots[p_name]
-                val = val + ","
-            else:
-                val = val + ","
-            v = decl + "=" + val
+                val = " " + Code_writer.var_tocode(
+                        my_defaults[p_name], indent=1)
+
+            if p_name in my_vals.keys():
+                val = " " + Code_writer.var_tocode(
+                        my_vals[p_name], indent=1)
+
+            if p_name in my_annots.keys():
+                decl = "\n    " + p_name + " : " +  my_annots[p_name] + " "
+
+            v = decl + "=" + val + ","
             str_params += v
+
+        # Remove final ","
+        str_params = str_params[:-1]
+
+        # Remove final "\n" if applicable (due to delimitation of last item)
+        # Note: https://docs.python.org/2/library/stdtypes.html#str.splitlines
+        last_char = str_params[-1]
+        if len(str.splitlines(last_char)[0]) == 0:
+            str_params = str_params[:-1]
+
+        # Adds additional "batch" parameters:
+        str_params += ",\n    batch_params=batch_params\n"
 
         return func_name + str_params + func_body
 
@@ -318,93 +463,14 @@ class GUItemplate:
         func_body: str
             the func body including the closing parameters parenthesis
         """
-        paren_stack = []  # stack for ()
-        bracket_stack = []  # stack for []
-        braces_stack = []  # stack for {}
-        
-        name_ic = 0 # index of the first opening (
-        func_params = {}
-        body_ic = 0 # index of the matching )
-
-        param_beg = 0 # position of the , or the ( for the forst param
-        iparam = 0 # next_expected parameter
-        
-        # Signature of the UNbounded __call
-        base_sgn = inspect.signature(self.__class__.__call__).parameters
-        param_names = list(base_sgn.keys())
-        n_params = len(param_names)
-        
-        started = False
-        
-        for ic, c in enumerate(source):
-            if not started:
-                if c == "(":
-                    started = True
-                    paren_stack.append(ic)
-                    name_ic = param_beg = ic
-                continue
-            # Here we are in the parameters
-            if c in "([{}])":
-                if c == ")":
-                    paren_stack.pop()
-                elif c == "]":
-                    bracket_stack.pop()
-                elif c == "]":
-                    braces_stack.pop()
-                elif c == "(":
-                    paren_stack.append(ic)
-                elif c == "[":
-                    bracket_stack.append(ic)
-                elif c == "{":
-                    braces_stack.append(ic)
-                if len(paren_stack) == 0:
-                    body_ic = ic
-                    pname = param_names[iparam]
-                    func_params[pname] = source[param_beg + 1: ic]
-                    break # finished reading the parameter block
-
-            may_end_param = (
-                len(paren_stack) == 1
-                and len(bracket_stack) == 0
-                and len(braces_stack) == 0
-            )
-
-            if c == "," and may_end_param:
-                # This is the end of a param declaration
-                pname = param_names[iparam]
-                func_params[pname] = source[param_beg + 1: ic]
-                iparam += 1
-                if iparam == n_params:
-                    # because might have a last comma...
-                    body_ic = ic
-                    break
-                param_beg = ic
-            
-        func_name = source[:name_ic]
-        func_body = source[body_ic:]
-        
-        # Drop everything from the body before the ")" - avoid a potential 
-        # ",," if the original params source code ends with ","
-        incipit = func_body.find(")")
-        func_body = func_body[incipit:]
-
-        return func_name, func_params, func_body
-
+        base_sgn = inspect.signature(self.__class__.__call__)
+        return split_source(source, base_sgn)
 
 #==============================================================================
-colormap_int = fs.colors.Fractal_colormap(
-    colors=[
-        [1.        , 1.        , 1.        ],
-        [0.16862746, 0.16862746, 0.16862746],
-        [0.        , 0.        , 0.        ]
-    ],
-    kinds=['Lch', 'Lch'],
-    grad_npts=[8, 8],
-    grad_funcs=['x', 'x'],
-    extent='mirror'
-)
 
-projection = fs.projection.Cartesian()
+# A list of non Gui-editable parameters, which we want to be able to pass
+# as parameters in batch mode
+batch_params = {}
 
 class std_zooming(GUItemplate):
     
@@ -597,7 +663,17 @@ Notes
             "attractivity", "order", "attr / order"
         ]="attractivity",
         colormap_int: fs.colors.Fractal_colormap = (
-                colormap_int
+            fs.colors.Fractal_colormap(
+                colors=[
+                    [1.        , 1.        , 1.        ],
+                    [0.16862746, 0.16862746, 0.16862746],
+                    [0.        , 0.        , 0.        ]
+                ],
+                kinds=['Lch', 'Lch'],
+                grad_npts=[8, 8],
+                grad_funcs=['x', 'x'],
+                extent='mirror'
+            )
         ),
         cmap_func_int: fs.numpy_utils.Numpy_expr = (
                 fs.numpy_utils.Numpy_expr("x", "x")
@@ -673,7 +749,9 @@ Notes
             "skew_01": skew_01,
             "skew_10": skew_10,
             "skew_11": skew_11,
-            "projection": projection
+            "projection": batch_params.get(
+                "projection", fs.projection.Cartesian()
+            )
         }
         if fractal.implements_deepzoom:
             zoom_kwargs["precision"] = dps
@@ -762,7 +840,7 @@ Notes
                     pp_int.add_postproc(
                         "interior_hmap", Attr_pp(scale_by_order=True)
                     )
-                
+
             # Set of unknown points
             pp_int.add_postproc(
                 "unknown", Raw_pp("stop_reason", func="x == 0")
@@ -912,3 +990,12 @@ Notes
             os.unlink(dest_path)
         os.link(src_path, dest_path)
 
+    def movie_source_modifiers(self):
+        """  Return the mods to source code needed for a movie making instance
+        -> do not plot the image
+        -> instead, simply return the plotter + base image name
+        """
+        look_for = "plotter.plot()"
+        replace_by = """\n    return plotter, plotter[base_layer].postname
+        """
+        return look_for, replace_by

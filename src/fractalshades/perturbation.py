@@ -51,7 +51,6 @@ directory : str
              xy_ratio: float,
              theta_deg: float,
              projection: fs.projection.Projection=fs.projection.Cartesian(),
-             # projection: typing.Literal["cartesian"]="cartesian",
              has_skew: bool=False,
              skew_00: float=1.,
              skew_01: float=0.,
@@ -1736,14 +1735,14 @@ def numba_iterate_BS(
 
     return numba_impl
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def apply_BLA_BS(M, Z, a, b, xn, yn):
     Z_xn = M[0] * Z[xn] + M[1] * Z[yn] + M[4] * a + M[5] * b
     Z_yn = M[2] * Z[xn] + M[3] * Z[yn] + M[6] * a + M[7] * b
     Z[xn] = Z_xn
     Z[yn] = Z_yn
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def apply_BLA_deriv_BS(M, Z, a, b, dxnda, dxndb, dynda, dyndb):
 #    assert dxnda >= 0
 #    assert dxndb < len(Z)
@@ -1761,7 +1760,7 @@ def apply_BLA_deriv_BS(M, Z, a, b, dxnda, dxndb, dynda, dyndb):
 # Bilinear approximation
 # Note: the bilinear arrays being cheap, they  will not be stored but
 # re-computed if needed
-@numba.njit(fastmath=True, error_model="numpy")
+@numba.njit(nogil=True, cache=True, fastmath=True, error_model="numpy")
 def numba_make_BLA(Zn_path, dfdz, kc, eps):
     """
     Generates a BVA tree with
@@ -1782,7 +1781,7 @@ def numba_make_BLA(Zn_path, dfdz, kc, eps):
     )
     return M_bla_new, r_bla_new, bla_len, stages
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def numba_make_BLA_BS(Zn_path, dfxdx, dfxdy, dfydx, dfydy, kc, eps):
     """
     Generates a BVA tree for non-holomorphic functions with
@@ -1804,7 +1803,7 @@ def numba_make_BLA_BS(Zn_path, dfxdx, dfxdy, dfydx, dfydy, kc, eps):
     return M_bla_new, r_bla_new, bla_len, stages
 
 
-@numba.njit(fastmath=True, error_model="numpy")
+@numba.njit(nogil=True, cache=True, fastmath=True, error_model="numpy")
 def init_BLA(M_bla, r_bla, Zn_path, dfdz, kc_std, eps):
     """
     Initialize BLA tree at stg 0
@@ -1864,7 +1863,7 @@ def init_BLA(M_bla, r_bla, Zn_path, dfdz, kc_std, eps):
     M_bla_new, r_bla_new, bla_len = compress_BLA(M_bla, r_bla, stages)
     return M_bla_new, r_bla_new, bla_len, stages
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def init_BLA_BS(M_bla, r_bla, Zn_path, dfxdx, dfxdy, dfydx, dfydy,
                 kc_std, eps):
     """
@@ -1926,14 +1925,14 @@ def init_BLA_BS(M_bla, r_bla, Zn_path, dfxdx, dfxdy, dfydx, dfydy,
     return M_bla_new, r_bla_new, bla_len, stages
 
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def _stages_bla(ref_orbit_len):
     """
     number of needed "stages" (ref_orbit_len).bit_length()
     """
     return int(np.ceil(np.log2(ref_orbit_len)))
 
-@numba.njit(fastmath=True, error_model="numpy")
+@numba.njit(nogil=True, cache=True, fastmath=True, error_model="numpy")
 def combine_BLA(M, r, kc_std, stg, ref_orbit_len, eps):
     """ Populate successive stages of a BLA tree
     A_bla, B_bla, r_bla : data of the BLA tree
@@ -1969,7 +1968,7 @@ def combine_BLA(M, r, kc_std, stg, ref_orbit_len, eps):
         r2_backw = max(0., (r2 - mB1 * kc_std) / (mA1 + 1.)) # might use eps ?
         r[index_res] = min(r1, r2_backw)
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def combine_BLA_BS(M, r, kc_std, stg, ref_orbit_len, eps):
     """ Populate successive stages of a BLA tree
     A_bla, B_bla, r_bla : data of the BLA tree
@@ -2050,7 +2049,7 @@ def combine_BLA_BS(M, r, kc_std, stg, ref_orbit_len, eps):
         r[index_res] = min(r1, r2_backw)
 
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def compress_BLA(M_bla, r_bla, stages):
     """
     We build 'compressed' arrays which only feature multiples of 
@@ -2076,7 +2075,7 @@ def compress_BLA(M_bla, r_bla, stages):
     # print("BLA tree compressed with coeff:", k_comp)
     return M_bla_new, r_bla_new, new_len
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def BLA_index(i, stg):
     """
     Return the indices in BVA table for this iteration and stage
@@ -2084,7 +2083,7 @@ def BLA_index(i, stg):
     """
     return (2 * i) + ((1 << stg) - 1)
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def ref_BLA_get(M_bla, r_bla, bla_len, stages_bla, zn, n_iter,
                 first_invalid_index, M_out, holomorphic):
     """
@@ -2136,7 +2135,7 @@ def ref_BLA_get(M_bla, r_bla, bla_len, stages_bla, zn, n_iter,
                 return step
     return 0 # No BLA applicable
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def need_xr(x_std):
     """
     True if norm L-inf of std is lower than xrange_zoom_level
@@ -2146,7 +2145,7 @@ def need_xr(x_std):
          and (abs(np.imag(x_std)) < fs.settings.xrange_zoom_level)
     )
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def ensure_xr(val_std, val_xr, is_xr):
     """
     Return a valid Xrange. if not(Z_xr_trigger) we return x_std
@@ -2159,7 +2158,7 @@ def ensure_xr(val_std, val_xr, is_xr):
     else:
         return fsxn.to_Xrange_scalar(val_std)
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def ensure_xr_BS(val_std, valx_xr, valy_xr, is_xr):
     """
     Return a valid Xrange. if not(Z_xr_trigger) we return x_std
@@ -2178,7 +2177,7 @@ def ensure_xr_BS(val_std, valx_xr, valy_xr, is_xr):
             fsxn.to_Xrange_scalar(np.imag(val_std))
         )
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def ref_path_c_from_pix(pix, proj_impl, lin_proj_impl, drift):
         #pix, dx, drift):
     """
@@ -2203,7 +2202,7 @@ def ref_path_c_from_pix(pix, proj_impl, lin_proj_impl, drift):
 #proj_spherical = PROJECTION_ENUM.spherical.value
 #proj_expmap = PROJECTION_ENUM.expmap.value
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def std_C_from_pix(pix, proj_impl, lin_proj_impl, center):
 #def std_C_from_pix(pix, dx, center, drift, xy_ratio, theta, projection):
     """
@@ -2225,7 +2224,7 @@ def std_C_from_pix(pix, proj_impl, lin_proj_impl, center):
 #    offset -= drift    # center - ref_pt DO not take into account here...
     return center + lin_proj_impl(proj_impl(pix)) # offset + center
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def fill1d_std_C_from_pix(
         c_pix, proj_impl, lin_proj_impl, center, c_out):
 #def fill1d_std_C_from_pix(c_pix, dx, center, drift, xy_ratio, theta, projection,
@@ -2238,7 +2237,7 @@ def fill1d_std_C_from_pix(
         )
 
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def ref_path_c_from_pix_BS(
         pix, proj_impl, lin_proj_impl, driftx_xr, drifty_xr):
 # (pix, dx, driftx_xr, drifty_xr):
@@ -2263,7 +2262,7 @@ def ref_path_c_from_pix_BS(
 #    b_xr = (pix.imag * dx[0]) + drifty_xr[0]
     return fsxn.to_standard(a_xr), fsxn.to_standard(b_xr), a_xr, b_xr
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def numba_dZndc_path(Zn_path, has_xr, ref_index_xr, ref_xr,
                     ref_div_iter, ref_order, dfdz, dx_xr, xr_detect_activated):
     """
@@ -2316,7 +2315,7 @@ def numba_dZndc_path(Zn_path, has_xr, ref_index_xr, ref_xr,
     return dZndc_path, dZndc_xr_path
 
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def numba_dZndc_path_BS(Zn_path, has_xr, ref_index_xr, refx_xr, refy_xr,
                     ref_div_iter, ref_order, dfxdx, dfxdy, dfydx, dfydy,
                     dx_xr, xr_detect_activated):
@@ -2417,7 +2416,7 @@ def numba_dZndc_path_BS(Zn_path, has_xr, ref_index_xr, refx_xr, refy_xr,
         dXnda_xr_path, dXndb_xr_path, dYnda_xr_path, dYndb_xr_path
     )
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def incr_deriv_ref_BS(
     dXnda_path, dXndb_path, dYnda_path, dYndb_path,
     from_i, to_i, dx,
@@ -2443,7 +2442,7 @@ def incr_deriv_ref_BS(
     dYndb_path[to_i] = dfydx * dXndb + dfydy * dYndb - dx
 
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def numba_dZndz_path(Zn_path, has_xr, ref_index_xr, ref_xr,
                     ref_div_iter, ref_order, dfdz, xr_detect_activated):
     """
@@ -2496,7 +2495,7 @@ def numba_dZndz_path(Zn_path, has_xr, ref_index_xr, ref_xr,
     return dZndz_path, dZndz_xr_path
 
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def ref_path_get(ref_path, idx, has_xr, ref_index_xr, ref_xr, refpath_ptr,
                  out_is_xr, out_xr, out_index):
     """
@@ -2568,7 +2567,7 @@ def ref_path_get(ref_path, idx, has_xr, ref_index_xr, ref_xr, refpath_ptr,
         return ref_path[idx]
 
 
-@numba.njit
+@numba.njit(nogil=True, cache=True)
 def ref_path_get_BS(ref_path, idx, has_xr, ref_index_xr, refx_xr, refy_xr, refpath_ptr,
                     out_is_xr, out_xr, outx_index, outy_index):
     """
