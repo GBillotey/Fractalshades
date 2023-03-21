@@ -685,7 +685,7 @@ def perturbation_mandelbrotN_select_ball_method(
     mpc_init2(tmp_t, seed_prec)
     mpc_init2(r_t, seed_prec)
 
-    mpfr_init2(ar_t, seed_prec)
+    mpfr_init2(ar_t, 54)
     mpfr_init2(x_t, seed_prec)
     mpfr_init2(y_t, seed_prec)
     mpfr_init2(pix_t, seed_prec)
@@ -727,14 +727,15 @@ def perturbation_mandelbrotN_select_ball_method(
             ret = -1
             break
 
-        xprint = mpfr_get_d(mpc_realref(dzndc_t), MPFR_RNDN)
-        yprint = mpfr_get_d(mpc_imagref(dzndc_t), MPFR_RNDN)
+        # Debug: printing
+        # xprint = mpfr_get_d(mpc_realref(dzndc_t), MPFR_RNDN)
+        # yprint = mpfr_get_d(mpc_imagref(dzndc_t), MPFR_RNDN)
 
-        # Or did we find a cycle |r_t| < 1
+        # Or did we find a cycle |r_t| < 1 - note: using reduced precision
         mpc_abs(ar_t, r_t, MPFR_RNDN)
         cmp = mpfr_cmp_d(ar_t, 1.)
-        
-        ar_print = mpfr_get_d(ar_t, MPFR_RNDN)
+        # Debug: printing
+        # ar_print = mpfr_get_d(ar_t, MPFR_RNDN)
         
         # Return a positive value if op1 > op2, zero if op1 = op2, and a
         # negative value if op1 < op2.
@@ -1011,8 +1012,8 @@ def perturbation_mandelbrot_find_nucleus(
 
     mpfr_init2(x_t, seed_prec)
     mpfr_init2(y_t, seed_prec)
-    mpfr_init2(abs_diff, seed_prec)
-    mpfr_init2(eps_t, seed_prec)
+    mpfr_init2(abs_diff, 54)
+    mpfr_init2(eps_t, 54)
     
     # from char: set value of c - and of r0 = r = px
     mpfr_set_str(x_t, seed_x, 10, MPFR_RNDN)
@@ -1254,8 +1255,8 @@ def perturbation_mandelbrotN_select_find_any_nucleus(
 
     mpfr_init2(x_t, seed_prec)
     mpfr_init2(y_t, seed_prec)
-    mpfr_init2(abs_diff, seed_prec)
-    mpfr_init2(eps_t, seed_prec)
+    mpfr_init2(abs_diff, 54)
+    mpfr_init2(eps_t, 54)
     
     # from char: set value of c - and of r0 = r = px
     mpfr_set_str(x_t, seed_x, 10, MPFR_RNDN)
@@ -1326,6 +1327,7 @@ def perturbation_mandelbrotN_select_find_any_nucleus(
     if newton_cv:
         return newton_cv, gmpy_to_mpmath_mpc(gmpy_mpc, seed_prec)
     return False, mpmath.mpc("nan", "nan")
+
 
 #==============================================================================
 #==============================================================================
@@ -1647,66 +1649,6 @@ cdef void matsolve(
     return
 
 
-#def perturbation_BS_FP_loop(
-#        np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
-#        bint need_Xrange,
-#        long max_iter,
-#        double M,
-#        char * seed_x,
-#        char * seed_y,
-#        long seed_prec
-#):
-#    return perturbation_nonholomorphic_FP_loop(
-#        orbit,
-#        need_Xrange,
-#        max_iter,
-#        M,
-#        seed_x,
-#        seed_y,
-#        seed_prec,
-#        kind=BURNING_SHIP
-#    )
-#
-#def perturbation_perpendicular_BS_FP_loop(
-#        np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
-#        bint need_Xrange,
-#        long max_iter,
-#        double M,
-#        char * seed_x,
-#        char * seed_y,
-#        long seed_prec
-#):
-#    return perturbation_nonholomorphic_FP_loop(
-#        orbit,
-#        need_Xrange,
-#        max_iter,
-#        M,
-#        seed_x,
-#        seed_y,
-#        seed_prec,
-#        kind=PERPENDICULAR_BURNING_SHIP
-#    )
-#
-#def perturbation_shark_fin_FP_loop(
-#        np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
-#        bint need_Xrange,
-#        long max_iter,
-#        double M,
-#        char * seed_x,
-#        char * seed_y,
-#        long seed_prec
-#):
-#    return perturbation_nonholomorphic_FP_loop(
-#        orbit,
-#        need_Xrange,
-#        max_iter,
-#        M,
-#        seed_x,
-#        seed_y,
-#        seed_prec,
-#        kind=SHARK_FIN
-#    )
-
 def perturbation_nonholomorphic_FP_loop(
         np.ndarray[DTYPE_FLOAT_t, ndim=1] orbit,
         bint need_Xrange,
@@ -1861,49 +1803,6 @@ def perturbation_nonholomorphic_FP_loop(
     return i, orbit_partial_register, orbit_Xrange_register
 
 
-#def perturbation_BS_nucleus_size_estimate(
-#        char * seed_x,
-#        char * seed_y,
-#        long seed_prec,
-#        long order
-#):
-#
-#    return perturbation_nonholomorphic_nucleus_size_estimate(
-#        seed_x,
-#        seed_y,
-#        seed_prec,
-#        order,
-#        kind=BURNING_SHIP
-#    )
-#
-#def perturbation_perpendicular_BS_nucleus_size_estimate(
-#        char * seed_x,
-#        char * seed_y,
-#        long seed_prec,
-#        long order
-#):
-#    return perturbation_nonholomorphic_nucleus_size_estimate(
-#        seed_x,
-#        seed_y,
-#        seed_prec,
-#        order,
-#        kind=PERPENDICULAR_BURNING_SHIP
-#    )
-#
-#def perturbation_shark_fin_nucleus_size_estimate(
-#        char * seed_x,
-#        char * seed_y,
-#        long seed_prec,
-#        long order
-#):
-#    return perturbation_nonholomorphic_nucleus_size_estimate(
-#        seed_x,
-#        seed_y,
-#        seed_prec,
-#        order,
-#        kind=SHARK_FIN
-#    )
-
 def perturbation_nonholomorphic_nucleus_size_estimate(
         char * seed_x,
         char * seed_y,
@@ -2055,57 +1954,6 @@ def perturbation_nonholomorphic_nucleus_size_estimate(
 
     return size, skew
 
-
-#def perturbation_BS_skew_estimate(
-#        char * seed_x,
-#        char * seed_y,
-#        long seed_prec,
-#        long max_iter,
-#        double M,
-#):
-#    """
-#    Quick estimation of skew for areas without minis
-#    """
-#    return perturbation_nonholomorphic_skew_estimate(
-#        seed_x,
-#        seed_y,
-#        seed_prec,
-#        max_iter,
-#        M,
-#        kind=BURNING_SHIP
-#    )
-#
-#def perturbation_perpendicular_BS_skew_estimate(
-#        char * seed_x,
-#        char * seed_y,
-#        long seed_prec,
-#        long max_iter,
-#        double M,
-#):
-#    return perturbation_nonholomorphic_skew_estimate(
-#        seed_x,
-#        seed_y,
-#        seed_prec,
-#        max_iter,
-#        M,
-#        kind=PERPENDICULAR_BURNING_SHIP
-#    )
-#
-#def perturbation_shark_fin_skew_estimate(
-#        char * seed_x,
-#        char * seed_y,
-#        long seed_prec,
-#        long max_iter,
-#        double M,
-#):
-#    return perturbation_nonholomorphic_skew_estimate(
-#        seed_x,
-#        seed_y,
-#        seed_prec,
-#        max_iter,
-#        M,
-#        kind=SHARK_FIN
-#    )
 
 def perturbation_nonholomorphic_skew_estimate(
         char * seed_x,
@@ -2317,7 +2165,7 @@ def perturbation_nonholomorphic_ball_method(
         mpfr_t abs_xn, abs_yn, tmp_xx, tmp_xy, tmp_yx, tmp_yy
         mpfr_t a, b, c, d
         mpfr_t rx_t, ry_t, pix_t, inv_pix_t
-        mpfr_t _tmp
+        mpfr_t _tmp, _tmp_lowprec
 
     iter_func = select_func(kind)
     iter_hessian = select_hessian(kind)
@@ -2329,6 +2177,7 @@ def perturbation_nonholomorphic_ball_method(
     # mpfr_inits2(seed_prec, a, b, c, d, NULL)
     mpfr_inits2(seed_prec, rx_t, ry_t, pix_t, inv_pix_t, NULL)
     mpfr_init2(_tmp, seed_prec)
+    mpfr_init2(_tmp_lowprec, 54)
 
     # set value of a + i b = c
     mpfr_set_str(a_t, seed_x, 10, MPFR_RNDN)
@@ -2377,11 +2226,11 @@ def perturbation_nonholomorphic_ball_method(
             ret = -1
             break
 
-        # Or did we find a cycle |(rx, ry)| < 1
-        mpfr_abs(_tmp, rx_t, MPFR_RNDN)
-        cmpx = mpfr_cmp_d(_tmp, 1.)
-        mpfr_abs(_tmp, ry_t, MPFR_RNDN)
-        cmpy = mpfr_cmp_d(_tmp, 1.)
+        # Or did we find a cycle |(rx, ry)| < 1 - use low precision
+        mpfr_abs(_tmp_lowprec, rx_t, MPFR_RNDN)
+        cmpx = mpfr_cmp_d(_tmp_lowprec, 1.)
+        mpfr_abs(_tmp_lowprec, ry_t, MPFR_RNDN)
+        cmpy = mpfr_cmp_d(_tmp_lowprec, 1.)
         # Return a positive value if op1 > op2, zero if op1 = op2, and a
         # negative value if op1 < op2.
         if (cmpx < 0) and (cmpy < 0):
@@ -2396,7 +2245,7 @@ def perturbation_nonholomorphic_ball_method(
     mpfr_clears(abs_xn, abs_yn, tmp_xx, tmp_xy, tmp_yx, tmp_yy, NULL)
     # mpfr_clears(a, b, c, d, NULL)
     mpfr_clears(rx_t, ry_t, pix_t, inv_pix_t, NULL)
-    mpfr_clear(_tmp)
+    mpfr_clears(_tmp, _tmp_lowprec, NULL)
 
     return ret
 
@@ -2543,7 +2392,7 @@ def perturbation_nonholomorphic_find_any_nucleus(
         mpfr_t xn_t, yn_t, a_t, b_t, da_t, db_t, xsq_t, ysq_t, xy_t
         mpfr_t dxnda_t, dxndb_t, dynda_t, dyndb_t, delta_t
         mpfr_t abs_xn, abs_yn, tmp_xx, tmp_xy, tmp_yx, tmp_yy
-        mpfr_t eps_t, rx_t, ry_t, abs_diff
+        mpfr_t eps_t, abs_diff
         mpfr_t _tmp
 
         mpc_t c_t
@@ -2555,7 +2404,7 @@ def perturbation_nonholomorphic_find_any_nucleus(
     mpfr_inits2(seed_prec, xn_t, yn_t, a_t, b_t, da_t, db_t, xsq_t, ysq_t, xy_t, NULL)
     mpfr_inits2(seed_prec, dxnda_t, dxndb_t, dynda_t, dyndb_t, delta_t, NULL)
     mpfr_inits2(seed_prec, abs_xn, abs_yn, tmp_xx, tmp_xy, tmp_yx, tmp_yy, NULL)
-    mpfr_inits2(seed_prec, eps_t, rx_t, ry_t, abs_diff, NULL)
+    mpfr_inits2(54, eps_t, abs_diff, NULL)
     mpfr_init2(_tmp, seed_prec)
 
     mpc_init2(c_t, seed_prec)
@@ -2637,7 +2486,7 @@ def perturbation_nonholomorphic_find_any_nucleus(
     mpfr_clears(xn_t, yn_t, a_t, b_t, da_t, db_t, xsq_t, ysq_t, xy_t, NULL)
     mpfr_clears(dxnda_t, dxndb_t, dynda_t, dyndb_t, delta_t, NULL)
     mpfr_clears(abs_xn, abs_yn, tmp_xx, tmp_xy, tmp_yx, tmp_yy, NULL)
-    mpfr_clears(eps_t, rx_t, ry_t, abs_diff, NULL)
+    mpfr_clears(eps_t, abs_diff, NULL)
     mpfr_clear(_tmp)
     
     mpc_clear(c_t)
