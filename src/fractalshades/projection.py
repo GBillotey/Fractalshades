@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import inspect
-#import enum
+import logging
 import copy
 
 import numpy as np
@@ -11,6 +11,8 @@ import fractalshades as fs
 import fractalshades.settings
 import fractalshades.numpy_utils.xrange as fsx
 
+
+logger = logging.getLogger(__name__)
 
 # Log attributes
 # https://docs.python.org/2/library/logging.html#logrecord-attributes
@@ -95,32 +97,68 @@ class Projection:
 
     @property
     def scale(self):
-        """ Passed to Perturbation fractal as a corrective factor for the
-        scaling used in dZndC computation (and consequently dzndc, distance
+        """ Used in to Perturbation fractal as a corrective
+        scaling factor used in dZndC computation (and consequently distance
         estimation, ...)
-        Default implementation returns 1
+        Projections supporting arbitray precision shall implement.
+
+        Returns:
+        --------
+        scale: mpmath.mpf or float, the scale factor
         """
-        return 1.
+        raise NotImplementedError(
+            f"Arbitray precision not supported by {self.__class__.__name__}"
+        )
+
+    @property
+    def bounding_box(self, xy_ratio):
+        """ Passed to Perturbation fractal as an enveloppe of the mapping of
+        the pixels (before general scaling `scale`)
+        Projections supporting arbitray precision shall implement.
+
+        Returns:
+        --------
+        w, h: floats, width and height of the bounding box
+        """
+        raise NotImplementedError(
+            f"Arbitray precision not implemented for {self.__class__.__name__}"
+        )
+    
+    @property
+    def min_local_scale(self):
+        """ Used in to Perturbation fractal todefine min pix size. Minimum of
+        local |df| (before general scaling `scale`)
+        Projections supporting arbitray precision shall implement.
+
+        Returns:
+        --------
+        scale: mpmath.mpf or float, the scale factor
+        """
+        raise NotImplementedError(
+            f"Arbitray precision not supported by {self.__class__.__name__}"
+        )
 
 # Development notes: Projections and derivatives / normals
 # For perturbation fractals, the derivatives are relative to a "window" scale
 # dx (in Cartesian mode). This scale become dx * projection.scale (constant
-# real scalar).
-# On top of that several "local" modifiers can be implemented 
+# real scalar) for non-cartesian projections.
+# On top of this general scaling, 2 "local" modifiers may be implemented 
 # - total derivative (account for variable local scaling + rotation + skew)
-# - derivative "without rotation" (useful if the final aim is to unwrap, for
-#   instance to make a video)
-
+#   (mandatory)
+# - derivative "without rotation" useful if the final aim is to unwrap, for
+#   instance to make a videofrom a expmap (optionnal)
 
 #==============================================================================
 class Cartesian(Projection):
     def __init__(self):
         """
         A Cartesian projection. This is simply the identity function:
-        
+
         .. math::
 
             \\bar{z}_{pix} =  z_{pix}
+
+        This class can be used with arbitrary-precision deep zooms.
         """
         self.make_impl()
 
@@ -133,6 +171,17 @@ class Cartesian(Projection):
 
     def make_dfBS_impl(self):
         self.dfBS = None
+
+    @property
+    def scale(self):
+        return 1.
+
+    def bounding_box(self, xy_ratio):
+        return 1., 1. / xy_ratio
+    
+    @property
+    def min_local_scale(self):
+        return 1.
 
 @numba.njit(nogil=True, fastmath=True)
 def cartesian_numba_impl(z):
@@ -175,6 +224,14 @@ class Expmap(Projection):
             for a standalone picture, and to ``False`` if used as input for a
             movie making tool.
         """
+#         Development notes: TODO REVIEW THESE NOTES
+#         ------------------
+#         For arbitrary deep zooms this projection is implemented as the
+#         non-evaluated composition of a scaling np.exp(self.hmoy) and a
+#         local exponential mapping.
+#         For stadard precision this is simply the mapping as described in the
+#         docstring above.
+
         self.rotates_df = rotates_df
 
         if mpmath.exp(hmax) > (1. / fs.settings.xrange_zoom_level):
@@ -192,36 +249,41 @@ class Expmap(Projection):
         self.make_impl()
 
     def adjust_to_zoom(self, fractal):
-        """ We need to adjust the fractal xy_ratio in order to
-        match hmax - hmin """
+        # We need to adjust the fractal xy_ratio in order to match hmax - hmin
         # target: dh = 2. * np.pi * xy_ratio 
         fractal.xy_ratio = self.dh / (np.pi * 2.)
         fractal.zoom_kwargs["xy_ratio"] = fractal.xy_ratio
+
+        logger.info(
+            "Adjusted parameters for Expmap projection:\n"
+            f"zoom parameter xy_ratio: {fractal.xy_ratio}"
+        )
 
 
     def make_f_impl(self):
         hmoy = self.hmoy
         dh = self.dh
 
-        @numba.njit(numba.complex128(numba.complex128),
-                        nogil=True, fastmath=False)
+        @numba.njit(
+            numba.complex128(numba.complex128), nogil=True, fastmath=False)
         def numba_impl(z):
-            return expmap_numba_impl(z, hmoy, dh)
+            return np.exp(hmoy + dh * z)
 
         self.f = numba_impl
+
 
     def make_df_impl(self):
         dh = self.dh
 
         if self.rotates_df:
-            @numba.njit(numba.complex128(numba.complex128),
-                        nogil=True, fastmath=False)
+            @numba.njit(
+                numba.complex128(numba.complex128), nogil=True, fastmath=False)
             def numba_impl(z):
                 return  np.exp(dh * z)
 
         else:
-            @numba.njit(numba.complex128(numba.complex128),
-                        nogil=True, fastmath=False)
+            @numba.njit(
+                numba.complex128(numba.complex128), nogil=True, fastmath=False)
             def numba_impl(z):
                 return  np.exp(dh * z.real)
 
@@ -250,20 +312,38 @@ class Expmap(Projection):
 
         self.dfBS = numba_impl
 
+    @property
+    def scale_mpf(self):
+        return mpmath.exp(self.hmoy)
 
     @property
     def scale(self):
-        return np.exp(self.hmoy)
+        # Returns the scaling - for perturbation implementation
+        return mpmath.exp(self.hmoy)
+    
+    def bounding_box(self, xy_ratio):
+        # Returns a bounding box - for perturbation implementation only
+        w = np.exp(0.5 * self.dh)
+        return w, w
+
+    @property
+    def min_local_scale(self):
+        return  np.exp(-0.5 * self.dh)
 
 
-@numba.njit(nogil=True, fastmath=False) #, cache=True)
-def expmap_numba_impl(z, hmoy, dh):
-    # h linearly interpolated between hmin and hmax
-    h = hmoy + dh * z.real
-    # t linearly interpolated between -pi and pi
-    t = dh * z.imag
-    return np.exp(complex(h, t))
-
+#@numba.njit(nogil=True, fastmath=False) #, cache=True)
+#def expmap_numba_impl(z, hmoy, dh):
+##    # h linearly interpolated between hmin and hmax
+##    h = hmoy + dh * z.real
+##    # t linearly interpolated between -pi and pi
+##    t = dh * z.imag
+##    return np.exp(complex(h, t))
+#    return np.exp(hmoy + dh * z)
+#
+#@numba.njit(nogil=True, fastmath=False) #, cache=True)
+#def expmap_numba_perturb_impl(z, dh):
+#    # Local mapping only (without exp(hmoy scaling))
+#    return np.exp(dh * z)
 
 #============================================================================== 
 
@@ -282,8 +362,7 @@ class Generic_mapping(Projection):
          - currently only differentiable mappings of the
            complex variable (aka holomorphic / meromorphic functions) are
            supported.
-         - not suitable for arbitray precision fractals at deep zoom.
-
+         - not suitable for arbitray precision fractals.
 
         Parameters
         ==========
@@ -292,8 +371,8 @@ class Generic_mapping(Projection):
             (f1, f2, f3) is provided the composition will be applied (f1 o f2)
         df: numba jitted function numba.complex128 -> numba.complex128
             The differential of f. If a tuple (df1, df2) or (df1, df2, df3) is
-            provided the composition will be applied according to the 
-            differentiation chain rule.
+            provided the differential of the composition will be applied
+            according to the differentiation chain rule.
         """
         self.f = f
         self.df = df

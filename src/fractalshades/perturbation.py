@@ -86,12 +86,12 @@ directory : str
             Components of the local skew matrix, with ij = 00, 01, 10, 11
         """
         mpmath.mp.dps = precision # in base 10 digit 
-        
+
         # In case the user inputs were strings, we override with mpmath scalars
         self.x = mpmath.mpf(x)
         self.y = mpmath.mpf(y)
         self.dx = mpmath.mpf(dx)
-        
+
         # Backward compatibility: also accept projection = "cartesian"
         if isinstance(projection, str):
             logger.warning(textwrap.dedent(
@@ -113,7 +113,19 @@ directory : str
         self.lin_proj_impl, self.lin_proj_impl_std = self.get_lin_proj_impl()
         projection.adjust_to_zoom(self)
         self.proj_impl = projection.f
-        # get_impl()
+
+        # check the dps...
+        pix = projection.min_local_scale * projection.scale * self.dx / self.nx
+        with mpmath.workdps(6):
+            # Sets the working dps to 10e-1 x pixel size
+            required_dps = int(-mpmath.log10(pix / nx) + 1)
+        if required_dps > precision:
+            raise ValueError(
+                "Precision is to low for min. pixel size and shall be "
+                f"increased to {required_dps} (current setting: {precision})."
+                "This might be a consequence of Exponential mapping or "
+                "other non-cartesian projections."
+            )
 
 
     def get_lin_proj_impl(self):
@@ -126,6 +138,8 @@ directory : str
         dx = self.dx
         theta = self.theta_deg / 180. * np.pi
         skew = self._skew
+        # TODO: we could cache the jitted function
+
         # Defines the linear matrix
         c = np.cos(theta)
         s = np.sin(theta)
@@ -149,7 +163,6 @@ directory : str
             return  dx_std * complex(x1, y1)
 
         if self.xr_detect_activated:
-            # if self.holomorphic:
             @numba.njit
             def numba_impl(z):
                 x = z.real
@@ -159,7 +172,6 @@ directory : str
                 return  dx_xr[0] * complex(x1, y1)
 
         else:
-#            if self.holomorphic:
             numba_impl = numba_impl_std
 
         return numba_impl, numba_impl_std
@@ -195,8 +207,8 @@ directory : str
 
     def ref_point_kc(self):
         """
-        Return a scaling coefficient used as a convergence radius for serie 
-        approximation, or as a reference scale for derivatives.
+        Return a bound for dc in image pixels, used as a criteria for BLA
+        validity
 
         Returns:
         --------
@@ -205,41 +217,37 @@ directory : str
         # TODO: shall be adapted for projections implementing deep-zoom
         # (mainly, exponential projection)
         c0 = self.x + 1j * self.y
-        corner_a = c0 + 0.5 * (self.dx + 1j * self.dy)
-        corner_b = c0 + 0.5 * (- self.dx + 1j * self.dy)
-        corner_c = c0 + 0.5 * (- self.dx - 1j * self.dy)
-        corner_d = c0 + 0.5 * (self.dx - 1j * self.dy)
 
+        w, h = self.projection.bounding_box(self.xy_ratio)
+        proj_dx = self.dx * self.projection.scale
+        lin_impl = self.lin_proj_impl_std
+
+        corner_a = lin_impl(0.5 * (w + 1j * h)) * proj_dx
+        corner_b = lin_impl(0.5 * (- w + 1j * h)) * proj_dx
+        corner_c = lin_impl(0.5 * (- w - 1j * h)) * proj_dx
+        corner_d = lin_impl(0.5 * (w - 1j * h)) * proj_dx
+
+        c0 = self.x + 1j * self.y
         ref = self.FP_params["ref_point"]
+        shift = ref - c0
 
-        # Let take some margin
-        kc = max(abs(ref - corner_a), abs(ref - corner_b),
-                 abs(ref - corner_c), abs(ref - corner_d)) * 1.1
+        # Let take the largest distance + some margin
+        kc = max(abs(shift - corner_a), abs(shift - corner_b),
+                 abs(shift - corner_c), abs(shift - corner_d)) * 1.1
 
-        return fsx.mpf_to_Xrange(kc, dtype=np.float64)
-    
+        return fsx.mpf_to_Xrange(kc, dtype=np.float64).ravel() # 1d for numba
+
+
     def get_std_cpt(self, c_pix):
         """ Return the c complex value from c_pix - standard precision """
         n_pts, = c_pix.shape  # Z of shape [n_Z, n_pts]
         # Explicit casting to complex / float
-#        dx = float(self.dx)
         center = complex(self.x + 1j * self.y)
-#        ref_point = complex(self.FP_params["ref_point"])
-#        drift = complex((self.x + 1j * self.y) - ref_point)
-
-#        xy_ratio = self.xy_ratio
-#        theta = self.theta_deg / 180. * np.pi # used for expmap
-#        projection = getattr(PROJECTION_ENUM, self.projection).value
-
-
         cpt = np.empty((n_pts,), dtype=c_pix.dtype)
 
         fill1d_std_C_from_pix(
-#            c_pix, dx, center, drift, xy_ratio, theta, projection, cpt
             c_pix, self.proj_impl, self.lin_proj_impl_std, center, cpt
         )
-        
-
         return cpt
 
 
@@ -356,6 +364,8 @@ directory : str
         """ Builds a Zn_path data tuple from FP_params and Zn_path
         This object will be used in numba jitted functions
         """
+        
+        
         FP_params = self.FP_params
         Zn_path = self.Zn_path
         
@@ -369,6 +379,8 @@ directory : str
             ref_div_iter = self.max_iter + 1
 
         dx_xr = fsx.mpf_to_Xrange(self.dx, dtype=self.float_type).ravel()
+        # Note: uses ravel to change the shape from (,) - numpy scalar - to
+        # (1,) - numpy array - for numba compatibility
         ref_index_xr = np.empty([len(ref_xr_python)], dtype=np.int32)
 
         if self.holomorphic:
@@ -494,9 +506,19 @@ directory : str
 
         # 2) compute the orbit derivatives if needed
         # Note: this is where the "scale" of the derivative is chosen
-        # If there is a projection-induced scale, we need to use it here.
-        dx_xr = dx_xr * self.projection.scale
-        
+
+        if self.projection.scale != 1.:
+            # If there is a projection-induced scale, we need to use it here.
+            scale_xr = fsx.mpf_to_Xrange(
+                self.projection.scale, dtype=self.float_type
+            ).ravel()
+            dx_xr = dx_xr * scale_xr
+            if holomorphic:
+                drift_xr = drift_xr * scale_xr
+            else:
+                driftx_xr = driftx_xr * scale_xr
+                drifty_xr = drifty_xr * scale_xr
+
         dZndc_path = None
         (dXnda_path, dXndb_path, dYnda_path, dYndb_path) = (None,) * 4
         if calc_deriv_c:
@@ -542,7 +564,7 @@ directory : str
                 dZndz_path = dZndz_xr_path
 
 
-        self.kc = kc = self.ref_point_kc().ravel()  # Make it 1d for numba use
+        self.kc = kc = self.ref_point_kc()
         if kc == 0.:
             raise RuntimeError(
                 "Resolution is too low for this zoom depth. Try to increase"
@@ -571,7 +593,7 @@ directory : str
                 Zn_path, dZndc_path, dZndz_path,
                 has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
                 drift_xr, dx_xr, self.proj_impl, self.lin_proj_impl,
-                kc, M_bla, r_bla, bla_len, stages_bla, # suppressed  P, n_iter
+                kc, M_bla, r_bla, bla_len, stages_bla,
                 self._interrupted
             )
         else:
@@ -581,7 +603,7 @@ directory : str
                 Zn_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
                 has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
                 driftx_xr, drifty_xr, dx_xr, self.proj_impl, self.lin_proj_impl,
-                kc, M_bla, r_bla, bla_len, stages_bla, # suppressed  P, n_iter
+                kc, M_bla, r_bla, bla_len, stages_bla,
                 self._interrupted
             )
 
@@ -1030,7 +1052,6 @@ def numba_cycles_perturb(
         Zpt = Z[:, ipt]
         Upt = U[:, ipt]
         cpt, c_xr = ref_path_c_from_pix(
-                # c_pix[ipt], dx_xr, drift_xr
                 c_pix[ipt], proj_impl, lin_proj_impl, drift_xr
         )
         stop_pt = stop_reason[:, ipt]
@@ -2179,7 +2200,6 @@ def ensure_xr_BS(val_std, valx_xr, valy_xr, is_xr):
 
 @numba.njit(nogil=True, cache=True)
 def ref_path_c_from_pix(pix, proj_impl, lin_proj_impl, drift):
-        #pix, dx, drift):
     """
     Returns the true c (coords from ref point) from the pixel coords
     ie c = C - refp
@@ -2193,18 +2213,12 @@ def ref_path_c_from_pix(pix, proj_impl, lin_proj_impl, drift):
     -------
     c, c_xr : c value as complex and as Xrange
     """
-    # c_xr = (pix * dx[0]) + drift[0]
     c_xr = lin_proj_impl(proj_impl(pix)) + drift[0]
     return fsxn.to_standard(c_xr), c_xr
 
 
-#proj_cartesian = PROJECTION_ENUM.cartesian.value
-#proj_spherical = PROJECTION_ENUM.spherical.value
-#proj_expmap = PROJECTION_ENUM.expmap.value
-
 @numba.njit(nogil=True, cache=True)
 def std_C_from_pix(pix, proj_impl, lin_proj_impl, center):
-#def std_C_from_pix(pix, dx, center, drift, xy_ratio, theta, projection):
     """
     Returns the true C (C = cref + dc) from the pixel coords
 
@@ -2217,18 +2231,11 @@ def std_C_from_pix(pix, proj_impl, lin_proj_impl, center):
     -------
     C : Full C value, as complex
     """
-    # Case cartesian
-#    if projection == proj_cartesian:
-#        offset = (pix * dx) # resp. to ref_pt
-
-#    offset -= drift    # center - ref_pt DO not take into account here...
     return center + lin_proj_impl(proj_impl(pix)) # offset + center
 
 @numba.njit(nogil=True, cache=True)
 def fill1d_std_C_from_pix(
         c_pix, proj_impl, lin_proj_impl, center, c_out):
-#def fill1d_std_C_from_pix(c_pix, dx, center, drift, xy_ratio, theta, projection,
-#                               c_out):
     """ same as std_C_from_pix but fills in-place a 1d vec """
     nx = c_pix.shape[0]
     for i in range(nx):
@@ -2240,7 +2247,6 @@ def fill1d_std_C_from_pix(
 @numba.njit(nogil=True, cache=True)
 def ref_path_c_from_pix_BS(
         pix, proj_impl, lin_proj_impl, driftx_xr, drifty_xr):
-# (pix, dx, driftx_xr, drifty_xr):
     """
     Returns the true a + i b (coords from ref point) from the pixel coords
 
@@ -2258,8 +2264,6 @@ def ref_path_c_from_pix_BS(
     c_xr = lin_proj_impl(proj_impl(pix))
     a_xr = np.real(c_xr) + driftx_xr[0]
     b_xr = np.imag(c_xr) + drifty_xr[0]
-#    a_xr = (pix.real * dx[0]) + driftx_xr[0]
-#    b_xr = (pix.imag * dx[0]) + drifty_xr[0]
     return fsxn.to_standard(a_xr), fsxn.to_standard(b_xr), a_xr, b_xr
 
 @numba.njit(nogil=True, cache=True)
@@ -2586,14 +2590,13 @@ def ref_path_get_BS(ref_path, idx, has_xr, ref_index_xr, refx_xr, refy_xr, refpa
     -------
     val np.complex128
         satndard value
-    
+
     Modify in place:
         xr_val : complex128_Xrange_scalar -> pushed to out_xr[out_index]
         is_xr : bool -> pushed to out_is_xr[out_index]
         prev_idx == refpath_ptr[0] : int
         curr_xr == refpath_ptr[1] : int (index in path ref_xr)
     """
-
     if not(has_xr):
         return ref_path[idx]
 
@@ -2636,7 +2639,6 @@ def ref_path_get_BS(ref_path, idx, has_xr, ref_index_xr, refx_xr, refy_xr, refpa
         # Here idx == ref_index_xr[refpath_ptr[1]]
         refpath_ptr[0] = idx
         out_is_xr[outx_index] = True
-
 
         out_xr[outx_index] = refx_xr[refpath_ptr[1]]
         out_xr[outy_index] = refy_xr[refpath_ptr[1]]

@@ -226,7 +226,7 @@ In order to find a minibrot center and size, the process is the following:
     computed period
 
   - then compute the size (and orientation) using a renormalization formula
-    (as the one found in see :cite:p:`size_estimate2`)
+    (as the one found in :cite:p:`size_estimate2`)
 
 We will not describe in details here these techniques which have already been
 better explained elsewhere. The interested reader might refer to: 
@@ -236,6 +236,9 @@ better explained elsewhere. The interested reader might refer to:
 
 A generalisation of these techniques for 
 the *Burning Ship* is described in :cite:t:`burning_ship`.
+
+An implementation of these algorithms is available from the GUI (right-clik
+on the image) for the fractals supporting arbitrary-precision.
 
 Going further: a few references
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

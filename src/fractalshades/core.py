@@ -1241,7 +1241,6 @@ advanced users when subclassing.
 
             return  dx * complex(x1, y1)
 
-#        self._linproj_data = (key_linproj, numba_impl) # storing
         return numba_impl
 
 

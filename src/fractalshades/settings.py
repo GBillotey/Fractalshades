@@ -38,7 +38,7 @@ db_chunk_size: int  = 400
 """The size for a database freezing tile is db_chunk_size x db_chunk_size"""
 
 BLA_compression: int  = 3
-""" number of BLA levels which are dropped (not stored) """
+"""Number of BLA levels which are dropped (not stored) """
 
 GUI_image_Mblimit = 0
 """Maximal size of image that will be displayed in the GUI, in Mb - use 0 for
