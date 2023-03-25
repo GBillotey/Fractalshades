@@ -202,6 +202,8 @@ directory : str
         --------
         kc: full precision, scaling coefficient
         """
+        # TODO: shall be adapted for projections implementing deep-zoom
+        # (mainly, exponential projection)
         c0 = self.x + 1j * self.y
         corner_a = c0 + 0.5 * (self.dx + 1j * self.dy)
         corner_b = c0 + 0.5 * (- self.dx + 1j * self.dy)
@@ -1829,37 +1831,24 @@ def init_BLA(M_bla, r_bla, Zn_path, dfdz, kc_std, eps):
         M_bla[i_0, 0] = dfdz(Zn_i)
         M_bla[i_0, 1] = 1.
 
-        # We use the following criteria :
-        # |Z + z| shall stay *far* from O or discontinuity of F', for each c
-        # For std Mandelbrot it means from z = 0
-        # |zn| << |Zn|
-        # For Burning ship x = 0 or y = 0
-        # |zn| << |Xn|,  |zn| << |Yn|
-        # We could additionnally consider a criterian based on hessian
-        # |z| < A e / h where h Hessian - not useful (redundant)
-        # for Mandelbrot & al.
-        mZ = np.abs(Zn_path[i])
-        ii = (i + 1) % ref_orbit_len
-        mZZ = np.abs(Zn_path[ii])
-        # mA = np.abs(M_bla[i_0, 0])
+        # Reworking BLA radius criteria
+        # https://fractalforums.org/fractal-mathematics-and-new-theories/28/another-solution-to-perturbation-glitches/4360/120
+        # https://fractalforums.org/fractal-mathematics-and-new-theories/28/another-solution-to-perturbation-glitches/4360/msg31806#msg31806
+        # BLA n -> n+1
+        # zn -> zn' = f(zn) -> zn' + c  [std iteration, 2 steps]
+        # dzn -> dzn' = dfdz'(Zn) * dzn + O(dzn ** 2) -> dzn' + dc
+        # Second step is always valid, first setp is valid in BLA if
+        # O(dzn ** 2) << |dfdz'(Zn)| x dzn -> dzn < eps * |dfdz'(Zn)|
 
-        r_bla[i_0] = max(
-            0.,
-            min(
-                # error term is negligible
-                mZ * eps,  
-                # Avoid dyn glitch at next step
-                mZZ * eps
-                # ((0.5 * mZZ) - kc_std) / (1. + mA)
-            )
-        )
+        r_bla[i_0] = eps * abs(M_bla[i_0, 0])
 
     # Now the combine step
     # number of needed "stages" (ref_orbit_len).bit_length()
     stages = _stages_bla(ref_orbit_len)
-    # print("in combine BLA")
+
     for stg in range(1, stages):
         combine_BLA(M_bla, r_bla, kc_std, stg, ref_orbit_len, eps)
+
     M_bla_new, r_bla_new, bla_len = compress_BLA(M_bla, r_bla, stages)
     return M_bla_new, r_bla_new, bla_len, stages
 
@@ -1896,7 +1885,6 @@ def init_BLA_BS(M_bla, r_bla, Zn_path, dfxdx, dfxdy, dfydx, dfydy,
         #
         #  M_2 = [M[4] M[5]]   M_2_init = [1  0]
         #        [M[6] M[7]]              [0 -1]
-        #
 
         Zn_i = Zn_path[i]
         Xn_i = Zn_i.real
@@ -1912,9 +1900,17 @@ def init_BLA_BS(M_bla, r_bla, Zn_path, dfxdx, dfxdy, dfydx, dfydy,
         M_bla[i_0, 6] = 0.
         M_bla[i_0, 7] = -1.
 
-        mZ = min(abs(Xn_i), abs(Yn_i))        
+        # We use the following criteria :
+        # |Z + z| shall stay *far* from O or discontinuity of F', for each c
+        # For std Mandelbrot it means from z = 0
+        # |zn| << |Zn|
+        # For Burning ship x = 0 or y = 0
+        # |zn| << |Xn| AND |zn| << |Yn|
+        # We could additionnally consider a criterian based on hessian
+        # |z| < A e / h where h Hessian - not useful (redundant)
+        # for Mandelbrot & al.
 
-        r_bla[i_0] =  mZ * eps
+        r_bla[i_0] =  eps * min(abs(Xn_i), abs(Yn_i))  
 
     # Now the combine step
     # number of needed "stages" i.e. (ref_orbit_len).bit_length()
@@ -1963,9 +1959,13 @@ def combine_BLA(M, r, kc_std, stg, ref_orbit_len, eps):
         r2 = r[index2]
         # r1 is a direct criteria however for r2 we need to go 'backw the flow'
         # z0 -> z1 -> z2 with z1 = A1 z0 + B1 c, |z1| < r2
+        # Valid if:
+        # |A1 z0| + |B1 c| < r2
+        # |z0| < |r2 - |B1 c|| / |A1|
+
         mA1 = np.abs(M[index1, 0])
         mB1 = np.abs(M[index1, 1])
-        r2_backw = max(0., (r2 - mB1 * kc_std) / (mA1 + 1.)) # might use eps ?
+        r2_backw = max(0., (r2 - mB1 * kc_std) / (mA1 + eps)) # might use eps ?
         r[index_res] = min(r1, r2_backw)
 
 @numba.njit(nogil=True, cache=True)
@@ -2045,7 +2045,7 @@ def combine_BLA_BS(M, r, kc_std, stg, ref_orbit_len, eps):
             np.abs(M[index1, 6]), 
             np.abs(M[index1, 7]),
         )
-        r2_backw = max(0., (r2 - mB1 * kc_std) / (mA1 + 1.)) # might use eps ?
+        r2_backw = max(0., (r2 - mB1 * kc_std) / (mA1 + eps)) # might use eps ?
         r[index_res] = min(r1, r2_backw)
 
 
@@ -2078,7 +2078,7 @@ def compress_BLA(M_bla, r_bla, stages):
 @numba.njit(nogil=True, cache=True)
 def BLA_index(i, stg):
     """
-    Return the indices in BVA table for this iteration and stage
+    Return the indices in BLA table for this iteration and stage
     this is the jump from i to j = i + (1 << stg)
     """
     return (2 * i) + ((1 << stg) - 1)
