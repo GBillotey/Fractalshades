@@ -513,11 +513,11 @@ directory : str
                 self.projection.scale, dtype=self.float_type
             ).ravel()
             dx_xr = dx_xr * scale_xr
-            if holomorphic:
-                drift_xr = drift_xr * scale_xr
-            else:
-                driftx_xr = driftx_xr * scale_xr
-                drifty_xr = drifty_xr * scale_xr
+#            if holomorphic:
+#                drift_xr = drift_xr * scale_xr
+#            else:
+#                driftx_xr = driftx_xr * scale_xr
+#                drifty_xr = drifty_xr * scale_xr
 
         dZndc_path = None
         (dXnda_path, dXndb_path, dYnda_path, dYndb_path) = (None,) * 4

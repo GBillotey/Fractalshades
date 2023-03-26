@@ -673,9 +673,9 @@ class Exp_frame:
         y_grid = y_grid.reshape(-1)
 
         # Exponential grid coordinates
-        tenth_pixw = 0.1 / nx
+        frac_pixw = 0.1 / nx
         h_grid = 0.5 * np.log(
-            np.maximum(x_grid ** 2 + y_grid ** 2, tenth_pixw)
+            np.maximum(x_grid ** 2 + y_grid ** 2, frac_pixw ** 2)
         )
         t_grid = np.arctan2(y_grid, x_grid)
 
@@ -845,7 +845,7 @@ class Exp_db:
         h = frame.h # expansion factor from final pic is exp(h)
         nx = frame.nx
 
-        margin = 2. # Shall remain valid for this zoom range (in and out)
+        margin = 20. # Shall remain valid for this zoom range (in and out)
         h_margin = np.log(margin)
         h_decimate = np.log(2.)      # Triggers factor-2 image decimation 
 
@@ -863,13 +863,13 @@ class Exp_db:
         full_slot = info_dic[(kind, "ss_slots")]
         full_bound = info_dic[(kind, "ss_bounds")] # (start_x, end_x, start_y, end_y) 
         lvl = full_shape.shape[0]
-        
+
         # We fill as if full range first
-        a_exp = np.copy(full_bound[:, 0::2])
-        b_exp = np.copy(full_bound[:, 1::2])
-        h_exp = (b_exp - a_exp) / (full_shape - 1)
-        f_exp_shape = np.copy(full_shape)
-        f_exp_slot = np.copy(full_slot)
+        a_exp = np.copy(full_bound[:, 0::2]) # Lower bound h, t
+        b_exp = np.copy(full_bound[:, 1::2]) # Higher bound h, t
+        h_exp = (b_exp - a_exp) / (full_shape[:, :] - 1)
+        f_exp_shape = np.copy(full_shape[:, :])
+        f_exp_slot = np.copy(full_slot[:, :])
         
         # we extract a subrange for the theta direction
         h_index = np.copy(full_shape)
@@ -886,12 +886,7 @@ class Exp_db:
                 h + h_margin - h_decimate * ilvl, self.hmin0, self.hmax0
             )
             ind_hmin = int(np.floor((pix_hmin - arr_hmin) / delta_h))
-            ind_hmax = int(np.ceil((pix_hmax - arr_hmin) / delta_h)) + 1
-            
-#            print("HMIN / HMAX", ilvl, pix_hmin, pix_hmax)
-            
-            assert ind_hmin >= 0
-            assert ind_hmax <= full_shape[ilvl, 0]
+            ind_hmax = int(np.ceil((pix_hmax - arr_hmin) / delta_h))
             
             h_index[ilvl, :] = ind_hmin, ind_hmax
             k_min = ind_hmin / (full_shape[ilvl, 0] - 1)
@@ -907,9 +902,6 @@ class Exp_db:
         f_exp_slot[1:, 0] = f_exp_slot[:-1, 1]
         f_exp_slot[0, 0] = 0
         f_exp = np.empty((f_exp_slot[-1, 1],), dtype=dtype)
-        
-#        print("SLOTS recap:\n", f_exp_slot)
-#        print("SHAPES recap:\n", f_exp_shape)
 
 
         if self.is_frozen:
@@ -919,10 +911,6 @@ class Exp_db:
             ind_hmin, ind_hmax = h_index[ilvl, :]
             loc_arr = mmap[ind_hmin:ind_hmax, :, ic]
             loc_arr = loc_arr.reshape(-1)
-
-#            print(f"{ilvl = }", "slot", f_exp_slot[ilvl, 0], f_exp_slot[ilvl, 1], f_exp_slot[ilvl, 1] - f_exp_slot[ilvl, 0])
-#            print("loc_arr", loc_arr.shape, loc_arr.size)
-#            print("f_exp", f_exp.shape)
             
             f_exp[f_exp_slot[ilvl, 0]: f_exp_slot[ilvl, 1]] = loc_arr
             del mmap
@@ -942,7 +930,7 @@ class Exp_db:
 
 
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Define parameters for multilevel exp_map interpolation
+        # Define parameters for multilevel final interpolation
         # a_exp, b_exp, h_exp, f_exp, f_exp_shape, f_exp_slot
         kind = "final"
         full_shape = info_dic[(kind, "ss_shapes")]
@@ -1972,12 +1960,8 @@ def grid_interpolate(x_out, y_out, f, ax, ay, bx, by, hx, hy, nx, ny):
     # Interpolation: f_out = finterp(x_out, y_out)
     
     if CHECK_BOUNDS:
-        x_out = min(max(x_out, ax), bx)
-        y_out =  min(max(y_out, ay), by)
-#        assert x_out >= ax
-#        assert x_out <= bx  (*)
-#        assert y_out >= ay
-#        assert y_out <= by
+        x_out = np.clip(x_out, ax, bx) #min(max(x_out, ax), bx)
+        y_out = np.clip(y_out, ay, by) #  min(max(y_out, ay), by)
     
     ix, ratx = divmod(x_out - ax, hx)
     iy, raty = divmod(y_out - ay, hy)
