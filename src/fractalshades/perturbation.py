@@ -674,7 +674,7 @@ directory : str
             dfydx = self.dfydx
             dfydy = self.dfydy
             return numba_make_BLA_BS(
-                Zn_path, dfxdx, dfxdy, dfydx, dfydy, kc, eps #, self.reverse_y
+                Zn_path, dfxdx, dfxdy, dfydx, dfydy, kc, eps
             )
 
     def get_FP_orbit(self, c0=None, newton="cv", order=None,
@@ -1783,163 +1783,162 @@ def apply_BLA_deriv_BS(M, Z, a, b, dxnda, dxndb, dynda, dyndb):
 # Bilinear approximation
 # Note: the bilinear arrays being cheap, they  will not be stored but
 # re-computed if needed
+
 @numba.njit(nogil=True, cache=True, fastmath=True, error_model="numpy")
 def numba_make_BLA(Zn_path, dfdz, kc, eps):
     """
-    Generates a BVA tree with
+    Generates a compressed BLA tree with
     - bilinear approximation coefficients A and B
     - validaty radius
         z_n+2**stg = f**stg(z_n, c) with |c| < r_stg_n is approximated by 
         z_n+2**stg = A_stg_n * z_n + B_stg_n * c
     """
     # number of needed "stages" is (ref_orbit_len).bit_length()
+    # number of needed "stages" is (ref_orbit_len).bit_length()
     kc_std = fsxn.to_standard(kc[0])
     ref_orbit_len = Zn_path.shape[0]
-    # ("ref_orbit_len", ref_orbit_len)
-    bla_dim = 2
-    M_bla = np.zeros((2 * ref_orbit_len, bla_dim), dtype=numba.complex128)
-    r_bla = np.zeros((2 * ref_orbit_len,), dtype=numba.float64)
-    M_bla_new, r_bla_new, bla_len, stages = init_BLA(
-        M_bla, r_bla, Zn_path, dfdz, kc_std, eps
-    )
-    return M_bla_new, r_bla_new, bla_len, stages
 
-@numba.njit(nogil=True, cache=True)
-def numba_make_BLA_BS(Zn_path, dfxdx, dfxdy, dfydx, dfydy, kc, eps):
-    """
-    Generates a BVA tree for non-holomorphic functions with
-    - bilinear approximation coefficients A and B
-    - validaty radius
-        z_n+2**stg = f**stg(z_n, c) with |c| < r_stg_n is approximated by 
-        z_n+2**stg = A_stg_n * z_n + B_stg_n * c
-    """
-    # number of needed "stages" is (ref_orbit_len).bit_length()
-    kc_std = fsxn.to_standard(kc[0])
-    ref_orbit_len = Zn_path.shape[0]
-    # print("ref_orbit_len in BLA", ref_orbit_len)
-    bla_dim = 8
-    M_bla = np.zeros((2 * ref_orbit_len, bla_dim), dtype=numba.float64)
-    r_bla = np.zeros((2 * ref_orbit_len,), dtype=numba.float64)
-    M_bla_new, r_bla_new, bla_len, stages = init_BLA_BS(
-        M_bla, r_bla, Zn_path, dfxdx, dfxdy, dfydx, dfydy, kc_std, eps
-    )
-    return M_bla_new, r_bla_new, bla_len, stages
+    # Compressed quantities
+    k_comp = 1 << STG_COMPRESSED
+    comp_bla_len = ref_orbit_len // k_comp    
+
+    bla_dim = 2
+    M_bla = np.zeros((2 * comp_bla_len, bla_dim), dtype=numba.complex128)
+    r_bla = np.zeros((2 * comp_bla_len,), dtype=numba.float64)
+
+    # The temporary tree structure to get to the stored index
+    temp_M_bla = np.zeros((2 * k_comp, bla_dim), dtype=numba.complex128)
+    temp_r_bla = np.zeros((2 * k_comp,), dtype=numba.float64)
+    temp_M_bla_template = np.copy(temp_M_bla)
+    temp_r_bla_template = np.copy(temp_r_bla)
+
+    for i in range(0, comp_bla_len):
+        i_0 = 2 * i # BLA index for (i, 0)
+        temp_M_bla = np.copy(temp_M_bla_template)
+        temp_r_bla = np.copy(temp_r_bla_template)
+
+        for j in range(0, k_comp):
+            j_0 = 2 * j # BLA index for (j, 0)
+
+            # Define a BLA_step by:
+            #       [ M[0]    0     0]          [dzndc]
+            #  M =  [    0 M[0]  M[1]]     Zn = [   zn]
+            #       [    0    0     1]          [    c]
+            #
+            #  Z_(n+1) = M * Zn
+
+            Zn_i = Zn_path[i * k_comp + j]
+            temp_M_bla[j_0, 0] = dfdz(Zn_i)
+            temp_M_bla[j_0, 1] = 1.
+            temp_r_bla[j_0] = eps * abs(temp_M_bla[j_0, 0])
+
+        # Combine step for temporary tree 'compression'
+        for stg in range(1, STG_COMPRESSED + 1):
+            combine_BLA(temp_M_bla, temp_r_bla, kc_std, stg, k_comp, eps)
+        
+        stored_index = k_comp - 1
+        for d in range(bla_dim):
+            M_bla[i_0, d] = temp_M_bla[stored_index, d]
+        r_bla[i_0] = temp_r_bla[stored_index]
+
+    # Combine step for stored data
+    stages = _stages_bla(ref_orbit_len) 
+    for stg in range(1, stages - STG_COMPRESSED):
+        combine_BLA(M_bla, r_bla, kc_std, stg, comp_bla_len, eps)
+
+    return M_bla.reshape(-1), r_bla, 2 * comp_bla_len, stages
 
 
 @numba.njit(nogil=True, cache=True, fastmath=True, error_model="numpy")
-def init_BLA(M_bla, r_bla, Zn_path, dfdz, kc_std, eps):
+def numba_make_BLA_BS(Zn_path, dfxdx, dfxdy, dfydx, dfydy, kc, eps):
     """
-    Initialize BLA tree at stg 0
+    Generates a compressed BLA tree with
+    - bilinear approximation coefficients A and B
+    - validaty radius
+        z_n+2**stg = f**stg(z_n, c) with |c| < r_stg_n is approximated by 
+        z_n+2**stg = A_stg_n * z_n + B_stg_n * c
     """
-    ref_orbit_len = Zn_path.shape[0]  # at order + 1, we wrap
-    # print("in init_BLA", Zn_path)
+    # number of needed "stages" is (ref_orbit_len).bit_length()
+    # number of needed "stages" is (ref_orbit_len).bit_length()
+    kc_std = fsxn.to_standard(kc[0])
+    ref_orbit_len = Zn_path.shape[0]
 
-    for i in range(ref_orbit_len):
+    # Compressed quantities
+    k_comp = 1 << STG_COMPRESSED
+    comp_bla_len = ref_orbit_len // k_comp    
+
+    bla_dim = 8
+    M_bla = np.zeros((2 * comp_bla_len, bla_dim), dtype=numba.float64)
+    r_bla = np.zeros((2 * comp_bla_len,), dtype=numba.float64)
+
+    # The temporary tree structure to get to the stored index
+    temp_M_bla = np.zeros((2 * k_comp, bla_dim), dtype=numba.float64)
+    temp_r_bla = np.zeros((2 * k_comp,), dtype=numba.float64)
+    temp_M_bla_template = np.copy(temp_M_bla)
+    temp_r_bla_template = np.copy(temp_r_bla)
+
+    for i in range(0, comp_bla_len):
         i_0 = 2 * i # BLA index for (i, 0)
+        temp_M_bla = np.copy(temp_M_bla_template)
+        temp_r_bla = np.copy(temp_r_bla_template)
 
-        # Define a BLA_step by:
-        #       [ M[0]    0     0]
-        #  M =  [    0 M[0]  M[1]] 
-        #       [    0    0     1]
-        #
-        #       [dzndc]
-        #  Zn = [   zn]
-        #       [    c]
-        #
-        #  Z_(n+1) = M * Zn
+        for j in range(0, k_comp):
+            j_0 = 2 * j # BLA index for (j, 0)
+            
+            # Define a BLA_step by:
+            #  Z_(n+1) = M * Zn where
+    
+            #       [dxnda]
+            #       [dxndb]
+            #       [dynda]            [  M_0    0     0]
+            #  Zn = [dyndb]       M =  [    0  M_1   M_2] 
+            #       [   xn]            [    0    0     I]
+            #       [   yn]
+            #       [    a]
+            #       [    b]
+    
+            #        [M[0] 0    M[1] 0   ]
+            #  M_0 = [0    M[0] 0    M[1]]
+            #        [M[2] 0    M[3] 0   ]
+            #        [0    M[2] 0    M[3]]
+            #
+            #  M_1 = [M[0] M[1]]   M_1_init = [dfxdx dfxdy]
+            #        [M[2] M[3]]              [dfydx dfydy]
+            #
+            #  M_2 = [M[4] M[5]]   M_2_init = [1  0]
+            #        [M[6] M[7]]              [0 -1]
+    
+            Zn_i = Zn_path[i * k_comp + j]
+            Xn_i = Zn_i.real
+            Yn_i = Zn_i.imag
+    
+            temp_M_bla[j_0, 0] = dfxdx(Xn_i, Yn_i)
+            temp_M_bla[j_0, 1] = dfxdy(Xn_i, Yn_i)
+            temp_M_bla[j_0, 2] = dfydx(Xn_i, Yn_i)
+            temp_M_bla[j_0, 3] = dfydy(Xn_i, Yn_i)
+    
+            temp_M_bla[j_0, 4] = 1.
+            temp_M_bla[j_0, 5] = 0.
+            temp_M_bla[j_0, 6] = 0.
+            temp_M_bla[j_0, 7] = -1.
 
-        Zn_i = Zn_path[i]
-        M_bla[i_0, 0] = dfdz(Zn_i)
-        M_bla[i_0, 1] = 1.
+            temp_r_bla[j_0] =  eps * min(abs(Xn_i), abs(Yn_i))  
 
-        # Reworking BLA radius criteria
-        # https://fractalforums.org/fractal-mathematics-and-new-theories/28/another-solution-to-perturbation-glitches/4360/120
-        # https://fractalforums.org/fractal-mathematics-and-new-theories/28/another-solution-to-perturbation-glitches/4360/msg31806#msg31806
-        # BLA n -> n+1
-        # zn -> zn' = f(zn) -> zn' + c  [std iteration, 2 steps]
-        # dzn -> dzn' = dfdz'(Zn) * dzn + O(dzn ** 2) -> dzn' + dc
-        # Second step is always valid, first setp is valid in BLA if
-        # O(dzn ** 2) << |dfdz'(Zn)| x dzn -> dzn < eps * |dfdz'(Zn)|
+        # Combine step for temporary tree 'compression'
+        for stg in range(1, STG_COMPRESSED + 1):
+            combine_BLA_BS(temp_M_bla, temp_r_bla, kc_std, stg, k_comp, eps)
 
-        r_bla[i_0] = eps * abs(M_bla[i_0, 0])
+        stored_index = k_comp - 1
+        for d in range(bla_dim):
+            M_bla[i_0, d] = temp_M_bla[stored_index, d]
+        r_bla[i_0] = temp_r_bla[stored_index]
 
-    # Now the combine step
-    # number of needed "stages" (ref_orbit_len).bit_length()
-    stages = _stages_bla(ref_orbit_len)
+    # Combine step for stored data
+    stages = _stages_bla(ref_orbit_len) 
+    for stg in range(1, stages - STG_COMPRESSED):
+        combine_BLA_BS(M_bla, r_bla, kc_std, stg, comp_bla_len, eps)
 
-    for stg in range(1, stages):
-        combine_BLA(M_bla, r_bla, kc_std, stg, ref_orbit_len, eps)
-
-    M_bla_new, r_bla_new, bla_len = compress_BLA(M_bla, r_bla, stages)
-    return M_bla_new, r_bla_new, bla_len, stages
-
-@numba.njit(nogil=True, cache=True)
-def init_BLA_BS(M_bla, r_bla, Zn_path, dfxdx, dfxdy, dfydx, dfydy,
-                kc_std, eps):
-    """
-    Initialize BLA tree at stg 0
-    """
-    ref_orbit_len = Zn_path.shape[0]  # at order + 1, we wrap
-
-    for i in range(ref_orbit_len):
-        i_0 = 2 * i # BLA index for (i, 0)
-
-        # Define a BLA_step by:
-        #  Z_(n+1) = M * Zn where
-
-        #       [dxnda]
-        #       [dxndb]
-        #       [dynda]            [  M_0    0     0]
-        #  Zn = [dyndb]       M =  [    0  M_1   M_2] 
-        #       [   xn]            [    0    0     I]
-        #       [   yn]
-        #       [    a]
-        #       [    b]
-
-        #        [M[0] 0    M[1] 0   ]
-        #  M_0 = [0    M[0] 0    M[1]]
-        #        [M[2] 0    M[3] 0   ]
-        #        [0    M[2] 0    M[3]]
-        #
-        #  M_1 = [M[0] M[1]]   M_1_init = [dfxdx dfxdy]
-        #        [M[2] M[3]]              [dfydx dfydy]
-        #
-        #  M_2 = [M[4] M[5]]   M_2_init = [1  0]
-        #        [M[6] M[7]]              [0 -1]
-
-        Zn_i = Zn_path[i]
-        Xn_i = Zn_i.real
-        Yn_i = Zn_i.imag
-
-        M_bla[i_0, 0] = dfxdx(Xn_i, Yn_i)
-        M_bla[i_0, 1] = dfxdy(Xn_i, Yn_i)
-        M_bla[i_0, 2] = dfydx(Xn_i, Yn_i)
-        M_bla[i_0, 3] = dfydy(Xn_i, Yn_i)
-
-        M_bla[i_0, 4] = 1.
-        M_bla[i_0, 5] = 0.
-        M_bla[i_0, 6] = 0.
-        M_bla[i_0, 7] = -1.
-
-        # We use the following criteria :
-        # |Z + z| shall stay *far* from O or discontinuity of F', for each c
-        # For std Mandelbrot it means from z = 0
-        # |zn| << |Zn|
-        # For Burning ship x = 0 or y = 0
-        # |zn| << |Xn| AND |zn| << |Yn|
-        # We could additionnally consider a criterian based on hessian
-        # |z| < A e / h where h Hessian - not useful (redundant)
-        # for Mandelbrot & al.
-
-        r_bla[i_0] =  eps * min(abs(Xn_i), abs(Yn_i))  
-
-    # Now the combine step
-    # number of needed "stages" i.e. (ref_orbit_len).bit_length()
-    stages = _stages_bla(ref_orbit_len)
-    for stg in range(1, stages):
-        combine_BLA_BS(M_bla, r_bla, kc_std, stg, ref_orbit_len, eps)
-    M_bla_new, r_bla_new, bla_len = compress_BLA(M_bla, r_bla, stages)
-    return M_bla_new, r_bla_new, bla_len, stages
+    return M_bla.reshape(-1), r_bla, 2 * comp_bla_len, stages
 
 
 @numba.njit(nogil=True, cache=True)
@@ -1960,7 +1959,7 @@ def combine_BLA(M, r, kc_std, stg, ref_orbit_len, eps):
     # Combine all BVA at stage stg-1 to make stage stg with stg > 0
     step = (1 << stg)
 
-    for i in range(0, ref_orbit_len - step, step):
+    for i in range(0, ref_orbit_len - step + 1, step): # +1 for power of 2 case
         ii = i + (step // 2)
         # If ref_orbit_len is not a power of 2, we might get outside the array
         if ii >= ref_orbit_len:
@@ -1989,6 +1988,7 @@ def combine_BLA(M, r, kc_std, stg, ref_orbit_len, eps):
         r2_backw = max(0., (r2 - mB1 * kc_std) / (mA1 + eps)) # might use eps ?
         r[index_res] = min(r1, r2_backw)
 
+
 @numba.njit(nogil=True, cache=True)
 def combine_BLA_BS(M, r, kc_std, stg, ref_orbit_len, eps):
     """ Populate successive stages of a BLA tree
@@ -2000,7 +2000,7 @@ def combine_BLA_BS(M, r, kc_std, stg, ref_orbit_len, eps):
     # Combine all BVA at stage stg-1 to make stage stg with stg > 0
     step = (1 << stg)
 
-    for i in range(0, ref_orbit_len - step, step):
+    for i in range(0, ref_orbit_len - step + 1, step):
         ii = i + (step // 2)
         # If ref_orbit_len is not a power of 2, we might get outside the array
         if ii >= ref_orbit_len:
@@ -2071,32 +2071,6 @@ def combine_BLA_BS(M, r, kc_std, stg, ref_orbit_len, eps):
 
 
 @numba.njit(nogil=True, cache=True)
-def compress_BLA(M_bla, r_bla, stages):
-    """
-    We build 'compressed' arrays which only feature multiples of 
-    2 ** STG_COMPRESSED
-    """
-    k_comp = 1 << STG_COMPRESSED
-    ref_orbit_len = M_bla.shape[0] // 2
-    new_len = M_bla.shape[0] // k_comp
-    bla_dim = M_bla.shape[1]
-
-    M_bla_new = np.zeros((new_len * bla_dim,), dtype=M_bla.dtype)
-    r_bla_new = np.zeros((new_len,), dtype=numba.float64)
-    
-    for stg in range(STG_COMPRESSED, stages):
-        step = (1 << stg)
-        for i in range(0, ref_orbit_len - step, step):
-            index = BLA_index(i, stg)
-            new_index = BLA_index(i // k_comp, stg - STG_COMPRESSED)
-            for d in range(bla_dim):
-                M_bla_new[new_index + d * new_len] = M_bla[index, d]
-
-            r_bla_new[new_index] = r_bla[index]
-    # print("BLA tree compressed with coeff:", k_comp)
-    return M_bla_new, r_bla_new, new_len
-
-@numba.njit(nogil=True, cache=True)
 def BLA_index(i, stg):
     """
     Return the indices in BLA table for this iteration and stage
@@ -2147,12 +2121,19 @@ def ref_BLA_get(M_bla, r_bla, bla_len, stages_bla, zn, n_iter,
         # /!\ Use strict comparisons here: to rule out underflow
         if (abs(zn) < r):
             if holomorphic:
-                M_out[0] = M_bla[index_bla]
-                M_out[1] = M_bla[index_bla + bla_len]
+                    # TODO !!!
+                loc = 2 * index_bla
+                M_out[0] = M_bla[loc]
+                M_out[1] = M_bla[loc + 1]
+#                M_out[0] = M_bla[index_bla]
+#                M_out[1] = M_bla[index_bla + bla_len]
                 return step
             else:
                 for i in range(8):
-                    M_out[i] = M_bla[index_bla + i * bla_len]
+                    # TODO !!!
+                    loc = 8 * index_bla
+                    M_out[i] = M_bla[loc + i]
+#                    M_out[i] = M_bla[index_bla + i * bla_len]
                 return step
     return 0 # No BLA applicable
 
