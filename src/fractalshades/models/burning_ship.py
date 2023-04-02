@@ -889,8 +889,7 @@ differences in the iteration formula ; among them:
             new_args = (
                 M_divergence_sq, max_iter, reason_max_iter,
                     reason_M_divergence,
-                xr_detect_activated, BLA_activated,
-                calc_hessian,
+                xr_detect_activated, BLA_activated, calc_hessian,
                 xn, yn, dxnda, dxndb, dynda, dyndb,
                 p_iter_zn, p_iter_hessian
             )

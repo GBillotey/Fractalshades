@@ -110,7 +110,12 @@ directory : str
                 ((skew_00, skew_01), (skew_10, skew_11)), dtype=np.float64
             )
 
-        self.lin_proj_impl, self.lin_proj_impl_std = self.get_lin_proj_impl()
+        (
+            self.lin_proj_impl,
+            self.lin_proj_impl_std,
+            self.lin_proj_impl_noscale
+        )= self.get_lin_proj_impl()
+
         projection.adjust_to_zoom(self)
         self.proj_impl = projection.f
 
@@ -161,6 +166,14 @@ directory : str
             x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
             y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
             return  dx_std * complex(x1, y1)
+        
+        @numba.njit(numba.complex128(numba.complex128))
+        def numba_impl_noscale(z):
+            x = z.real
+            y = z.imag
+            x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
+            y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
+            return  complex(x1, y1)
 
         if self.xr_detect_activated:
             @numba.njit
@@ -174,7 +187,7 @@ directory : str
         else:
             numba_impl = numba_impl_std
 
-        return numba_impl, numba_impl_std
+        return numba_impl, numba_impl_std, numba_impl_noscale
 
 
     def new_status(self, wget):
@@ -220,7 +233,7 @@ directory : str
 
         w, h = self.projection.bounding_box(self.xy_ratio)
         proj_dx = self.dx * self.projection.scale
-        lin_impl = self.lin_proj_impl_std
+        lin_impl = self.lin_proj_impl_noscale
 
         corner_a = lin_impl(0.5 * (w + 1j * h)) * proj_dx
         corner_b = lin_impl(0.5 * (- w + 1j * h)) * proj_dx
@@ -308,7 +321,6 @@ directory : str
         save_path = self.ref_point_file()
         fs.utils.mkdir_p(os.path.dirname(save_path))
         with open(save_path, 'wb+') as tmpfile:
-            # print("Path computed, saving", save_path)
             logger.info(textwrap.dedent(f"""\
                     Full precision path computed, saving to:
                       {save_path}"""
@@ -339,7 +351,6 @@ directory : str
         Return the FP_params attribute, if not available try to reload it
         from file
         """
-        # print("in FP_params", hasattr(self, "_FP_params"))
         if hasattr(self, "_FP_params"):
             return self._FP_params
         FP_params = self.reload_ref_point(scan_only=True)
@@ -352,7 +363,6 @@ directory : str
         Return the Zn_path attribute, if not available try to reload it
         from file
         """
-        # print("in Zn_path", hasattr(self, "_Zn_path"))
         if hasattr(self, "_Zn_path"):
             return self._Zn_path
         FP_params, Zn_path = self.reload_ref_point()
@@ -364,11 +374,9 @@ directory : str
         """ Builds a Zn_path data tuple from FP_params and Zn_path
         This object will be used in numba jitted functions
         """
-        
-        
         FP_params = self.FP_params
         Zn_path = self.Zn_path
-        
+
         ref_xr_python = FP_params["xr"]
         has_xr = (len(ref_xr_python) > 0)
         ref_order = FP_params["order"]
@@ -485,7 +493,6 @@ directory : str
         # ====================================================================
         # CUSTOM class impl
         # Initialise the reference path
-        # if has_status_bar:
         holomorphic = self.holomorphic
         calc_deriv_c = self.calc_dZndc if holomorphic else self.calc_hessian
         calc_dZndz = self.calc_dZndz if holomorphic else False
@@ -493,6 +500,7 @@ directory : str
         # 1) compute or retrieve the reference orbit
         self.set_status("Reference", "running")
         self.get_FP_orbit()
+
         if holomorphic:
             (Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
              drift_xr, dx_xr) = self.get_path_data()
@@ -513,16 +521,11 @@ directory : str
                 self.projection.scale, dtype=self.float_type
             ).ravel()
             dx_xr = dx_xr * scale_xr
-#            if holomorphic:
-#                drift_xr = drift_xr * scale_xr
-#            else:
-#                driftx_xr = driftx_xr * scale_xr
-#                drifty_xr = drifty_xr * scale_xr
 
         dZndc_path = None
         (dXnda_path, dXndb_path, dYnda_path, dYndb_path) = (None,) * 4
+
         if calc_deriv_c:
-            # dx_xr = fsx.mpf_to_Xrange(self.dx, dtype=self.float_type).ravel() Looks already done...
             xr_detect_activated = self.xr_detect_activated
 
             if holomorphic:
@@ -754,7 +757,7 @@ directory : str
                 attempt += 1
                 mpmath.mp.dps = int(1.25 * mpmath.mp.dps)
                 logger.info(textwrap.dedent(f"""\
-                    Newton attempt {attempt} failed
+                    Newton attempt {attempt - 1} failed
                       Increasing dps for next : {old_dps} -> {mpmath.mp.dps}"""
                 ))
                 eps_pixel = self.dx * (1. / self.nx)
@@ -942,7 +945,7 @@ ball_order = {{
                 break
             attempt += 1
             dps = int(1.5 * dps)
-            print("Newton, dps boost to: ", dps)
+            logger.info(f"Newton, decimal precision (dps) boost to: {dps}")
             with mpmath.workdps(dps):
                 try:
                     newton_cv, c_newton = self.find_nucleus(
@@ -1136,7 +1139,6 @@ def numba_iterate(
         ref_orbit_len = Zn_path.shape[0]
         first_invalid_index = min(ref_orbit_len, ref_div_iter, ref_order)
         M_out = np.empty((2,), dtype=np.complex128)
-        # print("enter numba_impl iterate with n_iter / w_iter", n_iter,  w_iter, ref_order)
 
         while True:
             #==========================================================
@@ -1457,11 +1459,8 @@ def numba_cycles_perturb_BS(
             has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
             refpath_ptr, out_is_xr, out_xr, M_bla, r_bla, bla_len, stages_bla
         )
-        # print('n_iter', n_iter)
-        stop_iter[0, ipt] = n_iter#n_iterv- debug
+        stop_iter[0, ipt] = n_iter
         stop_reason[0, ipt] = stop_pt[0]
-        
-        # print("after iterate", ipt, npts)
 
         if _interrupted[0]:
             return USER_INTERRUPTED
@@ -1505,8 +1504,7 @@ def numba_iterate_BS(
         Z, Z_xr: idem for result vector Z
         Z_xr_trigger : bolean, activated when Z_xr need to be used
         """
-        # print("in numba impl")
-        # SA skipped - wrapped iteration if we reach the cycle order 
+        # Wrapped iteration if we reach the cycle order 
         w_iter = 0
         n_iter = 0
         if w_iter >= ref_order:
@@ -1609,7 +1607,6 @@ def numba_iterate_BS(
             # Stopping condition: divergence
             # ZZ = "Total" z + dz
             w_iter += 1
-            # print("incr w_iter", w_iter, n_iter, ref_order)
             if w_iter >= ref_order:
                 w_iter = w_iter % ref_order
 
@@ -1637,7 +1634,6 @@ def numba_iterate_BS(
             # Glitch correction - reference point diverging
             
             if (w_iter >= ref_div_iter - 1):
-                # print("reference point diverging rebase")
                 # Rebasing - we are already big no underflow risk
                 Z[xn] = XX
                 Z[yn] = YY
@@ -1669,7 +1665,6 @@ def numba_iterate_BS(
                 (abs(XX) <= abs(Z[xn])) and (abs(YY) <= abs(Z[yn]))
             )
             if bool_dyn_rebase:
-                # print("bool_dyn_rebase")
                 if xr_detect_activated:
                     # Can we *really* rebase ??
                     # Note: if Z[zn] underflows we might miss a rebase
