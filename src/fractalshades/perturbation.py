@@ -126,7 +126,7 @@ directory : str
             required_dps = int(-mpmath.log10(pix / nx) + 1)
         if required_dps > precision:
             raise ValueError(
-                "Precision is to low for min. pixel size and shall be "
+                "Precision is too low for min. pixel size and shall be "
                 f"increased to {required_dps} (current setting: {precision})."
                 "This might be a consequence of Exponential mapping or "
                 "other non-cartesian projections."

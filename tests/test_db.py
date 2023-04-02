@@ -127,7 +127,7 @@ class Test_layers(unittest.TestCase):
         """ Testing basic `Color_layer` plots from a saved database 
         Note: works also with supersampling
         """
-        for option in ("raw","supersampling"):
+        for option in ("raw", "supersampling"):
             with self.subTest(option=option):
 
                 pp = Postproc_batch(self.f, self.calc_name)
@@ -139,7 +139,7 @@ class Test_layers(unittest.TestCase):
                 if option == "raw":
                     plotter = fs.Fractal_plotter(
                         pp, final_render=True, supersampling=None,
-                        recovery_mode=True
+                        recovery_mode=False
                     )
 
                 elif option == "supersampling":
@@ -335,11 +335,11 @@ class Test_layers(unittest.TestCase):
 
 if __name__ == "__main__":
     runner = unittest.TextTestRunner(verbosity=2)
-    full_test = False
+    full_test = True
     if full_test:
         runner.run(test_config.suite([Test_layers]))
     else:
         suite = unittest.TestSuite()
         # suite.addTest(Test_layers("test_db_color_basic"))
-        suite.addTest(Test_layers("test_db_overlay1"))
+        suite.addTest(Test_layers("test_db_color_basic"))
         runner.run(suite)
