@@ -11,7 +11,6 @@ from numpy.lib.format import open_memmap
 
 import fractalshades as fs
 import fractalshades.utils
-# from fractalshades.lib.fast_interp import interp2d
 from fractalshades.numpy_utils.interp2d import (
     Grid_lin_interpolator as fsGrid_lin_interpolator
 )
@@ -23,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class Frame:
-    def __init__(self, x, y, dx, nx, xy_ratio, supersampling=False,
+    def __init__(self, x, y, dx, nx, xy_ratio,
                  t=None, plotting_modifier=None):
         """
     A frame is used to describe a specific data window and for interpolating
@@ -41,8 +40,6 @@ class Frame:
         number of pixel for the interpolated frame
     xy_ratio: float
         width / height ratio of the interpolated frame 
-    supersampling: Optionnal bool
-        If True, uses a 2x2 supersampling + Lanczos-2 decimation filter
     t: Optionnal float
         time [s] of this frame in the movie
     plotting_modifier: Optionnal callable
@@ -65,7 +62,6 @@ class Frame:
         self.dx = dx
         self.nx = nx
         self.xy_ratio = xy_ratio
-        self.supersampling = supersampling
         self.t = t
         self.plotting_modifier = plotting_modifier
         
@@ -75,19 +71,25 @@ class Frame:
 
         xmin = x - 0.5 * dx
         xmax = x + 0.5 * dx
-        
         ymin = y - 0.5 * dy
         ymax = y + 0.5 * dy
-        
-        if supersampling:
-            xvec = np.linspace(xmin, xmax, 2 * self.nx)
-            yvec = np.linspace(ymin, ymax, 2 * self.ny)
-        else:
-            xvec = np.linspace(xmin, xmax, self.nx)
-            yvec = np.linspace(ymin, ymax, self.ny)
+
+        xvec = np.linspace(xmin, xmax, self.nx, dtype=np.float32)
+        yvec = np.linspace(ymin, ymax, self.ny, dtype=np.float32)
 
         y_grid, x_grid = np.meshgrid(yvec, xvec)
         self.pts = np.ravel(x_grid), np.ravel(y_grid)
+
+
+    def upsampled(self, supersampling):
+        """ Return the upsampled version of this Frame
+        (if supersampling is None just pass through) """
+        if supersampling is None:
+            return self
+        return Frame(
+            self.x, self.y, self.dx, self.nx * supersampling, self.xy_ratio,
+            self.t, self.plotting_modifier
+        )
 
 
 class Plot_template:
@@ -99,7 +101,7 @@ class Plot_template:
         ----------
         plotter: `fractalshades.Fractal_plotter`
             The wrapped plotter - will be copied
-        db_loader: `fractalshades.db.Db_loader`
+        db_loader: `fractalshades.db.Db`
             A db data-loading class - implementing `get_2d_arr`
         frame: Frame
             The frame-specific data holder
@@ -121,13 +123,6 @@ class Plot_template:
         """
         return self.plotter.__getitem__(layer_name)
 
-    @property
-    def supersampling(self):
-        """ supersampling has to be done at db saving level so not relevant 
-        in post-processing
-        """
-        return None
-
     def get_2d_arr(self, post_index, chunk_slice):
         """ Forwards to the db-loader for frame-specific functionnality """
         return self.db_loader.get_2d_arr(
@@ -144,13 +139,22 @@ class Db:
         post-processing fields, and is usually created through a
         `fractalshades.Fractal_plotter.save_db` call.
 
-        Note: datatype might be ``np.float32`` or ``np.float64`` 
+        Note: datatype might be ``np.float32`` or ``np.float64`` but shall
+        match ``fractalshades.settings.postproc_dtype``
 
         Parameters
         ----------
         path: str
             The path for the raw data
         """
+        # Development Note
+        # ----------------
+        # Note on supersampling: the db data is supersampled - if needed
+        # When freezing, we apply the Lanczos filter -> interpolation in a
+        # reduced dataset (image) *.db.frozen
+        # When not freezing, we do not apply the Lanczos filter ->
+        # interpolation in the full set, Lanczos filtering at plotting stage.
+
         self.path = path
         # self.zoom_kw = zoom_kw
         self.init_model()
@@ -182,16 +186,17 @@ class Db:
         self.dx0 = dx0 = 1.0
         self.dy0 = dy0 = 1.0 / xy_ratio
 
-        # xy grid
+        # xy grid used for interpolation.
+        # Downsampled version implemented as part of freezing process
         self.xmin0 = xmin0 = x0 - 0.5 * dx0
         self.xmax0 = xmax0 = x0 + 0.5 * dx0
         self.xgrid0, self.xh0 = np.linspace(
-            xmin0, xmax0, nx, endpoint=True, retstep=True
+            xmin0, xmax0, nx, endpoint=True, retstep=True, dtype=np.float32
         )
         self.ymin0 = ymin0 = y0 - 0.5 * dy0
         self.ymax0 = ymax0 = y0 + 0.5 * dy0
         self.ygrid0, self.yh0 = np.linspace(
-            ymin0, ymax0, ny,  endpoint=True, retstep=True
+            ymin0, ymax0, ny,  endpoint=True, retstep=True, dtype=np.float32
         )
 
 
@@ -225,23 +230,32 @@ class Db:
         the domain [x-dx, x+dx] x [y-dy, y+dy]
         in Screeen coordinates
         """
+        logger.info("Creating a new interpolator in database")
+
         x = frame.x
         y = frame.y
         dx = frame.dx
         dy = frame.dy
 
+        # NOTE that if we are interpolating in the frozen image, then the
+        # xgrid0 and ygrid0 might be downsampled
+        xgrid0 = self.xgrid0
+        ygrid0 = self.ygrid0
+        xh0 = self.xh0
+        yh0 = self.yh0
+
         # 1) load the local interpolation array for the region of interest
         # with a margin so it has a chance to remain valid for several frames
         k = 0.5 * 1.5  # 0.5 if no margin at all
-        x_min = max(x - k * dx, self.xmin0)
-        ind_xmin = np.searchsorted(self.xgrid0, x_min, side="right") - 1
-        y_min = max(y - k * dy, self.ymin0)
-        ind_ymin = np.searchsorted(self.ygrid0, y_min, side="right") - 1
+        x_min = np.float32(max(x - k * dx, self.xmin0))
+        ind_xmin = np.searchsorted(xgrid0, x_min, side="right") - 1
+        y_min = np.float32(max(y - k * dy, self.ymin0))
+        ind_ymin = np.searchsorted(ygrid0, y_min, side="right") - 1
         # max
-        x_max = min(x + k * dx, self.xmax0)
-        ind_xmax = np.searchsorted(self.xgrid0, x_max, side="left")
-        y_max = min(y + k * dy, self.ymax0)
-        ind_ymax = np.searchsorted(self.ygrid0, y_max, side="left")
+        x_max = np.float32(min(x + k * dx, self.xmax0))
+        ind_xmax = np.searchsorted(xgrid0, x_max, side="left")
+        y_max = np.float32(min(y + k * dy, self.ymax0))
+        ind_ymax = np.searchsorted(ygrid0, y_max, side="left")
 
         # 2) Creates and return the interpolator
         # a, b: the lower and upper bounds of the interpolation region
@@ -252,9 +266,9 @@ class Db:
         # c:    whether the array should be padded to allow accurate close eval
         # e:    extrapolation distance, how far to allow extrap, in units of h
         #       (needs to be an integer)
-        a = [self.xgrid0[ind_xmin], self.ygrid0[ind_ymin]]
-        b = [self.xgrid0[ind_xmax], self.ygrid0[ind_ymax]]
-        h = [self.xh0, self.yh0]
+        a = [xgrid0[ind_xmin], ygrid0[ind_ymin]]
+        b = [xgrid0[ind_xmax], ygrid0[ind_ymax]]
+        h = [xh0, yh0]
 
         if self.is_frozen:
             fr_mmap = open_memmap(filename=self.frozen_path, mode="r")
@@ -312,6 +326,11 @@ class Db:
         mmap = open_memmap(filename=self.path, mode="r+")
         nposts, nx, ny = mmap.shape
         del mmap
+        
+        s = self.plotter.supersampling
+        if s:
+            nx //= s
+            ny //= s
 
         self.frozen_props = {
             "dtype": np.dtype(dtype),
@@ -355,14 +374,32 @@ class Db:
         plot_template = Plot_template(plotter, self, frame=None)
         self.process_for_freeze(plot_template, out_postname=layer_name)
         self.is_frozen = True
+        
+        
+        # Downsampled version of the base grid for correct interpolation
+        s = self.plotter.supersampling
+        if s:
+            im_nx = self.nx // s 
+            im_ny = self.ny // s 
+            self.xgrid0, self.xh0 = np.linspace(
+                self.xmin0, self.xmax0, im_nx, endpoint=True, retstep=True,
+                dtype=np.float32
+            )
+            self.ygrid0, self.yh0 = np.linspace(
+                self.ymin0, self.ymax0, im_ny,  endpoint=True, retstep=True,
+                dtype=np.float32
+            )
 
 
     @Multithreading_iterator(
         iterable_attr="db_chunks", iter_kwargs="db_chunk"
     )
     def process_for_freeze(self, plot_template, out_postname, db_chunk=None):
-        """ Freeze (stores) the RGB array for this layer"""
+        """ Freeze (stores) the RGB array for this layer
+        
+        """
         (ix, ixx, iy, iyy) = db_chunk
+        s = self.plotter.supersampling
         fr_mmap = open_memmap(filename=self.frozen_path, mode='r+')
 
         pasted = False
@@ -370,11 +407,21 @@ class Db:
             if layer.postname == out_postname:
                 if not(layer.output):
                     raise ValueError("No output for this layer!!")
+
+                paste_crop = layer.crop(db_chunk)
+
+                if s:
+                    resample = PIL.Image.LANCZOS
+                    paste_crop = paste_crop.resize(
+                        size=(ixx - ix, iyy - iy),
+                        resample=resample,
+                        box=None,
+                        reducing_gap=None
+                    )
                 # PILLOW -> Numpy
                 paste_crop_arr = np.swapaxes(
-                    np.asarray(layer.crop(db_chunk)), 0 , 1
+                    np.asarray(paste_crop), 0 , 1
                 )[:, ::-1]
-                # fr_mmap[ix: ixx, iy: iyy, :] = paste_crop_arr
 
                 if fr_mmap.shape[2] == 1:
                     fr_mmap[ix: ixx, iy: iyy, 0] = paste_crop_arr
@@ -400,11 +447,18 @@ class Db:
         """
         # if chunk_size is None:
         chunk_size = fs.settings.db_chunk_size
+        im_nx, im_ny = self.nx, self.ny
 
-        for ix in range(0, self.nx, chunk_size):
-            ixx = min(ix + chunk_size, self.nx)
-            for iy in range(0, self.ny, chunk_size):
-                iyy = min(iy + chunk_size, self.ny)
+        # When supersampled, real image is smaller than db size:
+        s = self.plotter.supersampling
+        if s:
+           im_nx //= s 
+           im_ny //= s 
+
+        for ix in range(0, im_nx, chunk_size):
+            ixx = min(ix + chunk_size, im_nx)
+            for iy in range(0, im_ny, chunk_size):
+                iyy = min(iy + chunk_size, im_ny)
                 yield  (ix, ixx, iy, iyy)
 
 # --------------- db plotting interface ---------------------------------------
@@ -460,19 +514,25 @@ class Db:
             # Used internally when computing the interpolation arrays
             # Direct output : uses chunk_slice
             (ix, ixx, iy, iyy) = chunk_slice
+            
+            # Subsampling is done at the image plotting stage, so here we
+            # output the full data
+            s = self.plotter.supersampling
+            if s:
+               ix *= s 
+               ixx *= s 
+               iy *= s 
+               iyy *= s 
+
             mmap = open_memmap(filename=self.path, mode="r")
             ret = mmap[post_index, ix:ixx, iy:iyy]
             del mmap
             return ret   
-            
+
         else:
             # Interpolated output : uses frame
             ret = self.get_interpolator(frame, post_index)(*frame.pts)
-            if frame.supersampling:
-                sps_size = (2 * frame.nx, 2 * frame.ny)
-                return self.lf2(ret.reshape(sps_size))
-            else:
-                return ret.reshape(frame.size)
+            return ret.reshape(frame.size)
 
 
     def plot(self, frame=None):
@@ -481,7 +541,7 @@ class Db:
         ----------
         frame: `fractalshades.db.Frame`, Optional
             Defines the area to plot. If not provided, the full db will be
-            plotted
+            plotted.
 
         Returns
         -------
@@ -490,7 +550,7 @@ class Db:
 
         Notes
         -----
-        Plotting settings as defined by set_plotter method
+        Plotting settings are defined by ``set_plotter`` method.
         """
         if frame is None:
             # Default to plotting the whole db
@@ -499,17 +559,19 @@ class Db:
             frame = fs.db.Frame(
                 x=0., y=0., dx=1.0, nx=nx, xy_ratio=xy_ratio
             )
-        
+        print("in plot db; nx, xy_ratio:", nx, xy_ratio)
+
         # Is the db frozen ?
         if self.is_frozen:
             return self.plot_frozen(frame)
-
-        plot_template = Plot_template(self.plotter, self, frame)
+        
+        # Here the plotter shall take into account the 'full frame' size
+        full_frame = frame.upsampled(self.plotter.supersampling)
+        plot_template = Plot_template(self.plotter, self, full_frame)
 
         plotting_modifier = frame.plotting_modifier
         if plotting_modifier is not None:
             plotting_modifier(plot_template, frame.t)
-
 
         img = None
         out_postname = self.postname
@@ -517,7 +579,7 @@ class Db:
         for i, layer in enumerate(plot_template.layers):
             if layer.postname == out_postname:
                 if not(layer.output):
-                    raise ValueError("No output for this layer!!")
+                    raise ValueError(f"No output for this layer: {layer}")
                 img = PIL.Image.new(mode=layer.mode, size=frame.size)
                 im_layer = layer
                 break
@@ -537,29 +599,19 @@ class Db:
         """
         dtype = self.frozen_props["dtype"]
         n_channel = self.frozen_props["n_channel"]
-        nx, ny = frame.size
-        if frame.supersampling:
-            im_size = (2 * nx, 2 * ny)
-        else:
-            im_size = (nx, ny)
+        im_size = frame.size
         ret = np.empty(im_size[::-1] + (n_channel,), dtype=dtype)
 
-        for ic in range(n_channel): #3): #n_channel):
-            channel_ret = self.get_interpolator(frame, ic)(*frame.pts
-            ).reshape(im_size)
+        for ic in range(n_channel):
+            channel_ret = self.get_interpolator(
+                frame, ic)(*frame.pts).reshape(im_size)
             # Numpy -> PILLOW
             ret[:, :, ic] = np.swapaxes(channel_ret, 0 , 1)[::-1, :]
-            
-            # Image.fromarray((ret * 255).astype(np.uint8))
         
         if n_channel == 1:
             im = PIL.Image.fromarray(ret[:, :, 0])
         else:
             im = PIL.Image.fromarray(ret)
-
-        if frame.supersampling:
-            resample = PIL.Image.LANCZOS
-            im = im.resize(size=(nx, ny), resample=resample) 
 
         return im
 
@@ -569,22 +621,24 @@ class Db:
         Just plot the Images interpolated data + plot_template
         1 db point -> 1 pixel
         """
-        nx, ny = frame.size
+        nx, ny = full_nx, full_ny = frame.size
+        ss = self.plotter.supersampling
+
         chunk_slice = (0, nx, 0, ny)
         crop_slice = (0, 0, nx, ny)
         paste_crop = im_layer.crop(chunk_slice)
+
+        if ss:
+            # Here, we apply a resizing filter
+            resample = PIL.Image.LANCZOS
+            paste_crop = paste_crop.resize(
+                size=(nx, ny),
+                resample=resample,
+                box=None,
+                reducing_gap=None
+            )
+
         img.paste(paste_crop, box=crop_slice)
-
-
-
-
-
-
-
-
-
-
-
 
 
 #==============================================================================
@@ -592,7 +646,7 @@ class Db:
 # Exponential mapping to cartesian frame transform
 
 class Exp_frame:
-    def __init__(self, h, nx, xy_ratio, supersampling=False,
+    def __init__(self, h, nx, xy_ratio,
                  t=None, plotting_modifier=None, pts=None):
         """
     A Exp_frame is used to describe a specific data window and used to
@@ -607,8 +661,6 @@ class Exp_frame:
         number of pixels for the interpolated frame
     xy_ratio: float
         width / height ratio of the interpolated frame 
-    supersampling: Optional bool
-        If True, uses a 2x2 supersampling + Lanczos-2 decimation filter
     t: Optionnal float
         time [s] of this frame in the movie
     plotting_modifier: Optional callable
@@ -620,40 +672,21 @@ class Exp_frame:
         self.h = h
         self.nx = nx
         self.xy_ratio = xy_ratio
-        self.supersampling = supersampling
         self.t = t
         self.plotting_modifier = plotting_modifier
         
         self.ny = int(self.nx / self.xy_ratio + 0.5)
         self.size = (self.nx, self.ny)
-
-#        xmin = -0.5
-#        xmax = +0.5
-#        ymin = -0.5 / self.xy_ratio
-#        ymax = +0.5 / self.xy_ratio
-#
-#        if supersampling:
-#            xvec = np.linspace(xmin, xmax, 2 * self.nx)
-#            yvec = np.linspace(ymin, ymax, 2 * self.ny)
-#        else:
-#            xvec = np.linspace(xmin, xmax, self.nx)
-#            yvec = np.linspace(ymin, ymax, self.ny)
-#
-#        y_grid, x_grid = np.meshgrid(yvec, xvec)
-        # Note that self.real_pts is in fact the unevaluated product:
-        # self.pts x * np.exp(self.h) 
+ 
         if pts is None:
-            pts = self.make_exp_grid(
-                self.nx, self.xy_ratio, self.supersampling
-            )
+            pts = self.make_exp_grid(self.nx, self.xy_ratio)
         # Basic shape verification
-        k_ss = 2 if supersampling else 1
-        assert pts[0].size == (self.nx * self.ny * k_ss ** 2)
-
+        assert pts[0].size == (self.nx * self.ny)
         self.pts = pts
-    
+
+
     @staticmethod
-    def make_exp_grid(nx, xy_ratio, supersampling):
+    def make_exp_grid(nx, xy_ratio):
         """ Return a base grid [-0.5, 0.5] x [-0.5/xy_ratio, 0.5/xy_ratio] in 
         both cartesian and expoential coordiantes """
         ny = int(nx / xy_ratio + 0.5)
@@ -664,9 +697,8 @@ class Exp_frame:
         ymax = +0.5 / xy_ratio
 
         # Cartesian grid
-        k_ss = 2 if supersampling else 1
-        xvec = np.linspace(xmin, xmax, k_ss * nx)
-        yvec = np.linspace(ymin, ymax, k_ss * ny)
+        xvec = np.linspace(xmin, xmax, nx, dtype=np.float32)
+        yvec = np.linspace(ymin, ymax, ny, dtype=np.float32)
 
         y_grid, x_grid = np.meshgrid(yvec, xvec)
         x_grid = x_grid.reshape(-1)
@@ -680,11 +712,7 @@ class Exp_frame:
         t_grid = np.arctan2(y_grid, x_grid)
 
         # Store the grid
-        return (
-            x_grid.astype(np.float32), y_grid.astype(np.float32),
-            h_grid.astype(np.float32), t_grid.astype(np.float32)
-        )
-
+        return (x_grid, y_grid, h_grid, t_grid)
 
 
 class Exp_db:
@@ -694,7 +722,8 @@ class Exp_db:
         """ Wrapper around the raw array data stored at ``path_expmap`` and
         ``path_final``.
 
-        datatype might be ``np.float32`` or ``np.float64``.
+        Note: datatype might be ``np.float32`` or ``np.float64`` but shall
+        match ``fractalshades.settings.postproc_dtype``.
 
         Parameters
         ----------
@@ -764,18 +793,22 @@ class Exp_db:
 
         # ht grid
         self.hgrid0, self.hh0 = np.linspace(
-            self.hmin0, self.hmax0, nh, endpoint=True, retstep=True
+            self.hmin0, self.hmax0, nh, endpoint=True, retstep=True,
+            dtype=np.float32
         )
         self.tgrid0, self.th0 = np.linspace(
-            -np.pi, np.pi, nt, endpoint=True, retstep=True
+            -np.pi, np.pi, nt, endpoint=True, retstep=True,
+            dtype=np.float32
         )
 
         # xy grid
         self.xgrid0, self.xh0 = np.linspace(
-            self.xmin0, self.xmax0, nx, endpoint=True, retstep=True
+            self.xmin0, self.xmax0, nx, endpoint=True, retstep=True,
+            dtype=np.float32
         )
         self.ygrid0, self.yh0 = np.linspace(
-            self.ymin0, self.ymax0, ny, endpoint=True, retstep=True
+            self.ymin0, self.ymax0, ny, endpoint=True, retstep=True,
+            dtype=np.float32
         )
 
         # Lanczos-2 2-decimation routine
@@ -867,7 +900,7 @@ class Exp_db:
         # We fill as if full range first
         a_exp = np.copy(full_bound[:, 0::2]) # Lower bound h, t
         b_exp = np.copy(full_bound[:, 1::2]) # Higher bound h, t
-        h_exp = (b_exp - a_exp) / (full_shape[:, :] - 1)
+        h_exp = ((b_exp - a_exp) / (full_shape[:, :] - 1)).astype(np.float32)
         f_exp_shape = np.copy(full_shape[:, :])
         f_exp_slot = np.copy(full_slot[:, :])
         
@@ -941,7 +974,7 @@ class Exp_db:
         # Easy, we just fill as full range - no subrange extraction step
         a_final = np.copy(full_bound[:, 0::2])
         b_final = np.copy(full_bound[:, 1::2])
-        h_final = (b_final - a_final) / (full_shape - 1)
+        h_final = ((b_final - a_final) / (full_shape - 1)).astype(np.float32)
         f_final_shape = np.copy(full_shape)
         f_final_slot = np.copy(full_slot)
 
@@ -1046,11 +1079,12 @@ class Exp_db:
 
 # --------------- db Subsampling interface ---------------------------------------
     def subsample(self):
+        """ Make a series of subsampled databases (either pain or frozen) """
         if self.is_frozen:
             self.subsample_frozen()
         else:
             self.subsample_db()
-    
+
 
     def subsample_frozen(self):
         
@@ -1152,7 +1186,7 @@ class Exp_db:
         init_bound: np.array([minx, maxx, miny, maxy])
             The initial range for data
         kind: "exp" | "final"
-            The kinf of mem mapping
+            The kind of mem mapping
 
         Returns
         -------
@@ -1193,9 +1227,7 @@ class Exp_db:
         ss_slots = np.empty((ss_lvls + 1, 2), dtype=np.int32)
 
         # Note that we need to store the x AND y bounds
-        ss_bounds = np.tile(init_bound, (ss_lvls + 1, 1)).astype(
-            np.dtype(fs.settings.postproc_dtype)
-        )
+        ss_bounds = np.tile(init_bound, (ss_lvls + 1, 1)).astype(np.float32)
 
         # Sizing the subsampling arrays
         ss_shapes[0, :] = [nx, ny]
@@ -1373,6 +1405,13 @@ class Exp_db:
         _nposts, nx, ny = final_mmap.shape
         del final_mmap
 
+        s = self.plotter.supersampling
+        if s:
+            nh //= s
+            nt //= s
+            nx //= s
+            ny //= s
+
         self.frozen_props = {
             "dtype": np.dtype(dtype),
             "n_channel": n_channel,
@@ -1441,6 +1480,33 @@ class Exp_db:
         del self._raw_kind
         
         self.is_frozen = True
+        
+        # Downsampled version of the base grid for correct interpolation
+        s = self.plotter.supersampling
+        if s:
+            # ht grid
+            im_nh = self.nh // s 
+            im_nt = self.nt // s 
+            self.hgrid0, self.hh0 = np.linspace(
+                self.hmin0, self.hmax0, im_nh, endpoint=True, retstep=True,
+                dtype=np.float32
+            )
+            self.tgrid0, self.th0 = np.linspace(
+                -np.pi, np.pi, im_nt, endpoint=True, retstep=True,
+                dtype=np.float32
+            )
+
+            # xy grid
+            im_nx = self.nx // s 
+            im_ny = self.ny // s 
+            self.xgrid0, self.xh0 = np.linspace(
+                self.xmin0, self.xmax0, im_nx, endpoint=True, retstep=True,
+                dtype=np.float32
+            )
+            self.ygrid0, self.yh0 = np.linspace(
+                self.ymin0, self.ymax0, im_ny,  endpoint=True, retstep=True,
+                dtype=np.float32
+            )
 
 
     @Multithreading_iterator(
@@ -1451,6 +1517,7 @@ class Exp_db:
     ):
         """ Freeze (stores) the RGB array for this layer"""
         (ix, ixx, iy, iyy) = db_chunk
+        s = self.plotter.supersampling
         p_exp = self.frozen_path("exp", downsampling=False)
         fr_mmap = open_memmap(filename=p_exp, mode='r+')
 
@@ -1459,11 +1526,27 @@ class Exp_db:
             if layer.postname == out_postname:
                 if not(layer.output):
                     raise ValueError("No output for this layer!!")
+
+                paste_crop = layer.crop(db_chunk)
+
+                if s:
+                    resample = PIL.Image.LANCZOS
+                    paste_crop = paste_crop.resize(
+                        size=(ixx - ix, iyy - iy),
+                        resample=resample,
+                        box=None,
+                        reducing_gap=None
+                    )
+
                 # PILLOW -> Numpy
                 paste_crop_arr = np.swapaxes(
-                    np.asarray(layer.crop(db_chunk)), 0 , 1
-                )[:, ::-1]
-                # fr_mmap[ix: ixx, iy: iyy, :] = paste_crop_arr
+                    np.asarray(paste_crop), 0 , 1)[:, ::-1]
+
+#                # PILLOW -> Numpy
+#                paste_crop_arr = np.swapaxes(
+#                    np.asarray(layer.crop(db_chunk)), 0 , 1
+#                )[:, ::-1]
+#                # fr_mmap[ix: ixx, iy: iyy, :] = paste_crop_arr
 
                 if fr_mmap.shape[2] == 1:
                     fr_mmap[ix: ixx, iy: iyy, 0] = paste_crop_arr
@@ -1488,6 +1571,7 @@ class Exp_db:
     ):
         """ Freeze (stores) the RGB array for this layer"""
         (ix, ixx, iy, iyy) = db_chunk
+        s = self.plotter.supersampling
         p_final = self.frozen_path("final", downsampling=False)
         fr_mmap = open_memmap(filename=p_final, mode='r+')
 
@@ -1496,10 +1580,25 @@ class Exp_db:
             if layer.postname == out_postname:
                 if not(layer.output):
                     raise ValueError("No output for this layer!!")
+    
+                paste_crop = layer.crop(db_chunk)
+
+                if s:
+                    resample = PIL.Image.LANCZOS
+                    paste_crop = paste_crop.resize(
+                        size=(ixx - ix, iyy - iy),
+                        resample=resample,
+                        box=None,
+                        reducing_gap=None
+                    )
+
                 # PILLOW -> Numpy
                 paste_crop_arr = np.swapaxes(
-                    np.asarray(layer.crop(db_chunk)), 0 , 1
-                )[:, ::-1]
+                    np.asarray(paste_crop), 0 , 1)[:, ::-1]
+                
+#                paste_crop_arr = np.swapaxes(
+#                    np.asarray(layer.crop(db_chunk)), 0 , 1
+#                )[:, ::-1]
 
                 if fr_mmap.shape[2] == 1:
                     fr_mmap[ix: ixx, iy: iyy, 0] = paste_crop_arr
@@ -1517,6 +1616,77 @@ class Exp_db:
         del fr_mmap
 
 
+
+
+
+
+    @Multithreading_iterator(
+        iterable_attr="db_chunks", iter_kwargs="db_chunk"
+    )
+    def process_for_freeze(self, plot_template, out_postname, db_chunk=None):
+        """ Freeze (stores) the RGB array for this layer
+        
+        """
+        (ix, ixx, iy, iyy) = db_chunk
+        s = self.plotter.supersampling
+        fr_mmap = open_memmap(filename=self.frozen_path, mode='r+')
+
+        pasted = False
+        for i, layer in enumerate(plot_template.layers):
+            if layer.postname == out_postname:
+                if not(layer.output):
+                    raise ValueError("No output for this layer!!")
+
+                paste_crop = layer.crop(db_chunk)
+
+                if s:
+                    resample = PIL.Image.LANCZOS
+                    paste_crop = paste_crop.resize(
+                        size=(ixx - ix, iyy - iy),
+                        resample=resample,
+                        box=None,
+                        reducing_gap=None
+                    )
+                # PILLOW -> Numpy
+                paste_crop_arr = np.swapaxes(
+                    np.asarray(paste_crop), 0 , 1)[:, ::-1]
+
+                if fr_mmap.shape[2] == 1:
+                    fr_mmap[ix: ixx, iy: iyy, 0] = paste_crop_arr
+                else:
+                    fr_mmap[ix: ixx, iy: iyy, :] = paste_crop_arr
+
+                pasted = True
+
+        if not pasted:
+            raise ValueError(
+                f"Layer missing: {out_postname} "
+                + f"not found in {plot_template.postnames}"
+            )
+
+        del fr_mmap
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     def exp_db_chunks(self):
         """
         Generator function
@@ -1524,12 +1694,20 @@ class Exp_db:
         """
         # if chunk_size is None:
         chunk_size = fs.settings.db_chunk_size
+        im_nh, im_nt = self.nh, self.nt
+        
+        # When supersampled, real image is smaller than db size:
+        s = self.plotter.supersampling
+        if s:
+           im_nh //= s 
+           im_nt //= s 
 
-        for ih in range(0, self.nh, chunk_size):
-            ihh = min(ih + chunk_size, self.nh)
-            for it in range(0, self.nt, chunk_size):
-                itt = min(it + chunk_size, self.nt)
+        for ih in range(0, im_nh, chunk_size):
+            ihh = min(ih + chunk_size, im_nh)
+            for it in range(0, im_nt, chunk_size):
+                itt = min(it + chunk_size, im_nt)
                 yield  (ih, ihh, it, itt)
+
 
     def final_db_chunks(self):
         """
@@ -1538,12 +1716,21 @@ class Exp_db:
         """
         # if chunk_size is None:
         chunk_size = fs.settings.db_chunk_size
+        im_nx, im_ny = self.nx, self.ny
+        
+        # When supersampled, real image is smaller than db size:
+        s = self.plotter.supersampling
+        if s:
+           im_nx //= s 
+           im_ny //= s 
 
-        for ix in range(0, self.nx, chunk_size):
-            ixx = min(ix + chunk_size, self.nx)
-            for iy in range(0, self.ny, chunk_size):
-                iyy = min(iy + chunk_size, self.ny)
+        for ix in range(0, im_nx, chunk_size):
+            ixx = min(ix + chunk_size, im_nx)
+            for iy in range(0, im_ny, chunk_size):
+                iyy = min(iy + chunk_size, im_ny)
                 yield  (ix, ixx, iy, iyy)
+
+
 
 # --------------- db plotting interface ---------------------------------------
             
@@ -1604,12 +1791,21 @@ class Exp_db:
             except AttributeError:
                 raise RuntimeError(
                     "raw get_2d_arr for Exp_db, user should specify the"
-                    "plotting kind through arribute `_raw_kind` "
+                    "plotting kind through attribute `_raw_kind` "
                     "(expecting \"exp\" or \"final\""
                 )
-
             mmap = open_memmap(filename=filename, mode="r")
             (ix, ixx, iy, iyy) = chunk_slice
+
+            # Subsampling is done at the image plotting stage, so here we
+            # output the full data
+            s = self.plotter.supersampling
+            if s:
+               ix *= s 
+               ixx *= s 
+               iy *= s 
+               iyy *= s 
+
             ret = mmap[post_index, ix:ixx, iy:iyy]
             del mmap
             return ret   
@@ -1617,14 +1813,10 @@ class Exp_db:
         else:
             # Interpolated output : uses frame
             ret = self.get_interpolator(frame, post_index)(*frame.pts)
-            if frame.supersampling:
-                sps_size = (2 * frame.nx, 2 * frame.ny)
-                return self.lf2(ret.reshape(sps_size))
-            else:
-                return ret.reshape(frame.size)
+            return ret.reshape(frame.size)
 
 
-    def plot(self, frame=None):
+    def plot(self, frame):
         """
         Parameters
         ----------
@@ -1638,9 +1830,8 @@ class Exp_db:
 
         Notes
         -----
-        Plotting settings as defined by set_plotter method
+        Plotting settings are defined by ``set_plotter`` method.
         """
-        
         # Is the db frozen ?
         if self.is_frozen:
             return self.plot_frozen(frame)
@@ -1677,17 +1868,11 @@ class Exp_db:
         """
         dtype = self.frozen_props["dtype"]
         n_channel = self.frozen_props["n_channel"]
-        nx, ny = frame.size
-        if frame.supersampling:
-            im_size = (2 * nx, 2 * ny)
-        else:
-            im_size = (nx, ny)
+        im_size = frame.size
         ret = np.empty(im_size[::-1] + (n_channel,), dtype=dtype)
 
         for ic in range(n_channel): #3): #n_channel):
-            
-            
-            
+
             channel_ret = self.get_interpolator(frame, ic)(
                 *frame.pts, frame.h, frame.nx
             ).reshape(im_size)
@@ -1695,15 +1880,11 @@ class Exp_db:
             ret[:, :, ic] = np.swapaxes(channel_ret, 0 , 1)[::-1, :]
             
             # Image.fromarray((ret * 255).astype(np.uint8))
-        
+
         if n_channel == 1:
             im = PIL.Image.fromarray(ret[:, :, 0])
         else:
-            im = PIL.Image.fromarray(ret)
-
-        if frame.supersampling:
-            resample = PIL.Image.LANCZOS
-            im = im.resize(size=(nx, ny), resample=resample) 
+            im = PIL.Image.fromarray(ret) 
 
         return im
 
@@ -1718,15 +1899,6 @@ class Exp_db:
         crop_slice = (0, 0, nx, ny)
         paste_crop = im_layer.crop(chunk_slice)
         img.paste(paste_crop, box=crop_slice)
-
-
-
-
-
-
-
-
-
 
 
 #==============================================================================
@@ -1809,7 +1981,7 @@ class Multilevel_exp_interpolator:
         f_final = self.f_final
         f_final_shape = self.f_final_shape
         f_final_slot = self.f_final_slot
-        
+
         @numba.njit(nogil=True, parallel=False)
         def numba_impl(x_out, y_out, pts_h, pts_t, h_out, nx_out, f_out):
             # Interpolation: f_out = finterp(x_out, y_out)
@@ -1829,20 +2001,20 @@ class Multilevel_exp_interpolator:
 
         Parameters
         ----------
-        pts_x: 1d-array
+        pts_x: 1d-array float32
             x-coord of interpolating point location
-        pts_y: 1d-array
+        pts_y: 1d-array float32
             y-coord of interpolating point location
-        pts_h: 1d-array
+        pts_h: 1d-array float32
             h-coord of interpolating point location
-        pts_t: 1d-array
+        pts_t: 1d-array float32
             t-coord of interpolating point location
         pic_h: float
             The zoom level of the frame
         pic_nx: int
             The number of point in the frame along the x-direction (used to
             define of local pixel size) 
-        pts_res: 1d-array, Optionnal
+        pts_res: 1d-array float32, Optional
             Out array handle - if not provided, it will be created. 
         """
         assert np.ndim(pts_x) == 1
@@ -1851,7 +2023,8 @@ class Multilevel_exp_interpolator:
             pts_res = np.empty_like(pts_x)
 
         interp = self.numba_impl
-        interp(pts_x, pts_y, pts_h, pts_t, pic_h, pic_nx, pts_res)
+        pic_h32 = np.float32(pic_h)
+        interp(pts_x, pts_y, pts_h, pts_t, pic_h32, pic_nx, pts_res)
 
         return pts_res
 
@@ -1889,11 +2062,11 @@ def multilevel_interpolate(
         h_tot = h_out + h_img - log_half32
 
         if h_tot < 0.:
+            # Interpolating in the final image
             # the lvl is linked to the zoom scale: log2(exp(h_out))
             # zoom 1. -> 0, 2. -> 1, 4. -> 
-            lvl_xy = np.intp(np.floor(-h_out / (log_half32)))
+            lvl_xy = np.intp(-h_out / (log_half32) + 0.7)
             lvl_xy = min(max(lvl_xy, 0), max_lvl_xy)
-
 
             # Define the local arrays according to lvlxy_loc
             if lvl_xy != lvl_xy_cache:
@@ -1919,7 +2092,7 @@ def multilevel_interpolate(
 
         else:
             # the lvl is linked to the pixel position in image
-            lvl_ht = np.intp(np.floor(h_img / (log_half32))) - 1
+            lvl_ht = np.intp((h_img / log_half32) - 1.0)
             lvl_ht = min(max(lvl_ht, 0), max_lvl_ht)
 
             # The angle (t_tot == t_loc)
@@ -1951,31 +2124,37 @@ def multilevel_interpolate(
 
     return f_out
 
-CHECK_BOUNDS = True
+# debugging options
+CHECK_BOUNDS = False
+CLIP_BOUNDS = False
 
 @numba.njit(cache=True, nogil=True)
 def grid_interpolate(x_out, y_out, f, ax, ay, bx, by, hx, hy, nx, ny):
     # Bilinear interpolation in a rectangular grid - f is passed flatten and
     # is of size (nx x ny)
     # Interpolation: f_out = finterp(x_out, y_out)
-    
+
     if CHECK_BOUNDS:
-        x_out = np.clip(x_out, ax, bx) #min(max(x_out, ax), bx)
-        y_out = np.clip(y_out, ay, by) #  min(max(y_out, ay), by)
-    
-    ix, ratx = divmod(x_out - ax, hx)
-    iy, raty = divmod(y_out - ay, hy)
+        assert  ax <= x_out <= bx
+        assert  ay <= y_out <= by
+
+    if CLIP_BOUNDS:
+        x_out = min(max(x_out, ax), bx) # np.clip(x_out, ax, bx) #
+        y_out = min(max(y_out, ay), by) # np.clip(y_out, ay, by) #  
+
+    ix, ratx = np.divmod(x_out - ax, hx)
+    iy, raty = np.divmod(y_out - ay, hy)
     
     ix = np.intp(ix)
     iy = np.intp(iy)
     ratx /= hx
     raty /= hy
 
-    cx0 = 1. - ratx
+    cx0 = np.float32(1.) - ratx
     cx1 = ratx
-    cy0 = 1. - raty
+    cy0 = np.float32(1.) - raty
     cy1 = raty
-    
+
     id00 = ix * ny + iy #     ix,     iy
     id01 = id00 + 1     #     ix, iy + 1
     id10 = id00 + ny    # ix + 1,     iy
@@ -1987,4 +2166,11 @@ def grid_interpolate(x_out, y_out, f, ax, ay, bx, by, hx, hy, nx, ny):
         + (cx1 * cy0 * f[id10])
         + (cx1 * cy1 * f[id11])
     )
+#    f_out = (
+#        (cx0 * cy0 * f[id00])
+#        + (cx1 * cy0 * f[id01])
+#        + (cx0 * cy1 * f[id10])
+#        + (cx1 * cy1 * f[id11])
+#    )
+    
     return f_out

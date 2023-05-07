@@ -275,9 +275,10 @@ class Fractal_plotter:
         self.process(mode="img")
         
 
-    def process(self, mode):
+    def process(self, mode, tile_validator=None):
         """
-        mode: "img" "db"
+        mode: "img" | "db"
+        tile_validator: Optional, func: tile -> bool
         """
         logger.info(self.plotter_info_str())
         logger.info(self.zoom_info_str())
@@ -293,10 +294,10 @@ class Fractal_plotter:
                         self.create_img_mmap(layer)
         else:
             self.open_db()
-            if self.supersampling is not None:
-                dc = fsfilters.Lanczos_decimator()
-                self.lf2 = dc.get_impl(2, self.supersampling)
-                self.lf2_masked = dc.get_masked_impl(2, self.supersampling)
+#            if self.supersampling is not None:
+#                dc = fsfilters.Lanczos_decimator()
+#                self.lf2 = dc.get_impl(2, self.supersampling)
+#                self.lf2_masked = dc.get_masked_impl(2, self.supersampling)
 
         if self.final_render:
             # We need to delete because if will not be recomputed in the
@@ -305,8 +306,8 @@ class Fractal_plotter:
 
         self._raw_arr = dict()
         self._current_tile = {
-                "value": 0,
-                "time": 0.  # time of last evt in seconds
+            "value": 0,
+            "time": 0.  # time of last evt in seconds
         }
 
         # Here we follow a 2-step approach:
@@ -326,20 +327,22 @@ class Fractal_plotter:
                     f.init_subset_mmap(calc_name, self.supersampling)
             else:
                 logger.info(f"Computing and storing raw data for {calc_name}")
-                f.calc_raw(calc_name)
+                f.calc_raw(calc_name, tile_validator)
 
         # Now 2nd step approach:
         # if "dev" (= not final) render, we already know the 'raw' arrays, so
         # just a postprocessing step
         # if "final" render, we compute on the fly
-        self.process_tiles(chunk_slice=None, mode=mode)
+        self.process_tiles(
+            chunk_slice=None, mode=mode, tile_validator=tile_validator
+        )
 
         if mode == "img":
             self.save_images()
             logger.info("Plotting images: done")
         else:
-            logger.info("Saved layer database to XXXXX: done")
-            
+            logger.info(f"Saved layer database to {self.db_path}: done")
+
 
         # Output data file
         self.write_postproc_report()
@@ -384,10 +387,14 @@ class Fractal_plotter:
     @Multithreading_iterator(
         iterable_attr="chunk_slices", iter_kwargs="chunk_slice"
     )
-    def process_tiles(self, chunk_slice, mode):
+    def process_tiles(self, chunk_slice, mode, tile_validator):
         """
         
         """
+        if tile_validator is not None:
+            if not(tile_validator(chunk_slice)):
+                return
+
         # 0) early exit if already computed: push the image tiles
         if self.try_recover and mode == "img":
             f = self.fractal
@@ -457,8 +464,9 @@ class Fractal_plotter:
                     self.push_cropped(
                         chunk_slice, layer=layer, im=self._im[i], ilayer=i
                     )
-            else:
-                self.push_db(chunk_slice, layer=layer)
+            else: # mode = "db"
+                if layer.postname ==:
+                    self.push_db(chunk_slice, layer=layer)
 
         # clean-up
         self.incr_tiles_status(chunk_slice, mode) # mmm not really but...
@@ -800,14 +808,15 @@ class Fractal_plotter:
         del layer_mmap
 
 #------------------------------------------------------------------------------
-    def save_db(self, relpath=None):
+    def save_db(self, relpath=None, exp_zoom_step=None):
         """
         Saves the post-processed data in a numpy structured memmap.
 
         Goes through all the registered layers and stores the results in a 
-        (nposts, nx, ny) memory mapping. This will applies downsampling if
-        requested (Lanczos-2 decimation filter) and the downsampling takes
-        into account the layer mask.
+        (nposts, nx, ny) memory mapping. 
+        In case of supersampling all data points are stored (Downsampling 
+        filtering is delayed to the coloring stage).
+
         A companion text file <relpath>.info is also written: it provides a
         short description of the data structure.
 
@@ -818,6 +827,15 @@ class Fractal_plotter:
             defaults to
             :code:`os.path.join(self.fractal.directory, "layer.db")`
             (ie the relative path defaults to ./layer.db)
+        exp_zoom_step: Optional, int
+            For an exponential zoom covering a very large range, it is
+            necessary to evalutate the bilinear validity radius at successive
+            depths. This setting tells the program to recompute the billinear
+            validity radius for a tile which ending pixels differs from the
+            last reference from more than  `exp_zoom_step` (in the `h`
+            direction). Only valid with a
+            `fractalshades.projection.Expmap` projection and for perturbation
+            fractals.
         """
         if relpath is None:
             self.db_path = os.path.join(self.fractal.directory, "layer.db")
@@ -826,7 +844,11 @@ class Fractal_plotter:
                 self.fractal.directory, relpath
             ))
         self.db_directory = os.path.dirname(self.db_path)
-        self.process(mode="db")
+        
+        if exp_zoom_step is None:
+            self.process(mode="db")
+        else:
+            self.save_expdb_by_steps(exp_zoom_step)
 
         # Writes a short description of the db
         info_path = self.db_path + ".info"
@@ -837,12 +859,60 @@ class Fractal_plotter:
             info_file.write("*array description*\n")
             info_file.write(f"  dtype: {self.post_dtype}\n")
             shape = (len(self.postnames),) + self.size
-            info_file.write(f"  shape: {shape}\n\n")
+            info_file.write(f"  shape: {shape}\n")
+            ss = self.supersampling
+            info_file.write(f"  supersampling: {ss}\n\n")
             info_file.write("*fields description*\n")
             for pn in self.postnames:
                 info_file.write(f"  {pn}\n")
 
         return self.db_path
+
+
+    def save_expdb_by_steps(self, exp_zoom_step):
+        """ Specialised flow for large exp mappings using steps in zoom
+        """
+        proj = self.fractal.projection
+        if not(isinstance(proj, fractalshades.projection.Expmap)):
+            raise ValueError(
+                "exp_zoom_step shall be used only with Expmap"
+            )
+
+        hmin = proj.hmin
+        hmax = proj.hmax
+        nh = self.fractal.nx
+        stp = exp_zoom_step
+        
+        for r in range(0, nh + 1, stp):
+            
+            proj.set_exp_zoom_step(
+                hmin * ((nh - r) / nh) + hmax * (r / nh)
+            )
+            
+            # Need to trigger a recalculation of BLA validity radius
+            # we will call reset_bla_tree and modify in place cycle_indep_args
+            self.reset_bla_tree()
+
+            def validates(chunk_slice):
+                (ix, ixx, iy, iyy) = chunk_slice
+                ret = r < ixx <= (r + stp)
+#                print("in validator", ix, ixx, ret)
+                return ret
+
+            self.process(mode="db", tile_validator=validates)
+            
+        proj.del_exp_zoom_step()
+
+        
+    def reset_bla_tree(self):
+        """ Reset the BLA tree used for calculation taking into account 
+        the projection modifications
+        """
+        f = self.fractal
+        for calc_name, data in f._calc_data.items():
+            cycle_indep_args = data["cycle_indep_args"]
+            f.reset_bla_tree(cycle_indep_args)
+
 
     @property
     def db_status_path(self):
@@ -853,8 +923,19 @@ class Fractal_plotter:
         """ Open 
          - the database memory mappings
          - its associated "progress tracking" db_status
+         
+         Nnote that the db size is inflated in case of supersampling, all data
+         is stored
         """
         self.open_db_status()
+        
+        # The db shape
+        ssg = self.supersampling
+        ss_size = self.size
+        db_field_count = len(self.postnames) # Accounting for 2-fields layers
+        if ssg is not None:
+            ss_size = tuple(ssg * x for x in ss_size)
+        expected_shape = (db_field_count,) + ss_size
 
         try:
             if not(self.try_recover):
@@ -866,7 +947,6 @@ class Fractal_plotter:
             )
 
             # Checking that the size matches...
-            expected_shape = (len(self.postnames),) + self.size
             valid = (expected_shape == _mmap_db.shape)
             if not(valid):
                 raise ValueError("Invalid db")
@@ -894,15 +974,13 @@ class Fractal_plotter:
                 f"Invalidated db, recomputing full db:\n    {e}"
             )
 
-        db_field_count = len(self.postnames) # Accounting for 2-fields layers
-        db_dtype = self.post_dtype
         # Creates the new datatase == structured memory mapping
         fs.utils.mkdir_p(os.path.dirname(self.db_path))
         _mmap_db = open_memmap(
             filename=self.db_path, 
             mode='w+',
-            dtype=db_dtype,
-            shape=(db_field_count,) + self.size,
+            dtype=self.post_dtype,
+            shape=expected_shape,
             fortran_order=False,
             version=None
         )
@@ -951,41 +1029,46 @@ class Fractal_plotter:
         field_count, post_index = layer.get_postproc_index()
         db_crop = layer.db_crop(chunk_slice)
         s = self.supersampling
-
         if s:
-            # Here, we apply a homemade Lanczos-2 resizing filter
-            # We apply it for each field (1 or 2) if available
-            # We will also take into account masked values
-            if layer.mask is not None:
-                masked = True
-                mask_crop = layer.mask[0].db_crop(chunk_slice)
-                lf2 = self.lf2_masked
-                # print("mask crop in push_db", mask_crop.dtype, mask_crop.shape)
-            else:
-                masked = False
-                lf2 = self.lf2
-
+            # Here, we inflated alls dims by s
+            ix *= s
+            ixx *= s
+            iy *= s
+            iyy *= s
             
-            # print("**db crop in push_db", db_crop.dtype, db_crop.shape)
-            db_crop = db_crop.astype(self.post_dtype, copy=False)
-            # print("**>>db crop in push_db", db_crop.dtype, db_crop.shape)
-
-            if field_count == 1:
-                if masked:
-                    db_crop = lf2(db_crop, mask_crop)
-                else:
-                    db_crop = lf2(db_crop)
-
-            elif field_count == 2:
-                _, cx, cy = db_crop.shape
-                _db_crop = np.empty((2, cx // s, cy // s), dtype=db_crop.dtype)
-                if masked:
-                    _db_crop[0, :, :] = lf2(db_crop[0, :, :], mask_crop)
-                    _db_crop[1, :, :] = lf2(db_crop[1, :, :], mask_crop)
-                else:
-                    _db_crop[0, :, :] = lf2(db_crop[0, :, :])
-                    _db_crop[1, :, :] = lf2(db_crop[1, :, :])
-                db_crop = _db_crop
+#            # Here, we apply a homemade Lanczos-2 resizing filter
+#            # We apply it for each field (1 or 2) if available
+#            # We will also take into account masked values
+#            if layer.mask is not None:
+#                masked = True
+#                mask_crop = layer.mask[0].db_crop(chunk_slice)
+#                lf2 = self.lf2_masked
+#                # print("mask crop in push_db", mask_crop.dtype, mask_crop.shape)
+#            else:
+#                masked = False
+#                lf2 = self.lf2
+#
+#            
+#            # print("**db crop in push_db", db_crop.dtype, db_crop.shape)
+#            db_crop = db_crop.astype(self.post_dtype, copy=False)
+#            # print("**>>db crop in push_db", db_crop.dtype, db_crop.shape)
+#
+#            if field_count == 1:
+#                if masked:
+#                    db_crop = lf2(db_crop, mask_crop)
+#                else:
+#                    db_crop = lf2(db_crop)
+#
+#            elif field_count == 2:
+#                _, cx, cy = db_crop.shape
+#                _db_crop = np.empty((2, cx // s, cy // s), dtype=db_crop.dtype)
+#                if masked:
+#                    _db_crop[0, :, :] = lf2(db_crop[0, :, :], mask_crop)
+#                    _db_crop[1, :, :] = lf2(db_crop[1, :, :], mask_crop)
+#                else:
+#                    _db_crop[0, :, :] = lf2(db_crop[0, :, :])
+#                    _db_crop[1, :, :] = lf2(db_crop[1, :, :])
+#                db_crop = _db_crop
 
         db_mmap = open_memmap(filename=self.db_path, mode='r+')
         if field_count == 1:
@@ -1586,14 +1669,6 @@ advanced users when subclassing.
 
         dy_vec /= self.xy_ratio
 
-#        # Apply the Linear part of the tranformation
-#        # Moved to after the NL part
-#        if theta != 0 and self.projection != "expmap":
-#            apply_rot_2d(theta, dx_vec, dy_vec)
-#
-#        if self.skew is not None:
-#            apply_skew_2d(self.skew, dx_vec, dy_vec)
-
         res = dx_vec + 1j * dy_vec
 
         return res
@@ -1690,7 +1765,7 @@ advanced users when subclassing.
         Prepares & stores the data needed for future calculation of tiles
 
         /!\ If error here check that the Fractal calculation implementation
-        returns the expected dict of functionss:
+        returns the expected dict of functions:
         {
             "set_state": set_state,
             "initialize": initialize,
@@ -2280,9 +2355,13 @@ advanced users when subclassing.
     @Multithreading_iterator(
         iterable_attr="chunk_slices", iter_kwargs="chunk_slice"
     )
-    def compute_rawdata_dev(self, calc_name, chunk_slice):
+    def compute_rawdata_dev(self, calc_name, chunk_slice, tile_validator=None):
         """ In dev mode we follow a 2-step approach : here the compute step
         """
+        if tile_validator is not None:
+            if not(tile_validator(chunk_slice)):
+                return
+
         if self.is_interrupted():
             logger.debug(
                 "Interrupted - skipping calc for:\n"
@@ -2482,7 +2561,7 @@ advanced users when subclassing.
         return bool_subset
 
 
-    def calc_raw(self, calc_name):
+    def calc_raw(self, calc_name, tile_validator=None):
         """ Here we can create the memory mappings and launch the calculation
         loop"""
         # Note: at this point res_available(calc_name) IS True, however
@@ -2492,7 +2571,9 @@ advanced users when subclassing.
             self.init_data_mmaps(calc_name)
 
         # Launching the calculation + mmap storing multithreading loop
-        self.compute_rawdata_dev(calc_name, chunk_slice=None)
+        self.compute_rawdata_dev(
+            calc_name, chunk_slice=None, tile_validator=tile_validator
+        )
 
 
     def postproc(self, postproc_batch, chunk_slice, postproc_options):

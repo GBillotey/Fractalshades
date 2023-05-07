@@ -41,7 +41,7 @@ def lanczos_decimation_kernel(a: int, decimation: int, phase: float=None):
     if phase == 0.5: # We use phase = 0.5
         k = lanczos_filter((np.arange(-a * dec, a * dec) + 0.5) / dec)
     else: # We use phase = 0
-        k = lanczos_filter(np.arange(-a * dec + 1, a * dec) / dec)
+        k = lanczos_filter(np.arange(-a * dec + 1., a * dec) / dec)
     return k # Not normallized, as we normalize later.
 
 
@@ -75,7 +75,7 @@ class Lanczos_decimator:
         a: int
             The number of lobes for Lanczos kernel
         decimation: int
-            the decimation coefficent (will keep one pixel for each set of
+            the decimation coefficient (will keep one pixel for each set of
             ``decimate`` pixels)
         """
         cache_key = (a, decimation)
@@ -384,7 +384,7 @@ class Lanczos_upsampler:
         a: int
             The number of lobes for Lanczos kernel support
         upsampling: int
-            the upsampling factor (the final array will have ``decimate``
+            the upsampling factor (the final array will have ``upsampling``
             pixels in both direction for each pixel of the original image,
             except the last pixel which is kept as-is
         """
@@ -456,49 +456,3 @@ def upsampling_impl(padded, coeffs_2d, nx, ny, usp, nc, out):
         
     return impl
         
-#        def impl(decimation, nc, coeffs_2d, padded, pmask, out):
-#            out_nx, out_ny = out.shape
-#            # implementation with clipping to [0 - 255]
-#            for ix in range(out_nx):
-#                for iy in range(out_ny):
-#                    tmp = 0.
-#                    f_val = 0.
-#                    for cx in range(nc):
-#                        for cy in range(nc):
-#                            iix = ix * decimation + cx
-#                            iiy = iy * decimation + cy
-#                            lpm = pmask[iix, iiy]
-#                            if lpm > 0.:
-#                                lval = coeffs_2d[cx, cy] * lpm
-#                                f_val += lval
-#                                tmp += lval * padded[iix, iiy]
-#                    if f_val == 0.: # All values masked, defaults to 0
-#                        out[ix, iy] = 0 # padded[ix, iy]
-#                    else:
-#                        out[ix, iy] = max(0, min(255,tmp / f_val))
-#            return out
-#
-#    return impl
-#
-#
-#@numba.njit(fastmath=True, nogil=True, cache=True)
-#def upsampling_impl(padded, coeffs_2d, nx, ny, usp, nc, out):
-#
-#    for ix in range((nx - 1) * usp + 1):
-#        intx, iphase_x = divmod(-ix, -usp)
-#
-#        for iy in range((ny - 1) * usp + 1):
-#            inty, iphase_y = divmod(-iy, -usp)
-#            tmp = 0. # float64
-#
-#            for cx in range(nc):
-#                for cy in range(nc):
-#                    kx = cx * usp + iphase_x
-#                    ky = cy * usp + iphase_y
-#                    iix = intx + cx
-#                    iiy = inty + cy
-#                    tmp += coeffs_2d[kx, ky] * padded[iix, iiy]
-#            out[ix, iy] = tmp # casting
-#
-#    return out 
-

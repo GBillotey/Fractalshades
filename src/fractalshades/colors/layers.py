@@ -186,6 +186,11 @@ class Virtual_layer:
         nx, ny = ixx - ix, iyy - iy
 
         ssg = plotter.supersampling
+        
+#        print("??? in LAYER getitem")
+#        print("??? plotter", plotter)
+#        print("??? plotter.supersampling", plotter.supersampling)
+        
         if ssg is not None:
             nx *= ssg
             ny *= ssg

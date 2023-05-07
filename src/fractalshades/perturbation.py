@@ -584,8 +584,7 @@ directory : str
         else:
             self.set_status("Bilin. approx", "running")
             eps = self.BLA_eps
-            M_bla, r_bla, bla_len, stages_bla = self.get_BLA_tree(
-                    Zn_path, eps)
+            M_bla, r_bla, bla_len, stages_bla = self.get_BLA_tree(Zn_path, eps)
             self.set_status("Bilin. approx", "completed")   
 
 
@@ -611,6 +610,27 @@ directory : str
             )
 
         return cycle_indep_args
+
+
+    def reset_bla_tree(self, cycle_indep_args):
+        """ 
+        Makes in-place modification of BLA validaty radius for expmap zooms
+
+        cycle_indep_args : the data to modify in place
+        Note: the fractal projection shall have been modified through
+        its ``set_exp_zoom_step`` method
+        """
+        if self.BLA_eps is None:
+            return
+
+        Zn_path = self.Zn_path
+        self.kc = self.ref_point_kc() # We resets kc
+        
+        rbla_index = 17 if self.holomorphic else 21
+        ( _, cycle_indep_args[rbla_index][:], _, _
+         ) = self.get_BLA_tree(Zn_path, self.BLA_eps)
+        
+        print("******* finished reset_bla_tree")
 
 
     def fingerprint_matching(self, calc_name, test_fingerprint, log=False):

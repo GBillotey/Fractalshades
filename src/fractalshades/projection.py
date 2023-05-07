@@ -120,13 +120,16 @@ class Projection:
         --------
         w, h: floats, width and height of the bounding box
         """
+        # proj_dx = self.dx * self.projection.scale
+        # corner_a = lin_proj_impl_noscale(0.5 * (w + 1j * h)) * proj_dx
+        # corner_a is absolute the distance to center
         raise NotImplementedError(
             f"Arbitray precision not implemented for {self.__class__.__name__}"
         )
     
     @property
     def min_local_scale(self):
-        """ Used in to Perturbation fractal todefine min pix size. Minimum of
+        """ Used in to Perturbation fractal to define min pix size. Minimum of
         local |df| (before general scaling `scale`)
         Projections supporting arbitray precision shall implement.
 
@@ -134,6 +137,7 @@ class Projection:
         --------
         scale: mpmath.mpf or float, the scale factor
         """
+        # pix = proj.min_local_scale * proj.scale * (f.dx / f.nx)
         raise NotImplementedError(
             f"Arbitray precision not supported by {self.__class__.__name__}"
         )
@@ -224,14 +228,6 @@ class Expmap(Projection):
             for a standalone picture, and to ``False`` if used as input for a
             movie making tool.
         """
-#         Development notes: TODO REVIEW THESE NOTES
-#         ------------------
-#         For arbitrary deep zooms this projection is implemented as the
-#         non-evaluated composition of a scaling np.exp(self.hmoy) and a
-#         local exponential mapping.
-#         For stadard precision this is simply the mapping as described in the
-#         docstring above.
-
         self.rotates_df = rotates_df
 
         if mpmath.exp(hmax) > (1. / fs.settings.xrange_zoom_level):
@@ -247,6 +243,14 @@ class Expmap(Projection):
         self.dh = hmax - hmin
 
         self.make_impl()
+
+    def set_exp_zoom_step(self, h_step):
+        """ property used in ``save_db`` with exp_zoom_step set """
+        self._h_step = h_step
+    
+    def del_exp_zoom_step(self):
+        """ property used in ``save_db`` with exp_zoom_step set """
+        delattr(self, "_h_step")
 
     def adjust_to_zoom(self, fractal):
         # We need to adjust the fractal xy_ratio in order to match hmax - hmin
@@ -320,10 +324,20 @@ class Expmap(Projection):
     def scale(self):
         # Returns the scaling - for perturbation implementation
         return mpmath.exp(self.hmoy)
-    
+
     def bounding_box(self, xy_ratio):
         # Returns a bounding box - for perturbation implementation only
-        w = np.exp(0.5 * self.dh)
+        # proj_dx = self.dx * self.projection.scale
+        # corner_a = lin_proj_impl_noscale(0.5 * (w + 1j * h)) * proj_dx
+        # corner_a is absolute the distance to center
+        
+        if hasattr(self, "_h_step"):
+            print("******* BOUNDING BOX with _h_step", self._h_step)
+            wh = 0.5 * self.dh + (self._h_step - self.hmax)
+        else:
+            wh = 0.5 * self.dh
+
+        w = np.exp(wh) # TODO here could use a mpf
         return w, w
 
     @property

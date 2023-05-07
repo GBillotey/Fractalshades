@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-This contains the tests for the various graphical exports option,
-including complex layering etc.
+This contains the tests for saving a db and plotting from it
 """
+
 import os
 import unittest
 import shutil
@@ -19,6 +19,7 @@ from fractalshades.postproc import (
     Postproc_batch,
     Continuous_iter_pp,
     DEM_normal_pp,
+    DEM_pp,
     Raw_pp,
     Fieldlines_pp,
     Attr_normal_pp,
@@ -38,7 +39,7 @@ from fractalshades.colors.layers import (
 import fractalshades.db
 
 
-class Test_layers(unittest.TestCase):
+class Test_db(unittest.TestCase):
     
     @classmethod
     def setUpClass(cls):
@@ -125,28 +126,32 @@ class Test_layers(unittest.TestCase):
     # @test_config.no_stdout
     def test_db_color_basic(self):
         """ Testing basic `Color_layer` plots from a saved database 
-        Note: works also with supersampling
+        Note: matrix test with supersampling & modifier to account for diff
+        code paths
         """
-        for option in ("raw", "supersampling"):
-            with self.subTest(option=option):
+        def plotter_modifier(plotter, time):
+            """ A modifier that does nothing """
+            pass
+        
+        for (ss, mod) in (
+                (None, None),
+                (None, plotter_modifier),
+                ('3x3', None),
+                ('3x3', plotter_modifier),
+        ):
+            with self.subTest(supersampling=ss, plotting_modifier=mod):
 
                 pp = Postproc_batch(self.f, self.calc_name)
 
                 pp.add_postproc("cont_iter", Continuous_iter_pp())
                 pp.add_postproc("interior",
                                 Raw_pp("stop_reason", func="x != 1."))
-                
-                if option == "raw":
-                    plotter = fs.Fractal_plotter(
-                        pp, final_render=True, supersampling=None,
-                        recovery_mode=False
-                    )
 
-                elif option == "supersampling":
-                    plotter = fs.Fractal_plotter(
-                        pp, final_render=True, supersampling="3x3",
-                        recovery_mode=False
-                    )
+                plotter = fs.Fractal_plotter(
+                    pp, final_render=True,
+                    supersampling=ss,
+                    recovery_mode=False
+                )
 
                 plotter.add_layer(Bool_layer("interior", output=True))
                 plotter.add_layer(Color_layer(
@@ -163,11 +168,15 @@ class Test_layers(unittest.TestCase):
                 db_path = plotter.save_db()
         
                 db = fs.db.Db(db_path)
-                db.set_plotter(plotter, "interior")
-                db.set_plotter(plotter, "cont_iter")
+                # db.set_plotter(plotter, "interior")
+                db.set_plotter(plotter, "cont_iter", plotting_modifier=mod)
                 img = db.plot(self.frame)
+                
+                mod_str = "frozen" if mod is None else "modified"
+                
                 out_file = os.path.join(
-                    self.db_dir, f"test_db_color_basic_{option}.png")
+                    self.db_dir,
+                    f"test_db_color_basic_{mod_str}_{ss}.png")
                 img.save(out_file)
                 
                 ref_file = os.path.join(
@@ -189,8 +198,17 @@ class Test_layers(unittest.TestCase):
               applied in the last step, will just erase the
               alpha-compositing
         """
-        for option in ("raw", "supersampling"):
-            with self.subTest(option=option):
+        def plotter_modifier(plotter, time):
+            """ A modifier that does nothing """
+            pass
+        
+        for (ss, mod) in (
+                (None, None),
+                (None, plotter_modifier),
+                ('2x2', None),
+                ('2x2', plotter_modifier),
+        ):
+            with self.subTest(supersampling=ss, plotting_modifier=mod):
 
                 layer_name = "overlay1"
                 interior_calc_name = self.calc_name + "_over-1"
@@ -220,18 +238,12 @@ class Test_layers(unittest.TestCase):
                 pp.add_postproc("attr_map", Attr_normal_pp())
                 pp.add_postproc("attr", Attr_pp())
         
-        
-                if option == "raw":
-                    plotter = fs.Fractal_plotter(
-                        [pp0, pp], final_render=True, supersampling=None,
-                        recovery_mode=False
-                    )   
-                elif option == "supersampling":
-                    plotter = fs.Fractal_plotter(
-                        [pp0, pp], final_render=True, supersampling="3x3",
-                        recovery_mode=False
-                    )
-        
+
+                plotter = fs.Fractal_plotter(
+                    [pp0, pp], final_render=True, supersampling=ss,
+                    recovery_mode=False
+                )   
+
                 plotter.add_layer(Bool_layer("div", output=False))
                 plotter.add_layer(Bool_layer("interior", output=True))
                 plotter.add_layer(Color_layer(
@@ -314,10 +326,14 @@ class Test_layers(unittest.TestCase):
                 # mask-aware downsampling: layers masked during db calculation 
                 # Then unmask for final output.
                 plotter[layer_name].mask = None
-                db.set_plotter(plotter, layer_name)
+                db.set_plotter(plotter, layer_name, plotting_modifier=mod)
                 img = db.plot(self.frame)
+                
+                mod_str = "frozen" if mod is None else "modified"
+                
                 out_file = os.path.join(
-                    self.db_dir, f"test_db_overlay1{option}.png")
+                    self.db_dir,
+                    f"test_db_overlay1_{mod_str}_{ss}.png")
                 img.save(out_file)
 
                 ref_file = os.path.join(
@@ -333,13 +349,18 @@ class Test_layers(unittest.TestCase):
         self.assertTrue(err < err_max)
 
 
+
+
+
+
 if __name__ == "__main__":
     runner = unittest.TextTestRunner(verbosity=2)
     full_test = True
     if full_test:
-        runner.run(test_config.suite([Test_layers]))
+        runner.run(test_config.suite([Test_db]))
     else:
         suite = unittest.TestSuite()
-        # suite.addTest(Test_layers("test_db_color_basic"))
-        suite.addTest(Test_layers("test_db_color_basic"))
+        suite.addTest(Test_db("test_db_color_basic"))
+        suite.addTest(Test_db("test_db_overlay1"))
         runner.run(suite)
+    print("ok")

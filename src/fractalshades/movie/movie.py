@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 class Movie():
 
     def __init__(self, plotter, postname, size=(720, 480), fps=24,
-                 supersampling=None, plotting_modifier=None,
+                 plotting_modifier=None,
                  reload_frozen=False):
         """
         A movie-making class
@@ -51,9 +51,6 @@ class Movie():
             Movie screen size in pixels. Default to 720 x 480 
         fps: int
             movie frame-count per second
-        supersampling: bool
-            If `True`, a 2 x 2 supersampling will be applied for each frame
-            calculation 
         plotting_modifier: Optionnal, callable(plotter, time)
             A callback which will modify the plotter instance before each time
             step. Defaults to None, which allows to 'freeze' in place the
@@ -77,7 +74,6 @@ class Movie():
 
         self.plotter = plotter
         self.postname = postname
-        self.supersampling = supersampling
         self.plotting_modifier = plotting_modifier
         self.reload_frozen = reload_frozen
 
@@ -223,7 +219,6 @@ class Camera_move:
 
         self.nx = self.movie.width
         self.xy_ratio = self.movie.width / self.movie.height
-        self.supersampling = self.movie.supersampling
         self.plotting_modifier = self.movie.plotting_modifier
         
         self.make_grids()
@@ -325,7 +320,6 @@ class Camera_pan(Camera_move):
             dx=frame_dx,
             nx=self.nx,
             xy_ratio=self.xy_ratio,
-            supersampling=self.supersampling,
             t=t_frame,
             plotting_modifier=self.plotting_modifier
         )
@@ -346,11 +340,9 @@ class Camera_zoom(Camera_move):
         ----------
         db: fs.db.Exp_Db
             The underlying database
-        t: 1d array-like
-            time for the trajectories
-        h: 1d array-like, > 0
-            trajectory of zoom logarithmic factor h
-            The screen is scaled by np.exp(h) 
+        h_evol: couple of 1d array-like - (h_t, h)
+            Trajectory of zoom logarithmic factor h
+            The screen is scaled by np.exp(h)
         """
         if not(isinstance(db, fs.db.Exp_db)):
             raise ValueError("Camera_zoom shall be used with fs.db.Exp_Db")
@@ -373,14 +365,30 @@ class Camera_zoom(Camera_move):
             h=frame_h,
             nx=self.nx,
             xy_ratio=self.xy_ratio,
-            supersampling=self.supersampling,
             pts=self.pts
         )
 
     def make_grids(self):
         self.pts = fs.db.Exp_frame.make_exp_grid(
-            self.nx, self.xy_ratio, self.supersampling
+            self.nx, self.xy_ratio
         )
 
-        # TODO: store the 2-supersampled grid - if we want to support this
+class Camera_custom(Camera_move):
 
+    def __init__(self, db, tmin, tmax, zoom_evol):
+        """
+        A Camera move for which each frame is computed from scratch from the
+        zoom inputs
+
+        Parameters:
+        ----------
+        db: fs.db.Custom_db
+            The underlying database
+        zoom_evol: function float -> dict
+            Trajectory of zoom_kwargs
+        """
+        super().__init__(db, tmin, tmax)
+
+
+    def get_frame(self, iframe):
+        """  Get the zoom for this frame and compute it """
