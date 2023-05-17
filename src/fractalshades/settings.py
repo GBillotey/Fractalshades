@@ -31,7 +31,7 @@ inspect_calc: bool = False
 """Outputs a synthesis report file of the calculation done by tiles.
 Useful for debugging"""
 
-chunk_size: int  = 200
+chunk_size: int  = 137 # 200
 """The size for the basic calculation tile is chunk_size x chunk_size"""
 
 db_chunk_size: int  = 400
@@ -45,7 +45,7 @@ GUI_image_Mblimit = 0
 no limit (default). If limit exceeded, the image is still written to disk but 
 will not be interactively displayed in the GUI"""
 
-def remove_decompression_size_check():
+def disable_decompression_size_check():
     """PIL sets a default output limit to 89478485 pixels
     (1024 * 1024 * 1024 // 4 // 3) and will raise a 
     DecompressionBombWarning if it is exceeded, and a DecompressionBombError

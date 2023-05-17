@@ -7,6 +7,9 @@ Rev 1.1
 Rev 1.1.0
 .........
 - Added mappings, filters, databse export and movie making
+- renamed to ``disable_decompression_size_check``
+- improved memory management of BLA iterations, now images with up to
+  500 millions iterations can be computed on a system with 16 Mo RAM.
 
 Rev 1.0
 ~~~~~~~

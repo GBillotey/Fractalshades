@@ -1,35 +1,29 @@
 # -*- coding: utf-8 -*-
 """
-This contains the tests for saving a db and plotting from it
+This file contains the tests for saving a db and plotting from it
 """
 
 import os
 import unittest
-import shutil
-import copy
 
 import numpy as np
 
 import fractalshades as fs
 import fractalshades.utils as fsutils
 import fractalshades.colors as fscolors
-#import fractalshades.postproc as fspp
 import fractalshades.models as fsm
 from fractalshades.postproc import (
     Postproc_batch,
     Continuous_iter_pp,
     DEM_normal_pp,
-    DEM_pp,
     Raw_pp,
     Fieldlines_pp,
     Attr_normal_pp,
     Attr_pp,
     Fractal_array
 )
-import test_config
 from fractalshades.colors.layers import (
     Color_layer,
-    Grey_layer,
     Bool_layer,
     Normal_map_layer,
     Virtual_layer,
@@ -38,6 +32,7 @@ from fractalshades.colors.layers import (
 )
 import fractalshades.db
 
+import test_config
 
 class Test_db(unittest.TestCase):
     
@@ -165,11 +160,16 @@ class Test_db(unittest.TestCase):
                         plotter["interior"],
                         mask_color=(0., 0., 0.)
                 )
-                db_path = plotter.save_db()
-        
+                
+                if mod is None:
+                    # Saving the rgb image as *.postdb
+                    db_path = plotter.save_db(postdb_layer="cont_iter")
+                else:
+                    db_path = plotter.save_db()
+
                 db = fs.db.Db(db_path)
-                # db.set_plotter(plotter, "interior")
-                db.set_plotter(plotter, "cont_iter", plotting_modifier=mod)
+                if mod is not None:
+                    db.set_plotter(plotter, "cont_iter", plotting_modifier=mod)
                 img = db.plot(self.frame)
                 
                 mod_str = "frozen" if mod is None else "modified"
@@ -182,9 +182,7 @@ class Test_db(unittest.TestCase):
                 ref_file = os.path.join(
                     self.dir_ref, f"Color_layer_cont_iter.REF.png")
                 self.check_image(ref_file, out_file)
-                
 
-        
 
     # @test_config.no_stdout
     def test_db_overlay1(self):
@@ -270,7 +268,6 @@ class Test_db(unittest.TestCase):
                     k_diffuse=0.8,
                     k_specular=40.,
                     shininess=400.,
-                    # angles=(-40., 25.),
                     polar_angle=-40.,
                     azimuth_angle=25.,
                     color=np.array([1.0, 1.0, 0.8]))
@@ -280,13 +277,11 @@ class Test_db(unittest.TestCase):
                     shininess=400.,
                     polar_angle=110.,
                     azimuth_angle=25.,
-                    # angles=(110., 25.),
                     color=np.array([1.0, 0.0, 0.0]))
                 light.add_light_source(
                     k_diffuse=0.1,
                     k_specular=3.,
                     shininess=400.,
-                    # angles=(130., 25.),
                     polar_angle=130.,
                     azimuth_angle=25.,
                     color=np.array([0.0, 1.0, 0.0]))
@@ -294,7 +289,6 @@ class Test_db(unittest.TestCase):
                     k_diffuse=0.1,
                     k_specular=40.,
                     shininess=400.,
-                    # angles=(150., 25.),
                     polar_angle=150.,
                     azimuth_angle=25.,
                     color=np.array([0.0, 0.0, 1.0]))
@@ -305,28 +299,25 @@ class Test_db(unittest.TestCase):
                 # Overlay : alpha composite
                 overlay_mode = Overlay_mode("alpha_composite")
                 plotter[layer_name].shade(plotter["DEM_map"], light)
-                
-                plotter[layer_name].set_mask(
-                        plotter["interior"],
-                        mask_color=(0., 0., 0.)
-                )
+
                 plotter[layer_name].overlay(
                         plotter["attr"],
                         overlay_mode=overlay_mode
                 )
-                # Now delete the mask for alpha-compositing
-                db_path = plotter.save_db()
-
                 
-                db_path = os.path.join(self.db_dir, "layer.db")
+                
+                if mod is None:
+                    # Saving the rgb image as *.postdb
+                    db_path = plotter.save_db(postdb_layer=layer_name)
+                else:
+                    db_path = plotter.save_db()
+                
+                
                 db = fs.db.Db(db_path)
-                
-                # !!  Now delete the mask for alpha-compositing
-                # Note that this procedure has to be followed to have a correct
-                # mask-aware downsampling: layers masked during db calculation 
-                # Then unmask for final output.
-                plotter[layer_name].mask = None
-                db.set_plotter(plotter, layer_name, plotting_modifier=mod)
+
+                if mod is not None:
+                    db.set_plotter(plotter, layer_name, plotting_modifier=mod)
+            
                 img = db.plot(self.frame)
                 
                 mod_str = "frozen" if mod is None else "modified"
@@ -360,7 +351,7 @@ if __name__ == "__main__":
         runner.run(test_config.suite([Test_db]))
     else:
         suite = unittest.TestSuite()
-        suite.addTest(Test_db("test_db_color_basic"))
+        # suite.addTest(Test_db("test_db_color_basic"))
         suite.addTest(Test_db("test_db_overlay1"))
         runner.run(suite)
     print("ok")

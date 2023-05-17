@@ -41,6 +41,8 @@ def plot(plot_dir):
     distance estimation method
     """
     fs.settings.enable_multithreading = True
+    fs.settings.log_directory = os.path.join(plot_dir, "log")
+    fs.set_log_handlers(verbosity="debug @ console + log")
     # Define the parameters for this calculation
     x = -0.746223962861
     y = -0.0959468433527

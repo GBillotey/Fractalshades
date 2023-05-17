@@ -157,8 +157,16 @@ class Fractal_plotter:
     
     @property
     def size(self):
+        # The array shapes
         f = self.fractal
-        return (f.nx, f.ny)
+        return (f.ny, f.nx) 
+
+    @property
+    def im_size(self):
+        # The image size 
+        f = self.fractal
+        return (f.nx, f.ny) 
+
 
     def add_postproc_batch(self, postproc_batch):
         """
@@ -248,9 +256,9 @@ class Fractal_plotter:
         raise KeyError("Layer {} not in available layers: {}".format(
                 layer_name, list(l.postname for l in self.layers)))
 
-    def plotter_info_str(self, to_db=False):
-        if to_db:
-            str_info = "Output to database: plotter options"
+    def plotter_info_str(self, mode):
+        if "db" in mode:
+            str_info = f"Output to database .{mode}: plotter options"
         else:
             str_info = "Plotting images: plotter options"
         for k, v in self.postproc_options.items():
@@ -272,18 +280,27 @@ class Fractal_plotter:
         When called, it will got through all the instance-registered layers
         and plot each layer for which the `output` attribute is set to `True`.
         """
+        self._relpath = None  # Use default locations for the output files
+        self._mode = "img"
         self.process(mode="img")
-        
 
-    def process(self, mode, tile_validator=None):
+
+    def process(self, mode, postdb_layer=None, tile_validator=None):
         """
-        mode: "img" | "db"
-        tile_validator: Optional, func: tile -> bool
+        mode: "img" | "db" | "postdb"
+        postdb_layer: Optional Layer object, used if exporting a .postdb
+        tile_validator: Optional, func: tile -> bool - used fot large expmap
+            reference recomputing
         """
-        logger.info(self.plotter_info_str())
+        logger.info(self.plotter_info_str(mode))
         logger.info(self.zoom_info_str())
 
-        assert mode in ["img", "db"]
+        assert mode in ("img", "db","postdb")
+                       # "expdb", "postexpdb")
+        
+        if postdb_layer is not None:
+            # Convert the str to its Layer object
+            postdb_layer = self[postdb_layer]
 
         # Open the image memory mappings; open PIL images
         if mode == "img":
@@ -291,9 +308,10 @@ class Fractal_plotter:
             if self.final_render:
                 for i, layer in enumerate(self.layers):
                     if layer.output:
-                        self.create_img_mmap(layer)
+                        self.open_postdb(layer)
+                        # self.create_img_mmap(layer)
         else:
-            self.open_db()
+            self.open_any_db(mode, postdb_layer)
 #            if self.supersampling is not None:
 #                dc = fsfilters.Lanczos_decimator()
 #                self.lf2 = dc.get_impl(2, self.supersampling)
@@ -334,7 +352,10 @@ class Fractal_plotter:
         # just a postprocessing step
         # if "final" render, we compute on the fly
         self.process_tiles(
-            chunk_slice=None, mode=mode, tile_validator=tile_validator
+            chunk_slice=None,
+            mode=mode,
+            postdb_layer=postdb_layer,
+            tile_validator=tile_validator
         )
 
         if mode == "img":
@@ -387,9 +408,9 @@ class Fractal_plotter:
     @Multithreading_iterator(
         iterable_attr="chunk_slices", iter_kwargs="chunk_slice"
     )
-    def process_tiles(self, chunk_slice, mode, tile_validator):
+    def process_tiles(self, chunk_slice, mode, postdb_layer, tile_validator):
         """
-        
+        postdb_layer: target layer in .postdb mode
         """
         if tile_validator is not None:
             if not(tile_validator(chunk_slice)):
@@ -400,15 +421,15 @@ class Fractal_plotter:
             f = self.fractal
             rank = f.chunk_rank(chunk_slice)
             _mmap_status = open_memmap(
-                filename=self.mmap_status_path, mode="r+"
+                filename=self.postdb_status_path(None), mode="r+"
             )
             is_valid = (_mmap_status[rank] > 0)
             del _mmap_status
             if is_valid:
                 for i, layer in enumerate(self.layers):
                     # We need the postproc
-                    self.push_reloaded(
-                        chunk_slice, layer=layer, im=self._im[i], ilayer=i
+                    self.push_reloaded(  # TODO check this 
+                        chunk_slice, layer=layer, im=self._im[i] #, ilayer=i
                     )
                     # TODO  'update scaling' may be invalid as we lost the
                     # data... would need a separate mmap to store min / max
@@ -416,19 +437,25 @@ class Fractal_plotter:
                 self.incr_tiles_status(chunk_slice, mode)
                 return
 
-        if mode == "db":
-            f = self.fractal
-            rank = f.chunk_rank(chunk_slice)
-            
-            _db_status = open_memmap(
-                filename=self.db_status_path, mode="r+"
-            )
-            is_valid = (_db_status[rank] > 0)
-            del _db_status
-            if is_valid:
-                # Nothing to compute here, skipping this CALC
-                logger.debug(f"Skipping db calculation for tile {chunk_slice}")
-                return
+        if "db" in mode:
+            if mode == "db":
+                filename = self.db_status_path(self.db_path())
+            elif mode == "postdb":
+                filename = self.postdb_status_path(
+                        self.postdb_path(postdb_layer)
+                )
+                
+                f = self.fractal
+                rank = f.chunk_rank(chunk_slice)
+                
+    #            db_status_path = self.db_status_path(self.db_path())
+                _db_status = open_memmap(filename=filename, mode="r+")
+                is_valid = (_db_status[rank] > 0)
+                del _db_status
+                if is_valid:
+                    # Nothing to compute here, skipping this CALC
+                    logger.debug(f"Skipping db calculation for tile {chunk_slice}")
+                    return
 
 
         # 1) Compute the raw postprocs for this field
@@ -464,9 +491,24 @@ class Fractal_plotter:
                     self.push_cropped(
                         chunk_slice, layer=layer, im=self._im[i], ilayer=i
                     )
-            else: # mode = "db"
-                if layer.postname ==:
-                    self.push_db(chunk_slice, layer=layer)
+            elif mode == "db":
+                self.push_db(chunk_slice, layer=layer)
+
+#            elif mode == "postdb":
+#                # pushed to postdb but, only if this is the target layer
+#                if layer is postdb_layer:
+#                    print("****************FOUND THE GOOD ONE !!!!!!!!!!!!!!!!!!!!!!!!!")
+##                    im = self._im[i]
+##                    assert im is not None
+#                    self.push_postdb(chunk_slice, layer=postdb_layer)
+##                    layer, im, ilayer)
+##                self.push_db(chunk_slice, layer=layer)
+
+#            else: # mode = "postdb"
+#                raise ValueError(f"Unrecognised mode {mode}")
+        # Push the postdb layer at the end only (in case some blending occurs)
+        if mode == "postdb":
+            self.push_postdb(chunk_slice, layer=postdb_layer)
 
         # clean-up
         self.incr_tiles_status(chunk_slice, mode) # mmm not really but...
@@ -511,7 +553,7 @@ class Fractal_plotter:
         if self.final_render and (mode == "img"):
             rank = f.chunk_rank(chunk_slice)
             _mmap_status = open_memmap(
-                filename=self.mmap_status_path, mode="r+"
+                filename=self.postdb_status_path(None), mode="r+" # self.mmap_status_path
             )
             _mmap_status[rank] = 1
             del _mmap_status
@@ -519,8 +561,11 @@ class Fractal_plotter:
         if mode == "db":
             rank = f.chunk_rank(chunk_slice)
             _db_status = open_memmap(
-                filename=self.db_status_path, mode="r+"
+                filename=self.db_status_path(self.db_path()), mode="r+" #self.db_status_path,
             )
+#            _db_status = open_memmap(
+#                filename=self.db_status_path, mode="r+"
+#            )
             _db_status[rank] = 1
             del _db_status
 
@@ -548,7 +593,7 @@ class Fractal_plotter:
             nx *= ssg
             ny *= ssg
 
-        return np.reshape(arr, (nx, ny))
+        return np.reshape(arr, (ny, nx))
 
 
     def write_postproc_report(self):
@@ -594,131 +639,130 @@ class Fractal_plotter:
          - the associated memory mappings in case of "final render"
         ("""
         self._im = []
-        if self.final_render:
-            self.open_mmap_status()
+#        if self.final_render:
+#            self.open_mmap_status()
         
         for layer in self.layers:
             if layer.output:
-                self._im += [PIL.Image.new(mode=layer.mode, size=self.size)]
+                self._im += [PIL.Image.new(mode=layer.mode, size=self.im_size)]
+                if self.try_recover:
+                    self.open_postdb(layer)
             else:
                 self._im += [None]
 
-        if self.try_recover:
-            _mmap_status = open_memmap(
-                filename=self.mmap_status_path, mode="r+"
-            )
-            valid_chunks = np.count_nonzero(_mmap_status)
-            del _mmap_status
-            n = self.fractal.chunks_count
-            logger.info(
-                "Attempt to restart interrupted calculation,\n"
-                f"    Valid image tiles found: {valid_chunks} / {n}"
-            )
-        elif self.final_render:
+#        if self.try_recover:
+#            
+#            self.open_postdb(self, layer)
+#            _mmap_status = open_memmap(
+#                filename=self.mmap_status_path, mode="r+"
+#            )
+#            valid_chunks = np.count_nonzero(_mmap_status)
+#            del _mmap_status
+#            n = self.fractal.chunks_count
+#            logger.info(
+#                "Attempt to restart interrupted calculation,\n"
+#                f"    Valid image tiles found: {valid_chunks} / {n}"
+#            )
+
+        if self.final_render and (not self.try_recover):
             logger.info("Reloading option disabled, all image recomputed")
 
 
-    def open_mmap_status(self):
-        """ Small array to flag the validated image tiles
-        Only for final render """
-        n_chunk = self.fractal.chunks_count
-        file_path = self.mmap_status_path
-
-        try:
-            # Does layer the mmap already exists, and does it seems to suit
-            # our need ?
-            if not(self.try_recover):
-                raise ValueError(
-                    "Invalidated mmap_status as *try_recover* is set to False"
-                )
-            _mmap_status = open_memmap(
-                filename=file_path, mode="r+"
-            )
-            if (_mmap_status.shape != (n_chunk,)):
-                raise ValueError("Incompatible shapes for plotter mmap_status")
-
-        except (FileNotFoundError, ValueError):
-            # Lets create it from scratch
-            logger.debug(f"No valid plotter status file found - recompute img")
-            _mmap_status = open_memmap(
-                    filename=file_path, 
-                    mode='w+',
-                    dtype=np.int32,
-                    shape=(n_chunk,),
-                    fortran_order=False,
-                    version=None
-            )
-            _mmap_status[:] = 0
-            del _mmap_status
-
-
-    @property
-    def mmap_status_path(self):
-        return os.path.join(self.plot_dir,"data", "final_render" + ".arr")
+#    def open_mmap_status(self):
+#        """ Small array to flag the validated image tiles
+#        Only for final render """
+#        n_chunk = self.fractal.chunks_count
+#        file_path = self.mmap_status_path
+#
+#        try:
+#            # Does layer the mmap already exists, and does it seems to suit
+#            # our need ?
+#            if not(self.try_recover):
+#                raise ValueError(
+#                    "Invalidated mmap_status: `recovery_mode` is set to False"
+#                )
+#            _mmap_status = open_memmap(
+#                filename=file_path, mode="r+"
+#            )
+#            if (_mmap_status.shape != (n_chunk,)):
+#                raise ValueError("Incompatible shapes for plotter mmap_status")
+#
+#        except (FileNotFoundError, ValueError):
+#            # Lets create it from scratch
+#            logger.debug(f"No valid plotter status file found - recompute img")
+#            _mmap_status = open_memmap(
+#                    filename=file_path, 
+#                    mode='w+',
+#                    dtype=np.int32,
+#                    shape=(n_chunk,),
+#                    fortran_order=False,
+#                    version=None
+#            )
+#            _mmap_status[:] = 0
+#            del _mmap_status
 
 
-    def img_mmap(self, layer):
-        """ The file path for the img memory mapping"""
-        file_name = self.image_name(layer)
-        file_path = os.path.join(self.plot_dir, "data", file_name + "._img")
-        return file_path
+#    @property
+#    def mmap_status_path(self):
+#        return os.path.join(self.plot_dir,"data", "final_render" + ".arr")
 
-    def create_img_mmap(self, layer):
-        """ Just open - or reopen - the image memory mapping
-        """
-        mode = layer.mode
-        dtype = fs.colors.layers.Virtual_layer.DTYPE_FROM_MODE[mode]
-        channel = fs.colors.layers.Virtual_layer.N_CHANNEL_FROM_MODE[mode]
-        nx, ny = self.size
-        file_name = self.image_name(layer)
-        file_path = self.img_mmap(layer)
 
-        # Does the mmap already exists, and does it seems to suit our need ?
-        try:
-            # Does layer the mmap already exists, and does it seems to suit
-            # our need ?
-            if not(self.postproc_options["recovery_mode"]):
-                raise ValueError("Invalidated mmap_status")
-            mmap = open_memmap(
-                filename=file_path, mode="r+"
-            )
-            if mmap.shape != (ny, nx, channel):
-                del mmap
-                raise ValueError("Incompatible shapes for mmap")
-            if mmap.dtype != dtype:
-                del mmap
-                raise ValueError("Incompatible dtype for mmap")
+#    def img_mmap(self, layer):
+#        """ The file path for the img memory mapping"""
+#        file_name = self.image_name(layer)
+#        file_path = os.path.join(self.plot_dir, "data", file_name + ".postdb")
+#        return file_path
 
-        except (FileNotFoundError, ValueError):
-            # Create a new one...
-            mmap = open_memmap(
-                filename=file_path, 
-                mode='w+',
-                dtype=np.dtype(dtype),
-                shape=(ny, nx, channel),
-                fortran_order=False,
-                version=None
-            )                
-            # Here as we didnt find information for this layer, sadly the whole
-            # memory mapping is invalidated
-            logger.debug(f"No valid data found for layer {file_name}")
-            
-            _mmap_status = open_memmap(
-                filename=self.mmap_status_path, mode="r+"
-            )
-            _mmap_status[:] = 0
-            del _mmap_status
-
-        del mmap
+#    def create_img_mmap(self, layer):
+#        """ Just open - or reopen - the image memory mapping
+#        """
+#        mode = layer.mode
+#        dtype = fs.colors.layers.Virtual_layer.DTYPE_FROM_MODE[mode]
+#        channel = fs.colors.layers.Virtual_layer.N_CHANNEL_FROM_MODE[mode]
+#        nx, ny = self.size
+#        file_name = self.image_name(layer)
+#        file_path = self.img_mmap(layer)
+#
+#        # Does the mmap already exists, and does it seems to suit our need ?
+#        try:
+#            # Does layer the mmap already exists, and does it seems to suit
+#            # our need ?
+#            if not(self.postproc_options["recovery_mode"]):
+#                raise ValueError("Invalidated mmap_status")
+#            mmap = open_memmap(
+#                filename=file_path, mode="r+"
+#            )
+#            if mmap.shape != (ny, nx, channel):
+#                del mmap
+#                raise ValueError("Incompatible shapes for mmap")
+#            if mmap.dtype != dtype:
+#                del mmap
+#                raise ValueError("Incompatible dtype for mmap")
+#
+#        except (FileNotFoundError, ValueError):
+#            # Create a new one...
+#            mmap = open_memmap(
+#                filename=file_path, 
+#                mode='w+',
+#                dtype=np.dtype(dtype),
+#                shape=(ny, nx, channel),
+#                fortran_order=False,
+#                version=None
+#            )                
+#            # Here as we didnt find information for this layer, sadly the whole
+#            # memory mapping is invalidated
+#            logger.debug(f"No valid data found for layer {file_name}")
+#            
+#            _mmap_status = open_memmap(
+#                filename=self.mmap_status_path, mode="r+"
+#            )
+#            _mmap_status[:] = 0
+#            del _mmap_status
+#
+#        del mmap
         
 
-    def open_img_mmap(self, layer):
-        """ mmap filled in // of the actual image - to allow restart
-        Only for final render 
-        """
-        file_path = self.img_mmap(layer)
-        mmap = open_memmap(filename=file_path, mode='r+')
-        return mmap
+
 
 
     def save_images(self):
@@ -729,6 +773,7 @@ class Fractal_plotter:
             file_name = self.image_name(layer)
             base_img_path = os.path.join(self.plot_dir, file_name + ".png")
             self.save_tagged(self._im[i], base_img_path, self.fractal.tag)
+
 
     def save_tagged(self, img, img_path, tag_dict):
         """
@@ -753,30 +798,50 @@ class Fractal_plotter:
     def push_cropped(self, chunk_slice, layer, im, ilayer):
         """ push "cropped image" from layer for this chunk to the image"""
         (ix, ixx, iy, iyy) = chunk_slice
-        ny = self.fractal.ny
-        crop_slice = (ix, ny-iyy, ixx, ny-iy)
+#        nx = self.fractal.nx
+#        ny = self.fractal.ny
+        
+        # crop_slice = (iy, ix, iyy, ixx) :
+        # Looks OK but flipped y, when matched with
+        # dx_vec, dy_vec  = np.meshgrid(y_1d, x_1d)
+        # crop_slice = (iy, ix, iyy, ixx)
+#        crop_slice = (ix, iy, ixx, iyy)
+        # crop_slice = (iy, nx-ixx, iyy, nx-ix)
+        crop_slice = (ix, iy, ixx, iyy)
+        
+
         # Key: Calling get_2d_arr
         paste_crop = layer.crop(chunk_slice)
         if paste_crop is None:
             return
+    
+#        print("in push_cropped", ix, ixx, iy, iyy)
+#        print("expected size", ixx - ix, iyy - iy)
+#        print("paste_crop size", np.asarray(paste_crop).shape)
         
         if self.supersampling:
             # Here, we should apply a resizing filter
             # Image.resize(size, resample=None, box=None, reducing_gap=None)
             resample = PIL.Image.LANCZOS
             paste_crop = paste_crop.resize(
-                size=(ixx - ix, iyy-iy),
+                size=(ixx - ix, iyy - iy),
                 resample=resample,
                 box=None,
                 reducing_gap=None
             )
 
+        # left, upper, right, and lower pixel
         im.paste(paste_crop, box=crop_slice)
 
         if self.final_render:
             # NOW let's also try to save this beast
             paste_crop_arr = np.asarray(paste_crop)
-            layer_mmap = self.open_img_mmap(layer)
+            
+            layer_mmap = open_memmap(
+                filename=self.postdb_path(layer),
+                mode="r+"
+            )
+#            layer_mmap = self.open_img_mmap(layer)
 
             if layer_mmap.shape[2] == 1:
                 # For a 1-channel image, PIL will remove the last dim...
@@ -787,14 +852,18 @@ class Fractal_plotter:
             del layer_mmap
 
 
-    def push_reloaded(self, chunk_slice, layer, im, ilayer):
-        """ Just grap the already computed pixels and paste them"""
+    def push_reloaded(self, chunk_slice, layer, im):
+        """ Copy the already computed pixels and paste them in the image"""
         if im is None:
             return
         (ix, ixx, iy, iyy) = chunk_slice
-        ny = self.fractal.ny
-        crop_slice = (ix, ny-iyy, ixx, ny-iy)
-        layer_mmap = self.open_img_mmap(layer)
+#        ny = self.fractal.ny
+        crop_slice = (ix, iy, ixx, iyy)
+        
+        layer_mmap = open_memmap(
+            filename=self.postdb_path(layer),
+            mode="r+"
+        )
         crop_arr = layer_mmap[iy: iyy, ix: ixx, :]
 
         # If crop_arr has only 1 channel, like grey or bool, Pillow won't
@@ -807,16 +876,93 @@ class Fractal_plotter:
 
         del layer_mmap
 
-#------------------------------------------------------------------------------
-    def save_db(self, relpath=None, exp_zoom_step=None):
+#==============================================================================
+# Memory-mapping related operations
+#==============================================================================
+    @property
+    def relpath(self):
+        """ Generic relative path for the db, might be set by save_db
+        defaults to None """
+        try:
+            return self._relpath
+        except AttributeError:
+            return None
+        
+
+    # def image_name(self, layer, relpath=None):
+    def db_path(self):
+        """ Absolute path of the file storing layers data (as float)
+        """
+        head = ""
+        tail = "layers"
+
+        relpath = self.relpath
+        if relpath is not None:
+            (head, tail) = os.path.split(relpath)
+            tail, user_ext = os.path.splitext(tail)
+            if user_ext != ".db":
+                raise ValueError(
+                    f"Expecting a .db extension, given: {user_ext}"
+                )
+        fname = f"{tail}.db"
+
+        return os.path.normpath(
+                os.path.join(self.fractal.directory, head, fname)
+        )
+
+
+    # def image_name(self, layer, relpath=None):
+    def postdb_path(self, layer):
+        """ Absolute path for the file storing layer image data (as rgb array)
+        layer: Layer instance (not the postname)
+        """
+        # Final render mmap backup files default to ./data directory 
+        head = "data" if self._mode == "img" else ""
+        tail = ""
+
+        relpath = self.relpath
+        if relpath is not None:
+            (head, tail) = os.path.split(relpath)
+            tail, user_ext = os.path.splitext(tail)
+            if user_ext != ".postdb":
+                raise ValueError(
+                    f"Expecting a .postdb extension, given: {user_ext}"
+                )
+        fname = "{}_{}_{}.postdb".format(
+            tail,
+            type(layer).__name__,
+            layer.postname # i.e.: layer_obj.postname
+        )
+
+        return os.path.normpath(
+                os.path.join(self.fractal.directory, head, fname)
+        )
+
+
+
+
+#    def _postdb_mmap(self):
+#        """ Return a handle to the memory mapping - It shall have been open"""
+#        relpath = self.postdb_relpath(layer=postdb_layer, relpath=relpath)
+
+
+#    def img_mmap(self, relpath=None, postdb=None):
+#        """ The file path for the img memory mapping"""
+#        file_name = self.image_name(layer=postdb)
+#        file_path = os.path.join(self.plot_dir, "data", file_name + ".postdb")
+#        return file_path
+
+
+
+    def save_db(self, relpath=None, postdb_layer=None, exp_zoom_step=None):
         """
         Saves the post-processed data in a numpy structured memmap.
 
         Goes through all the registered layers and stores the results in a 
         (nposts, nx, ny) memory mapping. 
         In case of supersampling all data points are stored (Downsampling 
-        filtering is delayed to the coloring stage).
-
+        filtering is delayed to the coloring stage), unless the postdb option
+        is activated.
         A companion text file <relpath>.info is also written: it provides a
         short description of the data structure.
 
@@ -827,31 +973,48 @@ class Fractal_plotter:
             defaults to
             :code:`os.path.join(self.fractal.directory, "layer.db")`
             (ie the relative path defaults to ./layer.db)
+        postdb_layer: Optional, str
+            If provided, instead of saving all the layers, saves only the
+            one provided as a rgb (nchannels, nx, ny) memory mapping. This 
+            offers less flexibility (post processing is 'frozen') but optimise
+            disk space in case of supersampling (as L2 downsampling filter will
+            be applied before storing the image data).
         exp_zoom_step: Optional, int
-            For an exponential zoom covering a very large range, it is
-            necessary to evalutate the bilinear validity radius at successive
+            For an exponential zoom covering a very large range, it is more
+            efficient to evalutate the bilinear validity radius at successive
             depths. This setting tells the program to recompute the billinear
-            validity radius for a tile which ending pixels differs from the
-            last reference from more than  `exp_zoom_step` (in the `h`
+            validity radius for a tile whose ending pixels differs from the
+            last reference from more than `exp_zoom_step` (in the `h`
             direction). Only valid with a
             `fractalshades.projection.Expmap` projection and for perturbation
             fractals.
         """
-        if relpath is None:
-            self.db_path = os.path.join(self.fractal.directory, "layer.db")
-        else:
-            self.db_path = os.path.normpath(os.path.join(
-                self.fractal.directory, relpath
-            ))
-        self.db_directory = os.path.dirname(self.db_path)
+        self._relpath = relpath
+        self._mode = mode = "postdb" if postdb_layer else "db"
         
-        if exp_zoom_step is None:
-            self.process(mode="db")
+        if postdb_layer:
+            any_db_path = self.postdb_path(self[postdb_layer])
         else:
-            self.save_expdb_by_steps(exp_zoom_step)
+            any_db_path = self.db_path()
+
+
+#        if postdb_layer:
+#            abspath = self.postdb_path(layer_name=postdb_layer)
+#        else:
+#            abspath = self.db_path()
+        
+#        self.db_path = os.path.normpath(os.path.join(
+#                self.fractal.directory, relpath
+#        ))
+#        self.db_directory = os.path.dirname(self.db_path)
+
+        if exp_zoom_step is None:
+            self.process(mode=mode, postdb_layer=postdb_layer)  # process(self, mode, postdb_layer=None, tile_validator=None)
+        else:
+            self.save_expdb_by_steps(postdb_layer, exp_zoom_step)
 
         # Writes a short description of the db
-        info_path = self.db_path + ".info"
+        info_path = any_db_path + ".info"
         with open(info_path, 'w+') as info_file:
             info_file.write("Db file description\n")
             now = datetime.datetime.now()
@@ -861,17 +1024,21 @@ class Fractal_plotter:
             shape = (len(self.postnames),) + self.size
             info_file.write(f"  shape: {shape}\n")
             ss = self.supersampling
-            info_file.write(f"  supersampling: {ss}\n\n")
+            info_file.write(f"  supersampling: {ss}\n")
+            info_file.write(f"  postdb_layer: {postdb_layer}\n\n")
             info_file.write("*fields description*\n")
             for pn in self.postnames:
                 info_file.write(f"  {pn}\n")
 
-        return self.db_path
+        return any_db_path
 
 
-    def save_expdb_by_steps(self, exp_zoom_step):
+    def save_expdb_by_steps(self, postdb_layer, exp_zoom_step):
         """ Specialised flow for large exp mappings using steps in zoom
+        mode is "db" or "postdb"
         """
+        mode = "postdb" if postdb_layer else "db" # file extension
+
         proj = self.fractal.projection
         if not(isinstance(proj, fractalshades.projection.Expmap)):
             raise ValueError(
@@ -882,9 +1049,9 @@ class Fractal_plotter:
         hmax = proj.hmax
         nh = self.fractal.nx
         stp = exp_zoom_step
-        
+
         for r in range(0, nh + 1, stp):
-            
+
             proj.set_exp_zoom_step(
                 hmin * ((nh - r) / nh) + hmax * (r / nh)
             )
@@ -896,14 +1063,17 @@ class Fractal_plotter:
             def validates(chunk_slice):
                 (ix, ixx, iy, iyy) = chunk_slice
                 ret = r < ixx <= (r + stp)
-#                print("in validator", ix, ixx, ret)
                 return ret
 
-            self.process(mode="db", tile_validator=validates)
-            
+            self.process(
+                mode=mode,
+                postdb_layer=postdb_layer,
+                tile_validator=validates
+            )
+
         proj.del_exp_zoom_step()
 
-        
+
     def reset_bla_tree(self):
         """ Reset the BLA tree used for calculation taking into account 
         the projection modifications
@@ -913,22 +1083,33 @@ class Fractal_plotter:
             cycle_indep_args = data["cycle_indep_args"]
             f.reset_bla_tree(cycle_indep_args)
 
+    def open_any_db(self, mode, postdb_layer):
+        """ Open a .db or .postdb according to mode, managing
+           - the database memory mappings
+           - its associated "progress tracking" [post]db_status
 
-    @property
-    def db_status_path(self):
-        root, ext = os.path.splitext(self.db_path)
-        return root + "_status" + ext
-
-    def open_db(self):
-        """ Open 
-         - the database memory mappings
-         - its associated "progress tracking" db_status
+         Note that the .db size is inflated in case of supersampling, all data
+         is stored - but not the .postdb size which is stored after
+         image post-processing
          
-         Nnote that the db size is inflated in case of supersampling, all data
-         is stored
+         mode: "db" | "postdb"
+         postdb_layer: Layer instance (the object, not the str postname)
         """
-        self.open_db_status()
-        
+        if mode == "db":
+            assert postdb_layer is None
+            self.open_db()
+        elif mode =="postdb":
+            self.open_postdb(postdb_layer)
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Full mmap of the fields: .db
+    def open_db(self):
+        """ Specialized method for a .db memmap
+        """
+        db_path = self.db_path()
+        self.open_db_status(db_path)
+
         # The db shape
         ssg = self.supersampling
         ss_size = self.size
@@ -940,10 +1121,10 @@ class Fractal_plotter:
         try:
             if not(self.try_recover):
                 raise ValueError(
-                    "Invalidated db, as *try_recover* is set to False"
+                    "Invalidated db, as `recovery_mode` is set to False"
                 )
             _mmap_db = open_memmap(
-                filename=self.db_path, mode='r'
+                filename=db_path, mode='r'
             )
 
             # Checking that the size matches...
@@ -952,17 +1133,18 @@ class Fractal_plotter:
                 raise ValueError("Invalid db")
 
             _db_status = open_memmap(
-                filename=self.db_status_path, mode="r+"
+                filename=self.db_status_path(db_path),
+                mode="r+"
             )
             valid_chunks = np.count_nonzero(_db_status)
             del _db_status
             del _mmap_db
             n = self.fractal.chunks_count
 
-            if n == 0:
-                raise ValueError(
-                    "Invalidated db, as no tile is valid anyway"
-                )
+#            if n == 0:
+#                raise ValueError(
+#                    "Invalidated db, as no tile is valid anyway"
+#                )
             logger.info(
                 "Attempt to restart interrupted calculation,\n"
                 f"    Valid database tiles found: {valid_chunks} / {n}"
@@ -975,22 +1157,34 @@ class Fractal_plotter:
             )
 
         # Creates the new datatase == structured memory mapping
-        fs.utils.mkdir_p(os.path.dirname(self.db_path))
+        fs.utils.mkdir_p(os.path.dirname(db_path))
         _mmap_db = open_memmap(
-            filename=self.db_path, 
+            filename=db_path, 
             mode='w+',
             dtype=self.post_dtype,
             shape=expected_shape,
             fortran_order=False,
             version=None
         )
+        # Here as we didnt find information for this layer, sadly the whole
+        # memory mapping is invalidated
+        _db_status = open_memmap(
+            filename=self.db_status_path(db_path), mode="r+"
+        )
+        _db_status[:] = 0
         del _mmap_db
 
-    def open_db_status(self):
+
+    def db_status_path(self, db_path):
+        """ returns the db_status_path if db_path is provided"""
+        root, ext = os.path.splitext(db_path)
+        return root + "_status" + ext
+
+    def open_db_status(self, db_path):
         """ Small mmap array to flag the validated db tiles
         """
         n_chunk = self.fractal.chunks_count
-        file_path = self.db_status_path
+        file_path = self.db_status_path(db_path)
         fs.utils.mkdir_p(os.path.dirname(file_path))
 
         try:
@@ -998,7 +1192,7 @@ class Fractal_plotter:
             # our need ?
             if not(self.try_recover):
                 raise ValueError(
-                    "Invalidated db_status, as *try_recover* is set to False"
+                    "Invalidated db_status: `recovery_mode` is set to False"
                 )
             _db_status = open_memmap(
                 filename=file_path, mode="r+"
@@ -1024,59 +1218,255 @@ class Fractal_plotter:
     def push_db(self, chunk_slice, layer):
         """ push "postprocessed data" (from the layer's postproc field)
         to the db memory mapping
+        Note: Lanczos downsampling  is delayed to the image making stage,
+        size might be inflated if "final render + supersampling
         """
         (ix, ixx, iy, iyy) = chunk_slice
+
         field_count, post_index = layer.get_postproc_index()
         db_crop = layer.db_crop(chunk_slice)
+
         s = self.supersampling
         if s:
-            # Here, we inflated alls dims by s
+            # Here, we inflate alls dims by s
             ix *= s
             ixx *= s
             iy *= s
             iyy *= s
-            
-#            # Here, we apply a homemade Lanczos-2 resizing filter
-#            # We apply it for each field (1 or 2) if available
-#            # We will also take into account masked values
-#            if layer.mask is not None:
-#                masked = True
-#                mask_crop = layer.mask[0].db_crop(chunk_slice)
-#                lf2 = self.lf2_masked
-#                # print("mask crop in push_db", mask_crop.dtype, mask_crop.shape)
-#            else:
-#                masked = False
-#                lf2 = self.lf2
-#
-#            
-#            # print("**db crop in push_db", db_crop.dtype, db_crop.shape)
-#            db_crop = db_crop.astype(self.post_dtype, copy=False)
-#            # print("**>>db crop in push_db", db_crop.dtype, db_crop.shape)
-#
-#            if field_count == 1:
-#                if masked:
-#                    db_crop = lf2(db_crop, mask_crop)
-#                else:
-#                    db_crop = lf2(db_crop)
-#
-#            elif field_count == 2:
-#                _, cx, cy = db_crop.shape
-#                _db_crop = np.empty((2, cx // s, cy // s), dtype=db_crop.dtype)
-#                if masked:
-#                    _db_crop[0, :, :] = lf2(db_crop[0, :, :], mask_crop)
-#                    _db_crop[1, :, :] = lf2(db_crop[1, :, :], mask_crop)
-#                else:
-#                    _db_crop[0, :, :] = lf2(db_crop[0, :, :])
-#                    _db_crop[1, :, :] = lf2(db_crop[1, :, :])
-#                db_crop = _db_crop
 
-        db_mmap = open_memmap(filename=self.db_path, mode='r+')
+        db_mmap = open_memmap(filename=self.db_path(), mode='r+')
         if field_count == 1:
-            db_mmap[post_index, ix:ixx, iy:iyy] = db_crop
+            db_mmap[post_index, iy:iyy, ix:ixx] = db_crop
         elif field_count == 2:
-            db_mmap[post_index[0], ix:ixx, iy:iyy] = db_crop[0, :, :]
-            db_mmap[post_index[1], ix:ixx, iy:iyy] = db_crop[1, :, :]
+            db_mmap[post_index[0], iy:iyy, ix:ixx] = db_crop[0, :, :]
+            db_mmap[post_index[1], iy:iyy, ix:ixx] = db_crop[1, :, :]
         del db_mmap
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## mmap of the image array: .postdb
+#    def open_img_mmap(self, layer):  # TODO: do not use this
+#        """ mmap filled in // of the actual image - to allow restart
+#        Only for final render 
+#        """
+#        file_path = self.img_mmap(layer)
+#        mmap = open_memmap(filename=file_path, mode='r+')
+#        return mmap
+
+    # companion of def open_db(self):
+    # def create_img_mmap(self, layer):
+    def open_postdb(self, layer):
+        """ Specialized method for a .postdb memmap
+        It need the layer name because we reuse the same codepath
+        for different layer (final render restart data)
+        
+        note: layer is layer obj
+        """
+        print("**** IN open_postdb", layer.postname)
+        
+        
+        postdb_path = self.postdb_path(layer)
+        layer_name = layer.postname
+        self.open_postdb_status(postdb_path)
+
+#        db_path = self.db_path()
+#        self.open_db_status()
+        
+
+        mode = layer.mode
+        dtype = fs.colors.layers.Virtual_layer.DTYPE_FROM_MODE[mode]
+        channel = fs.colors.layers.Virtual_layer.N_CHANNEL_FROM_MODE[mode]
+        expected_shape = self.size + (channel,)
+        
+#        file_name = self.image_name(layer)
+#        file_path = self.img_mmap(layer)
+
+        # Does the mmap already exists, and does it seems to suit our need ?
+        try:
+            # Does layer the mmap already exists, and does it seems to suit
+            # our need ?
+            if not(self.postproc_options["recovery_mode"]):
+                raise ValueError(
+                    "Invalidated postdb: `recovery_mode` is set to False"
+                )
+            _mmap_postdb = open_memmap(
+                filename=postdb_path, mode="r+"
+            )
+            if _mmap_postdb.shape != expected_shape:
+                del _mmap_postdb
+                raise ValueError("Incompatible shapes for mmap, recomputing")
+            if _mmap_postdb.dtype != dtype:
+                del _mmap_postdb
+                raise ValueError("Incompatible dtype for mmap, recomputing")
+
+            _db_status = open_memmap(
+                filename=self.postdb_status_path(postdb_path), mode="r+"
+            )
+            valid_chunks = np.count_nonzero(_db_status)
+            del _db_status
+            del _mmap_postdb
+            n = self.fractal.chunks_count
+
+#            if n == 0:
+#                raise ValueError(
+#                    "Invalidated db, as no tile is valid anyway"
+#                )
+            logger.info(
+                "Attempt to restart interrupted calculation,\n"
+                f"    Valid postdb tiles found: {valid_chunks} / {n}"
+            )
+            return
+
+
+        except (FileNotFoundError, ValueError):
+            logger.info(f"No valid data found for layer {layer_name}")
+            # Create a new one...
+
+        mmap = open_memmap(
+            filename=postdb_path, 
+            mode='w+',
+            dtype=np.dtype(dtype),
+            shape=expected_shape,
+            fortran_order=False,
+            version=None
+        )
+        # Here as we didnt find information for this layer, sadly the whole
+        # memory mapping is invalidated
+        _db_status = open_memmap(
+            filename=self.postdb_status_path(postdb_path), mode="r+"
+        )
+        _db_status[:] = 0
+
+        del _db_status
+        del mmap
+
+
+
+
+    def postdb_status_path(self, postdb_path):
+        """ Return the postdb_status_path if db_path is provided """
+        if self._mode == "img":
+            # Default a unique status "guard" for a image layer set
+            postdb_path = os.path.join(
+                self.fractal.directory, "data", "final_render.postdb"
+            )
+        return self.db_status_path(postdb_path)
+
+
+    def open_postdb_status(self, postdb_path):
+        """ Open the postdb_status mmap if db_path is provided """
+        if self._mode == "img":
+            # Default a unique status "guard" for a image layer set
+            postdb_path = os.path.join(
+                self.fractal.directory, "data", "final_render.postdb"
+            )
+        self.open_db_status(postdb_path)
+            
+
+
+#    @property
+#    def mmap_status_path(self):
+#        return os.path.join(self.plot_dir,"data", "final_render" + ".arr")
+
+#    # Companion of'push_db'
+#    def push_imdb(self, chunk_slice, layer):
+#        """ push "image layer" (from the layer's postproc field)
+#        to the db memory mapping
+#        """
+#        raise NotImplementedError("TODO")
+
+    # def push_reloaded(self, chunk_slice, layer, im, ilayer):
+    def push_postdb(self, chunk_slice, layer): #, ilayer):
+        """ Push the image pixels to the back-up mmap (/!\Follows PIL block
+        order) """
+#        if im is None:
+#            return
+        (ix, ixx, iy, iyy) = chunk_slice
+#        ny = self.fractal.ny
+#        crop_slice = (ix, ny-iyy, ixx, ny-iy)
+#        db_slice = (ny-iyy, ny-iy, ix, ixx)
+        print("chunk_slice", chunk_slice)
+#        print("db_slice", db_slice)
+        paste_crop = layer.crop(chunk_slice)
+
+        assert paste_crop is not None
+
+        postdb_mmap = open_memmap(
+            filename=self.postdb_path(layer),
+            mode="r+"
+        )
+        print("postdb_mmap:", type(postdb_mmap),"\n", postdb_mmap)
+
+        s = self.supersampling
+        if s:
+            resample = PIL.Image.LANCZOS
+            paste_crop = paste_crop.resize(
+                size=(ixx - ix, iyy - iy), # Note: Pillow order here
+                resample=resample,
+                box=None,
+                reducing_gap=None
+            )
+
+        # postdb_mmap[ix:ixx, iy:iyy, :] = np.asanyarray(paste_crop)
+
+        # Mapping to a Numpy order
+        postdb_mmap[iy:iyy, ix:ixx, :] = np.asarray(paste_crop)
+
+        del postdb_mmap
+        
+        
+        
+#                (ix, ixx, iy, iyy) = chunk_slice
+#        field_count, post_index = layer.get_postproc_index()
+#        db_crop = layer.db_crop(chunk_slice)
+#
+#        s = self.supersampling
+#        if s:
+#            # Here, we inflate alls dims by s
+#            ix *= s
+#            ixx *= s
+#            iy *= s
+#            iyy *= s
+#
+#        db_mmap = open_memmap(filename=self.db_path(), mode='r+')
+#        if field_count == 1:
+#            db_mmap[post_index, ix:ixx, iy:iyy] = db_crop
+#        elif field_count == 2:
+#            db_mmap[post_index[0], ix:ixx, iy:iyy] = db_crop[0, :, :]
+#            db_mmap[post_index[1], ix:ixx, iy:iyy] = db_crop[1, :, :]
+#        del db_mmap
+#
+#
+#    # COPY
+#    def push_reloaded(self, chunk_slice, layer, im):
+#        """ Copy the already computed pixels and paste them in the image"""
+#        if im is None:
+#            return
+#        (ix, ixx, iy, iyy) = chunk_slice
+#        ny = self.fractal.ny
+#        crop_slice = (ix, ny-iyy, ixx, ny-iy)
+#        
+#        layer_mmap = open_memmap(
+#            filename=self.postdb_path(layer),
+#            mode="r+"
+#        )
+#        crop_arr = layer_mmap[iy: iyy, ix: ixx, :]
+#
+#        # If crop_arr has only 1 channel, like grey or bool, Pillow won't
+#        # handle it...
+#        if crop_arr.shape[2] <= 1:
+#            crop_arr = np.squeeze(crop_arr, axis=2)
+#
+#        paste_crop = PIL.Image.fromarray(crop_arr)
+#        im.paste(paste_crop, box=crop_slice)
+#
+#        del layer_mmap
+
+
+
+
+
+
 
 
 class _Null_status_wget:
@@ -1652,7 +2042,9 @@ advanced users when subclassing.
                 dtype=data_type
             )
 
-        dy_vec, dx_vec  = np.meshgrid(y_1d, x_1d)
+        dx_vec, dy_vec  = np.meshgrid(x_1d, y_1d, indexing='xy')
+        # dx_vec, dy_vec  = np.meshgrid(x_1d, y_1d, indexing='ij')
+        # dy_vec, dx_vec  = np.meshgrid(y_1d, x_1d[::-1])#, indexing='ij')
 
         if jitter:
             rg = np.random.default_rng(0)
@@ -1669,7 +2061,7 @@ advanced users when subclassing.
 
         dy_vec /= self.xy_ratio
 
-        res = dx_vec + 1j * dy_vec
+        res = dx_vec - 1j * dy_vec
 
         return res
 
@@ -2254,7 +2646,7 @@ advanced users when subclassing.
                 filename=data_path["subset"], 
                 mode='w+',
                 dtype=np.bool,
-                shape=(self.nx * self.ny,),
+                shape=(self.ny * self.nx,), # PIL xy inversion
                 fortran_order=False,
                 version=None
             )

@@ -34,7 +34,7 @@ def plot(plot_dir):
     A very simple example: full view of the Mandelbrot set with escape-time
     coloring
     """
-    fs.settings.enable_multithreading = True
+    fs.settings.enable_multithreading = False
     fs.settings.log_directory = os.path.join(plot_dir, "log")
     fs.set_log_handlers(verbosity="debug @ console + log")
     # Define the parameters for this calculation

@@ -149,21 +149,24 @@ class Db:
         """
         # Development Note
         # ----------------
-        # Note on supersampling: the db data is supersampled - if needed
-        # When freezing, we apply the Lanczos filter -> interpolation in a
-        # reduced dataset (image) *.db.frozen
-        # When not freezing, we do not apply the Lanczos filter ->
-        # interpolation in the full set, Lanczos filtering at plotting stage.
+        # Note on supersampling:
+        #  - the .db data is supersampled
+        #  - the .postdb data is the image so it is already downsampled
+        # General rule, Lanczos filter is applied at image making stage
 
         self.path = path
-        # self.zoom_kw = zoom_kw
+        _, ext = os.path.splitext(path)
+        if ext == ".db":
+            self.postdb = False
+        elif ext == ".postdb":
+            self.postdb = True
+        else:
+            raise ValueError(f"Unknown Db extension: {ext}")
+        
         self.init_model()
-
         # Cache for interpolating classes
         self._interpolator = {}
 
-        # Frozon db properties
-        self.is_frozen = False
 
     @property
     def zoom_kwargs(self):
@@ -172,7 +175,10 @@ class Db:
     def init_model(self):
         """ Build a description for the datapoints in the mmap """
         mmap = open_memmap(filename=self.path, mode="r+")
-        nposts, nx, ny = mmap.shape
+        if self.postdb:
+            nx, ny, nposts = mmap.shape # or is it ny, nx, nposts ???
+        else:
+            nposts, nx, ny = mmap.shape
         del mmap
 
         # Points number
@@ -270,8 +276,8 @@ class Db:
         b = [xgrid0[ind_xmax], ygrid0[ind_ymax]]
         h = [xh0, yh0]
 
-        if self.is_frozen:
-            fr_mmap = open_memmap(filename=self.frozen_path, mode="r")
+        if self.postdb:
+            fr_mmap = open_memmap(filename=self.path, mode="r")
             f = fr_mmap[ind_xmin:ind_xmax, ind_ymin:ind_ymax, post_index]
             del fr_mmap
 
@@ -288,185 +294,186 @@ class Db:
 
 
 # --------------- db freezing interface ---------------------------------------
-    @property
-    def frozen_path(self):
-        """ path to the 'froozen' image database """
-        root, ext = os.path.splitext(self.path)
-        return root + ".frozen" + ext
-
-    def freeze(self, plotter, layer_name, try_reload):
-        """
-        Freeze a database by storing a postprocessed layer image as a numpy
-        array (1 data point = 1 pixel). The layer shall be a RGB(A) layer.
-
-        Parameters
-        ----------
-        plotter: fs.Fractal_plotter
-            A plotter to be used
-        layer_name: str
-            The layer name - shall be a RGB layer
-        try_reload: bool
-            if True, will try to reload before computing a new one
-        """
-        logger.info(
-            f"Freezing db to {self.frozen_path} - try_reload: {try_reload}"
-        )
-
-        # Create a mmap for the layer
-        layer = plotter[layer_name]
-        mode = layer.mode
-        if not(mode in "RGB", "RGBA"):
-            raise ValueError(
-                f"Only a RGB(A) layer can be used to freeze a db"
-                + f"found: {mode}"
-            )
-        dtype = fs.colors.layers.Virtual_layer.DTYPE_FROM_MODE[mode]
-        n_channel = fs.colors.layers.Virtual_layer.N_CHANNEL_FROM_MODE[mode]
-
-        mmap = open_memmap(filename=self.path, mode="r+")
-        nposts, nx, ny = mmap.shape
-        del mmap
-        
-        s = self.plotter.supersampling
-        if s:
-            nx //= s
-            ny //= s
-
-        self.frozen_props = {
-            "dtype": np.dtype(dtype),
-            "n_channel": n_channel,
-            "mode": mode
-        }
-
-        if try_reload:
-            # Does the mmap already exists, does it seems to suit our need ?
-            try:
-                try_mmap = open_memmap(filename=self.frozen_path, mode='r')
-                try_nx, try_ny, try_channel = try_mmap.shape
-                valid = (
-                    (nx == try_nx) and (ny == try_ny)
-                    and (n_channel == try_channel) 
-                )
-                if not(valid):
-                    raise ValueError("Invalid db")
-                logger.info(
-                    f"Reloading successful, using {self.frozen_path}"
-                )
-                self.is_frozen = True
-                return
-            except (ValueError, FileNotFoundError):
-                p = self.frozen_path
-                logger.info(
-                    f"Reloading failed, computing {p} from scratch"
-                )
-
-        # Create a new file...
-        fr_mmap = open_memmap(
-            filename=self.frozen_path, 
-            mode='w+',
-            dtype=np.dtype(dtype),
-            shape=(nx, ny, n_channel),
-            fortran_order=False,
-            version=None
-        )                
-        del fr_mmap
-
-        plot_template = Plot_template(plotter, self, frame=None)
-        self.process_for_freeze(plot_template, out_postname=layer_name)
-        self.is_frozen = True
-        
-        
-        # Downsampled version of the base grid for correct interpolation
-        s = self.plotter.supersampling
-        if s:
-            im_nx = self.nx // s 
-            im_ny = self.ny // s 
-            self.xgrid0, self.xh0 = np.linspace(
-                self.xmin0, self.xmax0, im_nx, endpoint=True, retstep=True,
-                dtype=np.float32
-            )
-            self.ygrid0, self.yh0 = np.linspace(
-                self.ymin0, self.ymax0, im_ny,  endpoint=True, retstep=True,
-                dtype=np.float32
-            )
-
-
-    @Multithreading_iterator(
-        iterable_attr="db_chunks", iter_kwargs="db_chunk"
-    )
-    def process_for_freeze(self, plot_template, out_postname, db_chunk=None):
-        """ Freeze (stores) the RGB array for this layer
-        
-        """
-        (ix, ixx, iy, iyy) = db_chunk
-        s = self.plotter.supersampling
-        fr_mmap = open_memmap(filename=self.frozen_path, mode='r+')
-
-        pasted = False
-        for i, layer in enumerate(plot_template.layers):
-            if layer.postname == out_postname:
-                if not(layer.output):
-                    raise ValueError("No output for this layer!!")
-
-                paste_crop = layer.crop(db_chunk)
-
-                if s:
-                    resample = PIL.Image.LANCZOS
-                    paste_crop = paste_crop.resize(
-                        size=(ixx - ix, iyy - iy),
-                        resample=resample,
-                        box=None,
-                        reducing_gap=None
-                    )
-                # PILLOW -> Numpy
-                paste_crop_arr = np.swapaxes(
-                    np.asarray(paste_crop), 0 , 1
-                )[:, ::-1]
-
-                if fr_mmap.shape[2] == 1:
-                    fr_mmap[ix: ixx, iy: iyy, 0] = paste_crop_arr
-                else:
-                    fr_mmap[ix: ixx, iy: iyy, :] = paste_crop_arr
-
-                pasted = True
-
-        if not pasted:
-            raise ValueError(
-                f"Layer missing: {out_postname} "
-                + f"not found in {plot_template.postnames}"
-            )
-
-        del fr_mmap
+#    @property
+#    def frozen_path(self):
+#        """ path to the 'froozen' image database """
+#        root, ext = os.path.splitext(self.path)
+#        return root + ".frozen" + ext
+#
+#    def freeze(self, plotter, layer_name, try_reload):
+#        """
+#        Freeze a database by storing a postprocessed layer image as a numpy
+#        array (1 data point = 1 pixel). The layer shall be a RGB(A) layer.
+#
+#        Parameters
+#        ----------
+#        plotter: fs.Fractal_plotter
+#            A plotter to be used
+#        layer_name: str
+#            The layer name - shall be a RGB layer
+#        try_reload: bool
+#            if True, will try to reload before computing a new one
+#        """
+#        logger.info(
+#            f"Freezing db to {self.frozen_path} - try_reload: {try_reload}"
+#        )
+#
+#        # Create a mmap for the layer
+#        layer = plotter[layer_name]
+#        mode = layer.mode
+#        if not(mode in "RGB", "RGBA"):
+#            raise ValueError(
+#                f"Only a RGB(A) layer can be used to freeze a db"
+#                + f"found: {mode}"
+#            )
+#        dtype = fs.colors.layers.Virtual_layer.DTYPE_FROM_MODE[mode]
+#        n_channel = fs.colors.layers.Virtual_layer.N_CHANNEL_FROM_MODE[mode]
+#
+#        mmap = open_memmap(filename=self.path, mode="r+")
+#        nposts, nx, ny = mmap.shape
+#        del mmap
+#        
+#        s = self.plotter.supersampling
+#        if s:
+#            nx //= s
+#            ny //= s
+#
+#        self.frozen_props = {
+#            "dtype": np.dtype(dtype),
+#            "n_channel": n_channel,
+#            "mode": mode
+#        }
+#
+#        if try_reload:
+#            # Does the mmap already exists, does it seems to suit our need ?
+#            try:
+#                try_mmap = open_memmap(filename=self.frozen_path, mode='r')
+#                try_nx, try_ny, try_channel = try_mmap.shape
+#                valid = (
+#                    (nx == try_nx) and (ny == try_ny)
+#                    and (n_channel == try_channel) 
+#                )
+#                if not(valid):
+#                    raise ValueError("Invalid db")
+#                logger.info(
+#                    f"Reloading successful, using {self.frozen_path}"
+#                )
+#                self.is_frozen = True
+#                return
+#            except (ValueError, FileNotFoundError):
+#                p = self.frozen_path
+#                logger.info(
+#                    f"Reloading failed, computing {p} from scratch"
+#                )
+#
+#        # Create a new file...
+#        fr_mmap = open_memmap(
+#            filename=self.frozen_path, 
+#            mode='w+',
+#            dtype=np.dtype(dtype),
+#            shape=(nx, ny, n_channel),
+#            fortran_order=False,
+#            version=None
+#        )                
+#        del fr_mmap
+#
+#        plot_template = Plot_template(plotter, self, frame=None)
+#        self.process_for_freeze(plot_template, out_postname=layer_name)
+#        self.is_frozen = True
+#        
+#        
+#        # Downsampled version of the base grid for correct interpolation
+#        s = self.plotter.supersampling
+#        if s:
+#            im_nx = self.nx // s 
+#            im_ny = self.ny // s 
+#            self.xgrid0, self.xh0 = np.linspace(
+#                self.xmin0, self.xmax0, im_nx, endpoint=True, retstep=True,
+#                dtype=np.float32
+#            )
+#            self.ygrid0, self.yh0 = np.linspace(
+#                self.ymin0, self.ymax0, im_ny,  endpoint=True, retstep=True,
+#                dtype=np.float32
+#            )
 
 
-    def db_chunks(self):
-        """
-        Generator function
-        Yields the chunks spans (ix, ixx, iy, iyy)
-        with each chunk of size chunk_size x chunk_size
-        """
-        # if chunk_size is None:
-        chunk_size = fs.settings.db_chunk_size
-        im_nx, im_ny = self.nx, self.ny
+#    @Multithreading_iterator(
+#        iterable_attr="db_chunks", iter_kwargs="db_chunk"
+#    )
+#    def process_for_freeze(self, plot_template, out_postname, db_chunk=None):
+#        """ Freeze (stores) the RGB array for this layer
+#        
+#        """
+#        (ix, ixx, iy, iyy) = db_chunk
+#        s = self.plotter.supersampling
+#        fr_mmap = open_memmap(filename=self.frozen_path, mode='r+')
+#
+#        pasted = False
+#        for i, layer in enumerate(plot_template.layers):
+#            if layer.postname == out_postname:
+#                if not(layer.output):
+#                    raise ValueError("No output for this layer!!")
+#
+#                paste_crop = layer.crop(db_chunk)
+#
+#                if s:
+#                    resample = PIL.Image.LANCZOS
+#                    paste_crop = paste_crop.resize(
+#                        size=(ixx - ix, iyy - iy),
+#                        resample=resample,
+#                        box=None,
+#                        reducing_gap=None
+#                    )
+#                # PILLOW -> Numpy
+#                paste_crop_arr = np.swapaxes(
+#                    np.asarray(paste_crop), 0 , 1
+#                )[:, ::-1]
+#
+#                if fr_mmap.shape[2] == 1:
+#                    fr_mmap[ix: ixx, iy: iyy, 0] = paste_crop_arr
+#                else:
+#                    fr_mmap[ix: ixx, iy: iyy, :] = paste_crop_arr
+#
+#                pasted = True
+#
+#        if not pasted:
+#            raise ValueError(
+#                f"Layer missing: {out_postname} "
+#                + f"not found in {plot_template.postnames}"
+#            )
+#
+#        del fr_mmap
 
-        # When supersampled, real image is smaller than db size:
-        s = self.plotter.supersampling
-        if s:
-           im_nx //= s 
-           im_ny //= s 
 
-        for ix in range(0, im_nx, chunk_size):
-            ixx = min(ix + chunk_size, im_nx)
-            for iy in range(0, im_ny, chunk_size):
-                iyy = min(iy + chunk_size, im_ny)
-                yield  (ix, ixx, iy, iyy)
+#    def db_chunks(self):
+#        """
+#        Generator function
+#        Yields the chunks spans (ix, ixx, iy, iyy)
+#        with each chunk of size chunk_size x chunk_size
+#        """
+#        # if chunk_size is None:
+#        chunk_size = fs.settings.db_chunk_size
+#        im_nx, im_ny = self.nx, self.ny
+#
+#        # When supersampled, real image is smaller than db size:
+#        s = self.plotter.supersampling
+#        if s:
+#           im_nx //= s 
+#           im_ny //= s 
+#
+#        for ix in range(0, im_nx, chunk_size):
+#            ixx = min(ix + chunk_size, im_nx)
+#            for iy in range(0, im_ny, chunk_size):
+#                iyy = min(iy + chunk_size, im_ny)
+#                yield  (ix, ixx, iy, iyy)
 
 # --------------- db plotting interface ---------------------------------------
 
     def set_plotter(self, plotter, postname,
                     plotting_modifier=None, reload_frozen=False):
         """
-        Define the plotting properties
+        Define the plotting properties - Needed only if a *.db is provided
+        not for a *.postdb.
 
         Parameters
         ----------
@@ -486,6 +493,11 @@ class Db:
         """
         assert isinstance(plotter, fs.Fractal_plotter)
 
+        if self.postdb:
+            raise RuntimeError(
+                    "`set_plotter` shall not be called for a .postdb"
+            )
+
         self.plotter = plotter
         self.postname = postname
         self.plotting_modifier = plotting_modifier
@@ -493,8 +505,8 @@ class Db:
 
         if plotting_modifier is None:
             # we can freeze the db and interpolate in the frozen image
-            logger.info("Database will be frozen for camera move")
-            self.freeze(plotter, postname, try_reload=reload_frozen)
+            logger.info("Postproc is frozen during camera move")
+            # self.freeze(plotter, postname, try_reload=reload_frozen)
 
 
     def get_2d_arr(self, post_index, frame, chunk_slice):
@@ -559,11 +571,11 @@ class Db:
             frame = fs.db.Frame(
                 x=0., y=0., dx=1.0, nx=nx, xy_ratio=xy_ratio
             )
-        print("in plot db; nx, xy_ratio:", nx, xy_ratio)
+            # print("in plot db; nx, xy_ratio:", nx, xy_ratio)
 
-        # Is the db frozen ?
-        if self.is_frozen:
-            return self.plot_frozen(frame)
+        # Is the db filled with raw rgb data ?
+        if self.postdb:
+            return self.plot_postdb(frame)
         
         # Here the plotter shall take into account the 'full frame' size
         full_frame = frame.upsampled(self.plotter.supersampling)
@@ -594,19 +606,27 @@ class Db:
         return img
 
 
-    def plot_frozen(self, frame):
+    def plot_postdb(self, frame):
         """ Direct interpolation in a frozen db image data
         """
-        dtype = self.frozen_props["dtype"]
-        n_channel = self.frozen_props["n_channel"]
+        mmap = open_memmap(filename=self.path, mode="r+")
+        nx, ny, n_channel = mmap.shape
+        dtype = mmap.dtype
+        del mmap
+        
+        print("OPENING mmap .postdb with", nx, ny, n_channel, dtype)
+
+#        dtype = self.frozen_props["dtype"]
+#        n_channel = self.frozen_props["n_channel"]
         im_size = frame.size
         ret = np.empty(im_size[::-1] + (n_channel,), dtype=dtype)
 
         for ic in range(n_channel):
-            channel_ret = self.get_interpolator(
-                frame, ic)(*frame.pts).reshape(im_size)
+            channel_ret = self.get_interpolator(frame, ic)(*frame.pts)
+            channel_ret = channel_ret.reshape(im_size)
+              #  ).reshape(im_size)
             # Numpy -> PILLOW
-            ret[:, :, ic] = np.swapaxes(channel_ret, 0 , 1)[::-1, :]
+            ret[:, :, ic] = channel_ret # np.swapaxes(channel_ret, 0 , 1)[::-1, :]
         
         if n_channel == 1:
             im = PIL.Image.fromarray(ret[:, :, 0])
@@ -684,7 +704,6 @@ class Exp_frame:
         assert pts[0].size == (self.nx * self.ny)
         self.pts = pts
 
-
     @staticmethod
     def make_exp_grid(nx, xy_ratio):
         """ Return a base grid [-0.5, 0.5] x [-0.5/xy_ratio, 0.5/xy_ratio] in 
@@ -716,7 +735,6 @@ class Exp_frame:
 
 
 class Exp_db:
-    HCHUNK = 400
 
     def __init__(self, path_expmap, path_final):
         """ Wrapper around the raw array data stored at ``path_expmap`` and
@@ -733,7 +751,7 @@ class Exp_db:
             number of  post-processing fields, and is usually stored  by a
             `fractalshades.Fractal_plotter.save_db` called on a fractal
             using a `fractalshades.projection.Expmap` projection.
-        path_expmap: str
+        path_final: str
             The path for the final raw data
             The final array is of shape (nposts, nx, ny) where nposts is the
             number of post-processing fields, and is usually stored  by a
@@ -741,27 +759,50 @@ class Exp_db:
             `fractalshades.projection.Cartesian` projection). It shall be
             square (nx == ny).
         """
+        # Development Note
+        # ----------------
+        # Note on supersampling:
+        #  - the .db data is supersampled
+        #  - the .postdb data is the image so it is already downsampled
+        # General rule, Lanczos filter is applied at image making stage
         self.path_expmap = path_expmap
+        _, ext = os.path.splitext(path_expmap)
+        if ext == ".db":
+            self.postdb = False
+        elif ext == ".postdb":
+            self.postdb = True
+        else:
+            raise ValueError(f"Unknown Db extension: {ext}")
+
         self.path_final = path_final
+        _, ext2 = os.path.splitext(path_final)
+        if ext != ext2:
+            raise ValueError(
+                "Extensions for path_expmap and path_final shall match ; "
+                f"Found: {ext} and {ext2}"
+            )
 
         self.init_model()
-
         # Cache for interpolating classes
         self._interpolator = {}
 
-        # Frozon db properties
-        self.is_frozen = False
 
 
     def init_model(self):
         """ Build a description for the datapoints in the mmap """
         mmap = open_memmap(filename=self.path_expmap, mode="r+")
-        nposts, nh, nt = mmap.shape
+        if self.postdb:
+            nh, nt, nposts = mmap.shape
+        else:
+            nposts, nh, nt = mmap.shape
         dtype = mmap.dtype
         del mmap
 
         mmap = open_memmap(filename=self.path_final, mode="r+")
-        _nposts, nx, ny = mmap.shape
+        if self.postdb:
+            nx, ny, _nposts = mmap.shape
+        else:
+            _nposts, nx, ny = mmap.shape
         _dtype = mmap.dtype
         del mmap
 
@@ -816,7 +857,7 @@ class Exp_db:
 
 
     def path(self, kind, downsampling):
-        """ Path to the database
+        """ Path to the database, including the cascading subsampled db
 
         Parameters
         ----------
@@ -884,7 +925,7 @@ class Exp_db:
 
         info_dic = self._subsampling_info
         dtype = (
-            self.frozen_props["dtype"] if self.is_frozen 
+            self.postdb_props["dtype"] if self.postdb 
             else self.plotter.fractal.post_dtype
         )
         
@@ -937,9 +978,9 @@ class Exp_db:
         f_exp = np.empty((f_exp_slot[-1, 1],), dtype=dtype)
 
 
-        if self.is_frozen:
+        if self.postdb:
             ilvl = 0
-            filename = self.frozen_path(kind, downsampling=False)
+            filename = self.path(kind, downsampling=False)
             mmap = open_memmap(filename=filename, mode="r")
             ind_hmin, ind_hmax = h_index[ilvl, :]
             loc_arr = mmap[ind_hmin:ind_hmax, :, ic]
@@ -948,7 +989,7 @@ class Exp_db:
             f_exp[f_exp_slot[ilvl, 0]: f_exp_slot[ilvl, 1]] = loc_arr
             del mmap
 
-            filename = self.frozen_path(kind, downsampling=True)
+            filename = self.path(kind, downsampling=True)
             mmap = open_memmap(filename=filename, mode="r")
             for ilvl in range(1, lvl):
                 ind_hmin, ind_hmax = h_index[ilvl, :]
@@ -987,20 +1028,20 @@ class Exp_db:
         f_final = np.empty((f_final_slot[-1, 1],), dtype=dtype)
 
 
-        if self.is_frozen:
+        if self.postdb:
             ilvl = 0
-            filename = self.frozen_path(kind, downsampling=False)
+            filename = self.path(kind, downsampling=False)
             mmap = open_memmap(filename=filename, mode="r")
             loc_arr = mmap[:, :, ic]
             loc_arr = loc_arr.reshape(-1)
             f_final[f_final_slot[ilvl, 0]: f_final_slot[ilvl, 1]] = loc_arr
             del mmap
 
-            filename = self.frozen_path(kind, downsampling=True)
+            filename = self.path(kind, downsampling=True)
             mmap = open_memmap(filename=filename, mode="r")
 #            print("mmap", mmap.shape) # (4, )
             for ilvl in range(1, lvl):
-                filename = self.frozen_path(kind, downsampling=True)
+                filename = self.path(kind, downsampling=True)
                 mmap = open_memmap(filename=filename, mode="r")
                 nx, ny = full_shape[ilvl, :]
 #                print("ilvl", ilvl, nx, ny, nx * ny)
@@ -1026,8 +1067,8 @@ class Exp_db:
         Debugging - plot the image of the raw nested data used for
         interpolation of the provided frame
         """
-        dtype = self.frozen_props["dtype"]
-        n_channel = self.frozen_props["n_channel"]
+        dtype = self.postdb_props["dtype"]
+        n_channel = self.postdb_props["n_channel"]
         frame_interp = {
             ic: self.get_interpolator(frame, ic) for ic in range(n_channel)
         }
@@ -1080,19 +1121,19 @@ class Exp_db:
 # --------------- db Subsampling interface ---------------------------------------
     def subsample(self):
         """ Make a series of subsampled databases (either pain or frozen) """
-        if self.is_frozen:
-            self.subsample_frozen()
+        if self.postdb:
+            self.subsample_postdb()
         else:
             self.subsample_db()
 
 
-    def subsample_frozen(self):
+    def subsample_postdb(self):
         
         self._subsampling_info = {}
 
         # 1) Downsample the frozen exp db
-        source = self.frozen_path("exp", downsampling=False)
-        filename = self.frozen_path("exp", downsampling=True)
+        source = self.path("exp", downsampling=False)
+        filename = self.path("exp", downsampling=True)
         init_bound = np.array((self.hmin0, self.hmax0, -np.pi, np.pi))
         self.populate_subsampling(
             filename, source, channel_dim=2, driving_dim="y",
@@ -1100,8 +1141,8 @@ class Exp_db:
         )
     
         # 1) Downsample the frozen final db
-        source = self.frozen_path("final", downsampling=False)
-        filename = self.frozen_path("final", downsampling=True)
+        source = self.path("final", downsampling=False)
+        filename = self.path("final", downsampling=True)
         init_bound = np.array((self.xmin0, self.xmax0, self.ymin0, self.ymax0))
         self.populate_subsampling(
             filename, source, channel_dim=2, driving_dim="x",
@@ -1110,7 +1151,7 @@ class Exp_db:
 
 
     def subsample_db(self):
-        raise NotImplementedError("TODO")
+        raise NotImplementedError("Not (yet) implemented, use a .postdb")
 
     def ss_lvl_count(self, kind):
         """
@@ -1121,7 +1162,7 @@ class Exp_db:
         kind: "exp" | "final"
             The source db
         """
-        if not self.is_frozen:
+        if not self.postdb:
             raise RuntimeError("Db is not frozen")
 
         ss_shapes = self._subsampling_info[((kind, "ss_shapes"))]
@@ -1139,18 +1180,18 @@ class Exp_db:
         lvl: int >= 0
             the subsampling level
         """
-        if not self.is_frozen:
+        if not self.postdb:
             raise RuntimeError("Db is not frozen")
 
-        nc = self.frozen_props["n_channel"] # min(self.frozen_props["n_channel"], 3) # RGBA -> RGB ? TODO
+        nc = self.postdb_props["n_channel"] # min(self.frozen_props["n_channel"], 3) # RGBA -> RGB ? TODO
         ss_shapes = self._subsampling_info[((kind, "ss_shapes"))]
         ss_slots = self._subsampling_info[((kind, "ss_slots"))]
 
         nx, ny = ss_shapes[lvl, :]
         lw, hg = ss_slots[lvl, :]
-        arr = np.empty((nx, ny, nc), dtype=self.frozen_props["dtype"])
+        arr = np.empty((nx, ny, nc), dtype=self.postdb_props["dtype"])
 
-        filename = self.frozen_path(kind, downsampling=(lvl != 0))
+        filename = self.path(kind, downsampling=(lvl != 0))
         mmap = open_memmap(filename=filename, mode="r")
 
         # Returns the RGB(A) array for the exp mapping for level = lvl
@@ -1350,385 +1391,385 @@ class Exp_db:
 
 # --------------- db freezing interface ---------------------------------------
 
-    def frozen_path(self, kind, downsampling):
-        """ Path to the 'froozen' image database 
-
-        Parameters
-        ----------
-        kind: "exp" | "final"
-            The underlying db
-        downsampling: bool
-            If true, this is the path for the multi-level downsampled db
-        """
-        root, ext = os.path.splitext(self.path(kind, downsampling=False))
-        if not(downsampling):
-            return root + "_expmap" + ".frozen" + ext
-        return root + "_expmap" + "_downsampling" + ".frozen" + ext
-
-
-    def freeze(self, plotter, layer_name, try_reload):
-        """
-        Freeze a database by storing a postprocessed layer image as a numpy
-        array (1 data point = 1 pixel). The layer shall be a RGB(A) layer.
-
-        Parameters
-        ----------
-        plotter: fs.Fractal_plotter
-            A plotter to be used
-        layer_name: str
-            The layer name - shall be a RGB layer
-        try_reload: bool
-            if True, will try to reload before computing a new one
-        """
-        p1 = self.frozen_path("exp", downsampling=False)
-        p2 = self.frozen_path("final", downsampling=False)
-        logger.info(
-            f"Freezing expmap db - try_reload: {try_reload}"
-        )
-
-        # Create a mmap for the layer
-        layer = plotter[layer_name]
-        mode = layer.mode
-        if not(mode in "RGB", "RGBA"):
-            raise ValueError(
-                f"Only a RGB(A) layer can be used to freeze a db"
-                + f"found: {mode}"
-            )
-        dtype = fs.colors.layers.Virtual_layer.DTYPE_FROM_MODE[mode]
-        n_channel = fs.colors.layers.Virtual_layer.N_CHANNEL_FROM_MODE[mode]
-
-        exp_mmap = open_memmap(filename=self.path_expmap, mode="r")
-        nposts, nh, nt = exp_mmap.shape
-        del exp_mmap
-
-        final_mmap = open_memmap(filename=self.path_final, mode="r")
-        _nposts, nx, ny = final_mmap.shape
-        del final_mmap
-
-        s = self.plotter.supersampling
-        if s:
-            nh //= s
-            nt //= s
-            nx //= s
-            ny //= s
-
-        self.frozen_props = {
-            "dtype": np.dtype(dtype),
-            "n_channel": n_channel,
-            "mode": mode
-        }
-
-        if try_reload:
-            # Does the mmap already exists, does it seems to suit our need ?
-            try:
-                # Expmap db
-                try_exp_mmap = open_memmap(filename=p1, mode='r')
-                try_nh, try_nt, try_channel = try_exp_mmap.shape
-                valid = (
-                    (nh == try_nh) and (nt == try_nt)
-                    and (n_channel == try_channel) 
-                )
-                del try_exp_mmap
-                if not(valid):
-                    raise ValueError("Invalid db shape")
-                # Final db
-                try_final_mmap = open_memmap(filename=p2, mode='r')
-                try_nx, try_ny, try_channel = try_final_mmap.shape
-                valid = (
-                    (nx == try_nx) and (ny == try_ny)
-                    and (n_channel == try_channel) 
-                )
-                del try_final_mmap
-                if not(valid):
-                    raise ValueError("Invalid db shape")
-                logger.info(
-                    f"Reloading successful, using {p1} and {p2}"
-                )
-                self.is_frozen = True
-                return
-            except (ValueError, FileNotFoundError):
-                logger.info(
-                    f"Reloading failed, computing {p1} and {p2} from scratch"
-                )
-
-        # Create new files...
-        exp_fr_mmap = open_memmap(
-            filename=p1, 
-            mode='w+',
-            dtype=np.dtype(dtype),
-            shape=(nh, nt, n_channel),
-            fortran_order=False,
-            version=None
-        )
-
-        del exp_fr_mmap
-        final_fr_mmap = open_memmap(
-            filename=p2, 
-            mode='w+',
-            dtype=np.dtype(dtype),
-            shape=(nx, ny, n_channel),
-            fortran_order=False,
-            version=None
-        )
-        del final_fr_mmap
-
-        plot_template = Plot_template(plotter, self, frame=None)
-        self._raw_kind = "exp" # Used to specify the mmap to `get_2d_arr`
-        self.exp_process_for_freeze(plot_template, out_postname=layer_name)
-        self._raw_kind = "final"
-        self.final_process_for_freeze(plot_template, out_postname=layer_name)
-        del self._raw_kind
-        
-        self.is_frozen = True
-        
-        # Downsampled version of the base grid for correct interpolation
-        s = self.plotter.supersampling
-        if s:
-            # ht grid
-            im_nh = self.nh // s 
-            im_nt = self.nt // s 
-            self.hgrid0, self.hh0 = np.linspace(
-                self.hmin0, self.hmax0, im_nh, endpoint=True, retstep=True,
-                dtype=np.float32
-            )
-            self.tgrid0, self.th0 = np.linspace(
-                -np.pi, np.pi, im_nt, endpoint=True, retstep=True,
-                dtype=np.float32
-            )
-
-            # xy grid
-            im_nx = self.nx // s 
-            im_ny = self.ny // s 
-            self.xgrid0, self.xh0 = np.linspace(
-                self.xmin0, self.xmax0, im_nx, endpoint=True, retstep=True,
-                dtype=np.float32
-            )
-            self.ygrid0, self.yh0 = np.linspace(
-                self.ymin0, self.ymax0, im_ny,  endpoint=True, retstep=True,
-                dtype=np.float32
-            )
-
-
-    @Multithreading_iterator(
-        iterable_attr="exp_db_chunks", iter_kwargs="db_chunk"
-    )
-    def exp_process_for_freeze(
-            self, plot_template, out_postname, db_chunk=None
-    ):
-        """ Freeze (stores) the RGB array for this layer"""
-        (ix, ixx, iy, iyy) = db_chunk
-        s = self.plotter.supersampling
-        p_exp = self.frozen_path("exp", downsampling=False)
-        fr_mmap = open_memmap(filename=p_exp, mode='r+')
-
-        pasted = False
-        for i, layer in enumerate(plot_template.layers):
-            if layer.postname == out_postname:
-                if not(layer.output):
-                    raise ValueError("No output for this layer!!")
-
-                paste_crop = layer.crop(db_chunk)
-
-                if s:
-                    resample = PIL.Image.LANCZOS
-                    paste_crop = paste_crop.resize(
-                        size=(ixx - ix, iyy - iy),
-                        resample=resample,
-                        box=None,
-                        reducing_gap=None
-                    )
-
-                # PILLOW -> Numpy
-                paste_crop_arr = np.swapaxes(
-                    np.asarray(paste_crop), 0 , 1)[:, ::-1]
-
+#    def frozen_path(self, kind, downsampling):
+#        """ Path to the 'froozen' image database 
+#
+#        Parameters
+#        ----------
+#        kind: "exp" | "final"
+#            The underlying db
+#        downsampling: bool
+#            If true, this is the path for the multi-level downsampled db
+#        """
+#        root, ext = os.path.splitext(self.path(kind, downsampling=False))
+#        if not(downsampling):
+#            return root + "_expmap" + ".frozen" + ext
+#        return root + "_expmap" + "_downsampling" + ".frozen" + ext
+#
+#
+#    def freeze(self, plotter, layer_name, try_reload):
+#        """
+#        Freeze a database by storing a postprocessed layer image as a numpy
+#        array (1 data point = 1 pixel). The layer shall be a RGB(A) layer.
+#
+#        Parameters
+#        ----------
+#        plotter: fs.Fractal_plotter
+#            A plotter to be used
+#        layer_name: str
+#            The layer name - shall be a RGB layer
+#        try_reload: bool
+#            if True, will try to reload before computing a new one
+#        """
+#        p1 = self.frozen_path("exp", downsampling=False)
+#        p2 = self.frozen_path("final", downsampling=False)
+#        logger.info(
+#            f"Freezing expmap db - try_reload: {try_reload}"
+#        )
+#
+#        # Create a mmap for the layer
+#        layer = plotter[layer_name]
+#        mode = layer.mode
+#        if not(mode in "RGB", "RGBA"):
+#            raise ValueError(
+#                f"Only a RGB(A) layer can be used to freeze a db"
+#                + f"found: {mode}"
+#            )
+#        dtype = fs.colors.layers.Virtual_layer.DTYPE_FROM_MODE[mode]
+#        n_channel = fs.colors.layers.Virtual_layer.N_CHANNEL_FROM_MODE[mode]
+#
+#        exp_mmap = open_memmap(filename=self.path_expmap, mode="r")
+#        nposts, nh, nt = exp_mmap.shape
+#        del exp_mmap
+#
+#        final_mmap = open_memmap(filename=self.path_final, mode="r")
+#        _nposts, nx, ny = final_mmap.shape
+#        del final_mmap
+#
+#        s = self.plotter.supersampling
+#        if s:
+#            nh //= s
+#            nt //= s
+#            nx //= s
+#            ny //= s
+#
+#        self.frozen_props = {
+#            "dtype": np.dtype(dtype),
+#            "n_channel": n_channel,
+#            "mode": mode
+#        }
+#
+#        if try_reload:
+#            # Does the mmap already exists, does it seems to suit our need ?
+#            try:
+#                # Expmap db
+#                try_exp_mmap = open_memmap(filename=p1, mode='r')
+#                try_nh, try_nt, try_channel = try_exp_mmap.shape
+#                valid = (
+#                    (nh == try_nh) and (nt == try_nt)
+#                    and (n_channel == try_channel) 
+#                )
+#                del try_exp_mmap
+#                if not(valid):
+#                    raise ValueError("Invalid db shape")
+#                # Final db
+#                try_final_mmap = open_memmap(filename=p2, mode='r')
+#                try_nx, try_ny, try_channel = try_final_mmap.shape
+#                valid = (
+#                    (nx == try_nx) and (ny == try_ny)
+#                    and (n_channel == try_channel) 
+#                )
+#                del try_final_mmap
+#                if not(valid):
+#                    raise ValueError("Invalid db shape")
+#                logger.info(
+#                    f"Reloading successful, using {p1} and {p2}"
+#                )
+#                self.is_frozen = True
+#                return
+#            except (ValueError, FileNotFoundError):
+#                logger.info(
+#                    f"Reloading failed, computing {p1} and {p2} from scratch"
+#                )
+#
+#        # Create new files...
+#        exp_fr_mmap = open_memmap(
+#            filename=p1, 
+#            mode='w+',
+#            dtype=np.dtype(dtype),
+#            shape=(nh, nt, n_channel),
+#            fortran_order=False,
+#            version=None
+#        )
+#
+#        del exp_fr_mmap
+#        final_fr_mmap = open_memmap(
+#            filename=p2, 
+#            mode='w+',
+#            dtype=np.dtype(dtype),
+#            shape=(nx, ny, n_channel),
+#            fortran_order=False,
+#            version=None
+#        )
+#        del final_fr_mmap
+#
+#        plot_template = Plot_template(plotter, self, frame=None)
+#        self._raw_kind = "exp" # Used to specify the mmap to `get_2d_arr`
+#        self.exp_process_for_freeze(plot_template, out_postname=layer_name)
+#        self._raw_kind = "final"
+#        self.final_process_for_freeze(plot_template, out_postname=layer_name)
+#        del self._raw_kind
+#        
+#        self.is_frozen = True
+#        
+#        # Downsampled version of the base grid for correct interpolation
+#        s = self.plotter.supersampling
+#        if s:
+#            # ht grid
+#            im_nh = self.nh // s 
+#            im_nt = self.nt // s 
+#            self.hgrid0, self.hh0 = np.linspace(
+#                self.hmin0, self.hmax0, im_nh, endpoint=True, retstep=True,
+#                dtype=np.float32
+#            )
+#            self.tgrid0, self.th0 = np.linspace(
+#                -np.pi, np.pi, im_nt, endpoint=True, retstep=True,
+#                dtype=np.float32
+#            )
+#
+#            # xy grid
+#            im_nx = self.nx // s 
+#            im_ny = self.ny // s 
+#            self.xgrid0, self.xh0 = np.linspace(
+#                self.xmin0, self.xmax0, im_nx, endpoint=True, retstep=True,
+#                dtype=np.float32
+#            )
+#            self.ygrid0, self.yh0 = np.linspace(
+#                self.ymin0, self.ymax0, im_ny,  endpoint=True, retstep=True,
+#                dtype=np.float32
+#            )
+#
+#
+#    @Multithreading_iterator(
+#        iterable_attr="exp_db_chunks", iter_kwargs="db_chunk"
+#    )
+#    def exp_process_for_freeze(
+#            self, plot_template, out_postname, db_chunk=None
+#    ):
+#        """ Freeze (stores) the RGB array for this layer"""
+#        (ix, ixx, iy, iyy) = db_chunk
+#        s = self.plotter.supersampling
+#        p_exp = self.frozen_path("exp", downsampling=False)
+#        fr_mmap = open_memmap(filename=p_exp, mode='r+')
+#
+#        pasted = False
+#        for i, layer in enumerate(plot_template.layers):
+#            if layer.postname == out_postname:
+#                if not(layer.output):
+#                    raise ValueError("No output for this layer!!")
+#
+#                paste_crop = layer.crop(db_chunk)
+#
+#                if s:
+#                    resample = PIL.Image.LANCZOS
+#                    paste_crop = paste_crop.resize(
+#                        size=(ixx - ix, iyy - iy),
+#                        resample=resample,
+#                        box=None,
+#                        reducing_gap=None
+#                    )
+#
 #                # PILLOW -> Numpy
 #                paste_crop_arr = np.swapaxes(
-#                    np.asarray(layer.crop(db_chunk)), 0 , 1
-#                )[:, ::-1]
-#                # fr_mmap[ix: ixx, iy: iyy, :] = paste_crop_arr
-
-                if fr_mmap.shape[2] == 1:
-                    fr_mmap[ix: ixx, iy: iyy, 0] = paste_crop_arr
-                else:
-                    fr_mmap[ix: ixx, iy: iyy, :] = paste_crop_arr
-
-                pasted = True
-
-        if not pasted:
-            raise ValueError(
-                f"Layer missing: {out_postname} "
-                + f"not found in {plot_template.postnames}"
-            )
-
-        del fr_mmap
-
-    @Multithreading_iterator(
-        iterable_attr="final_db_chunks", iter_kwargs="db_chunk"
-    )
-    def final_process_for_freeze(
-            self, plot_template, out_postname, db_chunk=None
-    ):
-        """ Freeze (stores) the RGB array for this layer"""
-        (ix, ixx, iy, iyy) = db_chunk
-        s = self.plotter.supersampling
-        p_final = self.frozen_path("final", downsampling=False)
-        fr_mmap = open_memmap(filename=p_final, mode='r+')
-
-        pasted = False
-        for i, layer in enumerate(plot_template.layers):
-            if layer.postname == out_postname:
-                if not(layer.output):
-                    raise ValueError("No output for this layer!!")
-    
-                paste_crop = layer.crop(db_chunk)
-
-                if s:
-                    resample = PIL.Image.LANCZOS
-                    paste_crop = paste_crop.resize(
-                        size=(ixx - ix, iyy - iy),
-                        resample=resample,
-                        box=None,
-                        reducing_gap=None
-                    )
-
-                # PILLOW -> Numpy
-                paste_crop_arr = np.swapaxes(
-                    np.asarray(paste_crop), 0 , 1)[:, ::-1]
-                
+#                    np.asarray(paste_crop), 0 , 1)[:, ::-1]
+#
+##                # PILLOW -> Numpy
+##                paste_crop_arr = np.swapaxes(
+##                    np.asarray(layer.crop(db_chunk)), 0 , 1
+##                )[:, ::-1]
+##                # fr_mmap[ix: ixx, iy: iyy, :] = paste_crop_arr
+#
+#                if fr_mmap.shape[2] == 1:
+#                    fr_mmap[ix: ixx, iy: iyy, 0] = paste_crop_arr
+#                else:
+#                    fr_mmap[ix: ixx, iy: iyy, :] = paste_crop_arr
+#
+#                pasted = True
+#
+#        if not pasted:
+#            raise ValueError(
+#                f"Layer missing: {out_postname} "
+#                + f"not found in {plot_template.postnames}"
+#            )
+#
+#        del fr_mmap
+#
+#    @Multithreading_iterator(
+#        iterable_attr="final_db_chunks", iter_kwargs="db_chunk"
+#    )
+#    def final_process_for_freeze(
+#            self, plot_template, out_postname, db_chunk=None
+#    ):
+#        """ Freeze (stores) the RGB array for this layer"""
+#        (ix, ixx, iy, iyy) = db_chunk
+#        s = self.plotter.supersampling
+#        p_final = self.frozen_path("final", downsampling=False)
+#        fr_mmap = open_memmap(filename=p_final, mode='r+')
+#
+#        pasted = False
+#        for i, layer in enumerate(plot_template.layers):
+#            if layer.postname == out_postname:
+#                if not(layer.output):
+#                    raise ValueError("No output for this layer!!")
+#    
+#                paste_crop = layer.crop(db_chunk)
+#
+#                if s:
+#                    resample = PIL.Image.LANCZOS
+#                    paste_crop = paste_crop.resize(
+#                        size=(ixx - ix, iyy - iy),
+#                        resample=resample,
+#                        box=None,
+#                        reducing_gap=None
+#                    )
+#
+#                # PILLOW -> Numpy
 #                paste_crop_arr = np.swapaxes(
-#                    np.asarray(layer.crop(db_chunk)), 0 , 1
-#                )[:, ::-1]
-
-                if fr_mmap.shape[2] == 1:
-                    fr_mmap[ix: ixx, iy: iyy, 0] = paste_crop_arr
-                else:
-                    fr_mmap[ix: ixx, iy: iyy, :] = paste_crop_arr
-
-                pasted = True
-
-        if not pasted:
-            raise ValueError(
-                f"Layer missing: {out_postname} "
-                + f"not found in {plot_template.postnames}"
-            )
-
-        del fr_mmap
-
-
-
-
-
-
-    @Multithreading_iterator(
-        iterable_attr="db_chunks", iter_kwargs="db_chunk"
-    )
-    def process_for_freeze(self, plot_template, out_postname, db_chunk=None):
-        """ Freeze (stores) the RGB array for this layer
-        
-        """
-        (ix, ixx, iy, iyy) = db_chunk
-        s = self.plotter.supersampling
-        fr_mmap = open_memmap(filename=self.frozen_path, mode='r+')
-
-        pasted = False
-        for i, layer in enumerate(plot_template.layers):
-            if layer.postname == out_postname:
-                if not(layer.output):
-                    raise ValueError("No output for this layer!!")
-
-                paste_crop = layer.crop(db_chunk)
-
-                if s:
-                    resample = PIL.Image.LANCZOS
-                    paste_crop = paste_crop.resize(
-                        size=(ixx - ix, iyy - iy),
-                        resample=resample,
-                        box=None,
-                        reducing_gap=None
-                    )
-                # PILLOW -> Numpy
-                paste_crop_arr = np.swapaxes(
-                    np.asarray(paste_crop), 0 , 1)[:, ::-1]
-
-                if fr_mmap.shape[2] == 1:
-                    fr_mmap[ix: ixx, iy: iyy, 0] = paste_crop_arr
-                else:
-                    fr_mmap[ix: ixx, iy: iyy, :] = paste_crop_arr
-
-                pasted = True
-
-        if not pasted:
-            raise ValueError(
-                f"Layer missing: {out_postname} "
-                + f"not found in {plot_template.postnames}"
-            )
-
-        del fr_mmap
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    def exp_db_chunks(self):
-        """
-        Generator function
-        Yields the chunks spans for the exp_db
-        """
-        # if chunk_size is None:
-        chunk_size = fs.settings.db_chunk_size
-        im_nh, im_nt = self.nh, self.nt
-        
-        # When supersampled, real image is smaller than db size:
-        s = self.plotter.supersampling
-        if s:
-           im_nh //= s 
-           im_nt //= s 
-
-        for ih in range(0, im_nh, chunk_size):
-            ihh = min(ih + chunk_size, im_nh)
-            for it in range(0, im_nt, chunk_size):
-                itt = min(it + chunk_size, im_nt)
-                yield  (ih, ihh, it, itt)
-
-
-    def final_db_chunks(self):
-        """
-        Generator function
-        Yields the chunks spans for the final_db
-        """
-        # if chunk_size is None:
-        chunk_size = fs.settings.db_chunk_size
-        im_nx, im_ny = self.nx, self.ny
-        
-        # When supersampled, real image is smaller than db size:
-        s = self.plotter.supersampling
-        if s:
-           im_nx //= s 
-           im_ny //= s 
-
-        for ix in range(0, im_nx, chunk_size):
-            ixx = min(ix + chunk_size, im_nx)
-            for iy in range(0, im_ny, chunk_size):
-                iyy = min(iy + chunk_size, im_ny)
-                yield  (ix, ixx, iy, iyy)
+#                    np.asarray(paste_crop), 0 , 1)[:, ::-1]
+#                
+##                paste_crop_arr = np.swapaxes(
+##                    np.asarray(layer.crop(db_chunk)), 0 , 1
+##                )[:, ::-1]
+#
+#                if fr_mmap.shape[2] == 1:
+#                    fr_mmap[ix: ixx, iy: iyy, 0] = paste_crop_arr
+#                else:
+#                    fr_mmap[ix: ixx, iy: iyy, :] = paste_crop_arr
+#
+#                pasted = True
+#
+#        if not pasted:
+#            raise ValueError(
+#                f"Layer missing: {out_postname} "
+#                + f"not found in {plot_template.postnames}"
+#            )
+#
+#        del fr_mmap
+#
+#
+#
+#
+#
+#
+#    @Multithreading_iterator(
+#        iterable_attr="db_chunks", iter_kwargs="db_chunk"
+#    )
+#    def process_for_freeze(self, plot_template, out_postname, db_chunk=None):
+#        """ Freeze (stores) the RGB array for this layer
+#        
+#        """
+#        (ix, ixx, iy, iyy) = db_chunk
+#        s = self.plotter.supersampling
+#        fr_mmap = open_memmap(filename=self.frozen_path, mode='r+')
+#
+#        pasted = False
+#        for i, layer in enumerate(plot_template.layers):
+#            if layer.postname == out_postname:
+#                if not(layer.output):
+#                    raise ValueError("No output for this layer!!")
+#
+#                paste_crop = layer.crop(db_chunk)
+#
+#                if s:
+#                    resample = PIL.Image.LANCZOS
+#                    paste_crop = paste_crop.resize(
+#                        size=(ixx - ix, iyy - iy),
+#                        resample=resample,
+#                        box=None,
+#                        reducing_gap=None
+#                    )
+#                # PILLOW -> Numpy
+#                paste_crop_arr = np.swapaxes(
+#                    np.asarray(paste_crop), 0 , 1)[:, ::-1]
+#
+#                if fr_mmap.shape[2] == 1:
+#                    fr_mmap[ix: ixx, iy: iyy, 0] = paste_crop_arr
+#                else:
+#                    fr_mmap[ix: ixx, iy: iyy, :] = paste_crop_arr
+#
+#                pasted = True
+#
+#        if not pasted:
+#            raise ValueError(
+#                f"Layer missing: {out_postname} "
+#                + f"not found in {plot_template.postnames}"
+#            )
+#
+#        del fr_mmap
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#    def exp_db_chunks(self):
+#        """
+#        Generator function
+#        Yields the chunks spans for the exp_db
+#        """
+#        # if chunk_size is None:
+#        chunk_size = fs.settings.db_chunk_size
+#        im_nh, im_nt = self.nh, self.nt
+#        
+#        # When supersampled, real image is smaller than db size:
+#        s = self.plotter.supersampling
+#        if s:
+#           im_nh //= s 
+#           im_nt //= s 
+#
+#        for ih in range(0, im_nh, chunk_size):
+#            ihh = min(ih + chunk_size, im_nh)
+#            for it in range(0, im_nt, chunk_size):
+#                itt = min(it + chunk_size, im_nt)
+#                yield  (ih, ihh, it, itt)
+#
+#
+#    def final_db_chunks(self):
+#        """
+#        Generator function
+#        Yields the chunks spans for the final_db
+#        """
+#        # if chunk_size is None:
+#        chunk_size = fs.settings.db_chunk_size
+#        im_nx, im_ny = self.nx, self.ny
+#        
+#        # When supersampled, real image is smaller than db size:
+#        s = self.plotter.supersampling
+#        if s:
+#           im_nx //= s 
+#           im_ny //= s 
+#
+#        for ix in range(0, im_nx, chunk_size):
+#            ixx = min(ix + chunk_size, im_nx)
+#            for iy in range(0, im_ny, chunk_size):
+#                iyy = min(iy + chunk_size, im_ny)
+#                yield  (ix, ixx, iy, iyy)
 
 
 
@@ -1756,6 +1797,11 @@ class Exp_db:
             If True, will try to reload any previously computed frozen db image
         """
         assert isinstance(plotter, fs.Fractal_plotter)
+        
+        if self.postdb:
+            raise RuntimeError(
+                    "`set_plotter` shall not be called for a .postdb"
+            )
 
         self.plotter = plotter
         self.postname = postname
@@ -1832,9 +1878,13 @@ class Exp_db:
         -----
         Plotting settings are defined by ``set_plotter`` method.
         """
-        # Is the db frozen ?
-        if self.is_frozen:
-            return self.plot_frozen(frame)
+        # Is the db filled with raw rgb data ?
+        if self.postdb:
+            self.subsample()
+            return self.plot_postdb(frame)
+#        # Is the db frozen ?
+#        if self.is_frozen:
+#            return self.plot_frozen(frame)
 
         plot_template = Plot_template(self.plotter, self, frame)
 
@@ -1863,13 +1913,33 @@ class Exp_db:
         return img
 
 
-    def plot_frozen(self, frame):
+    def plot_postdb(self, frame):
         """ Direct interpolation in a frozen db image data
         """
-        dtype = self.frozen_props["dtype"]
-        n_channel = self.frozen_props["n_channel"]
+        mmap = open_memmap(filename=self.path_expmap, mode="r+")
+        nx, ny, n_channel = mmap.shape
+        dtype = mmap.dtype
+        del mmap
+        self.postdb_props = {
+            "dtype": dtype,
+            "n_channel": n_channel
+        }
+        
+#        dtype = self.frozen_props["dtype"]
+#        n_channel = self.frozen_props["n_channel"]
         im_size = frame.size
         ret = np.empty(im_size[::-1] + (n_channel,), dtype=dtype)
+
+
+#        for ic in range(n_channel):
+#            channel_ret = self.get_interpolator(frame, ic)(*frame.pts)
+#            channel_ret = channel_ret.reshape(im_size)
+#              #  ).reshape(im_size)
+#            # Numpy -> PILLOW
+#            ret[:, :, ic] = channel_ret # np.swapaxes(channel_ret, 0 , 1)[::-1, :]
+
+
+
 
         for ic in range(n_channel): #3): #n_channel):
 
@@ -1877,7 +1947,7 @@ class Exp_db:
                 *frame.pts, frame.h, frame.nx
             ).reshape(im_size)
             # Numpy -> PILLOW
-            ret[:, :, ic] = np.swapaxes(channel_ret, 0 , 1)[::-1, :]
+            ret[:, :, ic] = channel_ret # np.swapaxes(channel_ret, 0 , 1)[::-1, :]
             
             # Image.fromarray((ret * 255).astype(np.uint8))
 
@@ -2125,10 +2195,10 @@ def multilevel_interpolate(
     return f_out
 
 # debugging options
-CHECK_BOUNDS = False
+CHECK_BOUNDS = True
 CLIP_BOUNDS = False
 
-@numba.njit(cache=True, nogil=True)
+@numba.njit(nogil=True)
 def grid_interpolate(x_out, y_out, f, ax, ay, bx, by, hx, hy, nx, ny):
     # Bilinear interpolation in a rectangular grid - f is passed flatten and
     # is of size (nx x ny)
