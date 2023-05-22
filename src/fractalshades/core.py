@@ -154,18 +154,18 @@ class Fractal_plotter:
     @property
     def postnames(self):
         return self.posts.keys()
-    
-    @property
-    def size(self):
-        # The array shapes
-        f = self.fractal
-        return (f.ny, f.nx) 
 
     @property
-    def im_size(self):
+    def size(self):
         # The image size 
         f = self.fractal
-        return (f.nx, f.ny) 
+        return (f.nx, f.ny)
+
+    @property
+    def db_shape(self):
+        # The array shapes
+        f = self.fractal
+        return (f.ny, f.nx)  
 
 
     def add_postproc_batch(self, postproc_batch):
@@ -644,7 +644,7 @@ class Fractal_plotter:
         
         for layer in self.layers:
             if layer.output:
-                self._im += [PIL.Image.new(mode=layer.mode, size=self.im_size)]
+                self._im += [PIL.Image.new(mode=layer.mode, size=self.size)]
                 if self.try_recover:
                     self.open_postdb(layer)
             else:
@@ -1021,7 +1021,7 @@ class Fractal_plotter:
             info_file.write(f"written time: {now}\n\n")
             info_file.write("*array description*\n")
             info_file.write(f"  dtype: {self.post_dtype}\n")
-            shape = (len(self.postnames),) + self.size
+            shape = (len(self.postnames),) + self.db_shape
             info_file.write(f"  shape: {shape}\n")
             ss = self.supersampling
             info_file.write(f"  supersampling: {ss}\n")
@@ -1112,11 +1112,11 @@ class Fractal_plotter:
 
         # The db shape
         ssg = self.supersampling
-        ss_size = self.size
+        ss_shape = self.db_shape
         db_field_count = len(self.postnames) # Accounting for 2-fields layers
         if ssg is not None:
-            ss_size = tuple(ssg * x for x in ss_size)
-        expected_shape = (db_field_count,) + ss_size
+            ss_shape = tuple(ssg * x for x in ss_shape)
+        expected_shape = (db_field_count,) + ss_shape
 
         try:
             if not(self.try_recover):
@@ -1276,7 +1276,7 @@ class Fractal_plotter:
         mode = layer.mode
         dtype = fs.colors.layers.Virtual_layer.DTYPE_FROM_MODE[mode]
         channel = fs.colors.layers.Virtual_layer.N_CHANNEL_FROM_MODE[mode]
-        expected_shape = self.size + (channel,)
+        expected_shape = self.db_shape + (channel,)
         
 #        file_name = self.image_name(layer)
 #        file_path = self.img_mmap(layer)
@@ -2042,26 +2042,26 @@ advanced users when subclassing.
                 dtype=data_type
             )
 
-        dx_vec, dy_vec  = np.meshgrid(x_1d, y_1d, indexing='xy')
+        dx_screen, dy_screen  = np.meshgrid(x_1d, y_1d, indexing='xy')
         # dx_vec, dy_vec  = np.meshgrid(x_1d, y_1d, indexing='ij')
         # dy_vec, dx_vec  = np.meshgrid(y_1d, x_1d[::-1])#, indexing='ij')
 
         if jitter:
             rg = np.random.default_rng(0)
-            rand_x = rg.random(dx_vec.shape, dtype=data_type)
-            rand_y = rg.random(dy_vec.shape, dtype=data_type)
+            rand_x = rg.random(dx_screen.shape, dtype=data_type)
+            rand_y = rg.random(dy_screen.shape, dtype=data_type)
             k = 0.7071067811865476
             jitter_x = (0.5 - rand_x) * k / (nx - 1) * jitter
             jitter_y = (0.5 - rand_y) * k / (ny - 1) * jitter
             if supersampling is not None:
                 jitter_x /= supersampling
                 jitter_y /= supersampling
-            dx_vec += jitter_x
-            dy_vec += jitter_y
+            dx_screen += jitter_x
+            dy_screen += jitter_y
 
-        dy_vec /= self.xy_ratio
+        dy_screen /= self.xy_ratio
 
-        res = dx_vec - 1j * dy_vec
+        res = dx_screen - 1j * dy_screen
 
         return res
 

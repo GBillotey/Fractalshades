@@ -572,7 +572,8 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         
         self.layer = plotter[layer_name]
         self.test_name = test_name
-        self.check_current_layer()
+        # Use small threshold to detect local 'blobs'
+        self.check_current_layer(err_max=0.002)
 
     def test_deep_interior_detect(self):
         """
@@ -776,13 +777,13 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
         self.assertTrue(err < err_max)
 
 if __name__ == "__main__":
-    full_test = True
+    full_test = False
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([Test_Perturbation_mandelbrot]))
     else:
         suite = unittest.TestSuite()
-        suite.addTest(Test_Perturbation_mandelbrot("test_M2_int_E11"))
+        suite.addTest(Test_Perturbation_mandelbrot("test_glitch_dyn"))
         # suite.addTest(Test_Perturbation_mandelbrot("test_ultradeep_interior_detect"))
 #        suite.addTest(Test_Perturbation_mandelbrot("test_supersampling"))
         # suite.addTest(Test_Perturbation_mandelbrot("test_M2_E20"))
