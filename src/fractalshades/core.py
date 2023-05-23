@@ -1816,7 +1816,7 @@ advanced users when subclassing.
              calc_name + "_*.arr",
              calc_name + ".report",
              calc_name + ".fingerprint",
-             "*._img", # ._img files are tagged by the output layer name
+             "*.postdb", # .postdb files are tagged by the output layer name
              "ref_pt.dat",
              "SA.dat"
         )
