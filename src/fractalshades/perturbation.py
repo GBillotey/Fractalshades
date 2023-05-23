@@ -1998,9 +1998,12 @@ def combine_BLA(M, r, kc_std, stg, ref_orbit_len, eps):
         # |A1 z0| + |B1 c| < r2
         # |z0| < |r2 - |B1 c|| / |A1|
 
+        # Note: "Strict inequality factor" of 0.95 is mandatory to pass the
+        # glitch test
+
         mA1 = np.abs(M[index1, 0])
         mB1 = np.abs(M[index1, 1])
-        r2_backw = max(0., (r2 - mB1 * kc_std) / (mA1 + eps)) # might use eps ?
+        r2_backw = 0.95 * max(0., (r2 - mB1 * kc_std) / max(mA1, eps))
         r[index_res] = min(r1, r2_backw)
 
 
@@ -2081,7 +2084,7 @@ def combine_BLA_BS(M, r, kc_std, stg, ref_orbit_len, eps):
             np.abs(M[index1, 6]), 
             np.abs(M[index1, 7]),
         )
-        r2_backw = max(0., (r2 - mB1 * kc_std) / (mA1 + eps)) # might use eps ?
+        r2_backw = 0.95 * max(0., (r2 - mB1 * kc_std) / max(mA1, eps))
         r[index_res] = min(r1, r2_backw)
 
 
