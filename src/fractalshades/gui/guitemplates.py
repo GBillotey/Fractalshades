@@ -532,6 +532,15 @@ Notes
                 "x": "x", "y": "y", "dx": "dx",
                 "xy_ratio": "xy_ratio", "dps": None
             }
+        if not(self.holomorphic):
+            # Connects also the zooming skew parameters
+            self.connect_mouse_params.update({
+                "has_skew": "has_skew",
+                "skew_00": "skew_00",
+                "skew_01": "skew_01",
+                "skew_10": "skew_10",
+                "skew_11": "skew_11"
+            })
 
         if not(self.implements_newton):
             # Delete all parameters associated with Newton
