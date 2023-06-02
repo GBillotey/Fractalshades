@@ -48,7 +48,7 @@ class Frame:
     Notes
     -----
     A simple pass-through Frame, extracting the raw ``my_db`` data is:
-        
+
     ::
 
         fractalshades.db.Frame(
@@ -68,16 +68,18 @@ class Frame:
         self.ny = int(self.nx / self.xy_ratio + 0.5)
         self.dy = dy = self.dx / self.xy_ratio
         self.size = (self.nx, self.ny)
+        self.db_size = (self.ny, self.nx) # PIL convention
 
         xmin = x - 0.5 * dx
         xmax = x + 0.5 * dx
         ymin = y - 0.5 * dy
         ymax = y + 0.5 * dy
 
-        xvec = np.linspace(xmin, xmax, self.nx, dtype=np.float32)
-        yvec = np.linspace(ymin, ymax, self.ny, dtype=np.float32)
+        x_1d = np.linspace(xmin, xmax, self.nx, dtype=np.float32)
+        y_1d = np.linspace(ymin, ymax, self.ny, dtype=np.float32)
 
-        y_grid, x_grid = np.meshgrid(yvec, xvec)
+        # Meshgrid of the frame with PIL convention
+        x_grid, y_grid  = np.meshgrid(x_1d, y_1d[::-1], indexing='xy')
         self.pts = np.ravel(x_grid), np.ravel(y_grid)
 
 
@@ -106,7 +108,7 @@ class Plot_template:
         frame: Frame
             The frame-specific data holder
         """
-        # Internal plotterobject, layers reparented for frame-specific
+        # Internal plotter object, layers reparented for frame-specific
         # functionnality
         self.plotter = copy.deepcopy(plotter)
         for layer in self.plotter.layers:
@@ -135,7 +137,7 @@ class Db:
     def __init__(self, path):
         """ Wrapper around the raw numpy-array stored at ``path``.
 
-        The array is of shape (nposts, nx, ny) where nposts is the number of 
+        The array is of shape (nposts, ny, nx) where nposts is the number of 
         post-processing fields, and is usually created through a
         `fractalshades.Fractal_plotter.save_db` call.
 
@@ -167,6 +169,9 @@ class Db:
         # Cache for interpolating classes
         self._interpolator = {}
 
+    @property
+    def is_postdb(self):
+        return self.postdb
 
     @property
     def zoom_kwargs(self):
@@ -176,9 +181,9 @@ class Db:
         """ Build a description for the datapoints in the mmap """
         mmap = open_memmap(filename=self.path, mode="r+")
         if self.postdb:
-            nx, ny, nposts = mmap.shape # or is it ny, nx, nposts ???
+            ny, nx, nposts = mmap.shape # or is it ny, nx, nposts ???
         else:
-            nposts, nx, ny = mmap.shape
+            nposts, ny, nx = mmap.shape
         del mmap
 
         # Points number
@@ -202,9 +207,10 @@ class Db:
         self.ymin0 = ymin0 = y0 - 0.5 * dy0
         self.ymax0 = ymax0 = y0 + 0.5 * dy0
         self.ygrid0, self.yh0 = np.linspace(
-            ymin0, ymax0, ny,  endpoint=True, retstep=True, dtype=np.float32
+            ymin0, ymax0, ny, endpoint=True, retstep=True, dtype=np.float32
         )
-
+        print("INIT model with grid shapes (nx, ny)", self.xgrid0.shape, self.ygrid0.shape)
+        print("dh (x, y)", self.xh0, self.yh0)
 
     def get_interpolator(self, frame, post_index):
         """ Try first to reload if the interpolating domain is still valid
@@ -249,19 +255,37 @@ class Db:
         ygrid0 = self.ygrid0
         xh0 = self.xh0
         yh0 = self.yh0
+        nx = len(xgrid0)
+        ny = len(ygrid0)
 
         # 1) load the local interpolation array for the region of interest
         # with a margin so it has a chance to remain valid for several frames
-        k = 0.5 * 1.5  # 0.5 if no margin at all
+        if (x - 0.5 * dx) < self.xmin0:
+            raise ValueError("Frame partly outside databse data: low x")
+        if (y - 0.5 * dy) < self.ymin0:
+            raise ValueError("Frame partly outside databse data: low y")
+        if (x + 0.5 * dx) > self.xmax0:
+            raise ValueError("Frame partly outside databse data: high x")
+        if (y + 0.5 * dy) > self.ymax0:
+            raise ValueError("Frame partly outside databse data: high y")
+
+
+        k = 0.5 * 1.5  # 0.5 would be no margin at all
+        # min vals for frame interpolation
         x_min = np.float32(max(x - k * dx, self.xmin0))
         ind_xmin = np.searchsorted(xgrid0, x_min, side="right") - 1
         y_min = np.float32(max(y - k * dy, self.ymin0))
         ind_ymin = np.searchsorted(ygrid0, y_min, side="right") - 1
-        # max
+
+        # max vals for frame interpolation
         x_max = np.float32(min(x + k * dx, self.xmax0))
-        ind_xmax = np.searchsorted(xgrid0, x_max, side="left")
+        ind_xmax = min(np.searchsorted(xgrid0, x_max, side="left"), nx)
         y_max = np.float32(min(y + k * dy, self.ymax0))
-        ind_ymax = np.searchsorted(ygrid0, y_max, side="left")
+        ind_ymax = min(np.searchsorted(ygrid0, y_max, side="left"), ny)
+        
+        print("**** parameters for xmax")
+        print("self.xmax0", self.xmax0, "frame dx", dx, "x_max", x_max)
+        print("database nx ny", nx, ny)
 
         # 2) Creates and return the interpolator
         # a, b: the lower and upper bounds of the interpolation region
@@ -275,19 +299,43 @@ class Db:
         a = [xgrid0[ind_xmin], ygrid0[ind_ymin]]
         b = [xgrid0[ind_xmax], ygrid0[ind_ymax]]
         h = [xh0, yh0]
+        assert xh0 > 0
+        assert yh0 > 0
+        assert ind_xmin < ind_xmax
+        assert ind_ymin < ind_ymax
+        print("*** found A, B", a, b)
+        print("*** index for x", ind_xmin, ind_xmax)
+        print("*** index for y", ind_ymin, ind_ymax)
 
         if self.postdb:
+            print("Use *.postdb")
             fr_mmap = open_memmap(filename=self.path, mode="r")
-            f = fr_mmap[ind_xmin:ind_xmax, ind_ymin:ind_ymax, post_index]
+            # f = fr_mmap[ind_xmin:ind_xmax, ind_ymin:ind_ymax, post_index]
+#            f = fr_mmap[ind_ymin:ind_ymax, ind_xmin:ind_xmax, post_index]
+            f = fr_mmap[
+                (ny - ind_ymax - 1):(ny - ind_ymin),
+                ind_xmin:(ind_xmax + 1),
+                post_index
+            ]
+            # f = np.swapaxes(f, 0, 1)
             del fr_mmap
 
         else:
             mmap = open_memmap(filename=self.path, mode="r")
-            f = mmap[post_index, ind_xmin:ind_xmax, ind_ymin:ind_ymax]
+            f = mmap[
+                post_index,
+                (ny - ind_ymax - 1):(ny - ind_ymin),
+                ind_xmin:(ind_xmax + 1)
+            ]
             del mmap
 
         k = 1
-        interpolator = fsGrid_lin_interpolator(a, b, h, f)
+        print("f for interpolator, shape", f.shape)
+        assert a[0] < b[0]
+        assert a[1] < b[1]
+        interpolator = fsGrid_lin_interpolator(
+            a, b, h, f, PIL_order=True
+        )
         bounds = (a, b)
 
         return interpolator, bounds
@@ -469,8 +517,7 @@ class Db:
 
 # --------------- db plotting interface ---------------------------------------
 
-    def set_plotter(self, plotter, postname,
-                    plotting_modifier=None, reload_frozen=False):
+    def set_plotter(self, plotter, postname, plotting_modifier=None):
         """
         Define the plotting properties - Needed only if a *.db is provided
         not for a *.postdb.
@@ -487,9 +534,9 @@ class Db:
             database postprocessad image and interpolate directly in the image.
             Using this option open a lot of possibilities but is also much
             more computer-intensive
-        reload_frozen: Optionnal, bool
-            Used only if plotting_modifier is None
-            If True, will try to reload any previously computed frozen db image
+#        reload_frozen: Optionnal, bool
+#            Used only if plotting_modifier is None
+#            If True, will try to reload any previously computed frozen db image
         """
         assert isinstance(plotter, fs.Fractal_plotter)
 
@@ -501,12 +548,12 @@ class Db:
         self.plotter = plotter
         self.postname = postname
         self.plotting_modifier = plotting_modifier
-        self.lf2 = fsfilters.Lanczos_decimator().get_impl(2, 2)
+#        self.lf2 = fsfilters.Lanczos_decimator().get_impl(2, 2)
 
-        if plotting_modifier is None:
-            # we can freeze the db and interpolate in the frozen image
-            logger.info("Postproc is frozen during camera move")
-            # self.freeze(plotter, postname, try_reload=reload_frozen)
+#        if plotting_modifier is None:
+#            # we can freeze the db and interpolate in the frozen image
+#            logger.info("Postproc is frozen during camera move")
+#            # self.freeze(plotter, postname, try_reload=reload_frozen)
 
 
     def get_2d_arr(self, post_index, frame, chunk_slice):
@@ -537,15 +584,44 @@ class Db:
                iyy *= s 
 
             mmap = open_memmap(filename=self.path, mode="r")
-            ret = mmap[post_index, ix:ixx, iy:iyy]
+            if self.postdb:
+                ny, nx, nposts = mmap.shape
+                ret = mmap[post_index, (ny - iyy ):(ny - iy), ix:ixx]
+            else:
+                nposts, ny, nx = mmap.shape
+                raise NotImplementedError("todo")
+                ret = mmap[post_index, ix:ixx, iy:iyy]
+
             del mmap
             return ret   
 
         else:
-            # Interpolated output : uses frame
+            # Interpolated output : uses frame - Note: this is supposed to
+            # return an array at PIL order convention
+#            print(">>>>>>>>>>>>>>>>>> in get_2d_arr, interpolated output")
             ret = self.get_interpolator(frame, post_index)(*frame.pts)
-            return ret.reshape(frame.size)
-
+#            print("<<<<<<<<<<<<<< OK in get_2d_arr, interpolated output")
+#            im_size = frame.db_size
+            return ret.reshape(frame.db_size)
+        
+#    def get_2d_arr(self, post_index, chunk_slice):
+#        """
+#        Returns a 2d view of a chunk for the given post-processed field
+#        """
+#        try:
+#            arr = self._raw_arr[chunk_slice][post_index, :]
+#        except KeyError:
+#            return None
+#
+#        (ix, ixx, iy, iyy) = chunk_slice
+#        nx, ny = ixx - ix, iyy - iy
+#        
+#        ssg = self.supersampling
+#        if ssg is not None:
+#            nx *= ssg
+#            ny *= ssg
+#
+#        return np.reshape(arr, (ny, nx))
 
     def plot(self, frame=None):
         """
@@ -613,17 +689,24 @@ class Db:
         nx, ny, n_channel = mmap.shape
         dtype = mmap.dtype
         del mmap
-        
-        print("OPENING mmap .postdb with", nx, ny, n_channel, dtype)
+
+#        print("OPENING mmap .postdb with", nx, ny, n_channel, dtype)
 
 #        dtype = self.frozen_props["dtype"]
 #        n_channel = self.frozen_props["n_channel"]
-        im_size = frame.size
-        ret = np.empty(im_size[::-1] + (n_channel,), dtype=dtype)
+        db_size = frame.db_size
+        ret = np.empty(db_size + (n_channel,), dtype=dtype)
 
         for ic in range(n_channel):
+#            print(">>> in filling loop for channel", ic)
+#            ptx, pty = frame.pts
+#            print("*frame.pts x", ptx.shape, np.min(ptx), np.max(ptx))
+#            print("*frame.pts y", pty.shape, np.min(pty), np.max(pty))
+            
             channel_ret = self.get_interpolator(frame, ic)(*frame.pts)
-            channel_ret = channel_ret.reshape(im_size)
+#            channel_ret = self.get_interpolator(frame, ic)(ptx * 0.99, pty * 0.99)
+#            print(">>> interpolation OK for channel", ic)
+            channel_ret = channel_ret.reshape(db_size)
               #  ).reshape(im_size)
             # Numpy -> PILLOW
             ret[:, :, ic] = channel_ret # np.swapaxes(channel_ret, 0 , 1)[::-1, :]
@@ -1957,6 +2040,49 @@ class Exp_db:
             im = PIL.Image.fromarray(ret) 
 
         return im
+
+
+
+
+
+
+
+
+#    def plot_postdb(self, frame):
+#        """ Direct interpolation in a frozen db image data
+#        """
+#        mmap = open_memmap(filename=self.path, mode="r+")
+#        nx, ny, n_channel = mmap.shape
+#        dtype = mmap.dtype
+#        del mmap
+#        
+#        print("OPENING mmap .postdb with", nx, ny, n_channel, dtype)
+#
+##        dtype = self.frozen_props["dtype"]
+##        n_channel = self.frozen_props["n_channel"]
+#        im_size = frame.size
+#        ret = np.empty(im_size[::-1] + (n_channel,), dtype=dtype)
+#
+#        for ic in range(n_channel):
+#            channel_ret = self.get_interpolator(frame, ic)(*frame.pts)
+#            channel_ret = channel_ret.reshape(im_size)
+#              #  ).reshape(im_size)
+#            # Numpy -> PILLOW
+#            ret[:, :, ic] = channel_ret # np.swapaxes(channel_ret, 0 , 1)[::-1, :]
+#        
+#        if n_channel == 1:
+#            im = PIL.Image.fromarray(ret[:, :, 0])
+#        else:
+#            im = PIL.Image.fromarray(ret)
+#
+#        return im
+
+
+
+
+
+
+
 
 
     def process(self, plot_template, frame, img, im_layer):

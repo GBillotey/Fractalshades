@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import sys
 import fnmatch
 import copy
 import datetime
@@ -11,6 +12,7 @@ import types
 import typing
 import enum
 import inspect
+import traceback
 
 import numpy as np
 from numpy.lib.format import open_memmap
@@ -82,30 +84,33 @@ class Fractal_plotter:
         supersampling: supersampling_type = "None",
         jitter: bool = False,
         recovery_mode: bool = False,
-        _delay_registering: bool = False # Private
     ):
         """
         The base plotting class.
 
         A Fractal plotter is a container for 
         `fractalshades.postproc.Postproc_batch` and fractal layers.
-         
+
         Parameters
         ----------
         postproc_batch
             A single `fractalshades.postproc.Postproc_batch` or a list of 
-            theses
+            theses. They shall  to the same
+            unique `Fractal` object.
         final_render: bool
             - If ``False``, this is an exploration rendering, the raw arrays
-              will be stored to allow fast modifcation of the plotting
-              parameters - without recomputing. High-quality rendering
-              (supersampling, jitter) is disabled.
+              will be stored to allow fast modification of the plotting
+              options for an already computed zoom - without recomputing.
+              High-quality rendering (supersampling, jitter) is disabled in
+              this case.
             - If ``True``, this is the final rendering, the image tiles will
-              be directly computed by chunks on the fly to limit disk usage.
+              be directly computed by chunks on the fly to limit disk usage,
+              and stored in a memory-mapped array (.postdb extension).
               High quality rendering options are available only in this case
               (antialising, jitter). Raw arrays are *not* stored in this case,
-              any change in the plotting parametrers will need a new
-              calculation.
+              any change made to the plotting parametrers will need a new
+              calculation. However an interrupted calculation might still be
+              restarted, see parameter `recovery_mode`.
         supersampling: None | "2x2" | "3x3" | ... | "7x7"
             Used only for the final render. if not None, the final image will
             leverage supersampling (from 4 to 49 pixels computed for 1 pixel in 
@@ -117,8 +122,8 @@ class Fractal_plotter:
         recovery_mode: bool
             Used only for the final render. If True, will attempt to reload
             the image tiles already computed. Allows to restart an interrupted
-            calculation in final render mode (this will fail if plotting
-            parameters have been modified).
+            calculation in final render mode (this will result in a 'patchwork'
+            if plotting parameters have been modified).
 
         Notes
         -----
@@ -146,9 +151,7 @@ class Fractal_plotter:
             postproc_batches = [postproc_batch]
         self._postproc_batches = postproc_batches # unfrozen 
 
-        if not(_delay_registering):
-            # freeze
-            self.register_postprocs()
+        self.register_postprocs()
 
 
     @property
@@ -188,7 +191,7 @@ class Fractal_plotter:
 
     def register_postprocs(self):
         """
-        Freezing of the postprocs - call might be delayed after a plotter
+        Register of the postprocs - call could be delayed after a plotter
         instanciation but shall be before any coloring method.
         """
         postproc_batches = self._postproc_batches
@@ -388,10 +391,19 @@ class Fractal_plotter:
     @property
     def try_recover(self):
         """ Will we try to reopen saved image chunks ?"""
-        return (
-            self.postproc_options["recovery_mode"]
-            and self.postproc_options["final_render"]
-        )
+        # Nice to have ? Refactor of the logic: we could "try recover" if:
+        # - we have a .postdb
+        # - Its associated fingerprints collection matches with the fractal
+        # - Its associated postproc collection file matches too
+        if self._mode == "img":
+            return (
+                self.postproc_options["recovery_mode"]
+                and self.postproc_options["final_render"]
+            )
+        else:
+#            print("*** save_db_recovery_mode", self.save_db_recovery_mode)
+            return self.save_db_recovery_mode
+
 
     @property
     def final_render(self):
@@ -511,7 +523,7 @@ class Fractal_plotter:
             self.push_postdb(chunk_slice, layer=postdb_layer)
 
         # clean-up
-        self.incr_tiles_status(chunk_slice, mode) # mmm not really but...
+        self.incr_tiles_status(chunk_slice, mode, postdb_layer) # mmm not really but...
         del self._raw_arr[chunk_slice]
 
 
@@ -537,7 +549,10 @@ class Fractal_plotter:
         return 0 # OK
 
 
-    def incr_tiles_status(self, chunk_slice, mode):
+    def incr_tiles_status(self, chunk_slice, mode, postdb_layer):
+        """
+        Update the GUI and the tile-status tracking files
+        """
         f = self.fractal
         curr_val = self._current_tile["value"] + 1
         self._current_tile["value"] = curr_val
@@ -558,14 +573,22 @@ class Fractal_plotter:
             _mmap_status[rank] = 1
             del _mmap_status
         
-        if mode == "db":
+        elif mode == "db":
             rank = f.chunk_rank(chunk_slice)
             _db_status = open_memmap(
-                filename=self.db_status_path(self.db_path()), mode="r+" #self.db_status_path,
+                filename=self.db_status_path(self.db_path()), mode="r+"
             )
-#            _db_status = open_memmap(
-#                filename=self.db_status_path, mode="r+"
-#            )
+            _db_status[rank] = 1
+            del _db_status
+
+        elif mode == "postdb":
+            rank = f.chunk_rank(chunk_slice)
+            _db_status = open_memmap(
+                filename=self.postdb_status_path(
+                    self.postdb_path(postdb_layer)
+                ),
+                mode="r+"
+            )
             _db_status[rank] = 1
             del _db_status
 
@@ -579,6 +602,7 @@ class Fractal_plotter:
     def get_2d_arr(self, post_index, chunk_slice):
         """
         Returns a 2d view of a chunk for the given post-processed field
+        Note that the PIL convention is followed for the coordinates
         """
         try:
             arr = self._raw_arr[chunk_slice][post_index, :]
@@ -954,14 +978,20 @@ class Fractal_plotter:
 
 
 
-    def save_db(self, relpath=None, postdb_layer=None, exp_zoom_step=None):
+    def save_db(self, relpath=None, postdb_layer=None, exp_zoom_step=None,
+                recovery_mode=False):
+#            Used only for the final render. If True, will attempt to reload
+#            the image tiles already computed. Allows to restart an interrupted
+#            calculation in final render mode (this will fail if plotting
+#            parameters have been modified).
         """
         Saves the post-processed data in a numpy structured memmap.
 
         Goes through all the registered layers and stores the results in a 
-        (nposts, nx, ny) memory mapping. 
+        (nposts, ny, nx) memory mapping - with PIL-compliant coordinate
+        indexing order.
         In case of supersampling all data points are stored (Downsampling 
-        filtering is delayed to the coloring stage), unless the postdb option
+        filtering is delayed to the coloring stage), unless the `postdb` option
         is activated.
         A companion text file <relpath>.info is also written: it provides a
         short description of the data structure.
@@ -969,15 +999,17 @@ class Fractal_plotter:
         Parameters
         ----------
         relpath: Optional, str
-            path relative to self.fractal.directory. If not provided, the path
-            defaults to
-            :code:`os.path.join(self.fractal.directory, "layer.db")`
-            (ie the relative path defaults to ./layer.db)
+            path relative to self.fractal.directory. If not provided, defaults
+            to either:
+                - :code:`"layers.db"` (when parameter`postdb_layer` is not
+                  provided, and all layers are saved as float)
+                - :code:`f"{postdb_layer}.postdb"` (when parameter
+                  `postdb_layer` is provided, and this layer is saved as rgb)
         postdb_layer: Optional, str
-            If provided, instead of saving all the layers, saves only the
-            one provided as a rgb (nchannels, nx, ny) memory mapping. This 
-            offers less flexibility (post processing is 'frozen') but optimise
-            disk space in case of supersampling (as L2 downsampling filter will
+            If provided, instead of saving all the layers, saves the layer with
+            this name as a rgb array (ny, nx, nchannels) memory mapping. This 
+            offers less flexibility (post processing is 'frozen') but optimises
+            disk space in case of supersampling (as L2 downsampling filter can
             be applied before storing the image data).
         exp_zoom_step: Optional, int
             For an exponential zoom covering a very large range, it is more
@@ -988,6 +1020,10 @@ class Fractal_plotter:
             direction). Only valid with a
             `fractalshades.projection.Expmap` projection and for perturbation
             fractals.
+        recovery_mode: bool
+            If True, will attempt to reload the .db / .postdb tiles already
+            computed. Allows to restart an interrupted calculation (this will
+            result in a 'patchwork' if plotting parameters have been modified).
         """
         self._relpath = relpath
         self._mode = mode = "postdb" if postdb_layer else "db"
@@ -996,6 +1032,8 @@ class Fractal_plotter:
             any_db_path = self.postdb_path(self[postdb_layer])
         else:
             any_db_path = self.db_path()
+            
+        self.save_db_recovery_mode = recovery_mode
 
 
 #        if postdb_layer:
@@ -1018,7 +1056,8 @@ class Fractal_plotter:
         with open(info_path, 'w+') as info_file:
             info_file.write("Db file description\n")
             now = datetime.datetime.now()
-            info_file.write(f"written time: {now}\n\n")
+            info_file.write(f"written time: {now}\n")
+            info_file.write("recovery_mode: {recovery_mode}\n\n")
             info_file.write("*array description*\n")
             info_file.write(f"  dtype: {self.post_dtype}\n")
             shape = (len(self.postnames),) + self.db_shape
@@ -1285,7 +1324,7 @@ class Fractal_plotter:
         try:
             # Does layer the mmap already exists, and does it seems to suit
             # our need ?
-            if not(self.postproc_options["recovery_mode"]):
+            if not(self.try_recover): #self.postproc_options["recovery_mode"]):
                 raise ValueError(
                     "Invalidated postdb: `recovery_mode` is set to False"
                 )
@@ -1319,9 +1358,13 @@ class Fractal_plotter:
 
 
         except (FileNotFoundError, ValueError):
-            logger.info(f"No valid data found for layer {layer_name}")
-            # Create a new one...
+            exc_str = traceback.format_exc()
+            logger.info(
+                f"No valid .postdb found for layer {layer_name}:\n"
+                f"    {exc_str}"
+            )
 
+        # Create a new one...
         mmap = open_memmap(
             filename=postdb_path, 
             mode='w+',
@@ -1385,7 +1428,7 @@ class Fractal_plotter:
 #        ny = self.fractal.ny
 #        crop_slice = (ix, ny-iyy, ixx, ny-iy)
 #        db_slice = (ny-iyy, ny-iy, ix, ixx)
-        print("chunk_slice", chunk_slice)
+#        print("chunk_slice", chunk_slice)
 #        print("db_slice", db_slice)
         paste_crop = layer.crop(chunk_slice)
 
@@ -1395,7 +1438,7 @@ class Fractal_plotter:
             filename=self.postdb_path(layer),
             mode="r+"
         )
-        print("postdb_mmap:", type(postdb_mmap),"\n", postdb_mmap)
+#        print("postdb_mmap:", type(postdb_mmap),"\n", postdb_mmap)
 
         s = self.supersampling
         if s:
@@ -1847,7 +1890,7 @@ advanced users when subclassing.
                 delattr(self, temp_attr)
     
     def delete_fingerprint(self):
-        """ Deletes the figerprint files """
+        """ Deletes the fingerprint files """
         patterns = (
              "*.fingerprint",
         )
@@ -2042,7 +2085,7 @@ advanced users when subclassing.
                 dtype=data_type
             )
 
-        dx_screen, dy_screen  = np.meshgrid(x_1d, y_1d, indexing='xy')
+        dx_screen, dy_screen  = np.meshgrid(x_1d, -y_1d, indexing='xy')
         # dx_vec, dy_vec  = np.meshgrid(x_1d, y_1d, indexing='ij')
         # dy_vec, dx_vec  = np.meshgrid(y_1d, x_1d[::-1])#, indexing='ij')
 
@@ -2061,7 +2104,7 @@ advanced users when subclassing.
 
         dy_screen /= self.xy_ratio
 
-        res = dx_screen - 1j * dy_screen
+        res = dx_screen + 1j * dy_screen
 
         return res
 

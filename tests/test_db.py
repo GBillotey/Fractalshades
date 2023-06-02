@@ -39,7 +39,7 @@ class Test_db(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # DEBUG logs:
-        fs.settings.enable_multiprocessing = True
+        fs.settings.enable_multiprocessing = False
         fs.settings.inspect_calc = True
         fs.settings.log_directory = os.path.join(
             test_config.temporary_data_dir, "_db_dir", "log"
@@ -75,7 +75,7 @@ class Test_db(unittest.TestCase):
             y=0.,
             dx=1.0,
             nx=zoom_kwargs["nx"],
-            xy_ratio=zoom_kwargs["xy_ratio"]
+            xy_ratio=1.0#zoom_kwargs["xy_ratio"]
         )
 
 
@@ -173,7 +173,7 @@ class Test_db(unittest.TestCase):
                 img = db.plot(self.frame)
                 
                 mod_str = "frozen" if mod is None else "modified"
-                
+
                 out_file = os.path.join(
                     self.db_dir,
                     f"test_db_color_basic_{mod_str}_{ss}.png")
@@ -346,12 +346,12 @@ class Test_db(unittest.TestCase):
 
 if __name__ == "__main__":
     runner = unittest.TextTestRunner(verbosity=2)
-    full_test = True
+    full_test = False
     if full_test:
         runner.run(test_config.suite([Test_db]))
     else:
         suite = unittest.TestSuite()
-        # suite.addTest(Test_db("test_db_color_basic"))
+        suite.addTest(Test_db("test_db_color_basic"))
         suite.addTest(Test_db("test_db_overlay1"))
         runner.run(suite)
     print("ok")

@@ -36,8 +36,7 @@ logger = logging.getLogger(__name__)
 class Movie():
 
     def __init__(self, plotter, postname, size=(720, 480), fps=24,
-                 plotting_modifier=None,
-                 reload_frozen=False):
+                 plotting_modifier=None):
         """
         A movie-making class
         
@@ -53,13 +52,10 @@ class Movie():
             movie frame-count per second
         plotting_modifier: Optionnal, callable(plotter, time)
             A callback which will modify the plotter instance before each time
-            step. Defaults to None, which allows to 'freeze' in place the
-            database postprocessad image and interpolate directly in the image.
-            Using this option open a lot of possibilities but is also much
-            more computer-intensive
-        reload_frozen: bool
-            Used only if plotting_modifier is None
-            If True, will try to reload any previousy computed frozen db image
+            step. Defaults to None, which is only compatible with a "frozen" Db
+            (.postdb extension)
+            Using this option open a more possibilities but is also much
+            more computer-intensive.
         """
         # Note:
         # Standard 16:9 resolutions can be:
@@ -75,7 +71,7 @@ class Movie():
         self.plotter = plotter
         self.postname = postname
         self.plotting_modifier = plotting_modifier
-        self.reload_frozen = reload_frozen
+#        self.reload_frozen = reload_frozen
 
         self.width = size[0]
         self.height = size[1]
@@ -210,10 +206,10 @@ class Camera_move:
         movie: fs.movie.Movie
         """
         self.movie = movie
-        self.db.set_plotter(
-            movie.plotter, movie.postname,
-            movie.plotting_modifier, movie.reload_frozen
-        )
+        if not(self.db.is_postdb):
+            self.db.set_plotter(
+                movie.plotter, movie.postname, movie.plotting_modifier
+            )
         self.fps = self.movie.fps
         self.nframe = int((self.tmax - self.tmin) * self.fps)
 
