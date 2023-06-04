@@ -5,7 +5,6 @@ import os
 import concurrent.futures
 
 import numpy as np
-#import numba
 
 import fractalshades as fs
 import fractalshades.db
@@ -35,27 +34,20 @@ logger = logging.getLogger(__name__)
 
 class Movie():
 
-    def __init__(self, plotter, postname, size=(720, 480), fps=24,
-                 plotting_modifier=None):
+    def __init__(self, size=(720, 480), fps=24):
         """
         A movie-making class
-        
+
         Parameters:
         -----------
-        plotter: `fs.Fractal_plotter`
-            The base plotter for this movie
-        postname: str
-            The string indentifier for the layer used to make the movie
         size: (int, int)
             Movie screen size in pixels. Default to 720 x 480 
         fps: int
             movie frame-count per second
-        plotting_modifier: Optionnal, callable(plotter, time)
-            A callback which will modify the plotter instance before each time
-            step. Defaults to None, which is only compatible with a "frozen" Db
-            (.postdb extension)
-            Using this option open a more possibilities but is also much
-            more computer-intensive.
+
+        Note:
+        -----
+        To implement and actual movie use `add_sequence` and then `make`.
         """
         # Note:
         # Standard 16:9 resolutions can be:
@@ -68,23 +60,25 @@ class Movie():
         # -     960 × 540 (qHD)
         # - 720 × 480 (480p, SD) (*)
 
-        self.plotter = plotter
-        self.postname = postname
-        self.plotting_modifier = plotting_modifier
-#        self.reload_frozen = reload_frozen
-
         self.width = size[0]
         self.height = size[1]
         self.fps = fps
         self.cam_moves = []
 
 
-    def add_camera_move(self, cm):
-        """ Adds a new camera move """
-        if cm.movie is not None:
+    def add_sequence(self, seq):
+        """Adds a sequence (or 'Camera move' describing several frames) to this
+        movie
+        
+        Parameters:
+        -----------
+        seq: `Sequence`
+            The sequence to be added
+        """
+        if seq.movie is not None:
             raise RuntimeError("Can only add a Camera move to one Movie_maker")
-        cm.set_movie(self)
-        self.cam_moves.append(cm)
+        seq.set_movie(self)
+        self.cam_moves.append(seq)
 
 
     def picture(self, i):
@@ -157,9 +151,9 @@ class Movie():
             output.close()
 
 
-    def debug(self, out_file, first, last):
+    def export_frames(self, out_file, first, last):
         """
-        Output a selection of frames to .png format for debuging 
+        Output a range of frames to .png format for debuging puposes
 
         Parameters:
         -----------
@@ -167,9 +161,9 @@ class Movie():
             The path to output file wiil be out_file_%i%.png where i is the 
             frame number
         first: int
-            The first saved frame
+            The first saved frame index
         last: int
-            The last saved frame
+            The last saved frame index
 
         """
         head, tail = os.path.split(out_file)
@@ -181,7 +175,7 @@ class Movie():
             pic.save(os.path.join(head, suffixed))
 
 
-class Camera_move:
+class Sequence:
     def __init__(self, db, tmin, tmax):
         """
         Base class for classes implementing a movie sequence
@@ -206,17 +200,11 @@ class Camera_move:
         movie: fs.movie.Movie
         """
         self.movie = movie
-        if not(self.db.is_postdb):
-            self.db.set_plotter(
-                movie.plotter, movie.postname, movie.plotting_modifier
-            )
         self.fps = self.movie.fps
         self.nframe = int((self.tmax - self.tmin) * self.fps)
-
         self.nx = self.movie.width
         self.xy_ratio = self.movie.width / self.movie.height
-        self.plotting_modifier = self.movie.plotting_modifier
-        
+
         self.make_grids()
 
     def picture(self, iframe):
@@ -241,7 +229,7 @@ class Camera_move:
         frame_iterable = range(istart, istop)
         fig_cache = {}
         awaited = istart
-        max_workers = os.cpu_count() - 1 # Leave one CPU for encoding
+        max_workers = os.cpu_count() - 1 # Leave one CPU for encoding ?
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers
         ) as threadpool:
@@ -263,20 +251,33 @@ class Camera_move:
                     can_flush = (awaited in fig_cache.keys())
 
 
-class Camera_pan(Camera_move):
+class Camera_pan(Sequence):
 
-    def __init__(self, db, x_evol, y_evol, dx_evol):
+    def __init__(self, db, x_evol, y_evol, dx_evol,
+                 plotter=None, postname=None, plotting_modifier=None):
         """
+        A movie sequence described as a rectangular frame trajectory in a
+        database.
+
         Parameters:
         ----------
         db: fs.db.Db
-            The underlying database
+            The underlying database. It can be either a *.postdb or a *.db
+            format. Using *.db opens more possibilities but is also much
+            more computer-intensive.
         x: couple of 1d array-like - (x_t, x)
-            trajectory of x in db screen coordinates
+            trajectory of x in db screen coordinates. (Time is the full movie
+            time point, not relative to this sequence)
         y: couple of 1d array-like - (y_t, y)
-            trajectory of y in db screen coordinates
+            trajectory of y in db screen coordinates (Time is the full movie
+            time point, not relative to this sequence)
         dx: couple of 1d array-like - (dx_t, dx)
-            trajectory of dx in db screen coordinates
+            trajectory of dx in db screen coordinates (Time is the full movie
+            time point, not relative to this sequence)
+        plotting_modifier: Optional, callable(plotter, time)
+            A callback which will modify the db plotter instance before each
+            time step.
+            To be used only for a ".db" database format
         """
         x_t, x = x_evol
         y_t, y = y_evol
@@ -301,6 +302,16 @@ class Camera_pan(Camera_move):
         self.x_func = PchipInterpolator(x_t, x)
         self.y_func = PchipInterpolator(y_t, y)
         self.dx_func = PchipInterpolator(dx_t, dx)
+        
+        if self.db.is_postdb:
+            if (plotting_modifier is not None):
+                raise ValueError(
+                    "Parameter `plotting_modifier` cannot be provided for "
+                    "a .postdb database format"
+                )
+            self.plotting_modifier = None
+        else:
+            self.plotting_modifier = plotting_modifier
 
 
     def get_frame(self, iframe):
@@ -321,21 +332,22 @@ class Camera_pan(Camera_move):
         )
     
     def make_grids(self):
-        # No added value, faster to recompute
+        # No added value here, faster to recompute
         pass
 
 
-class Camera_zoom(Camera_move):
+class Camera_zoom(Sequence):
     
     def __init__(self, db, h_evol):
         """
-        Continuous zomming, to use in conjonction with a fs.db.Exp_Db in order
-        to unwrap a pre-stored Exponential mapping.
+        A movie zooming sequence described as a frame trajectory in an
+        exponential mapping.
 
-        Parameters:
+        Parameters
         ----------
-        db: fs.db.Exp_Db
-            The underlying database
+        db: `fs.db.Exp_Db`
+            The underlying database. It shall be a *.postdb format, and will be
+            unwraped at different depth to form the movie layers
         h_evol: couple of 1d array-like - (h_t, h)
             Trajectory of zoom logarithmic factor h
             The screen is scaled by np.exp(h)
@@ -365,26 +377,27 @@ class Camera_zoom(Camera_move):
         )
 
     def make_grids(self):
+        # Precompute the frame pts, which are always the same for expzoom
         self.pts = fs.db.Exp_frame.make_exp_grid(
             self.nx, self.xy_ratio
         )
 
-class Camera_custom(Camera_move):
+class Custom_sequence(Sequence):
 
-    def __init__(self, db, tmin, tmax, zoom_evol):
+    def __init__(self, plotter, tmin, tmax):
         """
-        A Camera move for which each frame is computed from scratch from the
-        zoom inputs
+        A Sequence for which each frame is computed from scratch.
 
         Parameters:
         ----------
-        db: fs.db.Custom_db
+        plotter: fs.db.Custom_db
             The underlying database
-        zoom_evol: function float -> dict
-            Trajectory of zoom_kwargs
+
         """
-        super().__init__(db, tmin, tmax)
+        super().__init__(None, tmin, tmax)
 
 
-    def get_frame(self, iframe):
-        """  Get the zoom for this frame and compute it """
+    def picture(self, iframe):
+        """ Returns the ith-frame as a PIL.Image object """
+        return self.db.plot(frame=self.get_frame(iframe))
+

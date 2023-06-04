@@ -121,8 +121,7 @@ def interpolate_2d_PIL(pts_x, pts_y, pts_res, a, b, h, f):
     m = pts_res.shape[0]
     max_ix = f.shape[1] - 2
     max_iy = f.shape[0] - 2
-#    h0 = h[0] * (1. + 1.e-12)
-#    h1 = h[0] * (1. + 1.e-12)
+
 
     for mi in range(m):
         x_out = pts_x[mi]
@@ -136,13 +135,6 @@ def interpolate_2d_PIL(pts_x, pts_y, pts_res, a, b, h, f):
         iy_float, raty = divmod(b[1] - y_out, h[1])
         ix_float = min(ix_float, max_ix)
         iy_float = min(iy_float, max_iy)
-
-#        if ix_float + 1 >= fnx:
-#            print("FAILED", ix_float, x_out, a[0], b[0], h[0]), ">=", fnx
-#        assert(ix_float) >= 0
-#        assert(iy_float) >= 0
-#        assert(ix_float + 1) < fnx
-#        assert(iy_float + 1) < fny
 
         ix = np.intp(ix_float)
         iy = np.intp(iy_float)

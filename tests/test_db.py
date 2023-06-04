@@ -346,7 +346,7 @@ class Test_db(unittest.TestCase):
 
 if __name__ == "__main__":
     runner = unittest.TextTestRunner(verbosity=2)
-    full_test = False
+    full_test = True
     if full_test:
         runner.run(test_config.suite([Test_db]))
     else:
