@@ -1451,16 +1451,16 @@ advanced users when subclassing.
                 ((skew_00, skew_01), (skew_10, skew_11)), dtype=np.float64
             )
 
-        self.lin_proj_impl = self.get_lin_proj_impl()
+        self.lin_mat = self.get_lin_mat()
         projection.adjust_to_zoom(self)
         self.proj_impl = projection.f
 
 
-    def get_lin_proj_impl(self):
+    def get_lin_mat(self):
         """ Returns a numba-jitted function which apply the linear part of the
         transformation (rotation, skew, scale)
         """
-        dx = self.dx
+#        dx = self.dx
         theta = self.theta_deg / 180. * np.pi
         skew = self._skew
 
@@ -1470,17 +1470,19 @@ advanced users when subclassing.
         lin_mat = np.array(((c, -s), (s, c)), dtype=np.float64)
         if skew is not None:
             lin_mat = np.matmul(skew, lin_mat)
+        
+        return lin_mat
 
-        @numba.njit(numba.complex128(numba.complex128))
-        def numba_impl(z):
-            x = z.real
-            y = z.imag
-            x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
-            y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
-
-            return  dx * complex(x1, y1)
-
-        return numba_impl
+#        @numba.njit(numba.complex128(numba.complex128))
+#        def numba_impl(z):
+#            x = z.real
+#            y = z.imag
+#            x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
+#            y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
+#
+#            return  dx * complex(x1, y1)
+#
+#        return numba_impl
 
 
     def new_status(self, wget):
@@ -2034,7 +2036,7 @@ advanced users when subclassing.
         center = self.x + 1j * self.y
         return (
             initialize, iterate,
-            center, self.proj_impl, self.lin_proj_impl,
+            center, self.proj_impl, self.lin_mat, self.dx,
             self._interrupted
         )
     
@@ -2784,7 +2786,7 @@ advanced users when subclassing.
 
         cpt = np.empty((n_pts,), dtype=c_pix.dtype)
         fill1d_c_from_pix(
-            c_pix, self.proj_impl, self.lin_proj_impl, center, cpt
+            c_pix, self.proj_impl, self.lin_mat, self.dx, center, cpt
         )
         return cpt
         
@@ -2934,8 +2936,7 @@ USER_INTERRUPTED = 1
 def numba_cycles(
     c_pix, Z, U, stop_reason, stop_iter,
     initialize, iterate,
-    #  dx, center, xy_ratio, theta, projection, ## refactored
-    center, proj_impl, lin_proj_impl,
+    center, proj_impl, lin_mat, dx,
     _interrupted
 ):
     # Full iteration for a set of points - calls numba_cycle
@@ -2945,7 +2946,7 @@ def numba_cycles(
         Zpt = Z[:, ipt]
         Upt = U[:, ipt]
         cpt = c_from_pix(
-            c_pix[ipt], proj_impl, lin_proj_impl, center
+            c_pix[ipt], proj_impl, lin_mat, dx, center
         )
         stop_pt = stop_reason[:, ipt]
 
@@ -3158,8 +3159,17 @@ def apply_unskew_1d(skew, arrx, arry):
         arry[i] = skew[0, 1] * nx + skew[1, 1] * ny
 
 
+@numba.njit(fastmath=True, nogil=True, cache=True) # (numba.complex128(numba.complex128))
+def lin_proj_impl(lin_mat, dx, z):
+    x = z.real
+    y = z.imag
+    x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
+    y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
+
+    return  dx * complex(x1, y1)
+
 @numba.njit(fastmath=True, nogil=True)
-def c_from_pix(pix, proj_impl, lin_proj_impl, center):
+def c_from_pix(pix, proj_impl, lin_mat, dx, center):
     """
     Returns the true c from the pixel coords
     Note: to be re-implemented for pertubation theory, as C = cref + dc
@@ -3182,14 +3192,14 @@ def c_from_pix(pix, proj_impl, lin_proj_impl, center):
     -------
     c : c value as complex
     """
-    return center + lin_proj_impl(proj_impl(pix))
+    return center + lin_proj_impl(lin_mat, dx, proj_impl(pix))
 
 
 @numba.njit(fastmath=True, nogil=True)
-def fill1d_c_from_pix(c_pix, proj_impl, lin_proj_impl, center, c_out):
+def fill1d_c_from_pix(c_pix, proj_impl, lin_mat, dx, center, c_out):
     """ Same as c_from_pix but fills in-place a 1d vec """
     nx = c_pix.shape[0]
     for i in range(nx):
         c_out[i] = c_from_pix(
-            c_pix[i], proj_impl, lin_proj_impl, center
+            c_pix[i], proj_impl, lin_mat, dx, center
         )

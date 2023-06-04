@@ -182,7 +182,7 @@ class Cartesian(Projection):
 
     def bounding_box(self, xy_ratio):
         return 1., 1. / xy_ratio
-    
+
     @property
     def min_local_scale(self):
         return 1.
@@ -193,7 +193,7 @@ def cartesian_numba_impl(z):
 
 #==============================================================================
 class Expmap(Projection):
-    def __init__(self, hmin, hmax, rotates_df=True):
+    def __init__(self, hmin, hmax, rotates_df=True, direction="horizontal"):
         """ 
         An exponential projection will map :math:`z_{pix}` as follows:
 
@@ -221,14 +221,18 @@ class Expmap(Projection):
         hmax: str or float or mpmath.mpf
             scaling at the higher end of the x-axis
         rotates_df: bool
-            If ``True``, the derivative will be scaled but also rotated
-            according to the mapping. Otherwise, only the scaling will be taken
-            into account.
+            If ``True`` (default), the derivative will be scaled but also
+            rotated according to the mapping. If ``False``, only the scaling
+            will be taken into account.
             A rule of thumb is this value shall be set to ``True``
             for a standalone picture, and to ``False`` if used as input for a
             movie making tool.
+        direction: "horizontal" | "vertical"
+            The direction for the h unit. Defaults to "horizontal", "vertical"
+            is equivalent to a premultiplication by "1j".
         """
         self.rotates_df = rotates_df
+        self.premul_1j = {"horizontal": False, "vertical": True}[direction]
 
         if mpmath.exp(hmax) > (1. / fs.settings.xrange_zoom_level):
             # Or ~ hmax > 690... We store internally as Xrange
@@ -272,6 +276,11 @@ class Expmap(Projection):
             numba.complex128(numba.complex128), nogil=True, fastmath=False)
         def numba_impl(z):
             return np.exp(hmoy + dh * z)
+        
+        @numba.njit(
+            numba.complex128(numba.complex128), nogil=True, fastmath=False)
+        def numba_premul_impl(z):
+            return 1j * np.exp(hmoy + dh * z)
 
         self.f = numba_impl
 
