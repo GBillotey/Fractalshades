@@ -907,6 +907,8 @@ class Fractal_plotter:
             raise ValueError(
                 "exp_zoom_step shall be used only with Expmap"
             )
+        direction = proj.direction
+        assert direction == "horizontal"
 
         hmin = proj.hmin
         hmax = proj.hmax
@@ -924,6 +926,7 @@ class Fractal_plotter:
             self.reset_bla_tree()
 
             def validates(chunk_slice):
+                """ Escapes the tiles not matching the target h range"""
                 (ix, ixx, iy, iyy) = chunk_slice
                 ret = r < ixx <= (r + stp)
                 return ret

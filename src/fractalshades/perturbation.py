@@ -137,24 +137,43 @@ directory : str
             )
 
 
-    def get_lin_proj_impl(self):
-        """ Returns a numba-jitted function which apply the linear part of the
-        transformation (rotation, skew, scale)
-        
-        Typical calling chain:
-        lin_proj_impl(proj_impl(pix))
-        """
-        theta = self.theta_deg / 180. * np.pi
-        skew = self._skew
-        # TODO: we could cache the jitted function
+#    def get_lin_proj_impl(self):
+#        """ Returns a numba-jitted function which apply the linear part of the
+#        transformation (rotation, skew, scale)
+#        
+#        Typical calling chain:
+#        lin_proj_impl(proj_impl(pix))
+#        """
+#        theta = self.theta_deg / 180. * np.pi
+#        skew = self._skew
+#        # TODO: we could cache the jitted function
+#
+#        # Defines the linear matrix
+#        c = np.cos(theta)
+#        s = np.sin(theta)
+#        lin_mat = np.array(((c, -s), (s, c)), dtype=np.float64)
+#        if skew is not None:
+#            lin_mat = np.matmul(skew, lin_mat) 
+#        return lin_mat
+#
+#
+#    def get_lin_mat(self):
+#        """ Returns a numba-jitted function which apply the linear part of the
+#        transformation (rotation, skew, scale)
+#        """
+##        dx = self.dx
+#        theta = self.theta_deg / 180. * np.pi
+#        skew = self._skew
+#
+#        # Defines the linear matrix
+#        c = np.cos(theta)
+#        s = np.sin(theta)
+#        lin_mat = np.array(((c, -s), (s, c)), dtype=np.float64)
+#        if skew is not None:
+#            lin_mat = np.matmul(skew, lin_mat)
+#        
+#        return lin_mat
 
-        # Defines the linear matrix
-        c = np.cos(theta)
-        s = np.sin(theta)
-        lin_mat = np.array(((c, -s), (s, c)), dtype=np.float64)
-        if skew is not None:
-            lin_mat = np.matmul(skew, lin_mat) 
-        return lin_mat
 
 #        # Several options to take into account according to:
 #        # - dx is Xrange ?
@@ -498,6 +517,7 @@ directory : str
         Parameters independant of the cycle
         This is where the hard work is done
         """
+        print("################################################get_cycle_indep_args")
         # ====================================================================
         # CUSTOM class impl
         # Initialise the reference path
@@ -633,12 +653,25 @@ directory : str
 
         Zn_path = self.Zn_path
         self.kc = self.ref_point_kc() # We resets kc
-        
+
+        Mbla_index = 16 if self.holomorphic else 20 # TODO !!!check !!!
         rbla_index = 17 if self.holomorphic else 21 # TODO !!!check !!!
-        ( _, cycle_indep_args[rbla_index][:], _, _
-         ) = self.get_BLA_tree(Zn_path, self.BLA_eps)
+        blalen_index = 18 if self.holomorphic else 22 # TODO !!!check !!!
+        stages_bla_index = 19 if self.holomorphic else 23 # TODO !!!check !!!
         
-        print("******* finished reset_bla_tree")
+        print("M_bla", type(cycle_indep_args[Mbla_index]))
+        print("r_bla", type(cycle_indep_args[rbla_index]))
+        print("bla_len", type(cycle_indep_args[blalen_index]))
+        print("stages_bla", type(cycle_indep_args[stages_bla_index]))
+
+        (    
+            cycle_indep_args[Mbla_index][:],
+            cycle_indep_args[rbla_index][:],
+            cycle_indep_args[blalen_index][:],
+            cycle_indep_args[stages_bla_index][:],
+         ) = self.get_BLA_tree(Zn_path, self.BLA_eps)
+
+        print("******* finished reset_bla_tree with:", self.BLA_eps)
 
 
     def fingerprint_matching(self, calc_name, test_fingerprint, log=False):
@@ -695,6 +728,7 @@ directory : str
         M_bla, r_bla, stages_bla
         """
         kc = self.kc
+        print("################ in get_BLA_tree, kc:", kc)
 
         if self.holomorphic:
             dfdz = self.dfdz

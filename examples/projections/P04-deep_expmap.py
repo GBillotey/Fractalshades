@@ -47,8 +47,8 @@ plot_dir = os.path.splitext(os.path.realpath(__file__))[0]
 # Note: in batch mode, edit this line to change the local projection
 # you may also call `plot` with a modified `batch_params` parameters
 # (the latter allows to call from another module)
-projection = fs.projection.Expmap(-10.5, np.log(1.e7) + 0.3)
-#projection = fs.projection.Expmap(np.log(1.e40), np.log(1.e50))
+projection = fs.projection.Expmap(0.0, np.log(1.e7) + 0.3)
+# projection = fs.projection.Expmap(np.log(1.e40), np.log(1.e50))
 # projection = fs.projection.Expmap(np.log(1.e0), np.log(1.e10))
 ks = 1.e-40
 projection = fs.projection.Cartesian()
