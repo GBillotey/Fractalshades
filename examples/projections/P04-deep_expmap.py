@@ -47,11 +47,11 @@ plot_dir = os.path.splitext(os.path.realpath(__file__))[0]
 # Note: in batch mode, edit this line to change the local projection
 # you may also call `plot` with a modified `batch_params` parameters
 # (the latter allows to call from another module)
-projection = fs.projection.Expmap(0.0, np.log(1.e7) + 0.3)
+projection = fs.projection.Expmap(0.0, np.log(1.e20) + 0.3, orientation="vertical")
 # projection = fs.projection.Expmap(np.log(1.e40), np.log(1.e50))
 # projection = fs.projection.Expmap(np.log(1.e0), np.log(1.e10))
 ks = 1.e-40
-projection = fs.projection.Cartesian()
+#projection = fs.projection.Cartesian()
 
 batch_params = {
     "projection": projection
@@ -85,7 +85,7 @@ plot_kwargs = {
 
     "xy_ratio": 1.6666,
     "theta_deg": 0.0,
-    "nx": 2400,
+    "nx": 2400, # 2400 x 325
     "_2": "Calculation parameters",
     "max_iter": 500000,
     "M_divergence": 1000.0,

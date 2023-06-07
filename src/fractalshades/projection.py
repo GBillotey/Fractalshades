@@ -76,7 +76,7 @@ class Projection:
     def adjust_to_zoom(self, fractal):
         """ Some projection might impose constraints on the xy_ratio"""
         # Default implementation: does nothing
-        pass
+        self.make_impl()
 
     def make_impl(self):
         self.make_f_impl()
@@ -164,7 +164,7 @@ class Cartesian(Projection):
 
         This class can be used with arbitrary-precision deep zooms.
         """
-        self.make_impl()
+        pass
 
     def make_f_impl(self):
         """ A cartesian projection just let pass-through the coordinates"""
@@ -193,7 +193,7 @@ def cartesian_numba_impl(z):
 
 #==============================================================================
 class Expmap(Projection):
-    def __init__(self, hmin, hmax, rotates_df=True, direction="horizontal"):
+    def __init__(self, hmin, hmax, rotates_df=True, orientation="horizontal"):
         """ 
         An exponential projection will map :math:`z_{pix}` as follows:
 
@@ -208,9 +208,13 @@ class Expmap(Projection):
             h_{moy} &= \\frac{1}{2} \\cdot (h_{min} + h_{max}) \\\\
             dh &= h_{max} - h_{min}
 
+        Notes
+        =====
+        Adjustment of zoom parameters:
         The `xy_ratio` of the zoom will be adjusted (during run time) to ensure
         that :math:`\\bar{y}_{pix}` extends from :math:`- \\pi`
-        to :math:`\\pi`.
+        to :math:`\\pi`. `nx` is interpreted as `nh` be the  `direction`
+        "horizontal" or "vertical".
 
         This class can be used with arbitrary-precision deep zooms.
 
@@ -227,7 +231,7 @@ class Expmap(Projection):
             A rule of thumb is this value shall be set to ``True``
             for a standalone picture, and to ``False`` if used as input for a
             movie making tool.
-        direction: "horizontal" | "vertical"
+        orientation: "horizontal" | "vertical"
             The direction for the h axis. Defaults to "horizontal".
         """
         if not(0 <= hmin < hmax):
@@ -236,7 +240,7 @@ class Expmap(Projection):
             )
 
         self.rotates_df = rotates_df
-        self.direction = direction
+        self.orientation = orientation
 
         if mpmath.exp(hmax) > (1. / fs.settings.xrange_zoom_level):
             # Or ~ hmax > 690... We store internally as Xrange
@@ -250,8 +254,16 @@ class Expmap(Projection):
         self.hmoy = (hmin + hmax) * 0.5
         self.dh = hmax - hmin
 
-        self.premul_1j = {"horizontal": False, "vertical": True}[direction]
-        self.make_impl()
+        self.premul_1j = {"horizontal": False, "vertical": True}[orientation]
+
+
+    @property
+    def kz(self):
+        dh = self.dh
+        premul_1j = self.premul_1j
+        xy_ratio = self.xy_ratio
+        return (1j * dh * xy_ratio) if premul_1j else dh
+
 
     def set_exp_zoom_step(self, h_step):
         """ property used in ``save_db`` with exp_zoom_step set """
@@ -264,53 +276,55 @@ class Expmap(Projection):
     def adjust_to_zoom(self, fractal):
         # We need to adjust the fractal xy_ratio in order to match hmax - hmin
         # target: dh = 2. * np.pi * xy_ratio 
-        xy_ratio = self.dh / (np.pi * 2.)
         if self.premul_1j:
-            xy_ratio = 1. / xy_ratio
-        
-        fractal.xy_ratio = xy_ratio
+            xy_ratio = (np.pi * 2.) / self.dh
+            nx = int(fractal.nx * xy_ratio + 0.5)
+        else:
+            xy_ratio = self.dh / (np.pi * 2.)
+            nx = fractal.nx
+    
+        fractal.xy_ratio = self.xy_ratio = xy_ratio
         fractal.zoom_kwargs["xy_ratio"] = xy_ratio
+        fractal.nx = nx
+        fractal.zoom_kwargs["nx"] = nx
 
         logger.info(
             "Adjusted parameters for Expmap projection:\n"
+            f"zoom parameter nx: {fractal.nx}\n"
             f"zoom parameter xy_ratio: {fractal.xy_ratio}"
         )
+        self.make_impl()
 
 
     def make_f_impl(self):
         hmoy = self.hmoy
-        dh = self.dh
-        premul_1j = self.premul_1j
+        kz = self.kz
 
         @numba.njit(
             numba.complex128(numba.complex128), nogil=True, fastmath=False)
         def numba_impl(z):
-            if premul_1j:
-                return 1j * np.exp(hmoy + dh * z)
-            return np.exp(hmoy + dh * z)
+            return np.exp(hmoy + kz * z)
 
         self.f = numba_impl
 
 
     def make_df_impl(self):
-        dh = self.dh
         premul_1j = self.premul_1j
+        kz = self.kz
 
         if self.rotates_df:
             @numba.njit(
                 numba.complex128(numba.complex128), nogil=True, fastmath=False)
             def numba_impl(z):
-                if premul_1j:
-                    return 1j * np.exp(dh * z)
-                return  np.exp(dh * z)
+                return  np.exp(kz * z)
 
         else:
             @numba.njit(
                 numba.complex128(numba.complex128), nogil=True, fastmath=False)
             def numba_impl(z):
                 if premul_1j:
-                    return 1j * np.exp(dh * z.real)
-                return  np.exp(dh * z.real)
+                    return kz * np.exp(kz * z.imag)
+                return  np.exp(kz * z.real)
 
         self.df = numba_impl
 
@@ -322,23 +336,34 @@ class Expmap(Projection):
         if self.rotates_df:
             @numba.njit(nogil=True, fastmath=False)
             def numba_impl(z):
-                zhr = dh * z.real
-                zhi = dh * z.imag
+                if premul_1j:
+                    zhr = dh * z.imag
+                    zhi = dh * z.real
+                else:
+                    zhr = dh * z.real
+                    zhi = dh * z.imag
                 r = np.exp(zhr)
                 cr = np.cos(zhi) * r
                 sr = np.sin(zhi) * r
                 if premul_1j:
                     return -sr, -cr, cr, -sr
-                return cr, -sr, sr, cr
+                else:
+                    return cr, -sr, sr, cr
 
         else:
             @numba.njit(nogil=True, fastmath=False)
             def numba_impl(z):
-                zhr = dh * z.real
+                if premul_1j:
+                    zhr = dh * z.imag
+                else:
+                    zhr = dh * z.real
                 r = np.exp(zhr)
+#                if premul_1j:
+#                    return  0., -r, r, 0.
                 if premul_1j:
                     return  0., -r, r, 0.
-                return  r, 0., 0., r
+                else:
+                    return  r, 0., 0., r
 
         self.dfBS = numba_impl
 

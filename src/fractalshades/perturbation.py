@@ -90,7 +90,7 @@ directory : str
         # In case the user inputs were strings, we override with mpmath scalars
         self.x = mpmath.mpf(x)
         self.y = mpmath.mpf(y)
-        self.dx = mpmath.mpf(dx)
+        self.dx = dx = mpmath.mpf(dx)
 
         # Backward compatibility: also accept projection = "cartesian"
         if isinstance(projection, str):
@@ -115,10 +115,13 @@ directory : str
 #            self.lin_proj_impl_std,
 #            self.lin_proj_impl_noscale
 #        )= self.get_lin_proj_impl()
+
+        self.dx_std = dx_std = float(dx)
+        self.dx_xr = dx_xr = fsx.mpf_to_Xrange(dx, dtype=np.float64).ravel()
+        # Here we store the linscale as a 1d 1 element array
+        self.lin_scale_xr = np.asanyarray(dx_xr).reshape(-1)
+        self.lin_scale_std = np.asanyarray(dx_std).reshape(-1)
         self.lin_mat = self.get_lin_mat()
-        dx = self.dx
-        self.dx_std = float(dx)
-        self.dx_xr = fsx.mpf_to_Xrange(dx, dtype=np.float64).ravel()
 
         projection.adjust_to_zoom(self)
         self.proj_impl = projection.f
@@ -286,7 +289,8 @@ directory : str
         fill1d_std_C_from_pix(
 #            c_pix, self.proj_impl, self.lin_proj_impl_std, center, cpt
                                   # lin_mat, dx_std
-            c_pix, self.proj_impl, self.lin_mat, self.dx_std, center, cpt
+            c_pix, self.proj_impl, self.lin_mat, self.lin_scale_std,
+            center, cpt
         )
         return cpt
 
@@ -505,7 +509,6 @@ directory : str
             return numba_cycles_perturb(
                 *cycle_dep_args, *cycle_indep_args
             )
-
         else:
             return numba_cycles_perturb_BS(
                 *cycle_dep_args, *cycle_indep_args
@@ -622,7 +625,7 @@ directory : str
                 initialize, iterate,
                 Zn_path, dZndc_path, dZndz_path,
                 has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
-                drift_xr, dx_xr, self.proj_impl, self.lin_mat,
+                drift_xr, dx_xr, self.proj_impl, self.lin_mat, self.lin_scale_xr,
                 kc, M_bla, r_bla, bla_len, stages_bla,
                 self._interrupted
             )
@@ -632,7 +635,7 @@ directory : str
                 initialize, iterate,
                 Zn_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
                 has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
-                driftx_xr, drifty_xr, dx_xr, self.proj_impl, self.lin_mat,
+                driftx_xr, drifty_xr, dx_xr, self.proj_impl, self.lin_mat, self.lin_scale_xr,
                 kc, M_bla, r_bla, bla_len, stages_bla,
                 self._interrupted
             )
@@ -654,10 +657,10 @@ directory : str
         Zn_path = self.Zn_path
         self.kc = self.ref_point_kc() # We resets kc
 
-        Mbla_index = 16 if self.holomorphic else 20 # TODO !!!check !!!
-        rbla_index = 17 if self.holomorphic else 21 # TODO !!!check !!!
-        blalen_index = 18 if self.holomorphic else 22 # TODO !!!check !!!
-        stages_bla_index = 19 if self.holomorphic else 23 # TODO !!!check !!!
+        Mbla_index = 17 if self.holomorphic else 21 # TODO !!!check !!!
+        rbla_index = 18 if self.holomorphic else 22 # TODO !!!check !!!
+        blalen_index = 19 if self.holomorphic else 23 # TODO !!!check !!!
+        stages_bla_index = 20 if self.holomorphic else 24 # TODO !!!check !!!
         
         print("M_bla", type(cycle_indep_args[Mbla_index]))
         print("r_bla", type(cycle_indep_args[rbla_index]))
@@ -1087,7 +1090,7 @@ def numba_cycles_perturb(
     Zn_path, dZndc_path, dZndz_path,
     has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
     # drift_xr, dx_xr, proj_impl, lin_proj_impl,
-    drift_xr, dx_xr, proj_impl, lin_mat,
+    drift_xr, dx_xr, proj_impl, lin_mat, lin_scale_xr,
     kc, M_bla, r_bla, bla_len, stages_bla, # suppressed  P, n_iter_init
     _interrupted
 ):
@@ -1118,7 +1121,7 @@ def numba_cycles_perturb(
         Zpt = Z[:, ipt]
         Upt = U[:, ipt]
         cpt, c_xr = ref_path_c_from_pix(
-            c_pix[ipt], proj_impl, lin_mat, dx_xr, drift_xr
+            c_pix[ipt], proj_impl, lin_mat, lin_scale_xr, drift_xr
         )
         stop_pt = stop_reason[:, ipt]
 
@@ -1491,7 +1494,7 @@ def numba_cycles_perturb_BS(
     Zn_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
     has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
 #    driftx_xr, drifty_xr, dx_xr, proj_impl, lin_proj_impl,
-    driftx_xr, drifty_xr, dx_xr, proj_impl, lin_mat,
+    driftx_xr, drifty_xr, dx_xr, proj_impl, lin_mat, lin_scale_xr,
     kc, M_bla, r_bla, bla_len, stages_bla, # suppressed P, n_iter_init
     _interrupted
 ):
@@ -1512,7 +1515,7 @@ def numba_cycles_perturb_BS(
 #            c_pix[ipt], proj_impl, lin_proj_impl, driftx_xr, drifty_xr
 #        )
         apt, bpt, a_xr, b_xr = ref_path_c_from_pix_BS(
-            c_pix[ipt], proj_impl, lin_mat, dx_xr, driftx_xr, drifty_xr
+            c_pix[ipt], proj_impl, lin_mat, lin_scale_xr, driftx_xr, drifty_xr
         )
         stop_pt = stop_reason[:, ipt]
 
@@ -2245,7 +2248,7 @@ def ensure_xr_BS(val_std, valx_xr, valy_xr, is_xr):
 
 @numba.njit(nogil=True, cache=True)
 # def ref_path_c_from_pix(pix, proj_impl, lin_proj_impl, drift):
-def ref_path_c_from_pix(pix, proj_impl, lin_mat, dx_xr, drift):
+def ref_path_c_from_pix(pix, proj_impl, lin_mat, lin_scale_xr, drift_xr):
     """
     Returns the true c (coords from ref point) from the pixel coords
     ie c = C - refp
@@ -2260,13 +2263,13 @@ def ref_path_c_from_pix(pix, proj_impl, lin_mat, dx_xr, drift):
     c, c_xr : c value as complex and as Xrange
     """
     # c_xr = lin_proj_impl(proj_impl(pix)) + drift[0]
-    c_xr = lin_proj_impl_xr(lin_mat, dx_xr, proj_impl(pix)) + drift[0]
+    c_xr = lin_proj_impl(lin_mat, lin_scale_xr, proj_impl(pix)) + drift_xr[0]
     return fsxn.to_standard(c_xr), c_xr
 
 
 @numba.njit(nogil=True, cache=True)
 # def std_C_from_pix(pix, proj_impl, lin_proj_impl, center):
-def std_C_from_pix(pix, proj_impl, lin_mat, dx_std, center):
+def std_C_from_pix(pix, proj_impl, lin_mat, lin_scale_std, center):
     """
     Returns the true C (C = cref + dc) from the pixel coords
 
@@ -2280,24 +2283,24 @@ def std_C_from_pix(pix, proj_impl, lin_mat, dx_std, center):
     C : Full C value, as complex
     """
 #    return center + lin_proj_impl(proj_impl(pix)) # offset + center
-    return center + lin_proj_impl_std(lin_mat, dx_std, proj_impl(pix))
+    return center + lin_proj_impl(lin_mat, lin_scale_std, proj_impl(pix))
 
 
 @numba.njit(nogil=True, cache=True)
 def fill1d_std_C_from_pix(
-        c_pix, proj_impl, lin_mat, dx_std, center, c_out):
+        c_pix, proj_impl, lin_mat, lin_scale_std, center, c_out):
     """ same as std_C_from_pix but fills in-place a 1d vec """
     nx = c_pix.shape[0]
     for i in range(nx):
         c_out[i] = std_C_from_pix(
-            c_pix[i], proj_impl, lin_mat, dx_std, center
+            c_pix[i], proj_impl, lin_mat, lin_scale_std, center
         )
 
 @numba.njit(nogil=True, cache=True)
 #def ref_path_c_from_pix_BS(
 #        pix, proj_impl, lin_proj_impl, driftx_xr, drifty_xr):
 def ref_path_c_from_pix_BS(
-        pix, proj_impl, lin_mat, dx_xr, driftx_xr, drifty_xr):
+        pix, proj_impl, lin_mat, lin_scale_xr, driftx_xr, drifty_xr):
     """
     Returns the true a + i b (coords from ref point) from the pixel coords
 
@@ -2313,7 +2316,7 @@ def ref_path_c_from_pix_BS(
     a, b, a_xr, b_xr : c value as complex and as Xrange
     """
     # c_xr = lin_proj_impl(proj_impl(pix))
-    c_xr = lin_proj_impl_xr(lin_mat, dx_xr, proj_impl(pix))
+    c_xr = lin_proj_impl(lin_mat, lin_scale_xr, proj_impl(pix))
     a_xr = np.real(c_xr) + driftx_xr[0]
     b_xr = np.imag(c_xr) + drifty_xr[0]
     return fsxn.to_standard(a_xr), fsxn.to_standard(b_xr), a_xr, b_xr
@@ -2704,12 +2707,12 @@ def ref_path_get_BS(ref_path, idx, has_xr, ref_index_xr, refx_xr, refy_xr, refpa
 #        )= self.get_lin_proj_impl()
 # Linerar projection routines
 @numba.njit(fastmath=True, nogil=True)
-def lin_proj_impl_std(lin_mat, dx_std, z):
+def lin_proj_impl(lin_mat, linscale, z):
     x = z.real
     y = z.imag
     x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
     y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
-    return  dx_std * complex(x1, y1)
+    return  linscale[0] * complex(x1, y1)
 
 @numba.njit(fastmath=True, nogil=True)
 def lin_proj_impl_noscale(lin_mat, z):
@@ -2719,10 +2722,10 @@ def lin_proj_impl_noscale(lin_mat, z):
     y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
     return complex(x1, y1)
 
-@numba.njit(fastmath=True, nogil=True)
-def lin_proj_impl_xr(lin_mat, dx_xr, z):
-    x = z.real
-    y = z.imag
-    x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
-    y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
-    return  dx_xr[0] * complex(x1, y1)
+#@numba.njit(fastmath=True, nogil=True)
+#def lin_proj_impl_xr(lin_mat, dx_xr, z):
+#    x = z.real
+#    y = z.imag
+#    x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
+#    y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
+#    return  dx_xr[0] * complex(x1, y1)
