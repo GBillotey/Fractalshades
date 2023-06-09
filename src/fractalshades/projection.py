@@ -256,7 +256,6 @@ class Expmap(Projection):
 
         self.premul_1j = {"horizontal": False, "vertical": True}[orientation]
 
-
     @property
     def kz(self):
         dh = self.dh
@@ -265,6 +264,12 @@ class Expmap(Projection):
         return (1j * dh * xy_ratio) if premul_1j else dh
 
 
+    def nh(self, fractal):
+        return fractal.ny if self.premul_1j else fractal.nx
+
+    def nt(self, fractal):
+        return fractal.nx if self.premul_1j else fractal.ny
+        
     def set_exp_zoom_step(self, h_step):
         """ property used in ``save_db`` with exp_zoom_step set """
         self._h_step = h_step
@@ -388,27 +393,13 @@ class Expmap(Projection):
         else:
             wh = 0.5 * self.dh
 
-        w = np.exp(wh) # TODO here could use a mpf
+        w = np.exp(wh) # TODO here could use a mpf mpmath.exp(wh)
         return w, w
 
     @property
     def min_local_scale(self):
         return  np.exp(-0.5 * self.dh)
 
-
-#@numba.njit(nogil=True, fastmath=False) #, cache=True)
-#def expmap_numba_impl(z, hmoy, dh):
-##    # h linearly interpolated between hmin and hmax
-##    h = hmoy + dh * z.real
-##    # t linearly interpolated between -pi and pi
-##    t = dh * z.imag
-##    return np.exp(complex(h, t))
-#    return np.exp(hmoy + dh * z)
-#
-#@numba.njit(nogil=True, fastmath=False) #, cache=True)
-#def expmap_numba_perturb_impl(z, dh):
-#    # Local mapping only (without exp(hmoy scaling))
-#    return np.exp(dh * z)
 
 #============================================================================== 
 

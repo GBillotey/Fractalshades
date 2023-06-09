@@ -811,8 +811,7 @@ class Fractal_plotter:
         )
 
 
-    def save_db(self, relpath=None, postdb_layer=None, exp_zoom_step=None,
-                recovery_mode=False):
+    def save_db(self, relpath=None, postdb_layer=None, recovery_mode=False):
         """
         Saves the post-processed data in a numpy structured memmap.
 
@@ -840,15 +839,6 @@ class Fractal_plotter:
             offers less flexibility (post processing is 'frozen') but optimises
             disk space in case of supersampling (as L2 downsampling filter can
             be applied before storing the image data).
-        exp_zoom_step: Optional, int
-            For an exponential zoom covering a very large range, it is more
-            efficient to evalutate the bilinear validity radius at successive
-            depths. This setting tells the program to recompute the billinear
-            validity radius for a tile whose ending pixels differs from the
-            last reference from more than `exp_zoom_step` (in the `h`
-            direction). Only valid with a
-            `fractalshades.projection.Expmap` projection and for perturbation
-            fractals.
         recovery_mode: bool
             If True, will attempt to reload the .db / .postdb tiles already
             computed. Allows to restart an interrupted calculation (this will
@@ -870,10 +860,11 @@ class Fractal_plotter:
             
         self.save_db_recovery_mode = recovery_mode
 
-        if exp_zoom_step is None:
-            self.process(mode=mode, postdb_layer=postdb_layer)
+        proj = self.fractal.projection
+        if isinstance(proj, fractalshades.projection.Expmap):
+            self.save_expdb_by_steps(postdb_layer)
         else:
-            self.save_expdb_by_steps(postdb_layer, exp_zoom_step)
+            self.process(mode=mode, postdb_layer=postdb_layer)
 
         # Writes a short description of the db
         info_path = any_db_path + ".info"
@@ -896,43 +887,56 @@ class Fractal_plotter:
         return any_db_path
 
 
-    def save_expdb_by_steps(self, postdb_layer, exp_zoom_step):
+    def save_expdb_by_steps(self, postdb_layer):
         """ Specialised flow for large exp mappings using steps in zoom
         mode is "db" or "postdb"
-        """
-        mode = "postdb" if postdb_layer else "db" # file extension
 
-        proj = self.fractal.projection
-        if not(isinstance(proj, fractalshades.projection.Expmap)):
-            raise ValueError(
-                "exp_zoom_step shall be used only with Expmap"
-            )
-        direction = proj.direction
-        assert direction == "horizontal"
+        For an exponential zoom covering a very large range, it is more
+        efficient to evalutate the bilinear validity radius at successive
+        depths. This setting tells the program to recompute the billinear
+        validity radius for a tile whose ending pixels differs from the
+        last reference from more than `exp_zoom_step` (in the `h`
+        direction). Only valid with a
+        `fractalshades.projection.Expmap` projection and for perturbation
+        fractals.
+        """
+        f = self.fractal
+        proj = f.projection
+        orientation = proj.orientation
+        exp_zoom_step = proj.nt(f)
 
         hmin = proj.hmin
         hmax = proj.hmax
-        nh = self.fractal.nx
+        nh = proj.nh(f)
         stp = exp_zoom_step
 
         for r in range(0, nh + 1, stp):
-
-            proj.set_exp_zoom_step(
-                hmin * ((nh - r) / nh) + hmax * (r / nh)
-            )
-
             # Need to trigger a recalculation of BLA validity radius
             # we will call reset_bla_tree and modify in place cycle_indep_args
+            if orientation == "horizontal":
+                exp_step = (hmax * r + hmin * (nh - r)) / nh
+            else:
+                exp_step = (hmax * (nh - r) + hmin * r) / nh
+            proj.set_exp_zoom_step(exp_step)
             self.reset_bla_tree()
 
-            def validates(chunk_slice):
+            def validates_h(chunk_slice):
                 """ Escapes the tiles not matching the target h range"""
-                (ix, ixx, iy, iyy) = chunk_slice
+                (_, ixx, _, _) = chunk_slice
                 ret = r < ixx <= (r + stp)
                 return ret
 
+            def validates_v(chunk_slice):
+                """ Escapes the tiles not matching the target h range"""
+                (_, _, _, iyy) = chunk_slice
+                ret = r < iyy <= (r + stp)
+                return ret
+
+            validates = (validates_h if orientation == "horizontal" 
+                         else validates_v)
+
             self.process(
-                mode=mode,
+                mode=self._mode,
                 postdb_layer=postdb_layer,
                 tile_validator=validates
             )
@@ -947,7 +951,8 @@ class Fractal_plotter:
         f = self.fractal
         for calc_name, data in f._calc_data.items():
             cycle_indep_args = data["cycle_indep_args"]
-            f.reset_bla_tree(cycle_indep_args)
+            data["cycle_indep_args"] = f.reset_bla_tree(cycle_indep_args)
+
 
     def open_any_db(self, mode, postdb_layer):
         """ Open a .db or .postdb according to mode, managing
@@ -1231,7 +1236,6 @@ class Fractal_plotter:
                 reducing_gap=None
             )
 
-        # Mapping to a Numpy order
         postdb_mmap[iy:iyy, ix:ixx, :] = np.asarray(paste_crop)
 
         del postdb_mmap
@@ -1463,7 +1467,6 @@ advanced users when subclassing.
         """ Returns a numba-jitted function which apply the linear part of the
         transformation (rotation, skew, scale)
         """
-#        dx = self.dx
         theta = self.theta_deg / 180. * np.pi
         skew = self._skew
 
@@ -1473,19 +1476,8 @@ advanced users when subclassing.
         lin_mat = np.array(((c, -s), (s, c)), dtype=np.float64)
         if skew is not None:
             lin_mat = np.matmul(skew, lin_mat)
-        
-        return lin_mat
 
-#        @numba.njit(numba.complex128(numba.complex128))
-#        def numba_impl(z):
-#            x = z.real
-#            y = z.imag
-#            x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
-#            y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
-#
-#            return  dx * complex(x1, y1)
-#
-#        return numba_impl
+        return lin_mat
 
 
     def new_status(self, wget):
@@ -1776,7 +1768,6 @@ advanced users when subclassing.
         """
         data_type = self.float_type
 
-#        theta = self.theta_deg / 180. * np.pi
         (nx, ny) = (self.nx, self.ny)
         (ix, ixx, iy, iyy) = chunk_slice
 
@@ -1814,8 +1805,6 @@ advanced users when subclassing.
             )
 
         dx_screen, dy_screen  = np.meshgrid(x_1d, -y_1d, indexing='xy')
-        # dx_vec, dy_vec  = np.meshgrid(x_1d, y_1d, indexing='ij')
-        # dy_vec, dx_vec  = np.meshgrid(y_1d, x_1d[::-1])#, indexing='ij')
 
         if jitter:
             rg = np.random.default_rng(0)

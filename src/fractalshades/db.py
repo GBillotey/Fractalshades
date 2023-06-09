@@ -558,7 +558,8 @@ class Exp_db:
             currently supported hence the expmap array is of shape
             (nt, nh, nchannels) and stores rgb data. It is usually saved  by a
             call to `fractalshades.Fractal_plotter.save_db`
-            using a `fractalshades.projection.Expmap` projection.
+            using a `fractalshades.projection.Expmap` projection. Note that the
+            orientation parameter of this projection shall be "vertical".
         path_final: str
             The path for the final raw data. Note that only *.postdb format is
             currently supported hence the expmap array is of shape
@@ -608,7 +609,8 @@ class Exp_db:
         """ Build a description for the datapoints in the mmap """
         assert self.postdb
         mmap = open_memmap(filename=self.path_expmap, mode="r+")
-        nt, nh, nposts = mmap.shape
+        # .postdb of an Expmap woth orientation = "vertical"
+        nh, nt, nposts = mmap.shape
         dtype = mmap.dtype
         del mmap
 
@@ -745,7 +747,7 @@ class Exp_db:
         # Define parameters for multilevel exp_map interpolation
         # a_exp, b_exp, h_exp, f_exp, f_exp_shape, f_exp_slot
         kind = "exp"
-        full_shape = info_dic[(kind, "ss_shapes")]
+        full_shape = info_dic[(kind, "ss_shapes")] # ny, nx or nh, nt
         full_slot = info_dic[(kind, "ss_slots")]
         full_bound = info_dic[(kind, "ss_bounds")] # (start_x, end_x, start_y, end_y) 
         lvl = full_shape.shape[0]
@@ -760,7 +762,20 @@ class Exp_db:
         print("a_exp:\n", a_exp)
         print("b_exp:\n", b_exp)
         print("h_exp:\n", h_exp)
-        print("full_shape:\n", full_shape)
+        print("full_shape:\n", full_shape)  # nh, nt (or ny, nx)
+        
+#        full_shape:
+# [[8056  800]
+# [4029  401]
+# [2015  201]
+# [1008  101]
+# [ 505   51]
+# [ 253   26]
+# [ 127   14]
+# [  64    8]
+# [  33    5]
+# [  17    3]
+# [   9    2]]
         
         f_exp_shape = np.copy(full_shape)
         f_exp_slot = np.copy(full_slot)
@@ -779,24 +794,27 @@ class Exp_db:
             pix_hmax = np.clip(
                 h + h_margin - h_decimate * ilvl, self.hmin0, self.hmax0
             )
+            # TODO:  should this be reversed ? - decreasing sort order
             ind_hmin = int(np.floor((pix_hmin - arr_hmin) / delta_h))
-            ind_hmax = int(np.ceil((pix_hmax - arr_hmin) / delta_h))
+            ind_hmax = int(np.ceil((pix_hmax - arr_hmin) / delta_h) + 1)
 
             h_index[ilvl, :] = ind_hmin, ind_hmax
-            k_min = ind_hmin / (full_shape[ilvl, 1] - 1)
-            k_max = ind_hmax / (full_shape[ilvl, 1] - 1)
+            k_min = ind_hmin / (full_shape[ilvl, 0] - 1)
+            k_max = ind_hmax / (full_shape[ilvl, 0] - 1)
 
-            # Updates tables
+            # Updates tables to extracted values
             a_exp[ilvl, 0] = arr_hmin * (1. - k_min) + arr_hmax * k_min
             b_exp[ilvl, 0] = arr_hmin * (1. - k_max) + arr_hmax * k_max
-            f_exp_shape[ilvl, 1] = ind_hmax - ind_hmin
+            f_exp_shape[ilvl, 0] = ind_hmax - ind_hmin
             # Temporarly, we store it as dim, then use cumsum
             f_exp_slot[ilvl, 1] = f_exp_shape[ilvl, 0] * f_exp_shape[ilvl, 1]
 
         f_exp_slot[:, 1] = np.cumsum(f_exp_slot[:, 1])
         f_exp_slot[1:, 0] = f_exp_slot[:-1, 1]
         f_exp_slot[0, 0] = 0
-        f_exp = np.empty((f_exp_slot[-1, 1],), dtype=dtype)
+        f_exp = np.empty((f_exp_slot[-1, 1],), dtype=dtype) # storage vec
+
+        print("f_exp_slot:\n", f_exp_slot)  # nh, nt (or ny, nx)
 
 
 
@@ -806,7 +824,7 @@ class Exp_db:
 
         ind_hmin, ind_hmax = h_index[ilvl, :]
         # loc_arr = mmap[ind_hmin:ind_hmax, :, ic] # Use the full theta range
-        loc_arr = mmap[:, ind_hmin:ind_hmax, ic] # Use the full theta range
+        loc_arr = mmap[ind_hmin:ind_hmax, :, ic] # Use the full theta range
         loc_arr = loc_arr.reshape(-1)
         f_exp[f_exp_slot[ilvl, 0]: f_exp_slot[ilvl, 1]] = loc_arr
 
@@ -818,10 +836,11 @@ class Exp_db:
         for ilvl in range(1, lvl):
             print("storing local inputs for lvl", ilvl)
             ind_hmin, ind_hmax = h_index[ilvl, :]
-            nt, nh = full_shape[ilvl, :]
-            di = full_slot[ilvl, 0]
-            # Here we seem to have an issue, as the primary dim is nt...
-            loc_arr = mmap[ic, (ind_hmin * ny) + di: (ind_hmax * ny) + di]
+            ny, nx = full_shape[ilvl, :]
+            di = full_slot[ilvl, 0]  # 0 or 1 ???
+            # Here why we need to used "vertical" orientation for the expmap,
+            # as the primary dim is nh...
+            loc_arr = mmap[ic, (ind_hmin * nx) + di: (ind_hmax * nx) + di]
             f_exp[f_exp_slot[ilvl, 0]: f_exp_slot[ilvl, 1]] = loc_arr
 
         del mmap
@@ -868,7 +887,7 @@ class Exp_db:
         for ilvl in range(1, lvl):
             filename = self.path(kind, downsampling=True)
             mmap = open_memmap(filename=filename, mode="r")
-            nx, ny = full_shape[ilvl, :]
+#            nx, ny = full_shape[ilvl, :]
 #                print("ilvl", ilvl, nx, ny, nx * ny)
 #                print("->", full_slot[ilvl, 0], full_slot[ilvl, 1], full_slot[ilvl, 1] - full_slot[ilvl, 0])
             loc_arr = mmap[ic, full_slot[ilvl, 0]: full_slot[ilvl, 1]]
@@ -896,7 +915,7 @@ class Exp_db:
         filename = self.path("exp", downsampling=True)
         init_bound = np.array((self.hmin0, self.hmax0, -np.pi, np.pi))
         self.populate_subsampling(
-            filename, source, driving_dim="y", # i.e, the "theta" dim
+            filename, source, driving_dim="x", # i.e, the "t" Expmap dim
             init_bound=init_bound, kind="exp"
         )
 
@@ -984,7 +1003,7 @@ class Exp_db:
         Returns
         -------
         ss_shapes:
-            shapes (nx, ny) of the nested subsampled arrays
+            shapes (ny, nx) or (nh, nt) of the nested subsampled arrays
         ss_bounds
             flatten localisation of the nested subsampled arrays
             To recover for 
@@ -998,12 +1017,12 @@ class Exp_db:
 
         # We flatten the image however the source might imply several channels
         # or layers...
-        # For a db, mmap.shape: (nposts, nh, nt) or  (nposts, nx, ny)
-        # For a frozen db, mmap.shape: (nx, ny, n_channel)
+        # For a .postdb, mmap.shape: (ny, nx, n_channel)
+        # Hence for a "vertical" Expmap: nh, nt
         source_mmap = open_memmap(filename=source, mode="r")
         dtype = source_mmap.dtype
         (ny, nx, nposts) = source_mmap.shape
-#        print("SOURCE dims:", ny, nx)
+        # Dev note: in case of expmap, ny == nh, nx == nt
 
         ss_nx = nx
         ss_ny = ny
@@ -1020,7 +1039,7 @@ class Exp_db:
         ss_bounds = np.tile(init_bound, (ss_lvls + 1, 1)).astype(np.float32)
 
         # Sizing the subsampling arrays
-        ss_shapes[0, :] = [ny, nx]
+        ss_shapes[0, :] = [ny, nx] # or nh, nt if Expmap, "vertical"
         ss_slots[0, :] = [-1, -1] # not relevant as in another mmap
 
         for lvl in range(ss_lvls):
@@ -1032,8 +1051,6 @@ class Exp_db:
             ss_slots[lvl + 1, :] = [ss_slotl, ss_sloth]
         
 #        print("FOUND levels:", ss_lvls)
-#        print("ss_shapes", ss_shapes)
-#        print("ss_slots", ss_slots)
 
         ss_mmap = open_memmap(
             filename=filename, 
@@ -1050,7 +1067,7 @@ class Exp_db:
                 ss_diy = 200
                 ss_ny = ss_ny // 2 + 1
                 # The grouping range (in data columns) for parallel exec.
-                self.y_range = lambda: np.arange(0, ss_ny, ss_diy)
+                self.y_range = lambda: np.arange(0, ss_ny - 1, ss_diy)
 #                fs.settings.enable_multithreading = False # TODO: remove (DEBUG)
                 self.parallel_populate_subsampling(
                     ss_mmap, source_mmap, ipost, lvl,
@@ -1118,6 +1135,7 @@ class Exp_db:
         if lvl == 0:
             # Source arr is from the source_mmap
             source_arr = source_mmap[iystart:iyend, :, ipost]
+#            print("source arr lvl0", source_arr.shape, "inputs:", iystart, iyend)
         else:
             # Source arr is from the mmap, however a level higher
             l_loc = lw + iystart * nx
@@ -1126,7 +1144,7 @@ class Exp_db:
 
         ssl_loc = ss_l + ss_iystart * ss_nx
         ssh_loc = ss_l + ss_iyend * ss_nx
-        ss2d_full, k_spanx_loc, k_spany_loc = lf2_stable(source_arr) # !!!!! TODO there....
+        ss2d_full, k_spanx_loc, k_spany_loc = lf2_stable(source_arr) # !!!!! TODO check there....
         ss2d_full = ss2d_full[:ss_diy, :]
 
         # Flatten then store in slot
@@ -1207,20 +1225,6 @@ class Exp_db:
 
         return im
 
-
-
-
-
-#    def process(self, plot_template, frame, img, im_layer):
-#        """
-#        Just plot the Images interpolated data + plot_template
-#        1 db point -> 1 pixel
-#        """
-#        nx, ny = frame.size
-#        chunk_slice = (0, nx, 0, ny)
-#        crop_slice = (0, 0, nx, ny)
-#        paste_crop = im_layer.crop(chunk_slice)
-#        img.paste(paste_crop, box=crop_slice)
 
 
 #==============================================================================
@@ -1351,7 +1355,6 @@ class Multilevel_exp_interpolator:
         return pts_res
 
 
-
 @numba.njit(nogil=True, parallel=False)
 def multilevel_interpolate(
     x_out, y_out, pts_h, pts_t, h_out, nx_out, f_out,
@@ -1452,6 +1455,152 @@ CLIP_BOUNDS = False
 
 @numba.njit(nogil=True)
 def grid_interpolate(x_out, y_out, f, ax, ay, bx, by, hx, hy, nx, ny):
+    # Bilinear interpolation in a rectangular grid - f is passed flatten and
+    # is of size (nx x ny)
+    # Interpolation: f_out = finterp(x_out, y_out)
+
+    if CHECK_BOUNDS:
+        assert  ax <= x_out <= bx
+        assert  ay <= y_out <= by
+
+    if CLIP_BOUNDS:
+        x_out = min(max(x_out, ax), bx) # np.clip(x_out, ax, bx) #
+        y_out = min(max(y_out, ay), by) # np.clip(y_out, ay, by) #  
+
+    ix, ratx = np.divmod(x_out - ax, hx)
+    iy, raty = np.divmod(y_out - ay, hy)
+    
+    ix = np.intp(ix)
+    iy = np.intp(iy)
+    ratx /= hx
+    raty /= hy
+
+    cx0 = np.float32(1.) - ratx
+    cx1 = ratx
+    cy0 = np.float32(1.) - raty
+    cy1 = raty
+
+    id00 = ix * ny + iy #     ix,     iy
+    id01 = id00 + 1     #     ix, iy + 1
+    id10 = id00 + ny    # ix + 1,     iy
+    id11 = id10 + 1     # ix + 1, iy + 1
+
+    f_out = (
+        (cx0 * cy0 * f[id00])
+        + (cx0 * cy1 * f[id01])
+        + (cx1 * cy0 * f[id10])
+        + (cx1 * cy1 * f[id11])
+    )
+#    f_out = (
+#        (cx0 * cy0 * f[id00])
+#        + (cx1 * cy0 * f[id01])
+#        + (cx0 * cy1 * f[id10])
+#        + (cx1 * cy1 * f[id11])
+#    )
+    
+    return f_out
+
+
+@numba.njit(nogil=True, parallel=False)
+def multilevel_interpolate_alt(
+    x_out, y_out, pts_h, pts_t, h_out, nx_out, f_out,
+    a_exp, b_exp, h_exp, f_exp, f_exp_shape, f_exp_slot,
+    a_final, b_final, h_final, f_final, f_final_shape, f_final_slot
+):
+    # Interpolation: f_out = finterp(x_out, y_out, h_out) - h_out constant
+    # x_im, y_im position in the image ([-0.5, 0.5] for x)
+    npts = x_out.size
+    half32 = numba.float32(0.5)
+    log_half32 = np.log(half32)
+    # tenth_pixw = numba.float32(0.1 / nx_out)
+
+    max_lvl_ht = f_exp_shape.shape[0] - 1
+    max_lvl_xy = f_final_shape.shape[0] - 1
+
+    lvl_xy_cache = numba.intp(-1) # Invalid will trigger recalc 
+    lvl_ht_cache = numba.intp(-1) # Invalid will trigger recalc 
+    
+    k_out = np.exp(h_out)
+
+    for i in numba.prange(npts):
+        x_loc = x_out[i]
+        y_loc = y_out[i]
+        # Note: log(sqrt(.)) == 0.5 * log(.)
+        h_img = pts_h[i]
+        # np.log(max(x_loc ** 2 + y_loc ** 2, tenth_pixw)) * half32
+
+        # exp mapping is defined as z -> np.exp(dh * z)
+        h_tot = h_out + h_img - log_half32
+
+        if h_tot < 0.:
+            # Interpolating in the final image
+            # the lvl is linked to the zoom scale: log2(exp(h_out))
+            # zoom 1. -> 0, 2. -> 1, 4. -> 
+            lvl_xy = np.intp(-h_out / (log_half32) + 0.7)
+            lvl_xy = min(max(lvl_xy, 0), max_lvl_xy)
+
+            # Define the local arrays according to lvlxy_loc
+            if lvl_xy != lvl_xy_cache:
+                lvl_xy_cache = lvl_xy
+
+                ax = a_final[lvl_xy, 0]
+                ay = a_final[lvl_xy, 1]
+                bx = b_final[lvl_xy, 0]
+                by = b_final[lvl_xy, 1]
+                hx = h_final[lvl_xy, 0]
+                hy = h_final[lvl_xy, 1]
+
+                slot_xy_l = f_final_slot[lvl_xy, 0]
+                slot_xy_h = f_final_slot[lvl_xy, 1]
+                xy_nx = f_final_shape[lvl_xy, 0]
+                xy_ny = f_final_shape[lvl_xy, 1]
+                fxy = f_final[slot_xy_l: slot_xy_h]
+
+            f_loc = grid_interpolate(
+                x_loc * k_out, y_loc * k_out,
+                fxy, ax, ay, bx, by, hx, hy, xy_nx, xy_ny
+            )
+
+        else:
+            # the lvl is linked to the pixel position in image
+            lvl_ht = np.intp((h_img / log_half32) - 1.0)
+            lvl_ht = min(max(lvl_ht, 0), max_lvl_ht)
+
+            # The angle (t_tot == t_loc)
+            t_loc = pts_t[i]
+            # np.arctan2(y_loc, x_loc)
+
+            # Define the local arrays according to lvlht_loc
+            if lvl_ht != lvl_ht_cache:
+                lvl_ht_cache = lvl_ht
+
+                ah = a_exp[lvl_ht, 0]
+                at = a_exp[lvl_ht, 1]
+                bh = b_exp[lvl_ht, 0]
+                bt = b_exp[lvl_ht, 1]
+                hh = h_exp[lvl_ht, 0]
+                ht = h_exp[lvl_ht, 1]
+
+                slot_ht_l = f_exp_slot[lvl_ht, 0]
+                slot_ht_h = f_exp_slot[lvl_ht, 1]
+                ht_nx = f_exp_shape[lvl_ht, 0]
+                ht_ny = f_exp_shape[lvl_ht, 1]
+                fht = f_exp[slot_ht_l: slot_ht_h]
+
+            f_loc = grid_interpolate(
+                h_tot, t_loc, fht, ah, at, bh, bt, hh, ht, ht_nx, ht_ny
+            )
+
+        f_out[i] = f_loc
+
+    return f_out
+
+# debugging options
+CHECK_BOUNDS = True
+CLIP_BOUNDS = False
+
+@numba.njit(nogil=True)
+def grid_interpolate_alt(x_out, y_out, f, ax, ay, bx, by, hx, hy, nx, ny):
     # Bilinear interpolation in a rectangular grid - f is passed flatten and
     # is of size (ny x nx)   / PILLOW order convention
     # Interpolation: f_out = finterp(x_out, y_out)
