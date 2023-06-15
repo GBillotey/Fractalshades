@@ -731,6 +731,7 @@ class Exp_db:
         ic = post_index
         h = frame.h # expansion factor from final pic is exp(h)
         nx = frame.nx
+        xy_ratio = frame.xy_ratio
 
         margin = 20. # Shall remain valid for this zoom range (in and out)
         h_margin = np.log(margin)
@@ -738,10 +739,18 @@ class Exp_db:
 
         info_dic = self._subsampling_info
         dtype = self.dtype
-#        (
-#            self.postdb_props["dtype"] if self.postdb 
-#            else self.plotter.fractal.post_dtype
-#        )
+
+        # Checks Frame validity
+        if h < 0.:
+            raise ValueError(f"Frame outside databse data: h = {h} < 0")
+        # Highest acceptable h:
+        rpix_max = 0.5 * np.sqrt(1. + xy_ratio ** 2)
+        allowed_hmax = self.hmax0 / rpix_max
+        if h > allowed_hmax:
+            raise ValueError(
+                    "Frame outside databse data: "
+                    f"h = {h} > allowed_hmax = {allowed_hmax}"
+            )
 
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Define parameters for multilevel exp_map interpolation
@@ -757,25 +766,6 @@ class Exp_db:
         a_exp = np.copy(full_bound[:, 0::2]) # Lower bound h, t
         b_exp = np.copy(full_bound[:, 1::2]) # Higher bound h, t
         h_exp = ((b_exp - a_exp) / (full_shape - 1)).astype(np.float32)
-        
-        print("in make_interpolator")
-        print("a_exp:\n", a_exp)
-        print("b_exp:\n", b_exp)
-        print("h_exp:\n", h_exp)
-        print("full_shape:\n", full_shape)  # nh, nt (or ny, nx)
-        
-#        full_shape:
-# [[8056  800]
-# [4029  401]
-# [2015  201]
-# [1008  101]
-# [ 505   51]
-# [ 253   26]
-# [ 127   14]
-# [  64    8]
-# [  33    5]
-# [  17    3]
-# [   9    2]]
         
         f_exp_shape = np.copy(full_shape)
         f_exp_slot = np.copy(full_slot)
@@ -794,9 +784,16 @@ class Exp_db:
             pix_hmax = np.clip(
                 h + h_margin - h_decimate * ilvl, self.hmin0, self.hmax0
             )
-            # TODO:  should this be reversed ? - decreasing sort order
+            # Note: still, ascending sort order
             ind_hmin = int(np.floor((pix_hmin - arr_hmin) / delta_h))
-            ind_hmax = int(np.ceil((pix_hmax - arr_hmin) / delta_h) + 1)
+            ind_hmax = int(np.ceil((pix_hmax - arr_hmin) / delta_h))
+            
+            # Avoids the 'lonely pixel' case
+            if ind_hmax - ind_hmin == 1:
+                if ind_hmax < f_exp_shape[ilvl, 0]:
+                    ind_hmax += 1
+                else:
+                    ind_hmin -= 1
 
             h_index[ilvl, :] = ind_hmin, ind_hmax
             k_min = ind_hmin / (full_shape[ilvl, 0] - 1)
@@ -814,18 +811,15 @@ class Exp_db:
         f_exp_slot[0, 0] = 0
         f_exp = np.empty((f_exp_slot[-1, 1],), dtype=dtype) # storage vec
 
-        print("f_exp_slot:\n", f_exp_slot)  # nh, nt (or ny, nx)
-
-
 
         ilvl = 0
         filename = self.path(kind, downsampling=False)
         mmap = open_memmap(filename=filename, mode="r")
 
         ind_hmin, ind_hmax = h_index[ilvl, :]
-        # loc_arr = mmap[ind_hmin:ind_hmax, :, ic] # Use the full theta range
         loc_arr = mmap[ind_hmin:ind_hmax, :, ic] # Use the full theta range
         loc_arr = loc_arr.reshape(-1)
+
         f_exp[f_exp_slot[ilvl, 0]: f_exp_slot[ilvl, 1]] = loc_arr
 
         del mmap
@@ -834,7 +828,6 @@ class Exp_db:
         mmap = open_memmap(filename=filename, mode="r")
 
         for ilvl in range(1, lvl):
-            print("storing local inputs for lvl", ilvl)
             ind_hmin, ind_hmax = h_index[ilvl, :]
             ny, nx = full_shape[ilvl, :]
             di = full_slot[ilvl, 0]  # 0 or 1 ???
@@ -844,8 +837,6 @@ class Exp_db:
             f_exp[f_exp_slot[ilvl, 0]: f_exp_slot[ilvl, 1]] = loc_arr
 
         del mmap
-
-
 
 
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -883,13 +874,9 @@ class Exp_db:
 
         filename = self.path(kind, downsampling=True)
         mmap = open_memmap(filename=filename, mode="r")
-#            print("mmap", mmap.shape) # (4, )
         for ilvl in range(1, lvl):
             filename = self.path(kind, downsampling=True)
             mmap = open_memmap(filename=filename, mode="r")
-#            nx, ny = full_shape[ilvl, :]
-#                print("ilvl", ilvl, nx, ny, nx * ny)
-#                print("->", full_slot[ilvl, 0], full_slot[ilvl, 1], full_slot[ilvl, 1] - full_slot[ilvl, 0])
             loc_arr = mmap[ic, full_slot[ilvl, 0]: full_slot[ilvl, 1]]
             f_final[f_final_slot[ilvl, 0]: f_final_slot[ilvl, 1]] = loc_arr
         del mmap
@@ -1049,8 +1036,6 @@ class Exp_db:
             ss_sloth += ss_nx * ss_ny
             ss_shapes[lvl + 1, :] = [ss_ny, ss_nx]
             ss_slots[lvl + 1, :] = [ss_slotl, ss_sloth]
-        
-#        print("FOUND levels:", ss_lvls)
 
         ss_mmap = open_memmap(
             filename=filename, 
@@ -1068,7 +1053,6 @@ class Exp_db:
                 ss_ny = ss_ny // 2 + 1
                 # The grouping range (in data columns) for parallel exec.
                 self.y_range = lambda: np.arange(0, ss_ny - 1, ss_diy)
-#                fs.settings.enable_multithreading = False # TODO: remove (DEBUG)
                 self.parallel_populate_subsampling(
                     ss_mmap, source_mmap, ipost, lvl,
                     ss_shapes, ss_slots, ss_bounds, lf2_stable,
@@ -1110,20 +1094,15 @@ class Exp_db:
         ss_iystart: start iy index for this parallel calc in the destination
            array /!\ not the source
         ssdiy: gap in y used for parallel calc
-        """
-#        print("In parallel computing, level:", lvl, "ss_iystart", ss_iystart)
-        
+        """        
         ss_ny, ss_nx = ss_shapes[lvl + 1, :]   # For full "subsampled" shape
         ss_l, ss_h = ss_slots[lvl + 1, :]      # For full "subsampled" slot
-        
-#        print("Subsampled shape:", ss_ny, ss_nx, "count", ss_ny * ss_nx)
-#        print("Subsampled slot:", ss_l, ss_h, "count", - ss_l + ss_h)
+
         assert ss_ny * ss_nx == ss_h - ss_l
 
         # This // run extract slot is [iy_start:iy_end, :]
         ss_iyend = min(ss_iystart + ss_diy, ss_ny)
         ss_diy = ss_iyend - ss_iystart
-#        print("local y // slot", ss_iystart, ss_iyend)
 
         # The 2d shapes / extract slot at source array - we map (2n+1) -> n+1
         ny, nx = ss_shapes[lvl, :]
@@ -1135,7 +1114,6 @@ class Exp_db:
         if lvl == 0:
             # Source arr is from the source_mmap
             source_arr = source_mmap[iystart:iyend, :, ipost]
-#            print("source arr lvl0", source_arr.shape, "inputs:", iystart, iyend)
         else:
             # Source arr is from the mmap, however a level higher
             l_loc = lw + iystart * nx
@@ -1144,7 +1122,7 @@ class Exp_db:
 
         ssl_loc = ss_l + ss_iystart * ss_nx
         ssh_loc = ss_l + ss_iyend * ss_nx
-        ss2d_full, k_spanx_loc, k_spany_loc = lf2_stable(source_arr) # !!!!! TODO check there....
+        ss2d_full, k_spanx_loc, k_spany_loc = lf2_stable(source_arr)
         ss2d_full = ss2d_full[:ss_diy, :]
 
         # Flatten then store in slot
@@ -1153,8 +1131,6 @@ class Exp_db:
         if (ipost == 0) and (ss_iystart == 0):
             # We store data localisation information. coeff applies to the 
             # following levels
-            pass
-            # !!! TODO Not sure there either, TODO
             ss_bounds[(lvl + 1):, 1] +=  (k_spanx_loc - 1.) * (
                 ss_bounds[(lvl + 1):, 1] - ss_bounds[(lvl + 1):, 0]
             )
@@ -1164,7 +1140,6 @@ class Exp_db:
 
 
 # --------------- db plotting interface ---------------------------------------
-
     def get_2d_arr(self, post_index, frame, chunk_slice):
         """ get_2d_arr with frame-specific functionnality
 
@@ -1209,7 +1184,7 @@ class Exp_db:
         ret = np.empty(db_size + (nchannels,), dtype=dtype)
 
 
-        for ic in range(nchannels): #3): #n_channel):
+        for ic in range(nchannels):
 
             channel_ret = self.get_interpolator(frame, ic)(
                 *frame.pts, frame.h, frame.nx
@@ -1491,12 +1466,6 @@ def grid_interpolate(x_out, y_out, f, ax, ay, bx, by, hx, hy, nx, ny):
         + (cx1 * cy0 * f[id10])
         + (cx1 * cy1 * f[id11])
     )
-#    f_out = (
-#        (cx0 * cy0 * f[id00])
-#        + (cx1 * cy0 * f[id01])
-#        + (cx0 * cy1 * f[id10])
-#        + (cx1 * cy1 * f[id11])
-#    )
     
     return f_out
 
@@ -1616,9 +1585,6 @@ def grid_interpolate_alt(x_out, y_out, f, ax, ay, bx, by, hx, hy, nx, ny):
     ix_float, ratx = np.divmod(x_out - ax, hx)
     iy_float, raty = np.divmod(by - y_out, hy)
     
-#    ix_float = min(ix_float, nx - 2)
-#    iy_float = min(iy_float, ny - 2)
-    
     ix = np.intp(ix_float)
     iy = np.intp(iy_float)
     ratx /= hx
@@ -1629,18 +1595,10 @@ def grid_interpolate_alt(x_out, y_out, f, ax, ay, bx, by, hx, hy, nx, ny):
     cy0 = np.float32(1.) - raty
     cy1 = raty
 
-#    id00 = ix * ny + iy #     ix,     iy
-#    id01 = id00 + 1     #     ix, iy + 1
-#    id10 = id00 + ny    # ix + 1,     iy
-#    id11 = id10 + 1     # ix + 1, iy + 1
-    
-#    id00 = ix * ny + iy #   iy + 1, ix
-#    id01 = id00 + 1     #   iy + 1, ix + 1
-
-    id00 = iy * nx + ix    #       iy, ix
+    id00 = iy * nx + ix #       iy, ix
     id01 = id00 + 1     #       iy, ix + 1
-    id10 = id00 + nx #   iy + 1, ix
-    id11 = id10 + 1 #   iy + 1, ix
+    id10 = id00 + nx    #   iy + 1, ix
+    id11 = id10 + 1     #   iy + 1, ix
 
     f_out = (
         (cy0 * cx0 * f[id00])
@@ -1648,48 +1606,5 @@ def grid_interpolate_alt(x_out, y_out, f, ax, ay, bx, by, hx, hy, nx, ny):
         + (cy1 * cx0 * f[id10])
         + (cy1 * cx1 * f[id11])
     )
-#    f_out = (
-#        (cx0 * cy0 * f[id00])
-#        + (cx1 * cy0 * f[id01])
-#        + (cx0 * cy1 * f[id10])
-#        + (cx1 * cy1 * f[id11])
-#    )
     
     return f_out
-#
-## ====================
-#    m = pts_res.shape[0]
-#    max_ix = f.shape[1] - 2
-#    max_iy = f.shape[0] - 2
-#
-#
-#    for mi in range(m):
-#        x_out = pts_x[mi]
-#        y_out = pts_y[mi]
-#    
-#        if CHECK_BOUNDS:
-#            x_out = min(max(x_out, a[0]), b[0])
-#            y_out =  min(max(y_out, a[1]), b[1])
-#
-#        ix_float, ratx = divmod(x_out - a[0], h[0])
-#        iy_float, raty = divmod(b[1] - y_out, h[1])
-#        ix_float = min(ix_float, max_ix)
-#        iy_float = min(iy_float, max_iy)
-#
-#        ix = np.intp(ix_float)
-#        iy = np.intp(iy_float)
-#        ratx /= h[0]
-#        raty /= h[1]
-#    
-#        cx0 = 1. - ratx
-#        cx1 = ratx
-#        cy0 = 1. - raty
-#        cy1 = raty
-#
-#        pts_res[mi] = (
-#            (cy1 * cx0 * f[iy + 1, ix])
-#            + (cy1 * cx1 * f[iy + 1, ix + 1])
-#            + (cy0 * cx0 * f[iy, ix])
-#            + (cy0 * cx1 * f[iy, ix + 1])
-#        )
-

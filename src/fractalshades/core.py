@@ -296,7 +296,6 @@ class Fractal_plotter:
         logger.info(self.zoom_info_str())
 
         assert mode in ("img", "db","postdb")
-                       # "expdb", "postexpdb")
         
         if postdb_layer is not None:
             # Convert the str to its Layer object
@@ -432,8 +431,8 @@ class Fractal_plotter:
             if is_valid:
                 for i, layer in enumerate(self.layers):
                     # We need the postproc
-                    self.push_reloaded(  # TODO check this 
-                        chunk_slice, layer=layer, im=self._im[i] #, ilayer=i
+                    self.push_reloaded(
+                        chunk_slice, layer=layer, im=self._im[i]
                     )
                     # TODO  'update scaling' may be invalid as we lost the
                     # data... would need a separate mmap to store min / max
@@ -545,7 +544,7 @@ class Fractal_plotter:
         if self.final_render and (mode == "img"):
             rank = f.chunk_rank(chunk_slice)
             _mmap_status = open_memmap(
-                filename=self.postdb_status_path(None), mode="r+" # self.mmap_status_path
+                filename=self.postdb_status_path(None), mode="r+"
             )
             _mmap_status[rank] = 1
             del _mmap_status
@@ -695,7 +694,6 @@ class Fractal_plotter:
 
         if self.supersampling:
             # Here, we should apply a resizing filter
-            # Image.resize(size, resample=None, box=None, reducing_gap=None)
             resample = PIL.Image.LANCZOS
             paste_crop = paste_crop.resize(
                 size=(ixx - ix, iyy - iy),
@@ -1191,8 +1189,6 @@ class Fractal_plotter:
         del mmap
 
 
-
-
     def postdb_status_path(self, postdb_path):
         """ Return the postdb_status_path if db_path is provided """
         if self._mode == "img":
@@ -1239,7 +1235,6 @@ class Fractal_plotter:
         postdb_mmap[iy:iyy, ix:ixx, :] = np.asarray(paste_crop)
 
         del postdb_mmap
-
 
 
 class _Null_status_wget:
