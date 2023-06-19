@@ -46,6 +46,10 @@ def plot(plot_dir=None):
     normal maps from distance estimation method
     Coloring of interior points based on the attracting cycle attractivity
     """
+    fs.settings.enable_multithreading = True
+    fs.settings.log_directory = os.path.join(plot_dir, "log")
+    fs.set_log_handlers(verbosity="debug @ console + log")
+
     # Define the parameters for this calculation
     x = -0.746223962861
     y = -0.0959468433527
@@ -167,7 +171,11 @@ def plot(plot_dir=None):
 
     # Overlay : alpha composite with "interior" layer ie, where it is not
     # masked, we take the value of the "attr" layer
-    overlay_mode = Overlay_mode("alpha_composite")
+    overlay_mode = Overlay_mode(
+            "alpha_composite",
+            alpha_mask=plotter["interior"],
+            inverse_mask=True
+    )
     plotter["cont_iter"].overlay(plotter["attr"], overlay_mode=overlay_mode)
 
     plotter.plot()

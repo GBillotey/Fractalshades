@@ -17,7 +17,7 @@ as saved by `fractalshades.Fractal_plotter.save_db`.
     :members: __init__, set_plotter, plot
 
 .. autoclass:: fractalshades.db.Exp_frame
-    :members: __init__
+    :members: __init__, set_plotter, plot
 
 
 

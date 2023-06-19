@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
-import typing
+#import typing
 import pickle
 #import warnings
 import logging
@@ -17,7 +17,6 @@ import fractalshades.numpy_utils.numba_xr as fsxn
 
 logger = logging.getLogger(__name__)
 
-#PROJECTION_ENUM = fs.core.PROJECTION_ENUM
 
 class PerturbationFractal(fs.Fractal):
 
@@ -86,12 +85,12 @@ directory : str
             Components of the local skew matrix, with ij = 00, 01, 10, 11
         """
         mpmath.mp.dps = precision # in base 10 digit 
-        
+
         # In case the user inputs were strings, we override with mpmath scalars
         self.x = mpmath.mpf(x)
         self.y = mpmath.mpf(y)
-        self.dx = mpmath.mpf(dx)
-        
+        self.dx = dx = mpmath.mpf(dx)
+
         # Backward compatibility: also accept projection = "cartesian"
         if isinstance(projection, str):
             logger.warning(textwrap.dedent(
@@ -110,59 +109,28 @@ directory : str
                 ((skew_00, skew_01), (skew_10, skew_11)), dtype=np.float64
             )
 
-        self.lin_proj_impl, self.lin_proj_impl_std = self.get_lin_proj_impl()
+        self.dx_std = dx_std = float(dx)
+        self.dx_xr = dx_xr = fsx.mpf_to_Xrange(dx, dtype=np.float64).ravel()
+        # Here we store the linscale as a 1d 1 element array
+        self.lin_scale_xr = np.asanyarray(dx_xr).reshape(-1)
+        self.lin_scale_std = np.asanyarray(dx_std).reshape(-1)
+        self.lin_mat = self.get_lin_mat()
+
         projection.adjust_to_zoom(self)
         self.proj_impl = projection.f
-        # get_impl()
 
-
-    def get_lin_proj_impl(self):
-        """ Returns a numba-jitted function which apply the linear part of the
-        transformation (rotation, skew, scale)
-        
-        Typical calling chain:
-        lin_proj_impl(proj_impl(pix))
-        """
-        dx = self.dx
-        theta = self.theta_deg / 180. * np.pi
-        skew = self._skew
-        # Defines the linear matrix
-        c = np.cos(theta)
-        s = np.sin(theta)
-        lin_mat = np.array(((c, -s), (s, c)), dtype=np.float64)
-        if skew is not None:
-            lin_mat = np.matmul(skew, lin_mat)    
-
-        # Several options to take into account according to:
-        # - dx is Xrange ?
-        # - the fractal is holomorphic -> handle downstream in
-        #   ref_path_c_from_pix_BS implementation
-        dx_std = float(dx)
-        dx_xr = fsx.mpf_to_Xrange(dx, dtype=np.float64).ravel()
-
-        @numba.njit(numba.complex128(numba.complex128))
-        def numba_impl_std(z):
-            x = z.real
-            y = z.imag
-            x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
-            y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
-            return  dx_std * complex(x1, y1)
-
-        if self.xr_detect_activated:
-            # if self.holomorphic:
-            @numba.njit
-            def numba_impl(z):
-                x = z.real
-                y = z.imag
-                x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
-                y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
-                return  dx_xr[0] * complex(x1, y1)
-
-        else:
-#            if self.holomorphic:
-            numba_impl = numba_impl_std
-
-        return numba_impl, numba_impl_std
+        # check the dps...
+        pix = projection.min_local_scale * projection.scale * self.dx / self.nx
+        with mpmath.workdps(6):
+            # Sets the working dps to 10e-1 x pixel size
+            required_dps = int(-mpmath.log10(pix / nx) + 1)
+        if required_dps > precision:
+            raise ValueError(
+                "Precision is too low for min. pixel size and shall be "
+                f"increased to {required_dps} (current setting: {precision})."
+                "This might be a consequence of Exponential mapping or "
+                "other non-cartesian projections."
+            )
 
 
     def new_status(self, wget):
@@ -195,49 +163,48 @@ directory : str
 
     def ref_point_kc(self):
         """
-        Return a scaling coefficient used as a convergence radius for serie 
-        approximation, or as a reference scale for derivatives.
+        Return a bound for dc in image pixels, used as a criteria for BLA
+        validity
 
         Returns:
         --------
         kc: full precision, scaling coefficient
         """
+        # TODO: shall be adapted for projections implementing deep-zoom
+        # (mainly, exponential projection)
         c0 = self.x + 1j * self.y
-        corner_a = c0 + 0.5 * (self.dx + 1j * self.dy)
-        corner_b = c0 + 0.5 * (- self.dx + 1j * self.dy)
-        corner_c = c0 + 0.5 * (- self.dx - 1j * self.dy)
-        corner_d = c0 + 0.5 * (self.dx - 1j * self.dy)
 
+        w, h = self.projection.bounding_box(self.xy_ratio)
+        proj_dx = self.dx * self.projection.scale
+        mat = self.lin_mat
+
+        corner_a = lin_proj_impl_noscale(mat, 0.5 * (w + 1j * h)) * proj_dx
+        corner_b = lin_proj_impl_noscale(mat, 0.5 * (- w + 1j * h)) * proj_dx
+        corner_c = lin_proj_impl_noscale(mat, 0.5 * (- w - 1j * h)) * proj_dx
+        corner_d = lin_proj_impl_noscale(mat, 0.5 * (w - 1j * h)) * proj_dx
+
+        c0 = self.x + 1j * self.y
         ref = self.FP_params["ref_point"]
+        shift = ref - c0
 
-        # Let take some margin
-        kc = max(abs(ref - corner_a), abs(ref - corner_b),
-                 abs(ref - corner_c), abs(ref - corner_d)) * 1.1
+        # Let take the largest distance + some margin
+        kc = max(abs(shift - corner_a), abs(shift - corner_b),
+                 abs(shift - corner_c), abs(shift - corner_d)) * 1.1
 
-        return fsx.mpf_to_Xrange(kc, dtype=np.float64)
-    
+        return fsx.mpf_to_Xrange(kc, dtype=np.float64).ravel() # 1d for numba
+
+
     def get_std_cpt(self, c_pix):
         """ Return the c complex value from c_pix - standard precision """
         n_pts, = c_pix.shape  # Z of shape [n_Z, n_pts]
         # Explicit casting to complex / float
-#        dx = float(self.dx)
         center = complex(self.x + 1j * self.y)
-#        ref_point = complex(self.FP_params["ref_point"])
-#        drift = complex((self.x + 1j * self.y) - ref_point)
-
-#        xy_ratio = self.xy_ratio
-#        theta = self.theta_deg / 180. * np.pi # used for expmap
-#        projection = getattr(PROJECTION_ENUM, self.projection).value
-
-
         cpt = np.empty((n_pts,), dtype=c_pix.dtype)
 
         fill1d_std_C_from_pix(
-#            c_pix, dx, center, drift, xy_ratio, theta, projection, cpt
-            c_pix, self.proj_impl, self.lin_proj_impl_std, center, cpt
+            c_pix, self.proj_impl, self.lin_mat, self.lin_scale_std,
+            center, cpt
         )
-        
-
         return cpt
 
 
@@ -298,7 +265,6 @@ directory : str
         save_path = self.ref_point_file()
         fs.utils.mkdir_p(os.path.dirname(save_path))
         with open(save_path, 'wb+') as tmpfile:
-            # print("Path computed, saving", save_path)
             logger.info(textwrap.dedent(f"""\
                     Full precision path computed, saving to:
                       {save_path}"""
@@ -329,7 +295,6 @@ directory : str
         Return the FP_params attribute, if not available try to reload it
         from file
         """
-        # print("in FP_params", hasattr(self, "_FP_params"))
         if hasattr(self, "_FP_params"):
             return self._FP_params
         FP_params = self.reload_ref_point(scan_only=True)
@@ -342,7 +307,6 @@ directory : str
         Return the Zn_path attribute, if not available try to reload it
         from file
         """
-        # print("in Zn_path", hasattr(self, "_Zn_path"))
         if hasattr(self, "_Zn_path"):
             return self._Zn_path
         FP_params, Zn_path = self.reload_ref_point()
@@ -356,7 +320,7 @@ directory : str
         """
         FP_params = self.FP_params
         Zn_path = self.Zn_path
-        
+
         ref_xr_python = FP_params["xr"]
         has_xr = (len(ref_xr_python) > 0)
         ref_order = FP_params["order"]
@@ -367,6 +331,8 @@ directory : str
             ref_div_iter = self.max_iter + 1
 
         dx_xr = fsx.mpf_to_Xrange(self.dx, dtype=self.float_type).ravel()
+        # Note: uses ravel to change the shape from (,) - numpy scalar - to
+        # (1,) - numpy array - for numba compatibility
         ref_index_xr = np.empty([len(ref_xr_python)], dtype=np.int32)
 
         if self.holomorphic:
@@ -456,7 +422,6 @@ directory : str
             return numba_cycles_perturb(
                 *cycle_dep_args, *cycle_indep_args
             )
-
         else:
             return numba_cycles_perturb_BS(
                 *cycle_dep_args, *cycle_indep_args
@@ -471,7 +436,6 @@ directory : str
         # ====================================================================
         # CUSTOM class impl
         # Initialise the reference path
-        # if has_status_bar:
         holomorphic = self.holomorphic
         calc_deriv_c = self.calc_dZndc if holomorphic else self.calc_hessian
         calc_dZndz = self.calc_dZndz if holomorphic else False
@@ -479,6 +443,7 @@ directory : str
         # 1) compute or retrieve the reference orbit
         self.set_status("Reference", "running")
         self.get_FP_orbit()
+
         if holomorphic:
             (Zn_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
              drift_xr, dx_xr) = self.get_path_data()
@@ -492,13 +457,18 @@ directory : str
 
         # 2) compute the orbit derivatives if needed
         # Note: this is where the "scale" of the derivative is chosen
-        # If there is a projection-induced scale, we need to use it here.
-        dx_xr = dx_xr * self.projection.scale
-        
+
+        if self.projection.scale != 1.:
+            # If there is a projection-induced scale, we need to use it here.
+            scale_xr = fsx.mpf_to_Xrange(
+                self.projection.scale, dtype=self.float_type
+            ).ravel()
+            dx_xr = dx_xr * scale_xr
+
         dZndc_path = None
         (dXnda_path, dXndb_path, dYnda_path, dYndb_path) = (None,) * 4
+
         if calc_deriv_c:
-            # dx_xr = fsx.mpf_to_Xrange(self.dx, dtype=self.float_type).ravel() Looks already done...
             xr_detect_activated = self.xr_detect_activated
 
             if holomorphic:
@@ -540,7 +510,7 @@ directory : str
                 dZndz_path = dZndz_xr_path
 
 
-        self.kc = kc = self.ref_point_kc().ravel()  # Make it 1d for numba use
+        self.kc = kc = self.ref_point_kc()
         if kc == 0.:
             raise RuntimeError(
                 "Resolution is too low for this zoom depth. Try to increase"
@@ -557,8 +527,7 @@ directory : str
         else:
             self.set_status("Bilin. approx", "running")
             eps = self.BLA_eps
-            M_bla, r_bla, bla_len, stages_bla = self.get_BLA_tree(
-                    Zn_path, eps)
+            M_bla, r_bla, bla_len, stages_bla = self.get_BLA_tree(Zn_path, eps)
             self.set_status("Bilin. approx", "completed")   
 
 
@@ -568,8 +537,8 @@ directory : str
                 initialize, iterate,
                 Zn_path, dZndc_path, dZndz_path,
                 has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
-                drift_xr, dx_xr, self.proj_impl, self.lin_proj_impl,
-                kc, M_bla, r_bla, bla_len, stages_bla, # suppressed  P, n_iter
+                drift_xr, dx_xr, self.proj_impl, self.lin_mat, self.lin_scale_xr,
+                kc, M_bla, r_bla, bla_len, stages_bla,
                 self._interrupted
             )
         else:
@@ -578,11 +547,40 @@ directory : str
                 initialize, iterate,
                 Zn_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
                 has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
-                driftx_xr, drifty_xr, dx_xr, self.proj_impl, self.lin_proj_impl,
-                kc, M_bla, r_bla, bla_len, stages_bla, # suppressed  P, n_iter
+                driftx_xr, drifty_xr, dx_xr, self.proj_impl, self.lin_mat, self.lin_scale_xr,
+                kc, M_bla, r_bla, bla_len, stages_bla,
                 self._interrupted
             )
 
+        return cycle_indep_args
+
+
+    def reset_bla_tree(self, cycle_indep_args):
+        """ 
+        Returns a new cycle_indep_args with modified of BLA validaty radius for
+        expmap zooms
+
+        cycle_indep_args : the data to modify in place
+        Note: the fractal projection shall have been modified through
+        its ``set_exp_zoom_step`` method
+        """
+        if self.BLA_eps is None:
+            return
+
+        Zn_path = self.Zn_path
+        self.kc = self.ref_point_kc() # We resets kc taking into account a
+                                      # partial expmap range
+
+        BLA_params = self.get_BLA_tree(Zn_path, self.BLA_eps)
+        span = (17, 21) if self.holomorphic else (21, 25)
+
+        cycle_indep_args = (
+            cycle_indep_args[:span[0]]
+            + BLA_params
+            + cycle_indep_args[span[1]:]
+        )
+
+        logger.debug(f"BLA tree reset with kc: {self.kc }")
         return cycle_indep_args
 
 
@@ -650,7 +648,7 @@ directory : str
             dfydx = self.dfydx
             dfydy = self.dfydy
             return numba_make_BLA_BS(
-                Zn_path, dfxdx, dfxdy, dfydx, dfydy, kc, eps #, self.reverse_y
+                Zn_path, dfxdx, dfxdy, dfydx, dfydy, kc, eps
             )
 
     def get_FP_orbit(self, c0=None, newton="cv", order=None,
@@ -730,7 +728,7 @@ directory : str
                 attempt += 1
                 mpmath.mp.dps = int(1.25 * mpmath.mp.dps)
                 logger.info(textwrap.dedent(f"""\
-                    Newton attempt {attempt} failed
+                    Newton attempt {attempt - 1} failed
                       Increasing dps for next : {old_dps} -> {mpmath.mp.dps}"""
                 ))
                 eps_pixel = self.dx * (1. / self.nx)
@@ -752,7 +750,6 @@ directory : str
                     newton_cv, nucleus = self.find_any_nucleus(
                         c0, order, eps_pixel, max_newton=max_newton
                     )
-
 
         # Still not CV ? we default to the center of the image
         if newton_cv:
@@ -918,7 +915,7 @@ ball_order = {{
                 break
             attempt += 1
             dps = int(1.5 * dps)
-            print("Newton, dps boost to: ", dps)
+            logger.info(f"Newton, decimal precision (dps) boost to: {dps}")
             with mpmath.workdps(dps):
                 try:
                     newton_cv, c_newton = self.find_nucleus(
@@ -997,7 +994,8 @@ def numba_cycles_perturb(
     initialize, iterate,
     Zn_path, dZndc_path, dZndz_path,
     has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
-    drift_xr, dx_xr, proj_impl, lin_proj_impl,
+    # drift_xr, dx_xr, proj_impl, lin_proj_impl,
+    drift_xr, dx_xr, proj_impl, lin_mat, lin_scale_xr,
     kc, M_bla, r_bla, bla_len, stages_bla, # suppressed  P, n_iter_init
     _interrupted
 ):
@@ -1028,8 +1026,7 @@ def numba_cycles_perturb(
         Zpt = Z[:, ipt]
         Upt = U[:, ipt]
         cpt, c_xr = ref_path_c_from_pix(
-                # c_pix[ipt], dx_xr, drift_xr
-                c_pix[ipt], proj_impl, lin_proj_impl, drift_xr
+            c_pix[ipt], proj_impl, lin_mat, lin_scale_xr, drift_xr
         )
         stop_pt = stop_reason[:, ipt]
 
@@ -1113,7 +1110,6 @@ def numba_iterate(
         ref_orbit_len = Zn_path.shape[0]
         first_invalid_index = min(ref_orbit_len, ref_div_iter, ref_order)
         M_out = np.empty((2,), dtype=np.complex128)
-        # print("enter numba_impl iterate with n_iter / w_iter", n_iter,  w_iter, ref_order)
 
         while True:
             #==========================================================
@@ -1402,7 +1398,7 @@ def numba_cycles_perturb_BS(
     initialize, iterate,
     Zn_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
     has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
-    driftx_xr, drifty_xr, dx_xr, proj_impl, lin_proj_impl,
+    driftx_xr, drifty_xr, dx_xr, proj_impl, lin_mat, lin_scale_xr,
     kc, M_bla, r_bla, bla_len, stages_bla, # suppressed P, n_iter_init
     _interrupted
 ):
@@ -1419,9 +1415,9 @@ def numba_cycles_perturb_BS(
 
         Zpt = Z[:, ipt]
         Upt = U[:, ipt]
+
         apt, bpt, a_xr, b_xr = ref_path_c_from_pix_BS(
-            # c_pix[ipt], dx_xr, driftx_xr, drifty_xr
-            c_pix[ipt], proj_impl, lin_proj_impl, driftx_xr, drifty_xr
+            c_pix[ipt], proj_impl, lin_mat, lin_scale_xr, driftx_xr, drifty_xr
         )
         stop_pt = stop_reason[:, ipt]
 
@@ -1434,11 +1430,8 @@ def numba_cycles_perturb_BS(
             has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
             refpath_ptr, out_is_xr, out_xr, M_bla, r_bla, bla_len, stages_bla
         )
-        # print('n_iter', n_iter)
-        stop_iter[0, ipt] = n_iter#n_iterv- debug
+        stop_iter[0, ipt] = n_iter
         stop_reason[0, ipt] = stop_pt[0]
-        
-        # print("after iterate", ipt, npts)
 
         if _interrupted[0]:
             return USER_INTERRUPTED
@@ -1482,8 +1475,7 @@ def numba_iterate_BS(
         Z, Z_xr: idem for result vector Z
         Z_xr_trigger : bolean, activated when Z_xr need to be used
         """
-        # print("in numba impl")
-        # SA skipped - wrapped iteration if we reach the cycle order 
+        # Wrapped iteration if we reach the cycle order 
         w_iter = 0
         n_iter = 0
         if w_iter >= ref_order:
@@ -1586,7 +1578,6 @@ def numba_iterate_BS(
             # Stopping condition: divergence
             # ZZ = "Total" z + dz
             w_iter += 1
-            # print("incr w_iter", w_iter, n_iter, ref_order)
             if w_iter >= ref_order:
                 w_iter = w_iter % ref_order
 
@@ -1614,7 +1605,6 @@ def numba_iterate_BS(
             # Glitch correction - reference point diverging
             
             if (w_iter >= ref_div_iter - 1):
-                # print("reference point diverging rebase")
                 # Rebasing - we are already big no underflow risk
                 Z[xn] = XX
                 Z[yn] = YY
@@ -1646,7 +1636,6 @@ def numba_iterate_BS(
                 (abs(XX) <= abs(Z[xn])) and (abs(YY) <= abs(Z[yn]))
             )
             if bool_dyn_rebase:
-                # print("bool_dyn_rebase")
                 if xr_detect_activated:
                     # Can we *really* rebase ??
                     # Note: if Z[zn] underflows we might miss a rebase
@@ -1760,169 +1749,162 @@ def apply_BLA_deriv_BS(M, Z, a, b, dxnda, dxndb, dynda, dyndb):
 # Bilinear approximation
 # Note: the bilinear arrays being cheap, they  will not be stored but
 # re-computed if needed
+
 @numba.njit(nogil=True, cache=True, fastmath=True, error_model="numpy")
 def numba_make_BLA(Zn_path, dfdz, kc, eps):
     """
-    Generates a BVA tree with
+    Generates a compressed BLA tree with
     - bilinear approximation coefficients A and B
     - validaty radius
         z_n+2**stg = f**stg(z_n, c) with |c| < r_stg_n is approximated by 
         z_n+2**stg = A_stg_n * z_n + B_stg_n * c
     """
     # number of needed "stages" is (ref_orbit_len).bit_length()
+    # number of needed "stages" is (ref_orbit_len).bit_length()
     kc_std = fsxn.to_standard(kc[0])
     ref_orbit_len = Zn_path.shape[0]
-    # ("ref_orbit_len", ref_orbit_len)
-    bla_dim = 2
-    M_bla = np.zeros((2 * ref_orbit_len, bla_dim), dtype=numba.complex128)
-    r_bla = np.zeros((2 * ref_orbit_len,), dtype=numba.float64)
-    M_bla_new, r_bla_new, bla_len, stages = init_BLA(
-        M_bla, r_bla, Zn_path, dfdz, kc_std, eps
-    )
-    return M_bla_new, r_bla_new, bla_len, stages
 
-@numba.njit(nogil=True, cache=True)
-def numba_make_BLA_BS(Zn_path, dfxdx, dfxdy, dfydx, dfydy, kc, eps):
-    """
-    Generates a BVA tree for non-holomorphic functions with
-    - bilinear approximation coefficients A and B
-    - validaty radius
-        z_n+2**stg = f**stg(z_n, c) with |c| < r_stg_n is approximated by 
-        z_n+2**stg = A_stg_n * z_n + B_stg_n * c
-    """
-    # number of needed "stages" is (ref_orbit_len).bit_length()
-    kc_std = fsxn.to_standard(kc[0])
-    ref_orbit_len = Zn_path.shape[0]
-    # print("ref_orbit_len in BLA", ref_orbit_len)
-    bla_dim = 8
-    M_bla = np.zeros((2 * ref_orbit_len, bla_dim), dtype=numba.float64)
-    r_bla = np.zeros((2 * ref_orbit_len,), dtype=numba.float64)
-    M_bla_new, r_bla_new, bla_len, stages = init_BLA_BS(
-        M_bla, r_bla, Zn_path, dfxdx, dfxdy, dfydx, dfydy, kc_std, eps
-    )
-    return M_bla_new, r_bla_new, bla_len, stages
+    # Compressed quantities
+    k_comp = 1 << STG_COMPRESSED
+    comp_bla_len = ref_orbit_len // k_comp    
+
+    bla_dim = 2
+    M_bla = np.zeros((2 * comp_bla_len, bla_dim), dtype=numba.complex128)
+    r_bla = np.zeros((2 * comp_bla_len,), dtype=numba.float64)
+
+    # The temporary tree structure to get to the stored index
+    temp_M_bla = np.zeros((2 * k_comp, bla_dim), dtype=numba.complex128)
+    temp_r_bla = np.zeros((2 * k_comp,), dtype=numba.float64)
+    temp_M_bla_template = np.copy(temp_M_bla)
+    temp_r_bla_template = np.copy(temp_r_bla)
+
+    for i in range(0, comp_bla_len):
+        i_0 = 2 * i # BLA index for (i, 0)
+        temp_M_bla = np.copy(temp_M_bla_template)
+        temp_r_bla = np.copy(temp_r_bla_template)
+
+        for j in range(0, k_comp):
+            j_0 = 2 * j # BLA index for (j, 0)
+
+            # Define a BLA_step by:
+            #       [ M[0]    0     0]          [dzndc]
+            #  M =  [    0 M[0]  M[1]]     Zn = [   zn]
+            #       [    0    0     1]          [    c]
+            #
+            #  Z_(n+1) = M * Zn
+
+            Zn_i = Zn_path[i * k_comp + j]
+            temp_M_bla[j_0, 0] = dfdz(Zn_i)
+            temp_M_bla[j_0, 1] = 1.
+            temp_r_bla[j_0] = eps * abs(temp_M_bla[j_0, 0])
+
+        # Combine step for temporary tree 'compression'
+        for stg in range(1, STG_COMPRESSED + 1):
+            combine_BLA(temp_M_bla, temp_r_bla, kc_std, stg, k_comp, eps)
+        
+        stored_index = k_comp - 1
+        for d in range(bla_dim):
+            M_bla[i_0, d] = temp_M_bla[stored_index, d]
+        r_bla[i_0] = temp_r_bla[stored_index]
+
+    # Combine step for stored data
+    stages = _stages_bla(ref_orbit_len) 
+    for stg in range(1, stages - STG_COMPRESSED):
+        combine_BLA(M_bla, r_bla, kc_std, stg, comp_bla_len, eps)
+
+    return M_bla.reshape(-1), r_bla, 2 * comp_bla_len, stages
 
 
 @numba.njit(nogil=True, cache=True, fastmath=True, error_model="numpy")
-def init_BLA(M_bla, r_bla, Zn_path, dfdz, kc_std, eps):
+def numba_make_BLA_BS(Zn_path, dfxdx, dfxdy, dfydx, dfydy, kc, eps):
     """
-    Initialize BLA tree at stg 0
+    Generates a compressed BLA tree with
+    - bilinear approximation coefficients A and B
+    - validaty radius
+        z_n+2**stg = f**stg(z_n, c) with |c| < r_stg_n is approximated by 
+        z_n+2**stg = A_stg_n * z_n + B_stg_n * c
     """
-    ref_orbit_len = Zn_path.shape[0]  # at order + 1, we wrap
-    # print("in init_BLA", Zn_path)
+    # number of needed "stages" is (ref_orbit_len).bit_length()
+    # number of needed "stages" is (ref_orbit_len).bit_length()
+    kc_std = fsxn.to_standard(kc[0])
+    ref_orbit_len = Zn_path.shape[0]
 
-    for i in range(ref_orbit_len):
+    # Compressed quantities
+    k_comp = 1 << STG_COMPRESSED
+    comp_bla_len = ref_orbit_len // k_comp    
+
+    bla_dim = 8
+    M_bla = np.zeros((2 * comp_bla_len, bla_dim), dtype=numba.float64)
+    r_bla = np.zeros((2 * comp_bla_len,), dtype=numba.float64)
+
+    # The temporary tree structure to get to the stored index
+    temp_M_bla = np.zeros((2 * k_comp, bla_dim), dtype=numba.float64)
+    temp_r_bla = np.zeros((2 * k_comp,), dtype=numba.float64)
+    temp_M_bla_template = np.copy(temp_M_bla)
+    temp_r_bla_template = np.copy(temp_r_bla)
+
+    for i in range(0, comp_bla_len):
         i_0 = 2 * i # BLA index for (i, 0)
+        temp_M_bla = np.copy(temp_M_bla_template)
+        temp_r_bla = np.copy(temp_r_bla_template)
 
-        # Define a BLA_step by:
-        #       [ M[0]    0     0]
-        #  M =  [    0 M[0]  M[1]] 
-        #       [    0    0     1]
-        #
-        #       [dzndc]
-        #  Zn = [   zn]
-        #       [    c]
-        #
-        #  Z_(n+1) = M * Zn
+        for j in range(0, k_comp):
+            j_0 = 2 * j # BLA index for (j, 0)
+            
+            # Define a BLA_step by:
+            #  Z_(n+1) = M * Zn where
+    
+            #       [dxnda]
+            #       [dxndb]
+            #       [dynda]            [  M_0    0     0]
+            #  Zn = [dyndb]       M =  [    0  M_1   M_2] 
+            #       [   xn]            [    0    0     I]
+            #       [   yn]
+            #       [    a]
+            #       [    b]
+    
+            #        [M[0] 0    M[1] 0   ]
+            #  M_0 = [0    M[0] 0    M[1]]
+            #        [M[2] 0    M[3] 0   ]
+            #        [0    M[2] 0    M[3]]
+            #
+            #  M_1 = [M[0] M[1]]   M_1_init = [dfxdx dfxdy]
+            #        [M[2] M[3]]              [dfydx dfydy]
+            #
+            #  M_2 = [M[4] M[5]]   M_2_init = [1  0]
+            #        [M[6] M[7]]              [0 -1]
+    
+            Zn_i = Zn_path[i * k_comp + j]
+            Xn_i = Zn_i.real
+            Yn_i = Zn_i.imag
+    
+            temp_M_bla[j_0, 0] = dfxdx(Xn_i, Yn_i)
+            temp_M_bla[j_0, 1] = dfxdy(Xn_i, Yn_i)
+            temp_M_bla[j_0, 2] = dfydx(Xn_i, Yn_i)
+            temp_M_bla[j_0, 3] = dfydy(Xn_i, Yn_i)
+    
+            temp_M_bla[j_0, 4] = 1.
+            temp_M_bla[j_0, 5] = 0.
+            temp_M_bla[j_0, 6] = 0.
+            temp_M_bla[j_0, 7] = -1.
 
-        Zn_i = Zn_path[i]
-        M_bla[i_0, 0] = dfdz(Zn_i)
-        M_bla[i_0, 1] = 1.
+            temp_r_bla[j_0] =  eps * min(abs(Xn_i), abs(Yn_i))  
 
-        # We use the following criteria :
-        # |Z + z| shall stay *far* from O or discontinuity of F', for each c
-        # For std Mandelbrot it means from z = 0
-        # |zn| << |Zn|
-        # For Burning ship x = 0 or y = 0
-        # |zn| << |Xn|,  |zn| << |Yn|
-        # We could additionnally consider a criterian based on hessian
-        # |z| < A e / h where h Hessian - not useful (redundant)
-        # for Mandelbrot & al.
-        mZ = np.abs(Zn_path[i])
-        ii = (i + 1) % ref_orbit_len
-        mZZ = np.abs(Zn_path[ii])
-        # mA = np.abs(M_bla[i_0, 0])
+        # Combine step for temporary tree 'compression'
+        for stg in range(1, STG_COMPRESSED + 1):
+            combine_BLA_BS(temp_M_bla, temp_r_bla, kc_std, stg, k_comp, eps)
 
-        r_bla[i_0] = max(
-            0.,
-            min(
-                # error term is negligible
-                mZ * eps,  
-                # Avoid dyn glitch at next step
-                mZZ * eps
-                # ((0.5 * mZZ) - kc_std) / (1. + mA)
-            )
-        )
+        stored_index = k_comp - 1
+        for d in range(bla_dim):
+            M_bla[i_0, d] = temp_M_bla[stored_index, d]
+        r_bla[i_0] = temp_r_bla[stored_index]
 
-    # Now the combine step
-    # number of needed "stages" (ref_orbit_len).bit_length()
-    stages = _stages_bla(ref_orbit_len)
-    # print("in combine BLA")
-    for stg in range(1, stages):
-        combine_BLA(M_bla, r_bla, kc_std, stg, ref_orbit_len, eps)
-    M_bla_new, r_bla_new, bla_len = compress_BLA(M_bla, r_bla, stages)
-    return M_bla_new, r_bla_new, bla_len, stages
+    # Combine step for stored data
+    stages = _stages_bla(ref_orbit_len) 
+    for stg in range(1, stages - STG_COMPRESSED):
+        combine_BLA_BS(M_bla, r_bla, kc_std, stg, comp_bla_len, eps)
 
-@numba.njit(nogil=True, cache=True)
-def init_BLA_BS(M_bla, r_bla, Zn_path, dfxdx, dfxdy, dfydx, dfydy,
-                kc_std, eps):
-    """
-    Initialize BLA tree at stg 0
-    """
-    ref_orbit_len = Zn_path.shape[0]  # at order + 1, we wrap
-
-    for i in range(ref_orbit_len):
-        i_0 = 2 * i # BLA index for (i, 0)
-
-        # Define a BLA_step by:
-        #  Z_(n+1) = M * Zn where
-
-        #       [dxnda]
-        #       [dxndb]
-        #       [dynda]            [  M_0    0     0]
-        #  Zn = [dyndb]       M =  [    0  M_1   M_2] 
-        #       [   xn]            [    0    0     I]
-        #       [   yn]
-        #       [    a]
-        #       [    b]
-
-        #        [M[0] 0    M[1] 0   ]
-        #  M_0 = [0    M[0] 0    M[1]]
-        #        [M[2] 0    M[3] 0   ]
-        #        [0    M[2] 0    M[3]]
-        #
-        #  M_1 = [M[0] M[1]]   M_1_init = [dfxdx dfxdy]
-        #        [M[2] M[3]]              [dfydx dfydy]
-        #
-        #  M_2 = [M[4] M[5]]   M_2_init = [1  0]
-        #        [M[6] M[7]]              [0 -1]
-        #
-
-        Zn_i = Zn_path[i]
-        Xn_i = Zn_i.real
-        Yn_i = Zn_i.imag
-
-        M_bla[i_0, 0] = dfxdx(Xn_i, Yn_i)
-        M_bla[i_0, 1] = dfxdy(Xn_i, Yn_i)
-        M_bla[i_0, 2] = dfydx(Xn_i, Yn_i)
-        M_bla[i_0, 3] = dfydy(Xn_i, Yn_i)
-
-        M_bla[i_0, 4] = 1.
-        M_bla[i_0, 5] = 0.
-        M_bla[i_0, 6] = 0.
-        M_bla[i_0, 7] = -1.
-
-        mZ = min(abs(Xn_i), abs(Yn_i))        
-
-        r_bla[i_0] =  mZ * eps
-
-    # Now the combine step
-    # number of needed "stages" i.e. (ref_orbit_len).bit_length()
-    stages = _stages_bla(ref_orbit_len)
-    for stg in range(1, stages):
-        combine_BLA_BS(M_bla, r_bla, kc_std, stg, ref_orbit_len, eps)
-    M_bla_new, r_bla_new, bla_len = compress_BLA(M_bla, r_bla, stages)
-    return M_bla_new, r_bla_new, bla_len, stages
+    return M_bla.reshape(-1), r_bla, 2 * comp_bla_len, stages
 
 
 @numba.njit(nogil=True, cache=True)
@@ -1943,7 +1925,7 @@ def combine_BLA(M, r, kc_std, stg, ref_orbit_len, eps):
     # Combine all BVA at stage stg-1 to make stage stg with stg > 0
     step = (1 << stg)
 
-    for i in range(0, ref_orbit_len - step, step):
+    for i in range(0, ref_orbit_len - step + 1, step): # +1 for power of 2 case
         ii = i + (step // 2)
         # If ref_orbit_len is not a power of 2, we might get outside the array
         if ii >= ref_orbit_len:
@@ -1963,10 +1945,18 @@ def combine_BLA(M, r, kc_std, stg, ref_orbit_len, eps):
         r2 = r[index2]
         # r1 is a direct criteria however for r2 we need to go 'backw the flow'
         # z0 -> z1 -> z2 with z1 = A1 z0 + B1 c, |z1| < r2
+        # Valid if:
+        # |A1 z0| + |B1 c| < r2
+        # |z0| < |r2 - |B1 c|| / |A1|
+
+        # Note: "Strict inequality factor" of 0.95 is mandatory to pass the
+        # glitch test
+
         mA1 = np.abs(M[index1, 0])
         mB1 = np.abs(M[index1, 1])
-        r2_backw = max(0., (r2 - mB1 * kc_std) / (mA1 + 1.)) # might use eps ?
+        r2_backw = 0.95 * max(0., (r2 - mB1 * kc_std) / max(mA1, eps))
         r[index_res] = min(r1, r2_backw)
+
 
 @numba.njit(nogil=True, cache=True)
 def combine_BLA_BS(M, r, kc_std, stg, ref_orbit_len, eps):
@@ -1979,7 +1969,7 @@ def combine_BLA_BS(M, r, kc_std, stg, ref_orbit_len, eps):
     # Combine all BVA at stage stg-1 to make stage stg with stg > 0
     step = (1 << stg)
 
-    for i in range(0, ref_orbit_len - step, step):
+    for i in range(0, ref_orbit_len - step + 1, step):
         ii = i + (step // 2)
         # If ref_orbit_len is not a power of 2, we might get outside the array
         if ii >= ref_orbit_len:
@@ -2045,40 +2035,14 @@ def combine_BLA_BS(M, r, kc_std, stg, ref_orbit_len, eps):
             np.abs(M[index1, 6]), 
             np.abs(M[index1, 7]),
         )
-        r2_backw = max(0., (r2 - mB1 * kc_std) / (mA1 + 1.)) # might use eps ?
+        r2_backw = 0.95 * max(0., (r2 - mB1 * kc_std) / max(mA1, eps))
         r[index_res] = min(r1, r2_backw)
 
 
 @numba.njit(nogil=True, cache=True)
-def compress_BLA(M_bla, r_bla, stages):
-    """
-    We build 'compressed' arrays which only feature multiples of 
-    2 ** STG_COMPRESSED
-    """
-    k_comp = 1 << STG_COMPRESSED
-    ref_orbit_len = M_bla.shape[0] // 2
-    new_len = M_bla.shape[0] // k_comp
-    bla_dim = M_bla.shape[1]
-
-    M_bla_new = np.zeros((new_len * bla_dim,), dtype=M_bla.dtype)
-    r_bla_new = np.zeros((new_len,), dtype=numba.float64)
-    
-    for stg in range(STG_COMPRESSED, stages):
-        step = (1 << stg)
-        for i in range(0, ref_orbit_len - step, step):
-            index = BLA_index(i, stg)
-            new_index = BLA_index(i // k_comp, stg - STG_COMPRESSED)
-            for d in range(bla_dim):
-                M_bla_new[new_index + d * new_len] = M_bla[index, d]
-
-            r_bla_new[new_index] = r_bla[index]
-    # print("BLA tree compressed with coeff:", k_comp)
-    return M_bla_new, r_bla_new, new_len
-
-@numba.njit(nogil=True, cache=True)
 def BLA_index(i, stg):
     """
-    Return the indices in BVA table for this iteration and stage
+    Return the indices in BLA table for this iteration and stage
     this is the jump from i to j = i + (1 << stg)
     """
     return (2 * i) + ((1 << stg) - 1)
@@ -2126,12 +2090,19 @@ def ref_BLA_get(M_bla, r_bla, bla_len, stages_bla, zn, n_iter,
         # /!\ Use strict comparisons here: to rule out underflow
         if (abs(zn) < r):
             if holomorphic:
-                M_out[0] = M_bla[index_bla]
-                M_out[1] = M_bla[index_bla + bla_len]
+                    # TODO !!!
+                loc = 2 * index_bla
+                M_out[0] = M_bla[loc]
+                M_out[1] = M_bla[loc + 1]
+#                M_out[0] = M_bla[index_bla]
+#                M_out[1] = M_bla[index_bla + bla_len]
                 return step
             else:
                 for i in range(8):
-                    M_out[i] = M_bla[index_bla + i * bla_len]
+                    # TODO !!!
+                    loc = 8 * index_bla
+                    M_out[i] = M_bla[loc + i]
+#                    M_out[i] = M_bla[index_bla + i * bla_len]
                 return step
     return 0 # No BLA applicable
 
@@ -2178,8 +2149,7 @@ def ensure_xr_BS(val_std, valx_xr, valy_xr, is_xr):
         )
 
 @numba.njit(nogil=True, cache=True)
-def ref_path_c_from_pix(pix, proj_impl, lin_proj_impl, drift):
-        #pix, dx, drift):
+def ref_path_c_from_pix(pix, proj_impl, lin_mat, lin_scale_xr, drift_xr):
     """
     Returns the true c (coords from ref point) from the pixel coords
     ie c = C - refp
@@ -2193,18 +2163,12 @@ def ref_path_c_from_pix(pix, proj_impl, lin_proj_impl, drift):
     -------
     c, c_xr : c value as complex and as Xrange
     """
-    # c_xr = (pix * dx[0]) + drift[0]
-    c_xr = lin_proj_impl(proj_impl(pix)) + drift[0]
+    c_xr = lin_proj_impl(lin_mat, lin_scale_xr, proj_impl(pix)) + drift_xr[0]
     return fsxn.to_standard(c_xr), c_xr
 
 
-#proj_cartesian = PROJECTION_ENUM.cartesian.value
-#proj_spherical = PROJECTION_ENUM.spherical.value
-#proj_expmap = PROJECTION_ENUM.expmap.value
-
 @numba.njit(nogil=True, cache=True)
-def std_C_from_pix(pix, proj_impl, lin_proj_impl, center):
-#def std_C_from_pix(pix, dx, center, drift, xy_ratio, theta, projection):
+def std_C_from_pix(pix, proj_impl, lin_mat, lin_scale_std, center):
     """
     Returns the true C (C = cref + dc) from the pixel coords
 
@@ -2217,30 +2181,22 @@ def std_C_from_pix(pix, proj_impl, lin_proj_impl, center):
     -------
     C : Full C value, as complex
     """
-    # Case cartesian
-#    if projection == proj_cartesian:
-#        offset = (pix * dx) # resp. to ref_pt
+    return center + lin_proj_impl(lin_mat, lin_scale_std, proj_impl(pix))
 
-#    offset -= drift    # center - ref_pt DO not take into account here...
-    return center + lin_proj_impl(proj_impl(pix)) # offset + center
 
 @numba.njit(nogil=True, cache=True)
 def fill1d_std_C_from_pix(
-        c_pix, proj_impl, lin_proj_impl, center, c_out):
-#def fill1d_std_C_from_pix(c_pix, dx, center, drift, xy_ratio, theta, projection,
-#                               c_out):
+        c_pix, proj_impl, lin_mat, lin_scale_std, center, c_out):
     """ same as std_C_from_pix but fills in-place a 1d vec """
     nx = c_pix.shape[0]
     for i in range(nx):
         c_out[i] = std_C_from_pix(
-            c_pix[i], proj_impl, lin_proj_impl, center
+            c_pix[i], proj_impl, lin_mat, lin_scale_std, center
         )
-
 
 @numba.njit(nogil=True, cache=True)
 def ref_path_c_from_pix_BS(
-        pix, proj_impl, lin_proj_impl, driftx_xr, drifty_xr):
-# (pix, dx, driftx_xr, drifty_xr):
+        pix, proj_impl, lin_mat, lin_scale_xr, driftx_xr, drifty_xr):
     """
     Returns the true a + i b (coords from ref point) from the pixel coords
 
@@ -2255,11 +2211,9 @@ def ref_path_c_from_pix_BS(
     -------
     a, b, a_xr, b_xr : c value as complex and as Xrange
     """
-    c_xr = lin_proj_impl(proj_impl(pix))
+    c_xr = lin_proj_impl(lin_mat, lin_scale_xr, proj_impl(pix))
     a_xr = np.real(c_xr) + driftx_xr[0]
     b_xr = np.imag(c_xr) + drifty_xr[0]
-#    a_xr = (pix.real * dx[0]) + driftx_xr[0]
-#    b_xr = (pix.imag * dx[0]) + drifty_xr[0]
     return fsxn.to_standard(a_xr), fsxn.to_standard(b_xr), a_xr, b_xr
 
 @numba.njit(nogil=True, cache=True)
@@ -2586,14 +2540,13 @@ def ref_path_get_BS(ref_path, idx, has_xr, ref_index_xr, refx_xr, refy_xr, refpa
     -------
     val np.complex128
         satndard value
-    
+
     Modify in place:
         xr_val : complex128_Xrange_scalar -> pushed to out_xr[out_index]
         is_xr : bool -> pushed to out_is_xr[out_index]
         prev_idx == refpath_ptr[0] : int
         curr_xr == refpath_ptr[1] : int (index in path ref_xr)
     """
-
     if not(has_xr):
         return ref_path[idx]
 
@@ -2637,8 +2590,24 @@ def ref_path_get_BS(ref_path, idx, has_xr, ref_index_xr, refx_xr, refy_xr, refpa
         refpath_ptr[0] = idx
         out_is_xr[outx_index] = True
 
-
         out_xr[outx_index] = refx_xr[refpath_ptr[1]]
         out_xr[outy_index] = refy_xr[refpath_ptr[1]]
 
         return ref_path[idx]
+
+# Linear projection routines
+@numba.njit(cache=True, fastmath=True, nogil=True)
+def lin_proj_impl(lin_mat, linscale, z):
+    x = z.real
+    y = z.imag
+    x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
+    y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
+    return  linscale[0] * complex(x1, y1)
+
+@numba.njit(cache=True, fastmath=True, nogil=True)
+def lin_proj_impl_noscale(lin_mat, z):
+    x = z.real
+    y = z.imag
+    x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
+    y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
+    return complex(x1, y1)

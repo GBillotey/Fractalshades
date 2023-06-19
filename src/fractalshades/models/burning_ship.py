@@ -64,6 +64,8 @@ BS_flavor_list = (
     "Burning ship",
     "Perpendicular burning ship",
     "Shark fin",
+    "Celtic",
+    "Buffalo"
 )
 
 BS_flavor_enum =  enum.Enum(
@@ -99,8 +101,24 @@ def BS_iterate(flavor_int):
         def numba_impl(xn, yn, a, b):
             # Shark Fin
             return (
-                xn ** 2 - yn * np.ans(yn) + a,
+                xn ** 2 - yn * np.abs(yn) + a,
                 2. * xn * yn - b
+            )
+    elif flavor_int == 4:
+        @numba.njit
+        def numba_impl(xn, yn, a, b):
+            # Celtic
+            return (
+                np.abs(xn ** 2 - yn ** 2) + a,
+                2. * xn * yn - b
+            )
+    elif flavor_int == 5:
+        @numba.njit
+        def numba_impl(xn, yn, a, b):
+            # Buffalo
+            return (
+                np.abs(xn ** 2 - yn ** 2) + a,
+                2. * np.abs(xn * yn) - b
             )
     return numba_impl
 
@@ -135,29 +153,43 @@ directory : str
     Path for the working base directory
 flavor : str
     The variant of Burning Ship detailed implementation, defaults to
-    "Burning Ship". 
+    "Burning Ship". Acceptable values are listed below in notes.
 
 Notes
 =====
 
 .. note::
 
-  Several variants (`flavor` parameter) are implemented with small
-  differences in the iteration formula ; among them:
-    
+  Several variants (`flavor` parameter) are implemented with the following
+  iteration formula:
+
     - "Perpendicular burning ship" variant of the Burning Ship Fractal.
-    
+
       .. math::
-    
+
         x_{n+1} &= x_n^2 - y_n^2 + a \\\\
         y_{n+1} &= 2 x_n |y_n| - b
-    
+
     - "Shark fin" variant
-    
+
       .. math::
-    
+
         x_{n+1} &= x_n^2 - y_n |y_n| + a \\\\
         y_{n+1} &= 2 x_n y_n - b
+
+    - "Celtic" variant
+
+      .. math::
+
+        x_{n+1} &= |x_n^2 - y_n^2| + a \\\\
+        y_{n+1} &= 2 x_n y_n - b
+    
+    - "Buffalo" variant
+
+      .. math::
+
+        x_{n+1} &= |x_n^2 - y_n^2| + a \\\\
+        y_{n+1} &= 2 |x_n y_n| - b
 """
         super().__init__(directory)
         self.flavor = flavor
@@ -172,6 +204,8 @@ Notes
             "Burning ship": 1000.,
             "Perpendicular burning ship": 1000,
             "Shark fin": 1.e20,
+            "Celtic": 1000.,
+            "Buffalo": 1000,
         }
         self.potential_M_cutoff = dic_cutoff[flavor]
 
@@ -319,7 +353,7 @@ Notes
                     if n_iter >= max_iter:
                         stop_reason[0] = 0
                         return 1
-        
+
                     a = c.real
                     b = c.imag
                     X = Z[xn]
@@ -338,7 +372,7 @@ Notes
                         Z[dxndb] = 2 * (X * dXdB - Y * dYdB)
                         Z[dynda] = 2 * (np.abs(X) * sgn(Y) * dYdA + sgn(X) * dXdA * np.abs(Y))
                         Z[dyndb] = 2 * (np.abs(X) * sgn(Y) * dYdB + sgn(X) * dXdB * np.abs(Y)) - 1.
-        
+
                     elif flavor_int == 2:
                         # Perpendicular BS implementation
                         Z[xn] = X ** 2 - Y ** 2 + a
@@ -348,7 +382,7 @@ Notes
                         Z[dxndb] = 2 * (X * dXdB - Y * dYdB)
                         Z[dynda] = 2 * (X * sgn(Y) * dYdA + dXdA * np.abs(Y))
                         Z[dyndb] = 2 * (X * sgn(Y) * dYdB + dXdB * np.abs(Y)) - 1.
-        
+
                     elif flavor_int == 3:
                         # Shark Fin
                         Z[xn] = X ** 2 - Y * np.abs(Y) + a
@@ -356,9 +390,32 @@ Notes
                         # Jacobian
                         Z[dxnda] = 2 * (X * dXdA - np.abs(Y) * dYdA) + 1.
                         Z[dxndb] = 2 * (X * dXdB - np.abs(Y) * dYdB)
-                        Z[dynda] = 2 * dXdA * Y + 2 * X * dYdA
-                        Z[dyndb] = 2 * dXdB * Y + 2 * X * dYdB - 1.
-        
+                        Z[dynda] = 2. * (dXdA * Y + X * dYdA)
+                        Z[dyndb] = 2. * (dXdB * Y + X * dYdB) - 1.
+
+                    elif flavor_int == 4:
+                        # Celtic
+                        x2my2 = X ** 2 - Y ** 2
+                        Z[xn] = np.abs(x2my2) + a
+                        Z[yn] = 2. * X * Y - b
+                        # Jacobian
+                        Z[dxnda] = 2. * sgn(x2my2) * (X * dXdA - Y * dYdA)
+                        Z[dxndb] = 2. * sgn(x2my2) * (X * dXdB - Y * dYdB)
+                        Z[dynda] = 2. * (dXdA * Y + X * dYdA)
+                        Z[dyndb] = 2. * (dXdB * Y + X * dYdB) - 1.
+
+                    elif flavor_int == 5:
+                        # Buffalo
+                        x2my2 = X ** 2 - Y ** 2
+                        Z[xn] = np.abs(x2my2) + a
+                        Z[yn] = 2. * np.abs(X * Y) - b
+                        # Jacobian
+                        Z[dxnda] = 2. * sgn(x2my2) * (X * dXdA - Y * dYdA)
+                        Z[dxndb] = 2. * sgn(x2my2) * (X * dXdB - Y * dYdB)
+                        Z[dynda] = 2. * (np.abs(X) * sgn(Y) * dYdA + sgn(X) * dXdA * np.abs(Y))
+                        Z[dyndb] = 2. * (np.abs(X) * sgn(Y) * dYdB + sgn(X) * dXdB * np.abs(Y)) - 1.
+
+
                     if Z[xn] ** 2 + Z[yn] ** 2 > Mdiv_sq:
                         stop_reason[0] = 1
                         return 1
@@ -394,6 +451,11 @@ def _dfxdx(flavor_int):
         @numba.njit
         def numba_impl(x, y):
             return 2. * x
+    elif flavor_int == 4 or flavor_int == 5: # x_{n+1} &= |x_n^2 - y_n^2| + a \\\\
+        @numba.njit
+        def numba_impl(x, y):
+            x2my2 = x * x - y * y
+            return 2. * sgn(x2my2) * x
 
     return numba_impl
 
@@ -411,6 +473,11 @@ def _dfxdy(flavor_int):
         @numba.njit
         def numba_impl(x, y):
             return -2. * np.abs(y)
+    elif flavor_int == 4 or flavor_int == 5: # x_{n+1} &= |x_n^2 - y_n^2| + a \\\\
+        @numba.njit
+        def numba_impl(x, y):
+            x2my2 = x * x - y * y
+            return -2. * sgn(x2my2) * y
 
     return numba_impl
 
@@ -428,6 +495,14 @@ def _dfydx(flavor_int):
         @numba.njit
         def numba_impl(x, y):
             return 2. * y
+    elif flavor_int == 4:
+        @numba.njit
+        def numba_impl(x, y):
+            return 2. * y
+    elif flavor_int == 5:
+        @numba.njit
+        def numba_impl(x, y):
+            return 2. * sgn(x) * np.abs(y)
 
     return numba_impl
 
@@ -445,6 +520,14 @@ def _dfydy(flavor_int):
         @numba.njit
         def numba_impl(x, y):
             return 2. * x
+    elif flavor_int == 4:
+        @numba.njit
+        def numba_impl(x, y):
+            return 2. * x
+    elif flavor_int == 5:
+        @numba.njit
+        def numba_impl(x, y):
+            return 2. * sgn(y) * np.abs(x)
 
     return numba_impl
 
@@ -452,7 +535,7 @@ def _dfydy(flavor_int):
 def _p_iter_zn(flavor_int, xn, yn):
     """ Perturbation iteration for different burning ship 'flavors'"""
     if flavor_int == 1:
-        @numba.njit
+        @numba.njit # Burning Ship
         def numba_impl(Z, ref_xn, ref_yn, a, b):
             # Modifies in-place xn, yn
             ref_xyn = ref_xn * ref_yn
@@ -469,7 +552,7 @@ def _p_iter_zn(flavor_int, xn, yn):
             Z[xn] = new_xn
             Z[yn] = new_yn
 
-    elif flavor_int == 2:
+    elif flavor_int == 2: # Perpendicular BS
         @numba.njit
         def numba_impl(Z, ref_xn, ref_yn, a, b):
             new_xn = (
@@ -485,7 +568,7 @@ def _p_iter_zn(flavor_int, xn, yn):
             Z[xn] = new_xn
             Z[yn] = new_yn
 
-    elif flavor_int == 3:
+    elif flavor_int == 3: # Shark Fin
         @numba.njit
         def numba_impl(Z, ref_xn, ref_yn, a, b):
             new_xn = (
@@ -498,6 +581,40 @@ def _p_iter_zn(flavor_int, xn, yn):
             Z[xn] = new_xn
             Z[yn] = new_yn
 
+    elif flavor_int == 4: # Celtic
+        @numba.njit
+        def numba_impl(Z, ref_xn, ref_yn, a, b):
+            ref_x2my2 = ref_xn * ref_xn - ref_yn * ref_yn
+            new_xn = (
+                diffabs(
+                    ref_x2my2,
+                    Z[xn] * (Z[xn] + 2. * ref_xn) - Z[yn] * (Z[yn] + 2. * ref_yn)
+                ) + a
+            )
+            new_yn = 2. * (ref_xn * Z[yn] + ref_yn * Z[xn] + Z[xn] * Z[yn]) - b
+            Z[xn] = new_xn
+            Z[yn] = new_yn
+
+    elif flavor_int == 5: # Buffalo
+        @numba.njit
+        def numba_impl(Z, ref_xn, ref_yn, a, b):
+            ref_xyn = ref_xn * ref_yn
+            ref_x2my2 = ref_xn * ref_xn - ref_yn * ref_yn
+            new_xn = (
+                diffabs(
+                    ref_x2my2,
+                    Z[xn] * (Z[xn] + 2. * ref_xn) - Z[yn] * (Z[yn] + 2. * ref_yn)
+                ) + a
+            )
+            new_yn = (
+                2. * diffabs(
+                    ref_xyn,
+                    Z[xn] * Z[yn] + Z[xn] * ref_yn + Z[yn] * ref_xn
+                ) - b
+            )
+            Z[xn] = new_xn
+            Z[yn] = new_yn
+
 
     return numba_impl
 
@@ -507,7 +624,7 @@ def _p_iter_hessian(flavor_int, xn, yn, dxnda, dxndb, dynda, dyndb):
         'flavors'
 https://fractalforums.org/fractal-mathematics-and-new-theories/28/perturbation-theory/487/msg3226#msg3226
 """
-    if flavor_int == 1:
+    if flavor_int == 1: # Burning Ship
         @numba.njit
         def numba_impl(
             Z, ref_xn, ref_yn, ref_dxnda, ref_dxndb, ref_dynda, ref_dyndb
@@ -549,7 +666,7 @@ https://fractalforums.org/fractal-mathematics-and-new-theories/28/perturbation-t
             Z[dynda] = new_dynda
             Z[dyndb] = new_dyndb
 
-    elif flavor_int == 2:
+    elif flavor_int == 2: # Perpendicular BS
         @numba.njit
         def numba_impl(
             Z, ref_xn, ref_yn, ref_dxnda, ref_dxndb, ref_dynda, ref_dyndb
@@ -590,7 +707,7 @@ https://fractalforums.org/fractal-mathematics-and-new-theories/28/perturbation-t
             Z[dynda] = new_dynda
             Z[dyndb] = new_dyndb
 
-    elif flavor_int == 3:
+    elif flavor_int == 3: # Shark Fin
         @numba.njit
         def numba_impl(
             Z, ref_xn, ref_yn, ref_dxnda, ref_dxndb, ref_dynda, ref_dyndb
@@ -632,7 +749,113 @@ https://fractalforums.org/fractal-mathematics-and-new-theories/28/perturbation-t
             Z[dxndb] = new_dxndb
             Z[dynda] = new_dynda
             Z[dyndb] = new_dyndb
+
+    elif flavor_int == 4: # Celtic
+
+        @numba.njit
+        def numba_impl(
+            Z, ref_xn, ref_yn, ref_dxnda, ref_dxndb, ref_dynda, ref_dyndb
+        ):
+            # Modifies in-place the Hessian matrix
+            # Implementation for dxnda, dxndb
+            # new_xn = (
+            #     diffabs(
+            #         ref_x2my2,
+            #         Z[xn] * (Z[xn] + 2. * ref_xn) - Z[yn] * (Z[yn] + 2. * ref_yn)
+            #     ) + a
+            # )
+            ref_x2my2 = ref_xn * ref_xn - ref_yn * ref_yn
+            _opX = ref_x2my2
+            d_opX_da = 2. * (ref_xn * ref_dxnda - ref_yn * ref_dynda)
+            d_opX_db = 2. * (ref_xn * ref_dxndb - ref_yn * ref_dyndb)
+
+            _opx = Z[xn] * (Z[xn] + 2. * ref_xn) - Z[yn] * (Z[yn] + 2. * ref_yn)
+            d_opx_da = (
+                Z[dxnda] * (Z[xn] + 2. * ref_xn) + Z[xn] * (Z[dxnda] + 2. * ref_dxnda)
+                - Z[dynda] * (Z[yn] + 2. * ref_yn) - Z[yn] * (Z[dynda] + 2. * ref_dynda)
+            )
+            d_opx_db = (
+                Z[dxndb] * (Z[xn] + 2. * ref_xn) + Z[xn] * (Z[dxndb] + 2. * ref_dxndb)
+                - Z[dyndb] * (Z[yn] + 2. * ref_yn) - Z[yn] * (Z[dyndb] + 2. * ref_dyndb)
+            )
+
+            _ddiffabsdX = ddiffabsdX(_opX, _opx)
+            _ddiffabsdx = ddiffabsdx(_opX, _opx)
+            new_dxnda = _ddiffabsdX * d_opX_da + _ddiffabsdx * d_opx_da
+            new_dxndb = _ddiffabsdX * d_opX_db + _ddiffabsdx * d_opx_db
             
+            # Implementation based on Shark Fin for dynda, dyndb
+            new_dynda = 2. * (
+                ref_dxnda * Z[yn] + ref_xn * Z[dynda]
+                + ref_dynda * Z[xn] + ref_yn * Z[dxnda]
+                + Z[dxnda] * Z[yn] + Z[xn] * Z[dynda]
+            )
+            new_dyndb = 2. * (
+                ref_dxndb * Z[yn] + ref_xn * Z[dyndb]
+                + ref_dyndb * Z[xn] + ref_yn * Z[dxndb]
+                + Z[dxndb] * Z[yn] + Z[xn] * Z[dyndb]
+            )
+
+            Z[dxnda] = new_dxnda
+            Z[dxndb] = new_dxndb
+            Z[dynda] = new_dynda
+            Z[dyndb] = new_dyndb
+
+    elif flavor_int == 5: # Buffalo
+        @numba.njit
+        def numba_impl(
+            Z, ref_xn, ref_yn, ref_dxnda, ref_dxndb, ref_dynda, ref_dyndb
+        ):
+            # Modifies in-place the Hessian matrix
+            # Implementation based on Celtic for dxnda, dxndb
+            ref_x2my2 = ref_xn * ref_xn - ref_yn * ref_yn
+            _opX = ref_x2my2
+            d_opX_da = 2. * (ref_xn * ref_dxnda - ref_yn * ref_dynda)
+            d_opX_db = 2. * (ref_xn * ref_dxndb - ref_yn * ref_dyndb)
+
+            _opx = Z[xn] * (Z[xn] + 2. * ref_xn) - Z[yn] * (Z[yn] + 2. * ref_yn)
+            d_opx_da = (
+                Z[dxnda] * (Z[xn] + 2. * ref_xn) + Z[xn] * (Z[dxnda] + 2. * ref_dxnda)
+                - Z[dynda] * (Z[yn] + 2. * ref_yn) - Z[yn] * (Z[dynda] + 2. * ref_dynda)
+            )
+            d_opx_db = (
+                Z[dxndb] * (Z[xn] + 2. * ref_xn) + Z[xn] * (Z[dxndb] + 2. * ref_dxndb)
+                - Z[dyndb] * (Z[yn] + 2. * ref_yn) - Z[yn] * (Z[dyndb] + 2. * ref_dyndb)
+            )
+
+            _ddiffabsdX = ddiffabsdX(_opX, _opx)
+            _ddiffabsdx = ddiffabsdx(_opX, _opx)
+            new_dxnda = _ddiffabsdX * d_opX_da + _ddiffabsdx * d_opx_da
+            new_dxndb = _ddiffabsdX * d_opX_db + _ddiffabsdx * d_opx_db
+
+            # Implementation based on Burning Ship for dynda, dyndb
+            ref_xyn = ref_xn * ref_yn
+            _opX = ref_xyn
+            d_opX_da = ref_dxnda * ref_yn + ref_xn * ref_dynda
+            d_opX_db = ref_dxndb * ref_yn + ref_xn * ref_dyndb
+
+            _opx = Z[xn] * Z[yn] + Z[xn] * ref_yn + Z[yn] * ref_xn
+            d_opx_da = (
+                Z[dxnda] * Z[yn] + Z[xn] * Z[dynda]
+                + Z[dxnda] * ref_yn + Z[xn] * ref_dynda
+                + Z[dynda] * ref_xn + Z[yn] * ref_dxnda
+            )
+            d_opx_db = (
+                Z[dxndb] * Z[yn] + Z[xn] * Z[dyndb]
+                + Z[dxndb] * ref_yn + Z[xn] * ref_dyndb
+                + Z[dyndb] * ref_xn + Z[yn] * ref_dxndb
+            )
+            _ddiffabsdX = ddiffabsdX(_opX, _opx)
+            _ddiffabsdx = ddiffabsdx(_opX, _opx)
+            new_dynda = 2. * (_ddiffabsdX * d_opX_da + _ddiffabsdx * d_opx_da)
+            new_dyndb = 2. * (_ddiffabsdX * d_opX_db + _ddiffabsdx * d_opx_db)
+
+            Z[dxnda] = new_dxnda
+            Z[dxndb] = new_dxndb
+            Z[dynda] = new_dynda
+            Z[dyndb] = new_dyndb
+
+
     return numba_impl
 
 #==============================================================================
@@ -678,7 +901,8 @@ directory: str
     Path for the working base directory
 flavor: str
     The variant of Burning Ship detailed implementation, defaults to
-    "Burning Ship". 
+    "Burning Ship". Acceptable values and iteration formula are listed in the
+    notes for ``fractalshades.models.Burning_ship``.
 
 Notes
 -----
@@ -690,22 +914,6 @@ Implementation based on :
     Proceedings of EVA London 2019 (EVA 2019) 
     <http://dx.doi.org/10.14236/ewic/EVA2019.74>
 
-Several variants (`flavor` parameter) are implemented with small
-differences in the iteration formula ; among them:
-    
-    - "Perpendicular burning ship" variant of the Burning Ship Fractal.
-    
-      .. math::
-    
-        x_{n+1} &= x_n^2 - y_n^2 + a \\\\
-        y_{n+1} &= 2 x_n |y_n| - b
-    
-    - "Shark fin" variant
-    
-      .. math::
-    
-        x_{n+1} &= x_n^2 - y_n |y_n| + a \\\\
-        y_{n+1} &= 2 x_n y_n - b
 """
         super().__init__(directory)
         self.flavor = flavor
@@ -889,8 +1097,7 @@ differences in the iteration formula ; among them:
             new_args = (
                 M_divergence_sq, max_iter, reason_max_iter,
                     reason_M_divergence,
-                xr_detect_activated, BLA_activated,
-                calc_hessian,
+                xr_detect_activated, BLA_activated, calc_hessian,
                 xn, yn, dxnda, dxndb, dynda, dyndb,
                 p_iter_zn, p_iter_hessian
             )

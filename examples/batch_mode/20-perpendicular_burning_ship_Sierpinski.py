@@ -38,6 +38,8 @@ from fractalshades.colors.layers import (
 def plot(plot_dir):
     fs.settings.enable_multithreading = True
     fs.settings.inspect_calc = True
+    fs.settings.log_directory = os.path.join(plot_dir, "log")
+    fs.set_log_handlers(verbosity="debug @ console + log")
 
     # A simple showcase using perturbation technique
     calc_name = 'test'

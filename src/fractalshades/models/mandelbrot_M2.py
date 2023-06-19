@@ -533,7 +533,7 @@ backshift: int (> 0)
                 instance.codes = (complex_codes, int_codes, stop_codes)
 
                 instance.calc_dZndz = interior_detect
-                instance.calc_dZndc = calc_dzndc or BLA_activated
+                instance.calc_dZndc = calc_dzndc # no need for BLA_activated
                 instance.dfdz = dfdz
                 instance.dfdc = dfdc
             return impl

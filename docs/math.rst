@@ -106,12 +106,12 @@ probably quite involving and in any case beyond the scope of this section...
 Avoiding loss of precision
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When iterating :eq:`perturb` loss of precision may still occur, leading to invalid
-results. This is often evidenced by so-called "glitches" in the image:
-large zones with uniform color or noisy rendering.
+When iterating :eq:`perturb` numerical loss of precision may occur,
+leading to invalid results. This is often evidenced by so-called "glitches"
+in the image: large zones with uniform color or noisy rendering.
 
-A deeper investigation shows that these issues occur when the calculated orbit
-:math:`z_n` goes close to zero [#f1]_, under the influence of a nearby
+A deeper investigation shows that these issues happen when the calculated
+orbit :math:`z_n` goes close to zero [#f1]_, under the influence of a nearby
 minibrot of period :math:`n`.
 
 Several methods have been investigated to avoid such glitches.
@@ -140,36 +140,56 @@ The same strategy can also be applied whenever the reference orbit diverges.
 Billinear approximations
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-When :math:`|\delta z_n^2| \ll |2 Z_n \delta z_n + \delta c|`,
-:eq:`perturb` can be approximated by
+When :math:`|\delta z_n| \ll |2 Z_n|`,
+:eq:`perturb` can be approximated without loss of precision by
 a billinear expression in :math:`\delta z_n` and :math:`\delta c` :
 
 .. math::
-    :label: perturb_BLA
 
     \delta z_{n+1} = 2 Z_n \delta z_n + \delta c 
                    = A_n \delta z_n + B_n \delta c
 
-Such approximations can be deemed valid for instance when the residue
-(here, :math:`\delta z_n^2`) is below the standard double precision (hence taking
-the linear approximation does not introduce more inaccuracy than we already
-have when using double with the full formula).
+Or, with more precise notation highlighting that this set of billinear
+coefficients map :math:`\delta z_n` to :math:`\delta z_{n+1}`:
 
-We define for each step a validity radii :math:`|\delta z_n| < \delta z^*` and
-:math:`|\delta c| < \delta c^*`, where :
+.. math::
+    :label: perturb_BLA
 
-  - :math:`\delta c^*` can be fixed according to the image size
-  - :math:`\delta z^*` depends of :math:`n` through :math:`Z_{n}`.
+    \delta z_{n+1} = A_{n, n+1} \cdot \delta z_n + B_{n, n+1} \cdot \delta c 
+    \quad \forall \, \delta z_n, \, |\delta z_n| \ll |2 Z_n| = r_{n, n+1}
 
 Now, the composition of 2 bilinear functions is still a billinear function.
+Combining 2 by 2 gives:
+
+.. math::
+    :label: composition
+
+    \left\{
+    \begin{array}{rcll}
+    A_{k, m} &= & A_{k, l} \cdot A_{l, m}& \\
+    B_{k, m} &= & B_{k, l} \cdot A_{l, m} + A_{l, m} 
+    \end{array}
+    \right.
+
+Valid if:
+
+.. math::
+
+    \begin{array}{rcl}
+    |\delta z_n| &\leq & \min \left( r_{k, l}\, , \: 
+    \max \left( 0\, , \:
+    r_{l, m} - \frac{|A_{k, l}| |\delta c|}{|B_{k, l}|}
+    \right) \right) \\
+     &\leq & r_{k, m}
+    \end{array}
+
 It means, we can combine 2 by 2 such approximations (and their validity bound
-:math:`\delta z^*`) and store the results
-(:math:`A_{n,k}`, :math:`B_{n,k}`, :math:`\delta z^*_{n,k}`)
-- for instance in a binary tree structure.
-This builds a set of precomputed *shortcuts* allowing to skip many iterations,
+:math:`r_{k, m}`) and pre-compute the results - for instance in a binary tree
+structure.
+This gives a set of precomputed *shortcuts* allowing to skip many iterations,
 when the validity conditions are met.
 
-Note: These billinear approximations can also be applied to the derivatives,
+Note: The same approach can also be applied to the derivatives,
 they just becomes a simple linear relationship.
 
 Extended range floating points
@@ -202,9 +222,11 @@ In order to find a minibrot center and size, the process is the following:
   - find the period first by iterating a small ball until it contains the
     origin (using ball arithmetic),
 
-  - then use Newton’s method to find the location
+  - then use Newton’s method to find the location of the minibrot with the
+    computed period
 
-  - then compute the size (and orientation) using a renormalization formula.
+  - then compute the size (and orientation) using a renormalization formula
+    (as the one found in :cite:p:`size_estimate2`)
 
 We will not describe in details here these techniques which have already been
 better explained elsewhere. The interested reader might refer to: 
@@ -214,6 +236,9 @@ better explained elsewhere. The interested reader might refer to:
 
 A generalisation of these techniques for 
 the *Burning Ship* is described in :cite:t:`burning_ship`.
+
+An implementation of these algorithms is available from the GUI (right-clik
+on the image) for the fractals supporting arbitrary-precision.
 
 Going further: a few references
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

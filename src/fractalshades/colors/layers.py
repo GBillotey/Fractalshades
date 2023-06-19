@@ -186,6 +186,11 @@ class Virtual_layer:
         nx, ny = ixx - ix, iyy - iy
 
         ssg = plotter.supersampling
+        
+#        print("??? in LAYER getitem")
+#        print("??? plotter", plotter)
+#        print("??? plotter.supersampling", plotter.supersampling)
+        
         if ssg is not None:
             nx *= ssg
             ny *= ssg
@@ -193,7 +198,7 @@ class Virtual_layer:
         field_count, post_index = self.get_postproc_index()
 
         if field_count == 1:
-            arr = np.empty((nx, ny), dtype)
+            arr = np.empty((ny, nx), dtype)
             ret = plotter.get_2d_arr(post_index, chunk_slice)
             if ret is None:
                 return None
@@ -201,7 +206,7 @@ class Virtual_layer:
 
         elif field_count == 2:
             (post_index_x, post_index_y) = post_index
-            arr = np.empty((2, nx, ny), dtype)
+            arr = np.empty((2, ny, nx), dtype)
             ret0 = plotter.get_2d_arr(post_index_x, chunk_slice)
             ret1 = plotter.get_2d_arr(post_index_y, chunk_slice)
             if (ret0 is None) or (ret1 is None):
@@ -309,26 +314,28 @@ class Virtual_layer:
     def np2PIL(arr):
         """ Utility function
         Unfortunately we have a mess between numpy and pillow """
-        sh = arr.shape
-        if len(sh) == 2:
-            return np.swapaxes(arr, 0 , 1 )[::-1, :]
-        elif len(sh) == 3:
-            return np.swapaxes(arr, 0 , 1 )[::-1, :, :]
-        else:
-            raise ValueError("Expected 2 or 3 dim array, got: {}".format(
-                             len(sh)))
+        return arr
+#        sh = arr.shape
+#        if len(sh) == 2:
+#            return np.swapaxes(arr, 0 , 1 )[::-1, :]
+#        elif len(sh) == 3:
+#            return np.swapaxes(arr, 0 , 1 )[::-1, :, :]
+#        else:
+#            raise ValueError("Expected 2 or 3 dim array, got: {}".format(
+#                             len(sh)))
 
     @staticmethod
     def PIL2np(arr):
         """ Inverse of np2PIL """
-        sh = arr.shape
-        if len(sh) == 2:
-            return np.swapaxes(arr, 0 , 1 )[:, ::-1]
-        elif len(sh) == 3:
-            return np.swapaxes(arr, 0 , 1 )[:, ::-1, :]
-        else:
-            raise ValueError("Expected 2 or 3 dim array, got: {}".format(
-                             len(sh)))
+        return arr
+#        sh = arr.shape
+#        if len(sh) == 2:
+#            return np.swapaxes(arr, 0 , 1 )[:, ::-1]
+#        elif len(sh) == 3:
+#            return np.swapaxes(arr, 0 , 1 )[:, ::-1, :]
+#        else:
+#            raise ValueError("Expected 2 or 3 dim array, got: {}".format(
+#                             len(sh)))
 
 class Color_layer(Virtual_layer):
     default_mask_color = (0., 0., 0.)
@@ -494,7 +501,7 @@ class Color_layer(Virtual_layer):
         lx, ly = crop_size
         # print("mask_color", mask_color, len(mask_color), self.mode)
         mask_colors = np.tile(
-            np.array(mask_color), crop_size).reshape([lx, ly, len(mask_color)]
+            np.array(mask_color), crop_size).reshape([ly, lx, len(mask_color)]
         )
         mask_colors = self.np2PIL(np.uint8(255 * mask_colors))
         # print("mask_colors", mask_colors.dtype, mask_colors.shape)
@@ -688,7 +695,7 @@ class Grey_layer(Virtual_layer):
                 self.np2PIL(np.uint8(mask_arr * 255)), mode="L"
             )
             mask_colors = np.tile(np.array(mask_color), crop_size
-                ).reshape([lx, ly])
+                ).reshape([ly, lx])
             mask_colors = PIL.Image.fromarray(
                     self.np2PIL(self.get_grey(mask_colors)),
                     mode=self.mode
@@ -767,7 +774,7 @@ class Normal_map_layer(Color_layer):
             nx *= ssg
             ny *= ssg
 
-        rgb =  np.zeros((nx, ny, 3), dtype=np.float32)
+        rgb =  np.zeros((ny, nx, 3), dtype=np.float32)
         
         # max slope (from layer property) used for renormalisation
         coeff = np.sin(self.max_slope) / np.sqrt(2.)
@@ -829,7 +836,7 @@ class Bool_layer(Virtual_layer):
 
 def _2d_rgb_to_XYZ(rgb, nx, ny):
     res = fscolors.Color_tools.rgb_to_XYZ(rgb.reshape(nx * ny, 3))
-    rgb.reshape(nx, ny, 3) # restaure original shape
+#    rgb.reshape(ny, nx, 3) # restaure original shape
     return res.reshape(nx, ny, 3)
 
 def _2d_XYZ_to_rgb(XYZ, nx, ny):
@@ -1215,7 +1222,7 @@ class Overlay_mode:
             mask_arr = overlay.mask[0][chunk_slice][:, :, np.newaxis]
             raise NotImplementedError("Still in TODO", mask_arr.shape)
 
-        # overlay crop : first get the raw image than convert to numpy
+        # overlay crop : first get the raw image then convert to numpy
         crop = np.array(overlay.crop(chunk_slice))
         shade = Virtual_layer.PIL2np(crop) / 255.
         shade = shade[:, :, np.newaxis]
@@ -1230,6 +1237,8 @@ class Overlay_mode:
 
 
         if k_pegtop != 0:
+#            print("dims", shade.shape, XYZ.shape)
+            
             XYZ_pegtop = (2. * shade * XYZ 
                           + (1. - 2. * shade) * XYZ**2 / ref_white)
         if k_Lch != 0:
