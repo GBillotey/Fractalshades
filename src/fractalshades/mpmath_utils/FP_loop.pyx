@@ -1343,6 +1343,8 @@ def perturbation_mandelbrotN_select_find_any_nucleus(
 cdef int BURNING_SHIP = 1
 cdef int PERPENDICULAR_BURNING_SHIP = 2
 cdef int SHARK_FIN = 3
+cdef int CELTIC = 4
+cdef int BUFFALO = 5
 
 ctypedef void (*iter_func_t)(
     mpfr_t, mpfr_t, mpfr_t, mpfr_t, mpfr_t, mpfr_t, mpfr_t
@@ -1378,7 +1380,7 @@ cdef void iter_pBS(
 ):
     # One standard perpendicular burning ship iteration
     # X <- X**2 - Y**2 + A
-    # Y <- 2 * X * abs(Y) - B   # 2 * abs(X * Y) - B
+    # Y <- 2 * X * abs(Y) - B
     mpfr_sqr(xsq_t, xn_t, MPFR_RNDN)
     mpfr_sqr(ysq_t, yn_t, MPFR_RNDN)
 
@@ -1411,6 +1413,47 @@ cdef void iter_sharkfin(
 
     mpfr_sub(yn_t, xy_t, b_t, MPFR_RNDN)
     return
+
+cdef void iter_celtic(
+    mpfr_t xn_t, mpfr_t yn_t, mpfr_t a_t, mpfr_t b_t,
+    mpfr_t xsq_t, mpfr_t ysq_t, mpfr_t xy_t, 
+):
+    # One standard celtic iteration
+    # X <- |X**2 - Y**2|  + A
+    # Y <- 2 * X * Y - B
+    mpfr_sqr(xsq_t, xn_t, MPFR_RNDN)
+    mpfr_sqr(ysq_t, yn_t, MPFR_RNDN)
+
+    mpfr_mul(xy_t, xn_t, yn_t, MPFR_RNDN)
+    mpfr_mul_si(xy_t, xy_t, 2, MPFR_RNDN)
+
+    mpfr_sub(xn_t, xsq_t, ysq_t, MPFR_RNDN)
+    mpfr_abs(xn_t, xn_t, MPFR_RNDN)
+    mpfr_add(xn_t, xn_t, a_t, MPFR_RNDN)
+
+    mpfr_sub(yn_t, xy_t, b_t, MPFR_RNDN)
+    return
+
+cdef void iter_buffalo(
+    mpfr_t xn_t, mpfr_t yn_t, mpfr_t a_t, mpfr_t b_t,
+    mpfr_t xsq_t, mpfr_t ysq_t, mpfr_t xy_t, 
+):
+    # One standard buffalo iteration
+    # X <- |X**2 - Y**2|  + A
+    # Y <- 2 * abs(X * Y) - B
+    mpfr_sqr(xsq_t, xn_t, MPFR_RNDN)
+    mpfr_sqr(ysq_t, yn_t, MPFR_RNDN)
+    mpfr_mul(xy_t, xn_t, yn_t, MPFR_RNDN)
+
+    mpfr_sub(xn_t, xsq_t, ysq_t, MPFR_RNDN)
+    mpfr_abs(xn_t, xn_t, MPFR_RNDN)
+    mpfr_add(xn_t, xn_t, a_t, MPFR_RNDN)
+
+    mpfr_abs(xy_t, xy_t, MPFR_RNDN)
+    mpfr_mul_si(xy_t, xy_t, 2, MPFR_RNDN)
+    mpfr_sub(yn_t, xy_t, b_t, MPFR_RNDN)
+    return
+
 
 cdef void iter_J_BS(
     int var_ab_xy,
@@ -1478,12 +1521,12 @@ cdef void iter_J_pBS(
     # if var_ab_xy == 0 : we compute the derivatives wrt a, b / c = a + i b
     # if var_ab_xy == 1 : we compute the derivatives wrt x, y / z1 = x + i y
     cdef int sgn_xn, sgn_yn
-    # One Jacobian burning ship iteration
+    # One Jacobian Perpendicular burning ship iteration
     # dxndx <- 2 * (xn * dxndx - yn * dyndx) [+ 1]
     # dxndy <- 2 * (xn * dxndy - yn * dyndy)
     # dyndx <- 2 * (xn * sgn_yn * dyndx + dxndx * abs_yn)
     # dyndy <- 2 * (xn * sgn_yn * dyndy + dxndy * abs_yn) [- 1]
-    # mpfr_abs(abs_xn, xn_t, MPFR_RNDN)
+
     mpfr_abs(abs_yn, yn_t, MPFR_RNDN)
     sgn_yn = sign(yn_t)
 
@@ -1534,7 +1577,7 @@ cdef void iter_J_sharkfin(
     # X <- X**2 - Y |Y| + A
     # Y <- 2 * X * Y - B
 
-    # One Jacobian burning ship iteration
+    # One Jacobian Sharkfin iteration
     # dxndx <- 2 * (xn * dxndx - |yn| * dyndx) [+ 1]
     # dxndy <- 2 * (xn * dxndy - |yn| * dyndy)
     # dyndx <- 2 * (xn * dyndx + dxndx * yn)
@@ -1573,6 +1616,131 @@ cdef void iter_J_sharkfin(
 
     return
 
+cdef void iter_J_celtic(
+    int var_ab_xy,
+    mpfr_t xn_t, mpfr_t yn_t,
+    mpfr_t dxndx_t, mpfr_t dxndy_t,mpfr_t dyndx_t, mpfr_t dyndy_t,
+    mpfr_t abs_xn, mpfr_t abs_yn, mpfr_t tmp_xx, mpfr_t tmp_xy, 
+    mpfr_t tmp_yx, mpfr_t tmp_yy, mpfr_t _tmp 
+):
+    # if var_ab_xy == 0 : we compute the derivatives wrt a, b / c = a + i b
+    # if var_ab_xy == 1 : we compute the derivatives wrt x, y / z1 = x + i y
+    cdef int sgn_xn, sgn_yn, sgn_x2my2
+
+    # X <- |X**2 - Y**2|  + A
+    # Y <- 2 * X * Y - B
+
+    # One Jacobian Celtic iteration
+    # dxndx <- 2. * sgn(x2my2) * (xn * dxndx - yn * dyndx) [+ 1]
+    # dxndy <- 2. * sgn(x2my2) * (xn * dxndy - yn * dyndy)
+    # dyndx <- 2 * (xn * dyndx + dxndx * yn)
+    # dyndy <- 2 * (xn * dyndy + dxndy * yn) [- 1]
+    mpfr_sqr(_tmp, xn_t, MPFR_RNDN)
+    mpfr_sqr(tmp_xy, yn_t, MPFR_RNDN)
+    mpfr_sub(tmp_xy, _tmp, tmp_xy, MPFR_RNDN) # Here x2my2
+    sgn_x2my2 = sign(tmp_xy)
+
+    # dxndx <- 2. * sgn(x2my2) * (xn * dxndx - yn * dyndx) [+ 1] ####  2. * sgn(x2my2) * (X * dXdA - Y * dYdA)
+    mpfr_mul(tmp_xx, xn_t, dxndx_t, MPFR_RNDN)
+    mpfr_mul(_tmp, yn_t, dyndx_t, MPFR_RNDN)
+    mpfr_sub(tmp_xx, tmp_xx, _tmp, MPFR_RNDN)
+    mpfr_mul_si(tmp_xx, tmp_xx, sgn_x2my2, MPFR_RNDN)
+
+    # dxndy <- 2. * sgn(x2my2) * (xn * dxndy - yn * dyndy)
+    mpfr_mul(tmp_xy, xn_t, dxndy_t, MPFR_RNDN)
+    mpfr_mul(_tmp, yn_t, dyndy_t, MPFR_RNDN)
+    mpfr_sub(tmp_xy, tmp_xy, _tmp, MPFR_RNDN)
+    mpfr_mul_si(tmp_xy, tmp_xy, sgn_x2my2, MPFR_RNDN)
+
+    # dyndx <- 2 * (xn * dyndx + dxndx * yn)
+    mpfr_mul(tmp_yx, xn_t, dyndx_t, MPFR_RNDN)
+    mpfr_mul(_tmp, yn_t, dxndx_t, MPFR_RNDN)
+    mpfr_add(tmp_yx, tmp_yx, _tmp, MPFR_RNDN)
+
+    # dyndy <- 2 * (xn * dyndy + dxndy * yn) [- 1]
+    mpfr_mul(tmp_yy, xn_t, dyndy_t, MPFR_RNDN)
+    mpfr_mul(_tmp, yn_t, dxndy_t, MPFR_RNDN)
+    mpfr_add(tmp_yy, tmp_yy, _tmp, MPFR_RNDN)
+    
+    # push the result
+    mpfr_mul_si(dxndx_t, tmp_xx, 2, MPFR_RNDN)
+    mpfr_mul_si(dxndy_t, tmp_xy, 2, MPFR_RNDN)
+    mpfr_mul_si(dyndx_t, tmp_yx, 2, MPFR_RNDN)
+    mpfr_mul_si(dyndy_t, tmp_yy, 2, MPFR_RNDN)
+
+    if var_ab_xy == 0:
+        mpfr_add_si(dxndx_t, dxndx_t, 1, MPFR_RNDN)
+        mpfr_add_si(dyndy_t, dyndy_t, -1, MPFR_RNDN)
+
+    return
+
+cdef void iter_J_buffalo(
+    int var_ab_xy,
+    mpfr_t xn_t, mpfr_t yn_t,
+    mpfr_t dxndx_t, mpfr_t dxndy_t,mpfr_t dyndx_t, mpfr_t dyndy_t,
+    mpfr_t abs_xn, mpfr_t abs_yn, mpfr_t tmp_xx, mpfr_t tmp_xy, 
+    mpfr_t tmp_yx, mpfr_t tmp_yy, mpfr_t _tmp
+):
+    
+    # if var_ab_xy == 0 : we compute the derivatives wrt a, b / c = a + i b
+    # if var_ab_xy == 1 : we compute the derivatives wrt x, y / z1 = x + i y
+    cdef int sgn_xn, sgn_yn, sgn_x2my2
+
+    # X <- |X**2 - Y**2|  + A
+    # Y <- 2 * abs(X * Y) - B
+
+    # One Jacobian Buffalo iteration
+    # dxndx <- 2. * sgn(x2my2) * (xn * dxndx - yn * dyndx) [+ 1]
+    # dxndy <- 2. * sgn(x2my2) * (xn * dxndy - yn * dyndy)
+    # dyndx <- 2 * (abs_xn * sgn_yn * dyndx + sgn_xn * dxndx * abs_yn)
+    # dyndy <- 2 * (abs_xn * sgn_yn * dyndy + sgn_xn * dxndy * abs_yn) [- 1]
+    mpfr_sqr(_tmp, xn_t, MPFR_RNDN)
+    mpfr_sqr(tmp_xy, yn_t, MPFR_RNDN)
+    mpfr_sub(tmp_xy, _tmp, tmp_xy, MPFR_RNDN) # Here x2my2
+    sgn_xn = sign(xn_t)
+    sgn_yn = sign(yn_t)
+    sgn_x2my2 = sign(tmp_xy)
+
+    mpfr_abs(abs_xn, xn_t, MPFR_RNDN)
+    mpfr_abs(abs_yn, yn_t, MPFR_RNDN)
+
+    # dxndx <- 2. * sgn(x2my2) * (xn * dxndx - yn * dyndx) [+ 1]
+    mpfr_mul(tmp_xx, xn_t, dxndx_t, MPFR_RNDN)
+    mpfr_mul(_tmp, yn_t, dyndx_t, MPFR_RNDN)
+    mpfr_sub(tmp_xx, tmp_xx, _tmp, MPFR_RNDN)
+    mpfr_mul_si(tmp_xx, tmp_xx, sgn_x2my2, MPFR_RNDN)
+
+    # dxndy <- 2. * sgn(x2my2) * (xn * dxndy - yn * dyndy)
+    mpfr_mul(tmp_xy, xn_t, dxndy_t, MPFR_RNDN)
+    mpfr_mul(_tmp, yn_t, dyndy_t, MPFR_RNDN)
+    mpfr_sub(tmp_xy, tmp_xy, _tmp, MPFR_RNDN)
+    mpfr_mul_si(tmp_xy, tmp_xy, sgn_x2my2, MPFR_RNDN)
+    
+    # dyndx <- 2 * (abs_xn * sgn_yn * dyndx + sgn_xn * dxndx * abs_yn)
+    mpfr_mul(tmp_yx, abs_xn, dyndx_t, MPFR_RNDN)
+    mpfr_mul_si(tmp_yx, tmp_yx, sgn_yn, MPFR_RNDN)
+    mpfr_mul(_tmp, abs_yn, dxndx_t, MPFR_RNDN)
+    mpfr_mul_si(_tmp, _tmp, sgn_xn, MPFR_RNDN)
+    mpfr_add(tmp_yx, tmp_yx, _tmp, MPFR_RNDN)
+
+    # dyndy <- 2 * (abs_xn * sgn_yn * dyndy + sgn_xn * dxndy * abs_yn) [-1]
+    mpfr_mul(tmp_yy, abs_xn, dyndy_t, MPFR_RNDN)
+    mpfr_mul_si(tmp_yy, tmp_yy, sgn_yn, MPFR_RNDN)
+    mpfr_mul(_tmp, abs_yn, dxndy_t, MPFR_RNDN)
+    mpfr_mul_si(_tmp, _tmp, sgn_xn, MPFR_RNDN)
+    mpfr_add(tmp_yy, tmp_yy, _tmp, MPFR_RNDN)
+    
+    # push the result
+    mpfr_mul_si(dxndx_t, tmp_xx, 2, MPFR_RNDN)
+    mpfr_mul_si(dxndy_t, tmp_xy, 2, MPFR_RNDN)
+    mpfr_mul_si(dyndx_t, tmp_yx, 2, MPFR_RNDN)
+    mpfr_mul_si(dyndy_t, tmp_yy, 2, MPFR_RNDN)
+
+    if var_ab_xy == 0:
+        mpfr_add_si(dxndx_t, dxndx_t, 1, MPFR_RNDN)
+        mpfr_add_si(dyndy_t, dyndy_t, -1, MPFR_RNDN)
+
+    return
 
 cdef iter_func_t select_func(const int kind):
     cdef iter_func_t iter_func
@@ -1582,6 +1750,10 @@ cdef iter_func_t select_func(const int kind):
         iter_func = &iter_pBS
     elif kind == SHARK_FIN:
         iter_func = &iter_sharkfin
+    elif kind == CELTIC:
+        iter_func = &iter_celtic
+    elif kind == BUFFALO:
+        iter_func = &iter_buffalo
     else:
         raise NotImplementedError(kind)
     return iter_func
@@ -1594,6 +1766,10 @@ cdef iter_hessian_t select_hessian(const int kind):
         iter_hessian = &iter_J_pBS
     elif kind == SHARK_FIN:
         iter_hessian = &iter_J_sharkfin
+    elif kind == CELTIC:
+        iter_hessian = &iter_J_celtic
+    elif kind == BUFFALO:
+        iter_hessian = &iter_J_buffalo
     else:
         raise NotImplementedError(kind)
     return iter_hessian
@@ -2142,6 +2318,42 @@ def perturbation_shark_fin_ball_method(
         kind=SHARK_FIN
     )
 
+def perturbation_celtic_ball_method(
+        char * seed_x,
+        char * seed_y,
+        long seed_prec,
+        char * seed_px,
+        long maxiter,
+        double M_divergence
+):
+    return perturbation_nonholomorphic_ball_method(
+        seed_x,
+        seed_y,
+        seed_prec,
+        seed_px,
+        maxiter,
+        M_divergence,
+        kind=CELTIC
+    )
+
+def perturbation_buffalo_ball_method(
+        char * seed_x,
+        char * seed_y,
+        long seed_prec,
+        char * seed_px,
+        long maxiter,
+        double M_divergence
+):
+    return perturbation_nonholomorphic_ball_method(
+        seed_x,
+        seed_y,
+        seed_prec,
+        seed_px,
+        maxiter,
+        M_divergence,
+        kind=BUFFALO
+    )
+
 def perturbation_nonholomorphic_ball_method(
         char * seed_x,
         char * seed_y,
@@ -2249,15 +2461,117 @@ def perturbation_nonholomorphic_ball_method(
 
     return ret
 
-def perturbation_BS_find_any_nucleus(
+#def perturbation_BS_find_any_nucleus(
+#    char *seed_x,
+#    char *seed_y,
+#    long seed_prec,
+#    long order,
+#    long max_newton,
+#    char *seed_eps_cv,
+#    char *seed_eps_valid
+#):
+#    return perturbation_nonholomorphic_find_any_nucleus(
+#        seed_x,
+#        seed_y,
+#        seed_prec,
+#        order,
+#        max_newton,
+#        seed_eps_cv,
+#        seed_eps_valid,
+#        kind=BURNING_SHIP
+#    )
+
+#def perturbation_perpendicular_BS_find_any_nucleus(
+#    char *seed_x,
+#    char *seed_y,
+#    long seed_prec,
+#    long order,
+#    long max_newton,
+#    char *seed_eps_cv,
+#    char *seed_eps_valid
+#):
+#    return perturbation_nonholomorphic_find_any_nucleus(
+#        seed_x,
+#        seed_y,
+#        seed_prec,
+#        order,
+#        max_newton,
+#        seed_eps_cv,
+#        seed_eps_valid,
+#        kind=PERPENDICULAR_BURNING_SHIP
+#    )
+#
+#def perturbation_shark_fin_find_any_nucleus(
+#    char *seed_x,
+#    char *seed_y,
+#    long seed_prec,
+#    long order,
+#    long max_newton,
+#    char *seed_eps_cv,
+#    char *seed_eps_valid
+#):
+#    return perturbation_nonholomorphic_find_any_nucleus(
+#        seed_x,
+#        seed_y,
+#        seed_prec,
+#        order,
+#        max_newton,
+#        seed_eps_cv,
+#        seed_eps_valid,
+#        kind=SHARK_FIN
+#    )
+#
+#def perturbation_celtic_find_any_nucleus(
+#    char *seed_x,
+#    char *seed_y,
+#    long seed_prec,
+#    long order,
+#    long max_newton,
+#    char *seed_eps_cv,
+#    char *seed_eps_valid
+#):
+#    return perturbation_nonholomorphic_find_any_nucleus(
+#        seed_x,
+#        seed_y,
+#        seed_prec,
+#        order,
+#        max_newton,
+#        seed_eps_cv,
+#        seed_eps_valid,
+#        kind=CELTIC
+#    )
+#
+#def perturbation_buffalo_find_any_nucleus(
+#    char *seed_x,
+#    char *seed_y,
+#    long seed_prec,
+#    long order,
+#    long max_newton,
+#    char *seed_eps_cv,
+#    char *seed_eps_valid
+#):
+#    return perturbation_nonholomorphic_find_any_nucleus(
+#        seed_x,
+#        seed_y,
+#        seed_prec,
+#        order,
+#        max_newton,
+#        seed_eps_cv,
+#        seed_eps_valid,
+#        kind=BUFFALO
+#    )
+
+def perturbation_nonholomorphic_find_any_nucleus(
     char *seed_x,
     char *seed_y,
     long seed_prec,
     long order,
     long max_newton,
     char *seed_eps_cv,
-    char *seed_eps_valid
+    char *seed_eps_valid,
+    const int kind
 ):
+    
     """
     Run Newton search to find z0 so that f^n(z0) == 0 (n being the order input)
 
@@ -2281,6 +2595,9 @@ def perturbation_BS_find_any_nucleus(
     eps_cv: str
         The criteria for convergence
         eps_cv = mpmath.mpf(2.)**(-mpmath.mp.prec) is a good first estimate
+    seed_eps_valid: 
+    kind: int
+        `flavor` selection
 
     Returns:
     --------
@@ -2317,67 +2634,6 @@ def perturbation_BS_find_any_nucleus(
     ---------
     https://mathr.co.uk/blog/2018-11-17_newtons_method_for_periodic_points.html
     """
-    return perturbation_nonholomorphic_find_any_nucleus(
-        seed_x,
-        seed_y,
-        seed_prec,
-        order,
-        max_newton,
-        seed_eps_cv,
-        seed_eps_valid,
-        kind=BURNING_SHIP
-    )
-
-def perturbation_perpendicular_BS_find_any_nucleus(
-    char *seed_x,
-    char *seed_y,
-    long seed_prec,
-    long order,
-    long max_newton,
-    char *seed_eps_cv,
-    char *seed_eps_valid
-):
-    return perturbation_nonholomorphic_find_any_nucleus(
-        seed_x,
-        seed_y,
-        seed_prec,
-        order,
-        max_newton,
-        seed_eps_cv,
-        seed_eps_valid,
-        kind=PERPENDICULAR_BURNING_SHIP
-    )
-
-def perturbation_shark_fin_find_any_nucleus(
-    char *seed_x,
-    char *seed_y,
-    long seed_prec,
-    long order,
-    long max_newton,
-    char *seed_eps_cv,
-    char *seed_eps_valid
-):
-    return perturbation_nonholomorphic_find_any_nucleus(
-        seed_x,
-        seed_y,
-        seed_prec,
-        order,
-        max_newton,
-        seed_eps_cv,
-        seed_eps_valid,
-        kind=SHARK_FIN
-    )
-
-def perturbation_nonholomorphic_find_any_nucleus(
-    char *seed_x,
-    char *seed_y,
-    long seed_prec,
-    long order,
-    long max_newton,
-    char *seed_eps_cv,
-    char *seed_eps_valid,
-    const int kind
-):
     cdef:
         # unsigned long int ui_one = 1
         bint newton_cv = False
