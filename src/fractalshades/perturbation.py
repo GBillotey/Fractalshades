@@ -1048,8 +1048,7 @@ def numba_cycles_perturb(
 
 def numba_initialize(zn, dzndc, dzndz):
     @numba.njit(fastmath=True, error_model="numpy")
-    def numba_init_impl(c_xr, Z, Z_xr, Z_xr_trigger, U, kc, dx_xr): # suppressed P, n_iter_init
-                        # n_iter_init):
+    def numba_init_impl(c_xr, Z, Z_xr, Z_xr_trigger, U, kc, dx_xr):
         """
         Initialize 'in place'  :
             Z[zn], Z[dzndz], Z[dzndc]
@@ -1438,11 +1437,15 @@ def numba_cycles_perturb_BS(
     return 0
 
 
+
+#                calc_orbit, i_xnorbit, i_ynorbit, backshift, xn, yn,
+#                iterate_once, xnyn_iterate
+
 def numba_initialize_BS(xn, yn, dxnda, dxndb, dynda, dyndb):
     @numba.njit
     def numba_init_impl(Z, Z_xr):
         """
-        Only : initialize the Xrange (no SA here)
+        Only : initialize the Xrange
         """
         for key in (xn, yn, dxnda, dxndb, dynda, dyndb):
             if key!= -1:
@@ -1457,7 +1460,8 @@ def numba_iterate_BS(
     xr_detect_activated, BLA_activated,
     calc_hessian,
     xn, yn, dxnda, dxndb, dynda, dyndb,
-    p_iter_zn, p_iter_hessian
+    p_iter_zn, p_iter_hessian,
+    calc_orbit, i_xnorbit, i_ynorbit, backshift, xnyn_iterate # new args
 ):
 
     @numba.njit
@@ -1480,6 +1484,16 @@ def numba_iterate_BS(
         n_iter = 0
         if w_iter >= ref_order:
             w_iter = w_iter % ref_order
+        
+        if calc_orbit:
+            div_shift = 0
+            orbit_xn1 = Z[xn]
+            orbit_xn2 = Z[xn]
+            orbit_yn1 = Z[yn]
+            orbit_yn2 = Z[yn]
+            orbit_i1 = 0
+            orbit_i2 = 0
+        
         # We know that :
         # ref_orbit_len = max_iter + 1 >= ref_div_iter
         # if order is not None:
@@ -1594,6 +1608,18 @@ def numba_iterate_BS(
             XX = Z[xn] + ref_zn_next.real
             YY = Z[yn] + ref_zn_next.imag
             full_sq_norm = XX ** 2 + YY ** 2
+            
+            # Storing the orbit for future use
+            if calc_orbit:
+                div = n_iter // backshift
+                if div > div_shift:
+                    div_shift = div
+                    orbit_i2 = orbit_i1
+                    orbit_xn2 = orbit_xn1
+                    orbit_yn2 = orbit_yn1
+                    orbit_i1 = n_iter
+                    orbit_xn1 = XX
+                    orbit_yn1 = YY
 
             # Flagged as 'diverging'
             bool_infty = (full_sq_norm > M_divergence_sq)
@@ -1719,6 +1745,18 @@ def numba_iterate_BS(
                 Z[dxndb] += dXndb_path[w_iter]
                 Z[dynda] += dYnda_path[w_iter]
                 Z[dyndb] += dYndb_path[w_iter]
+
+        if calc_orbit: # Finalizing the orbit
+#            CC = c + Zn_path[1]
+            xn_orbit = orbit_xn2
+            yn_orbit = orbit_yn2
+            AA = a + np.real(Zn_path[1])
+            BB = b + np.imag(Zn_path[1])
+            while orbit_i2 < n_iter - backshift:
+                xn_orbit, yn_orbit = xnyn_iterate(xn_orbit, yn_orbit, AA, BB)
+                orbit_i2 += 1
+            Z[i_xnorbit] = xn_orbit
+            Z[i_ynorbit] = yn_orbit
 
         return n_iter
 
