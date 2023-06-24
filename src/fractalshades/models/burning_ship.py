@@ -255,7 +255,7 @@ Notes
     calc_orbit: bool
         If True, stores the value of an orbit point @ exit - orbit_shift
     backshift: int (> 0)
-        The number of iteration backward for the stored orbit starting point
+        The count of iterations backward for the stored orbit starting point
 
     Notes
     =====
@@ -934,7 +934,7 @@ Implementation based on :
         # GUI 'badges'
         self.holomorphic = False
         self.implements_dzndc = "always"
-        self.implements_fieldlines = False
+        self.implements_fieldlines = True
         self.implements_newton = False
         self.implements_Milnor = False
         self.implements_interior_detection = "no"
@@ -985,7 +985,9 @@ Implementation based on :
         max_iter: int,
         M_divergence: float,
         BLA_eps: float = 1e-6,
-        calc_hessian: bool = True
+        calc_hessian: bool = True,
+        calc_orbit: bool = False,
+        backshift: int = 0
 ):
         """
     Perturbation iterations (arbitrary precision) for Burning ship standard set
@@ -1010,6 +1012,10 @@ Implementation based on :
     calc_hessian: bool
         if True, the derivatives will be caculated allowing distance
         estimation and shading.
+    calc_orbit: bool
+        If True, stores the value of an orbit point @ exit - orbit_shift
+    backshift: int (> 0)
+        The count of iterations backward for the stored orbit starting point
         """
         complex_codes = ["xn", "yn"]
         xn = 0
@@ -1028,6 +1034,15 @@ Implementation based on :
             dxndb = -1
             dynda = -1
             dyndb = -1
+
+
+        if calc_orbit:
+            complex_codes += ["xn_orbit", "yn_orbit"]
+            i_xnorbit = code_int + 0
+            i_ynorbit = code_int + 1
+            code_int += 2
+        else:
+            i_xnorbit = i_ynorbit = -1
 
         # Integer int32 fields codes "U" 
         int_codes = ["ref_cycle_iter"] # Position in ref orbit
@@ -1066,6 +1081,10 @@ Implementation based on :
                 instance.dfxdy = dfxdy # (flavor_int)
                 instance.dfydx = dfydx # (flavor_int)
                 instance.dfydy = dfydy # (flavor_int)
+                if calc_orbit:
+                    instance.backshift = backshift
+                else:
+                    instance.backshift = None
             return impl
 
 
@@ -1073,6 +1092,17 @@ Implementation based on :
         # Defines initialize - jitted implementation
         def initialize():
             new_args = (xn, yn, dxnda, dxndb, dynda, dyndb)
+#            new_args = (
+#                calc_orbit, i_xnorbit, i_ynorbit, backshift,
+#                xn, yn, dxnda, dxndb, dynda, dyndb
+#            )
+            
+#            new_args = (
+#                calc_orbit, i_xnorbit, i_ynorbit, backshift, xn, yn,
+#                iterate_once, xnyn_iterate
+#            )
+            
+            
             args, numba_impl = self._numba_initialize_cache
             if new_args == args:
                 return numba_impl
@@ -1091,6 +1121,7 @@ Implementation based on :
 
         p_iter_zn = self.from_numba_cache("p_iter_zn", *cache_args)
         p_iter_hessian = self.from_numba_cache("p_iter_hessian", *cache_args)
+        xnyn_iterate = self.xnyn_iterate
 
 
         def iterate():
@@ -1099,8 +1130,13 @@ Implementation based on :
                     reason_M_divergence,
                 xr_detect_activated, BLA_activated, calc_hessian,
                 xn, yn, dxnda, dxndb, dynda, dyndb,
-                p_iter_zn, p_iter_hessian
+                p_iter_zn, p_iter_hessian,
+                calc_orbit, i_xnorbit, i_ynorbit, backshift, xnyn_iterate
             )
+
+#            calc_orbit, i_znorbit, backshift, zn_iterat
+            
+            
             args, numba_impl = self._numba_iterate_cache
             if new_args == args:
                 return numba_impl
