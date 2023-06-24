@@ -277,7 +277,7 @@ class Test_filters(unittest.TestCase):
         
 
 
-    def chefractalshadesck_image(self, ref_file_path, test_file_path, err_max=0.01):
+    def check_image(self, ref_file_path, test_file_path, err_max=0.01):
         """ Compare with stored reference image
         """
         err = test_config.compare_png(ref_file_path, test_file_path)
@@ -342,7 +342,7 @@ class Test_filters(unittest.TestCase):
 
 if __name__ == "__main__":
     runner = unittest.TextTestRunner(verbosity=2)
-    full_test = False
+    full_test = True
     if full_test:
         runner.run(test_config.suite([Test_filters]))
     else:
