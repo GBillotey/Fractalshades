@@ -2,9 +2,12 @@
 #import copy
 import logging
 import os
+import copy
 import concurrent.futures
 
 import numpy as np
+import PIL
+from numpy.lib.format import open_memmap
 
 import fractalshades as fs
 import fractalshades.db
@@ -36,18 +39,30 @@ class Movie():
 
     def __init__(self, size=(720, 480), fps=24):
         """
-        A movie-making class
+        A movie-making class.
+        To implement an actual movie use `add_sequence` and then `make` the
+        movie.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         size: (int, int)
             Movie screen size in pixels. Default to 720 x 480 
         fps: int
             movie frame-count per second
 
-        Note:
+        Notes
         -----
-        To implement and actual movie use `add_sequence` and then `make`.
+        The `movie` submodule relies on the following dependencies:
+            - scipy
+            - pyAV
+
+        They will not be installed automatically with pip and shall be
+        installed by the user:
+            
+        .. code-block:: console
+        
+            pip install scipy
+            pip install av
         """
         # Note:
         # Standard 16:9 resolutions can be:
@@ -70,8 +85,8 @@ class Movie():
         """Adds a sequence (or 'Camera move' describing several frames) to this
         movie
         
-        Parameters:
-        -----------
+        Parameters
+        ----------
         seq: `Sequence`
             The sequence to be added
         """
@@ -104,8 +119,8 @@ class Movie():
         """
         Make a .mp4 movie - Uses Codec AVC standard (H.264)
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         out_file: str
             The path to output file
         pix_fmt: "yuv444p" | "yuv420p"
@@ -153,12 +168,12 @@ class Movie():
 
     def export_frames(self, out_file, first, last):
         """
-        Output a range of frames to .png format for debuging puposes
+        Output a range of frames to .png format (mainly for debuging purposes)
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         out_file: str
-            The path to output file wiil be out_file_%i%.png where i is the 
+            The path to output file will be out_file_%i%.png where i is the 
             frame number
         first: int
             The first saved frame index
@@ -169,7 +184,7 @@ class Movie():
         head, tail = os.path.split(out_file)
         fs.utils.mkdir_p(head)
 
-        for i in range(first, last +1):
+        for i in range(first, last):
             pic = self.picture(i)
             suffixed = tail + "_" + str(i) + ".png"
             pic.save(os.path.join(head, suffixed))
@@ -178,10 +193,10 @@ class Movie():
 class Sequence:
     def __init__(self, db, tmin, tmax):
         """
-        Base class for classes implementing a movie sequence
+        Base class for classes implementing a movie sequence.
         
         Time is relative to the whole movie
-        Frame index is relative to this Cam move
+        Frame index is relative to this sequence only.
         """
         self.db = db
         self.tmin = tmin
@@ -195,7 +210,7 @@ class Sequence:
         Link this camera move to a movie objects and adjust its internals
         properties accordingly.
 
-        Parameters:
+        Parameters
         ----------
         movie: fs.movie.Movie
         """
@@ -229,7 +244,7 @@ class Sequence:
         frame_iterable = range(istart, istop)
         fig_cache = {}
         awaited = istart
-        max_workers = os.cpu_count() - 1 # Leave one CPU for encoding ?
+        max_workers = os.cpu_count() # Leave one CPU for encoding ?
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers
         ) as threadpool:
@@ -253,15 +268,14 @@ class Sequence:
 
 class Camera_pan(Sequence):
 
-    def __init__(self, db, x_evol, y_evol, dx_evol,
-                 plotter=None, postname=None, plotting_modifier=None):
+    def __init__(self, db, x_evol, y_evol, dx_evol, plotting_modifier=None):
         """
         A movie sequence described as a rectangular frame trajectory in a
         database.
 
-        Parameters:
+        Parameters
         ----------
-        db: fs.db.Db
+        db: `fractalshades.db.Db`
             The underlying database. It can be either a *.postdb or a *.db
             format. Using *.db opens more possibilities but is also much
             more computer-intensive.
@@ -384,20 +398,110 @@ class Camera_zoom(Sequence):
 
 class Custom_sequence(Sequence):
 
-    def __init__(self, plotter, tmin, tmax):
+    def __init__(self, tmin, tmax, plotter_from_time, scratch_name):
         """
         A Sequence for which each frame is computed from scratch.
+        
+        This offers maximal flexibility but shall be used only for very short
+        sequences as processing time is very high.
 
-        Parameters:
+        Parameters
         ----------
-        plotter: fs.db.Custom_db
-            The underlying database
-
+        tmin: float
+            The starting time for this sequence
+        tmax: float
+            The end time for this sequence 
+        plotter_from_time: t -> (`fractalshades.Fractal_plotter`, layer)
+            Function which takes a time value and returns a plotter object and
+            the layer to plot (by its name)
+        scratch_name: str
+            The (relative path) name for the temporary db files directory.
+            Note that this folder shall be cleaned manually, should you
+            modifify the parameters for this custom sequence.
         """
         super().__init__(None, tmin, tmax)
+        self.plotter_from_time = plotter_from_time
+        self.scratch_name = scratch_name
 
 
     def picture(self, iframe):
         """ Returns the ith-frame as a PIL.Image object """
-        return self.db.plot(frame=self.get_frame(iframe))
+        t = self.tmin + self.dt * iframe / self.nframe
 
+        print(f">>>> Computing frame {iframe} for t {t}")
+        
+        plotter, layer_postname = self.plotter_from_time(t)
+        
+        im_layer = None
+        for i, layer in enumerate(plotter.layers):
+            if layer.postname == layer_postname:
+                if not(layer.output):
+                    raise ValueError(f"No output for this layer: {layer}")
+                img = PIL.Image.new(mode=layer.mode, size=plotter.size)
+                im_layer = layer
+                break
+        if im_layer is None:
+            raise ValueError(f'No layer found with this name {layer_postname}')
+
+        # Create a temporary db
+        temp_db_path = plotter.save_db(
+            relpath=os.path.join(self.scratch_name, f"temp_{iframe}.postdb"),
+            postdb_layer=layer.postname,
+            recovery_mode=True
+        )
+
+        img = PIL.Image.new(mode=im_layer.mode, size=plotter.size)
+        mmap = open_memmap(filename=temp_db_path, mode="r+")
+        ny, nx, nchannels = mmap.shape
+
+        assert nx == self.movie.width
+        assert ny == self.movie.height
+
+        crop_slice = (0, 0, nx, ny)
+        im_crop =  PIL.Image.fromarray(mmap[:])
+
+        img.paste(im_crop, box=crop_slice)
+        del mmap
+        return img
+
+
+    def make_grids(self):
+        pass
+
+    def pictures(self, istart=None, istop=None):
+        """
+        yields successively the Camera_pan images, unparallel version
+        """
+        if istart is None:
+            istart = 0
+        if istop is None:
+            istop = self.nframe
+
+        for i in range(istart, istop):
+            yield self.picture(i)
+
+#        frame_iterable = range(istart, istop)
+#        fig_cache = {}
+#        awaited = istart
+#        max_workers = os.cpu_count() # Leave one CPU for encoding ?
+#
+#
+#
+#        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers
+#        ) as threadpool:
+#            futures = (
+#                threadpool.submit(self.async_picture, iframe)
+#                for iframe in frame_iterable
+#            )
+#
+#            for fut in concurrent.futures.as_completed(futures):
+#                iframe, fig = fut.result()
+#                fig_cache[iframe] = fig
+#
+#                # Flushing the cache to the video maker
+#                can_flush = (awaited in fig_cache.keys())
+#                while can_flush:
+#                    yield fig_cache[awaited]
+#                    del fig_cache[awaited]
+#                    awaited += 1
+#                    can_flush = (awaited in fig_cache.keys())

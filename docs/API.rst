@@ -19,5 +19,6 @@ Ins this section you will find the detailed documentation of the API:
     API/GUI.rst
     API/logging.rst
     API/db.rst
+    API/movie.rst
 
 

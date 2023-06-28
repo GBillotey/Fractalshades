@@ -1,24 +1,22 @@
 # -*- coding: utf-8 -*-
-"""
-=======================================
-P04 - Exponential mapping for deep zoom
-=======================================
-
-This small example demonstrates the compatibility of
-`fractalshades.projection.Expmap` projection 
-with deep zooms (perturbation theory).
-"""
+"""============================================================================
+Auto-generated from fractalshades GUI, version 1.1.0.
+Save to `<file>.py` and use its plotter in the movie making main script
+    > from <file> import get_plotter, plot_kwargs
+============================================================================"""
 
 import os
 import typing
 
 import numpy as np
 import mpmath
+from PyQt6 import QtGui
 
 import fractalshades
 import fractalshades as fs
-import fractalshades.models
-import fractalshades.gui
+import fractalshades.models as fsm
+import fractalshades.gui as fsgui
+import fractalshades.colors as fscolors
 import fractalshades.projection
 
 from fractalshades.postproc import (
@@ -44,23 +42,12 @@ from fractalshades.colors.layers import (
 )
 
 # Note: in batch mode, edit this line to change the base directory
-try:
-    is_temp = False
-    plot_dir_obj = None
-    plot_dir = os.path.splitext(os.path.realpath(__file__))[0]
-except NameError:
-    import tempfile
-    plot_dir_obj = tempfile.TemporaryDirectory()
-    plot_dir = plot_dir_obj.name
+plot_dir = os.path.splitext(os.path.realpath(__file__))[0]
 
 # Note: in batch mode, edit this line to change the local projection
 # you may also call `plot` with a modified `batch_params` parameters
 # (the latter allows to call from another module)
-projection = fs.projection.Expmap(0.0, np.log(1.e20) + 0.3, orientation="vertical")
-# projection = fs.projection.Expmap(np.log(1.e40), np.log(1.e50))
-# projection = fs.projection.Expmap(np.log(1.e0), np.log(1.e10))
-ks = 1.e-40
-#projection = fs.projection.Cartesian()
+projection = fs.projection.Cartesian()
 
 batch_params = {
     "projection": projection
@@ -80,14 +67,14 @@ plot_kwargs = {
     "y": "1.0532419344392547587734377701",
     "dx": "7.603772829116657e-20",
     "dps": 31,
-    "xy_ratio": 1.6666,
+    "xy_ratio": 1.0,
     "theta_deg": 0.0,
-    "nx": 2400, # 2400 x 325
+    "nx": 600,
     "_2": "Calculation parameters",
-    "max_iter": 500000,
+    "max_iter": 5000,
     "M_divergence": 1000.0,
     "interior_detect": True,
-    "epsilon_stationnary": 0.01,
+    "epsilon_stationnary": 0.001,
     "calc_dzndc": True,
     "_4": "Plotting parameters: base field",
     "base_layer": "continuous_iter",
@@ -100,7 +87,7 @@ plot_kwargs = {
     ),
     "zmin": 0.0,
     "zmax": 1.0,
-    "zshift": 0.05,
+    "zshift": -0.2,
     "mask_color": (
         0.1,
         0.1,
@@ -108,13 +95,13 @@ plot_kwargs = {
         1.0,
     ),
     "_5": "Plotting parameters: shading",
-    "has_shading": False,
+    "has_shading": True,
     "shading_kind": "potential",
     "lighting": fs.colors.layers.Blinn_lighting(
-        k_ambient=0.4,
+        k_ambient=0.8,
         color_ambient=[1., 1., 1.],
         ls0={
-            'k_diffuse': 1.8,
+            'k_diffuse': 10.0,
             'k_specular': 15.0,
             'shininess': 500.0,
             'polar_angle': 50.0,
@@ -135,14 +122,14 @@ plot_kwargs = {
     "fieldlines_kind": "twin",
     "fieldlines_zmin": -1.0,
     "fieldlines_zmax": 1.0,
-    "backshift": 14,
-    "n_iter": 10,
+    "backshift": 6,
+    "n_iter": 5,
     "swirl": 0.0,
     "damping_ratio": 0.8,
-    "twin_intensity": 0.25,
+    "twin_intensity": 0.5,
     "_8": "High-quality rendering options",
-    "final_render": False,
-    "supersampling": "3x3",
+    "final_render": True,
+    "supersampling": "2x2",
     "jitter": False,
     "recovery_mode": False,
     "_9": "Extra outputs",
@@ -155,7 +142,7 @@ plot_kwargs = {
     "log_verbosity": "debug @ console + log",
     "enable_multithreading": True,
     "inspect_calc": False,
-    "no_newton": True,
+    "no_newton": False,
     "postproc_dtype": "float32",
     "compute_newton": False,
     "_3": None,
@@ -180,7 +167,7 @@ plot_kwargs = {
 #------------------------------------------------------------------------------
 # Function - /!\ do not modify this section
 #------------------------------------------------------------------------------
-def plot(
+def get_plotter(
     fractal: fs.Fractal= fractalshades.models.mandelbrot_M2.Perturbation_mandelbrot(
         directory=plot_dir,
     ),
@@ -322,7 +309,6 @@ def plot(
         "subset": None,
         "max_iter": max_iter,
         "M_divergence": M_divergence,
-#        "BLA_eps": None # 1.e-6,
     }
 
 
@@ -539,14 +525,6 @@ def plot(
             plotter["interior"], mask_color=(hmap_mask,)
         )
 
-    plotter.plot()
-
-
-
-
-if __name__ == "__main__":
-    try:
-        fs.utils.exec_no_output(plot, **plot_kwargs, batch_params=batch_params)
-    finally:
-        if plot_dir_obj is not None:
-            plot_dir_obj.cleanup()
+    
+    return plotter, plotter[base_layer].postname
+         

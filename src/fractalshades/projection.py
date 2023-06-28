@@ -327,6 +327,7 @@ class Expmap(Projection):
             @numba.njit(
                 numba.complex128(numba.complex128), nogil=True, fastmath=False)
             def numba_impl(z):
+                # Todo: adjust np.exp(kz * z.imag) to hmoy_local
                 if premul_1j:
                     return kz * np.exp(kz * z.imag)
                 return  np.exp(kz * z.real)
@@ -358,11 +359,12 @@ class Expmap(Projection):
         else:
             @numba.njit(nogil=True, fastmath=False)
             def numba_impl(z):
+                
                 if premul_1j:
                     zhr = dh * z.imag
                 else:
                     zhr = dh * z.real
-                r = np.exp(zhr)
+                r = np.exp(zhr) # TODO : should be zhr + (zmoy - zmoy_local)
 #                if premul_1j:
 #                    return  0., -r, r, 0.
                 if premul_1j:
@@ -386,7 +388,6 @@ class Expmap(Projection):
         # proj_dx = self.dx * self.projection.scale
         # corner_a = lin_proj_impl_noscale(0.5 * (w + 1j * h)) * proj_dx
         # corner_a is absolute the distance to center
-        
         if hasattr(self, "_h_step"):
             print("******* BOUNDING BOX with _h_step", self._h_step)
             wh = 0.5 * self.dh + (self._h_step - self.hmax)

@@ -3453,8 +3453,8 @@ class Fractal_MainWindow(QMainWindow):
 
 
       movie = bar.addMenu("Movie")
-      movie_source = QAction('Movie making template', movie)
-      movie.addActions((movie_source,))
+      movie_template = QAction('Movie making template', movie)
+      movie.addActions((movie_template,))
       movie.triggered[QAction].connect(self.actiontrig)
 
       about = bar.addMenu("About")
@@ -3483,7 +3483,7 @@ class Fractal_MainWindow(QMainWindow):
         elif txt == "License":
             self.show_license()
         elif txt == "Movie making template":
-            self.show_movie_source()
+            self.show_movie_template()
         else:
             print("Unknow actiontrig")
 
@@ -3505,9 +3505,8 @@ class Fractal_MainWindow(QMainWindow):
         msg.setDetailedText(license_str)
         msg.exec()
 
-    def show_movie_source(self):
+    def show_movie_template(self):
         self._func_wget.show_script(movie=True)
-
 
     def gui_file_path(self, _filter=None, mode="open"):
         """

@@ -135,13 +135,13 @@ class Plot_template:
 class Db:
 
     def __init__(self, path):
-        """ Wrapper around the memory-mapped numpy-array stored at ``path``.
+        """ Wrapper around the memory-mapped numpy-array stored at ``path``\.
 
         Parameters
         ----------
         path: str
             The path for the data. This memory-mapped array is usually
-            created through a ``fractalshades.Fractal_plotter.save_db`` call.
+            created through a `fractalshades.Fractal_plotter.save_db` call.
             Two format are available (*.db and *.post db, refer to the doc for
             this function for details)
         """
@@ -329,7 +329,7 @@ class Db:
 
         Parameters
         ----------
-        plotter: `fs.Fractal_plotter`
+        plotter: `fractalshades.Fractal_plotter`
             A plotter to be used as template
         postname: str
             The string indentifier of the layer used for plotting
@@ -352,7 +352,7 @@ class Db:
         ----------
         post_index: int
             the index for this post-processing field in self.plotter
-        frame: `fs.db.Frame`
+        frame: `fractalshades.db.Frame`
             Frame localisation for interpolation
         chunk_slice: 4-uplet float
             chunk_slice = (ix, ixx, iy, iyy) is the sub-array to reload
@@ -378,7 +378,9 @@ class Db:
 
         Notes
         -----
-        Plotting settings are defined by ``set_plotter`` method.
+        Plotting settings are set by `fractalshades.db.Db.set_plotter` method, 
+        they are used only for *.db format (as opposed to a *.postdb image
+        array format)
         """
         if frame is None:
             # Default to plotting the whole db
@@ -478,8 +480,8 @@ class Exp_frame:
     def __init__(self, h, nx, xy_ratio,
                  t=None, plotting_modifier=None, pts=None):
         """
-    A Exp_frame is used to describe a specific data window and used to
-    interpolate inside a `fractalshades.db.Exp_db`.
+    This class is used to describe a specific data window for interpolation
+    inside a `fractalshades.db.Exp_db`.
 
     Parameters
     ----------
@@ -493,7 +495,7 @@ class Exp_frame:
     t: Optionnal float
         time [s] of this frame in the movie
     plotting_modifier: Optional callable
-        a plotting_modifier associated with this Frame
+        a plotting_modifier associated with this frame
     pts: Optional, 4-uplet of arrays
         The x, y, h, t grid as returned by make_exp_grid - if not provided it
         will be recomputed - but more efficient to share between frames
@@ -549,7 +551,7 @@ class Exp_db:
 
     def __init__(self, path_expmap, path_final):
         """ Wrapper around the raw array data stored at ``path_expmap`` and
-        ``path_final``.
+        ``path_final``\.
 
         Parameters
         ----------
@@ -1201,7 +1203,6 @@ class Exp_db:
         return im
 
 
-
 #==============================================================================
 # Ad_hoc interpolating routines for exponential mapping
 
@@ -1385,7 +1386,7 @@ def multilevel_interpolate(
                 xy_ny = f_final_shape[lvl_xy, 1]
                 fxy = f_final[slot_xy_l: slot_xy_h]
 
-            f_loc = grid_interpolate(
+            f_loc = grid_interpolate_alt(
                 x_loc * k_out, y_loc * k_out,
                 fxy, ax, ay, bx, by, hx, hy, xy_nx, xy_ny
             )
@@ -1394,10 +1395,8 @@ def multilevel_interpolate(
             # the lvl is linked to the pixel position in image
             lvl_ht = np.intp((h_img / log_half32) - 1.0)
             lvl_ht = min(max(lvl_ht, 0), max_lvl_ht)
-
             # The angle (t_tot == t_loc)
             t_loc = pts_t[i]
-            # np.arctan2(y_loc, x_loc)
 
             # Define the local arrays according to lvlht_loc
             if lvl_ht != lvl_ht_cache:
@@ -1424,9 +1423,10 @@ def multilevel_interpolate(
 
     return f_out
 
+
 # debugging options
-CHECK_BOUNDS = True
-CLIP_BOUNDS = False
+CHECK_BOUNDS = False
+CLIP_BOUNDS = True
 
 @numba.njit(nogil=True)
 def grid_interpolate(x_out, y_out, f, ax, ay, bx, by, hx, hy, nx, ny):
@@ -1439,8 +1439,8 @@ def grid_interpolate(x_out, y_out, f, ax, ay, bx, by, hx, hy, nx, ny):
         assert  ay <= y_out <= by
 
     if CLIP_BOUNDS:
-        x_out = min(max(x_out, ax), bx) # np.clip(x_out, ax, bx) #
-        y_out = min(max(y_out, ay), by) # np.clip(y_out, ay, by) #  
+        x_out = min(max(x_out, ax), bx)
+        y_out = min(max(y_out, ay), by)
 
     ix, ratx = np.divmod(x_out - ax, hx)
     iy, raty = np.divmod(y_out - ay, hy)
@@ -1469,105 +1469,6 @@ def grid_interpolate(x_out, y_out, f, ax, ay, bx, by, hx, hy, nx, ny):
     
     return f_out
 
-
-@numba.njit(nogil=True, parallel=False)
-def multilevel_interpolate_alt(
-    x_out, y_out, pts_h, pts_t, h_out, nx_out, f_out,
-    a_exp, b_exp, h_exp, f_exp, f_exp_shape, f_exp_slot,
-    a_final, b_final, h_final, f_final, f_final_shape, f_final_slot
-):
-    # Interpolation: f_out = finterp(x_out, y_out, h_out) - h_out constant
-    # x_im, y_im position in the image ([-0.5, 0.5] for x)
-    npts = x_out.size
-    half32 = numba.float32(0.5)
-    log_half32 = np.log(half32)
-    # tenth_pixw = numba.float32(0.1 / nx_out)
-
-    max_lvl_ht = f_exp_shape.shape[0] - 1
-    max_lvl_xy = f_final_shape.shape[0] - 1
-
-    lvl_xy_cache = numba.intp(-1) # Invalid will trigger recalc 
-    lvl_ht_cache = numba.intp(-1) # Invalid will trigger recalc 
-    
-    k_out = np.exp(h_out)
-
-    for i in numba.prange(npts):
-        x_loc = x_out[i]
-        y_loc = y_out[i]
-        # Note: log(sqrt(.)) == 0.5 * log(.)
-        h_img = pts_h[i]
-        # np.log(max(x_loc ** 2 + y_loc ** 2, tenth_pixw)) * half32
-
-        # exp mapping is defined as z -> np.exp(dh * z)
-        h_tot = h_out + h_img - log_half32
-
-        if h_tot < 0.:
-            # Interpolating in the final image
-            # the lvl is linked to the zoom scale: log2(exp(h_out))
-            # zoom 1. -> 0, 2. -> 1, 4. -> 
-            lvl_xy = np.intp(-h_out / (log_half32) + 0.7)
-            lvl_xy = min(max(lvl_xy, 0), max_lvl_xy)
-
-            # Define the local arrays according to lvlxy_loc
-            if lvl_xy != lvl_xy_cache:
-                lvl_xy_cache = lvl_xy
-
-                ax = a_final[lvl_xy, 0]
-                ay = a_final[lvl_xy, 1]
-                bx = b_final[lvl_xy, 0]
-                by = b_final[lvl_xy, 1]
-                hx = h_final[lvl_xy, 0]
-                hy = h_final[lvl_xy, 1]
-
-                slot_xy_l = f_final_slot[lvl_xy, 0]
-                slot_xy_h = f_final_slot[lvl_xy, 1]
-                xy_nx = f_final_shape[lvl_xy, 0]
-                xy_ny = f_final_shape[lvl_xy, 1]
-                fxy = f_final[slot_xy_l: slot_xy_h]
-
-            f_loc = grid_interpolate(
-                x_loc * k_out, y_loc * k_out,
-                fxy, ax, ay, bx, by, hx, hy, xy_nx, xy_ny
-            )
-
-        else:
-            # the lvl is linked to the pixel position in image
-            lvl_ht = np.intp((h_img / log_half32) - 1.0)
-            lvl_ht = min(max(lvl_ht, 0), max_lvl_ht)
-
-            # The angle (t_tot == t_loc)
-            t_loc = pts_t[i]
-            # np.arctan2(y_loc, x_loc)
-
-            # Define the local arrays according to lvlht_loc
-            if lvl_ht != lvl_ht_cache:
-                lvl_ht_cache = lvl_ht
-
-                ah = a_exp[lvl_ht, 0]
-                at = a_exp[lvl_ht, 1]
-                bh = b_exp[lvl_ht, 0]
-                bt = b_exp[lvl_ht, 1]
-                hh = h_exp[lvl_ht, 0]
-                ht = h_exp[lvl_ht, 1]
-
-                slot_ht_l = f_exp_slot[lvl_ht, 0]
-                slot_ht_h = f_exp_slot[lvl_ht, 1]
-                ht_nx = f_exp_shape[lvl_ht, 0]
-                ht_ny = f_exp_shape[lvl_ht, 1]
-                fht = f_exp[slot_ht_l: slot_ht_h]
-
-            f_loc = grid_interpolate(
-                h_tot, t_loc, fht, ah, at, bh, bt, hh, ht, ht_nx, ht_ny
-            )
-
-        f_out[i] = f_loc
-
-    return f_out
-
-# debugging options
-CHECK_BOUNDS = True
-CLIP_BOUNDS = False
-
 @numba.njit(nogil=True)
 def grid_interpolate_alt(x_out, y_out, f, ax, ay, bx, by, hx, hy, nx, ny):
     # Bilinear interpolation in a rectangular grid - f is passed flatten and
@@ -1579,8 +1480,8 @@ def grid_interpolate_alt(x_out, y_out, f, ax, ay, bx, by, hx, hy, nx, ny):
         assert  ay <= y_out <= by
 
     if CLIP_BOUNDS:
-        x_out = min(max(x_out, ax), bx) # np.clip(x_out, ax, bx) #
-        y_out = min(max(y_out, ay), by) # np.clip(y_out, ay, by) #  
+        x_out = min(max(x_out, ax), bx)
+        y_out = min(max(y_out, ay), by)
 
     ix_float, ratx = np.divmod(x_out - ax, hx)
     iy_float, raty = np.divmod(by - y_out, hy)

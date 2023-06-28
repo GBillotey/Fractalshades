@@ -21,7 +21,7 @@ Application-level settings
 
    .. autodata:: log_directory
 
-   .. autofunction:: remove_decompression_size_check
+   .. autofunction:: disable_decompression_size_check
 
    .. autodata:: BLA_compression
 
