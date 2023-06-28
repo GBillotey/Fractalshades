@@ -187,10 +187,6 @@ class Virtual_layer:
 
         ssg = plotter.supersampling
         
-#        print("??? in LAYER getitem")
-#        print("??? plotter", plotter)
-#        print("??? plotter.supersampling", plotter.supersampling)
-        
         if ssg is not None:
             nx *= ssg
             ny *= ssg
@@ -312,30 +308,14 @@ class Virtual_layer:
 
     @staticmethod
     def np2PIL(arr):
-        """ Utility function
-        Unfortunately we have a mess between numpy and pillow """
+        """ Utility function - legacy """
         return arr
-#        sh = arr.shape
-#        if len(sh) == 2:
-#            return np.swapaxes(arr, 0 , 1 )[::-1, :]
-#        elif len(sh) == 3:
-#            return np.swapaxes(arr, 0 , 1 )[::-1, :, :]
-#        else:
-#            raise ValueError("Expected 2 or 3 dim array, got: {}".format(
-#                             len(sh)))
 
     @staticmethod
     def PIL2np(arr):
-        """ Inverse of np2PIL """
+        """ Inverse of np2PIL - legacy code"""
         return arr
-#        sh = arr.shape
-#        if len(sh) == 2:
-#            return np.swapaxes(arr, 0 , 1 )[:, ::-1]
-#        elif len(sh) == 3:
-#            return np.swapaxes(arr, 0 , 1 )[:, ::-1, :]
-#        else:
-#            raise ValueError("Expected 2 or 3 dim array, got: {}".format(
-#                             len(sh)))
+
 
 class Color_layer(Virtual_layer):
     default_mask_color = (0., 0., 0.)
@@ -379,8 +359,6 @@ class Color_layer(Virtual_layer):
                 4: "RGBA"
             }
             return mode_from_maskcolorlen[maskcolorlen]
-#        elif self.mask_kind == "float":
-#            return "RGBA"
         else:
             raise ValueError(self.mask_kind)
 
@@ -496,53 +474,21 @@ class Color_layer(Virtual_layer):
     def apply_mask(self, crop, crop_size, mask_arr, mask_color):
         """ private - apply the mask to the image
         """
-        # print("in apply mask mask_arr", self.mask_kind, mask_arr.dtype, mask_arr.shape, np.min(mask_arr), np.max(mask_arr))
-        
         lx, ly = crop_size
-        # print("mask_color", mask_color, len(mask_color), self.mode)
         mask_colors = np.tile(
             np.array(mask_color), crop_size).reshape([ly, lx, len(mask_color)]
         )
         mask_colors = self.np2PIL(np.uint8(255 * mask_colors))
-        # print("mask_colors", mask_colors.dtype, mask_colors.shape)
         mask_colors = PIL.Image.fromarray(mask_colors, mode=self.mode)
-#        mask_kind = self.mask_kind
 
-        # if mask_kind == "bool":
         if self.mode == "RGBA":
             crop.putalpha(255)
-#            crop_mask = PIL.Image.fromarray(self.np2PIL(np.uint8(255 * mask_arr)))
-#            crop.paste(mask_colors, (0, 0), crop_mask)
         
         crop_mask = PIL.Image.fromarray(
             self.np2PIL(np.uint8(np.clip(255 * mask_arr, 0, 255)))
         )
-#        im = PIL.Image.composite(mask_colors, crop, crop_mask)
-#        crop.paste(im, (0, 0)) #, crop_mask)
         crop.paste(mask_colors, (0, 0), crop_mask)
 
-#        elif mask_kind == "float":
-#            # TODO Not tested
-##            red_color = (1., 0., 0.)
-##            red_colors = np.tile(
-##                np.array(red_color), crop_size).reshape([lx, ly, len(red_color)]
-##            )
-##            red_colors = self.np2PIL(np.uint8(255 * red_colors))
-##            red_colors = PIL.Image.fromarray(red_colors, mode=self.mode)
-#
-##            mask_colors = self.np2PIL(mask_colors)
-##            mask_colors = PIL.Image.fromarray(mask_colors, mode=self.mode)
-#            # crop.putalpha(crop_mask)
-#            crop_mask = PIL.Image.fromarray(
-#                self.np2PIL(np.uint8(np.clip(255 * mask_arr, 0, 255)))
-#            )
-#            im = PIL.Image.composite(mask_colors, crop, crop_mask)
-#            crop.paste(im, (0, 0)) #, crop_mask)
-#            # crop.paste(mask_colors, (0, 0), crop_mask)
-#            # crop.paste(im, (0, 0)) #, crop_mask)
-
-#        else:
-#            raise ValueError(mask_kind)
 
     @staticmethod
     def apply_shade(rgb, layer, lighting, chunk_slice):
@@ -689,8 +635,7 @@ class Grey_layer(Virtual_layer):
 
         if self.mask_kind == "bool":
             lx, ly = crop_size
-#            mask_arr = np.tile(np.array(mask_arr), crop_size
-#                ).reshape([lx, ly])
+
             crop_mask = PIL.Image.fromarray(
                 self.np2PIL(np.uint8(mask_arr * 255)), mode="L"
             )
@@ -836,7 +781,6 @@ class Bool_layer(Virtual_layer):
 
 def _2d_rgb_to_XYZ(rgb, nx, ny):
     res = fscolors.Color_tools.rgb_to_XYZ(rgb.reshape(nx * ny, 3))
-#    rgb.reshape(ny, nx, 3) # restaure original shape
     return res.reshape(nx, ny, 3)
 
 def _2d_XYZ_to_rgb(XYZ, nx, ny):
@@ -993,17 +937,6 @@ class Blinn_lighting:
         # Keep aligned the angles in radian
         else:
             self.light_sources[irow][col_key] = float(value)
-#            if col_key in ["polar_angle", "azimuth_angle"]:
-#                self.light_sources[irow][col_key] = float(value)
-#                    float(value) * np.pi / 180.,
-#                    self.light_sources[irow]["angles_radian"][1]
-#                )
-#            if col_key == "azimuth_angle":
-#                self.light_sources[irow]["azimuth_angle"] = float(value)
-                #(
-#                    self.light_sources[irow]["angles_radian"][0],
-#                    float(value) * np.pi / 180.,
-#                )
 
 
     def col_data(self, col_key):
@@ -1236,9 +1169,7 @@ class Overlay_mode:
         XYZ_Lch = np.zeros([nx, ny, 3])
 
 
-        if k_pegtop != 0:
-#            print("dims", shade.shape, XYZ.shape)
-            
+        if k_pegtop != 0:            
             XYZ_pegtop = (2. * shade * XYZ 
                           + (1. - 2. * shade) * XYZ**2 / ref_white)
         if k_Lch != 0:

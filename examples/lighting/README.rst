@@ -1,4 +1,4 @@
-Lightings examples gallery
+Lighting examples gallery
 ==========================
 
 This section presents a selection of the lightings effects which

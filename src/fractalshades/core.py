@@ -295,7 +295,7 @@ class Fractal_plotter:
         logger.info(self.plotter_info_str(mode))
         logger.info(self.zoom_info_str())
 
-        assert mode in ("img", "db","postdb")
+        assert mode in ("img", "db", "postdb")
         
         if postdb_layer is not None:
             # Convert the str to its Layer object
@@ -833,18 +833,19 @@ class Fractal_plotter:
                   `postdb_layer` is provided, and this layer is saved as rgb)
         postdb_layer: Optional, str
             If provided, instead of saving all the layers, saves the layer with
-            this name as a rgb array (ny, nx, nchannels) memory mapping. This 
-            offers less flexibility (post processing is 'frozen') but optimises
-            disk space in case of supersampling (as L2 downsampling filter can
-            be applied before storing the image data).
+            this name as a rgb array (ny, nx, nchannels) memory mapping, with
+            extension *.postdb. This offers less flexibility (post processing
+            is 'frozen') but optimises performances & disk use - esp. in case
+            of supersampling as L2 downsampling filter can  be applied before
+            storing the image data.
         recovery_mode: bool
             If True, will attempt to reload the .db / .postdb tiles already
             computed. Allows to restart an interrupted calculation (this will
             result in a 'patchwork' if plotting parameters have been modified).
-        
+
         Notes
         -----
-        The file extension are either
+        The file extension is either:
           - .db (denoting the float values of fields are saved)
           - .postdb (denoting the rgb arrays are saved) 
         """

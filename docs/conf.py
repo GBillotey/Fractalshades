@@ -52,8 +52,9 @@ extensions = [
     'sphinx.ext.githubpages',
     'numpydoc',  # Needs to be loaded *after* autodoc.
     'sphinx_gallery.gen_gallery',
-    'sphinxcontrib.bibtex'
+    'sphinxcontrib.bibtex',
     #'sphinxext.github',
+    'sphinxcontrib.youtube'
 ]
 
 # Add any paths that contain templates here, relative to this directory.

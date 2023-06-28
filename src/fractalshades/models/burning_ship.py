@@ -868,7 +868,8 @@ class Perturbation_burning_ship(fs.PerturbationFractal):
         flavor: typing.Literal[BS_flavor_enum]= "Burning ship"
 ):
         """
-An arbitrary-precision implementation for the Burning ship set (power-2).
+Arbitrary-precision class for the Burning ship and other "abs variations".
+
 The Burning Ship fractal, first described by Michael Michelitsch
 and Otto E. Rössler in 1992, is a variant of the mandelbrot fractal which 
 involve the absolute value function, making the formula non-analytic:
@@ -888,7 +889,7 @@ where:
     c &= a + i b
 
 For a more comprehensive introduction, we recommend the paper 
-`At the Helm of the Burning Ship`_.
+*At the Helm of the Burning Ship* :cite:p:`burning_ship`.
 
 This class implements arbitrary precision for the reference orbit, ball method
 period search, newton search, perturbation method, chained billinear
@@ -901,18 +902,8 @@ directory: str
     Path for the working base directory
 flavor: str
     The variant of Burning Ship detailed implementation, defaults to
-    "Burning Ship". Acceptable values and iteration formula are listed in the
-    notes for ``fractalshades.models.Burning_ship``.
-
-Notes
------
-Implementation based on :
-
-.. _At the Helm of the Burning Ship:
-
-    **At the Helm of the Burning Ship** - Claude Heiland-Allen, 2019
-    Proceedings of EVA London 2019 (EVA 2019) 
-    <http://dx.doi.org/10.14236/ewic/EVA2019.74>
+    "Burning Ship". Acceptable values and iteration formula are detailed in the
+    notes of `fractalshades.models.Burning_ship` documentation.
 
 """
         super().__init__(directory)
@@ -929,7 +920,6 @@ Implementation based on :
         self.critical_pt = 0.
         self.FP_code = ["xn", "yn"]
         self.holomorphic = False
-
 
         # GUI 'badges'
         self.holomorphic = False
@@ -990,8 +980,7 @@ Implementation based on :
         backshift: int = 0
 ):
         """
-    Perturbation iterations (arbitrary precision) for Burning ship standard set
-    (power 2).
+    Perturbation iterations (arbitrary precision) for this class.
 
     Parameters
     ==========
@@ -1092,17 +1081,7 @@ Implementation based on :
         # Defines initialize - jitted implementation
         def initialize():
             new_args = (xn, yn, dxnda, dxndb, dynda, dyndb)
-#            new_args = (
-#                calc_orbit, i_xnorbit, i_ynorbit, backshift,
-#                xn, yn, dxnda, dxndb, dynda, dyndb
-#            )
-            
-#            new_args = (
-#                calc_orbit, i_xnorbit, i_ynorbit, backshift, xn, yn,
-#                iterate_once, xnyn_iterate
-#            )
-            
-            
+
             args, numba_impl = self._numba_initialize_cache
             if new_args == args:
                 return numba_impl
@@ -1134,9 +1113,7 @@ Implementation based on :
                 calc_orbit, i_xnorbit, i_ynorbit, backshift, xnyn_iterate
             )
 
-#            calc_orbit, i_znorbit, backshift, zn_iterat
-            
-            
+
             args, numba_impl = self._numba_iterate_cache
             if new_args == args:
                 return numba_impl
