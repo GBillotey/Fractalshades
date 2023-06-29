@@ -276,8 +276,8 @@ class Camera_pan(Sequence):
         Parameters
         ----------
         db: `fractalshades.db.Db`
-            The underlying database. It can be either a *.postdb or a *.db
-            format. Using *.db opens more possibilities but is also much
+            The underlying database. It can be either a \*.postdb or a \*.db
+            format. Using \*.db opens more possibilities but is also much
             more computer-intensive.
         x: couple of 1d array-like - (x_t, x)
             trajectory of x in db screen coordinates. (Time is the full movie
@@ -360,7 +360,7 @@ class Camera_zoom(Sequence):
         Parameters
         ----------
         db: `fs.db.Exp_Db`
-            The underlying database. It shall be a *.postdb format, and will be
+            The underlying database. It shall be a \*.postdb format, and will be
             unwraped at different depth to form the movie layers
         h_evol: couple of 1d array-like - (h_t, h)
             Trajectory of zoom logarithmic factor h
@@ -479,29 +479,3 @@ class Custom_sequence(Sequence):
 
         for i in range(istart, istop):
             yield self.picture(i)
-
-#        frame_iterable = range(istart, istop)
-#        fig_cache = {}
-#        awaited = istart
-#        max_workers = os.cpu_count() # Leave one CPU for encoding ?
-#
-#
-#
-#        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers
-#        ) as threadpool:
-#            futures = (
-#                threadpool.submit(self.async_picture, iframe)
-#                for iframe in frame_iterable
-#            )
-#
-#            for fut in concurrent.futures.as_completed(futures):
-#                iframe, fig = fut.result()
-#                fig_cache[iframe] = fig
-#
-#                # Flushing the cache to the video maker
-#                can_flush = (awaited in fig_cache.keys())
-#                while can_flush:
-#                    yield fig_cache[awaited]
-#                    del fig_cache[awaited]
-#                    awaited += 1
-#                    can_flush = (awaited in fig_cache.keys())
