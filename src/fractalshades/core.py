@@ -2401,7 +2401,7 @@ advanced users when subclassing.
             mmap = open_memmap(
                 filename=data_path["subset"], 
                 mode='w+',
-                dtype=np.bool,
+                dtype=bool,
                 shape=(self.ny * self.nx,), # PIL xy inversion
                 fortran_order=False,
                 version=None
