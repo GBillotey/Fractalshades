@@ -75,6 +75,8 @@ jobs:
       - name: install dependencies to build the documentation
         run: |
           python -m pip install sphinx sphinx_rtd_theme sphinx-gallery numpydoc matplotlib sphinxcontrib-bibtex sphinxcontrib-youtube
+          # Dependencies for fractalshades.movie
+          python -m pip install av scipy
           
       - name: Build the doc and publish it
         run: |

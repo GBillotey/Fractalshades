@@ -7,7 +7,6 @@ A demonstration for the zoom movie tool, which uses a precomputed database
 (with Expmap projection) to generate frames.
 """
 import os
-import sys
 
 import numpy as np
 import mpmath
@@ -27,6 +26,7 @@ def make_movie(plot_dir):
 
     movie_nx = 720       # width of the movie frame in pixels
     movie_ny = 480       # width of the movie frame in pixels
+    movie_fps = 60
     ratio = movie_nx / movie_ny
 
     unzoomed_width = 10. # width of the "unzoomed" image (in complex plane)
@@ -95,10 +95,10 @@ def make_movie(plot_dir):
 
     # Build the Exp_db database "movie db"
     movie_db = fs.db.Exp_db(expdb_path, finaldb_path)
-    movie = fs.movie.Movie(size=(movie_nx, movie_ny), fps=60)
+    movie = fs.movie.Movie(size=(movie_nx, movie_ny), fps=movie_fps)
 
     # Zoom during 10 seconds
-    t = [0., 2.5, 12.5, 15.]
+    t = [0., 2.5, 32.5, 35.]
     h = [h_view, h_view, 0.0, 0.0]  # np.log(1.e20) == 46.05
 
 
