@@ -142,8 +142,8 @@ class Db:
         path: str
             The path for the data. This memory-mapped array is usually
             created through a `fractalshades.Fractal_plotter.save_db` call.
-            Two format are available (*.db and *.post db, refer to the doc for
-            this function for details)
+            Two format are available (\*.db and \*.post db, refer to the doc
+            for this function for details)
         """
         # Development Note - on supersampling:
         #  - the .db data is supersampled
@@ -324,8 +324,8 @@ class Db:
 
     def set_plotter(self, plotter, postname):
         """
-        Define the plotting properties - Needed only if a *.db is provided
-        not (as opposed to a *.postdb image array format)
+        Define the plotting properties - Needed only if a \*.db is provided
+        not (as opposed to a \*.postdb image array format)
 
         Parameters
         ----------
@@ -379,7 +379,7 @@ class Db:
         Notes
         -----
         Plotting settings are set by `fractalshades.db.Db.set_plotter` method, 
-        they are used only for *.db format (as opposed to a *.postdb image
+        they are used only for \*.db format (as opposed to a \*.postdb image
         array format)
         """
         if frame is None:
@@ -519,7 +519,7 @@ class Exp_frame:
     @staticmethod
     def make_exp_grid(nx, xy_ratio):
         """ Return a base grid [-0.5, 0.5] x [-0.5/xy_ratio, 0.5/xy_ratio] in 
-        both cartesian and expoential coordiantes """
+        both cartesian and expoential coordinates """
         ny = int(nx / xy_ratio + 0.5)
 
         xmin = -0.5
@@ -556,19 +556,19 @@ class Exp_db:
         Parameters
         ----------
         path_expmap: str
-            The path for the expmap database. Note that only *.postdb format is
-            currently supported hence the expmap array is of shape
+            The path for the expmap database. Note that only \*.postdb format 
+            is currently supported hence the expmap array is of shape
             (nt, nh, nchannels) and stores rgb data. It is usually saved  by a
             call to `fractalshades.Fractal_plotter.save_db`
             using a `fractalshades.projection.Expmap` projection. Note that the
             orientation parameter of this projection shall be "vertical".
         path_final: str
-            The path for the final raw data. Note that only *.postdb format is
+            The path for the final raw data. Note that only \*.postdb format is
             currently supported hence the expmap array is of shape
             (ny, nx, nchannels) and stores rgb data. It is usually saved by a
             `fractalshades.Fractal_plotter.save_db` call (with a standard
             `fractalshades.projection.Cartesian` projection). It shall be
-            square (nx == ny) and only *.postdb format is currently supported.
+            square (nx == ny) and only \*.postdb format is currently supported.
         """
         # Development Note
         # ----------------

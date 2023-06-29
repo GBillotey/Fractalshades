@@ -94,7 +94,7 @@ class Fractal_plotter:
             A single `fractalshades.postproc.Postproc_batch` or a list of 
             theses. They shall  to the same
             unique `Fractal` object.
-        final_render: bool
+        final_render : bool
             - If ``False``, this is an exploration rendering, the raw arrays
               will be stored to allow fast modification of the plotting
               options for an already computed zoom - without recomputing.
@@ -108,15 +108,15 @@ class Fractal_plotter:
               any change made to the plotting parametrers will need a new
               calculation. However an interrupted calculation might still be
               restarted, see parameter `recovery_mode`.
-        supersampling: None | "2x2" | "3x3" | ... | "7x7"
+        supersampling : None | "2x2" | "3x3" | ... | "7x7"
             Used only for the final render. if not None, the final image will
             leverage supersampling (from 4 to 49 pixels computed for 1 pixel in 
             the saved image)
-        jitter: bool | float
+        jitter : bool | float
             Used only for the final render. If not None, the final image will
             leverage jitter, default intensity is 1. This can help reduce moiré
             effect
-        recovery_mode: bool
+        recovery_mode : bool
             Used only for the final render. If True, will attempt to reload
             the image tiles already computed. Allows to restart an interrupted
             calculation in final render mode (this will result in a 'patchwork'
@@ -824,28 +824,28 @@ class Fractal_plotter:
 
         Parameters
         ----------
-        relpath: Optional, str
+        relpath : Optional, str
             path relative to self.fractal.directory. If not provided, defaults
             to either:
                 - :code:`"layers.db"` (when parameter`postdb_layer` is not
                   provided, and all layers are saved as float)
                 - :code:`f"{postdb_layer}.postdb"` (when parameter
                   `postdb_layer` is provided, and this layer is saved as rgb)
-        postdb_layer: Optional, str
+        postdb_layer : Optional, str
             If provided, instead of saving all the layers, saves the layer with
             this name as a rgb array (ny, nx, nchannels) memory mapping, with
-            extension *.postdb. This offers less flexibility (post processing
+            extension \*.postdb. This offers less flexibility (post processing
             is 'frozen') but optimises performances & disk use - esp. in case
             of supersampling as L2 downsampling filter can  be applied before
             storing the image data.
-        recovery_mode: bool
+        recovery_mode : bool
             If True, will attempt to reload the .db / .postdb tiles already
             computed. Allows to restart an interrupted calculation (this will
             result in a 'patchwork' if plotting parameters have been modified).
 
         Notes
         -----
-        The file extension is either:
+        The file extension is either :
           - .db (denoting the float values of fields are saved)
           - .postdb (denoting the rgb arrays are saved) 
         """
