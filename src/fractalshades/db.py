@@ -747,7 +747,7 @@ class Exp_db:
             raise ValueError(f"Frame outside databse data: h = {h} < 0")
         # Highest acceptable h:
         rpix_max = 0.5 * np.sqrt(1. + xy_ratio ** 2)
-        allowed_hmax = self.hmax0 / rpix_max
+        allowed_hmax = self.hmax0 - np.log(rpix_max)
         if h > allowed_hmax:
             raise ValueError(
                     "Frame outside databse data: "

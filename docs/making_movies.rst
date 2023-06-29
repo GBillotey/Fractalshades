@@ -4,7 +4,7 @@ Making movies
 Fractalshades defines several classes to help the user making fractal movies.
 You can refer to the documentation of the movie API: :doc:`/API/movie`.
 
-The purpose of this section is to give more practival details on the use
+The purpose of this section is to give more practical details on the use
 of the movie-making API.
 The main idea is to create a movie class ` fractalshades.movie.Movie` and
 populate is with one or several sequences. Some available sequence kinds are:
@@ -63,7 +63,7 @@ to create a db and make the movie itself.
 
 A low-quality export of this video is available at:
 
-..  youtube:: q_MJaQC7STY 
+..  youtube:: cJxNg8bmKtE 
 
 
 Example: "Custom" zoom sequence

@@ -26,5 +26,13 @@ docs/examples/
 docs/_build/
 !docs/_templates
 
+# ignore the movie doc files except *.py
+docs/movies/
+!docs/movies/*.py
 
+# Other specific files
+TODO
+setup.py.SAVED
+docs/conf.py.orig
+src/fractalshades/mpmath_utils/FP_loop.c
 
