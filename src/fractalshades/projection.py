@@ -234,6 +234,9 @@ class Expmap(Projection):
         orientation: "horizontal" | "vertical"
             The direction for the h axis. Defaults to "horizontal".
         """
+        # Implementation notes: the derivative for the expmap include a 
+        # variable scaling factor, henc eonly the rotation part of df shall 
+        # be used
         if not(0 <= hmin < hmax):
             raise ValueError(
                 "Provide hmin, hmax with:  0 <= hmin < hmax for Expmap"
@@ -256,13 +259,48 @@ class Expmap(Projection):
 
         self.premul_1j = {"horizontal": False, "vertical": True}[orientation]
 
+#    @property
+#    def kz(self):
+#        if hasattr(self, "exp_step_hmoy"):
+#            dh = self.dh - self.exp_step_hmoy
+#        else:
+#            dh = self.dh
+#        premul_1j = self.premul_1j
+#        xy_ratio = self.xy_ratio
+#        return (1j * dh * xy_ratio) if premul_1j else dh
+
     @property
-    def kz(self):
+    def lin_z2h(self):
+        """ Property wich returns the 2 linear coeff (a, b) so that:
+        h = a * z + b
+        """
+        b = self.hmoy
         dh = self.dh
         premul_1j = self.premul_1j
         xy_ratio = self.xy_ratio
-        return (1j * dh * xy_ratio) if premul_1j else dh
-
+        if premul_1j:
+            a = 1j * xy_ratio * dh
+        else:
+            a = dh
+        return (a, b)
+#
+#    @property
+#    def lin_z2h_local(self):
+#        """ Property wich returns the 2 linear coeff (a, b) so that:
+#        h = a' * z + b' + exp_step_hmoy = a * z + b
+#        """
+#        b = self.hmoy
+#        db = getattr(self, "exp_step_hmoy", 0.)
+#        print("****************exp_step_hmoy", db)
+##        raise NotImplementedError("TODO")
+#        dh = self.dh
+#        premul_1j = self.premul_1j
+#        xy_ratio = self.xy_ratio
+#        if premul_1j:
+#            a = 1j * xy_ratio * dh
+#        else:
+#            a = dh
+#        return (a, -db)
 
     def nh(self, fractal):
         return fractal.ny if self.premul_1j else fractal.nx
@@ -270,13 +308,19 @@ class Expmap(Projection):
     def nt(self, fractal):
         return fractal.nx if self.premul_1j else fractal.ny
         
-    def set_exp_zoom_step(self, h_step):
+    def set_exp_zoom_step(self, exp_step_hmoy, exp_step_dh):
         """ property used in ``save_db`` with exp_zoom_step set """
-        self._h_step = h_step
-    
+        self.exp_step_hmoy = exp_step_hmoy
+        self.exp_step_dh = exp_step_dh
+#        self.exp_step_hmin = exp_step_hmoy - exp_step_dh
+        self.exp_step_hmax = exp_step_hmoy + exp_step_dh
+        self.make_impl()
+
     def del_exp_zoom_step(self):
         """ property used in ``save_db`` with exp_zoom_step set """
-        delattr(self, "_h_step")
+        delattr(self, "exp_step_hmoy")
+        delattr(self, "exp_step_dh")
+        delattr(self, "exp_step_hmax")
 
     def adjust_to_zoom(self, fractal):
         # We need to adjust the fractal xy_ratio in order to match hmax - hmin
@@ -302,41 +346,38 @@ class Expmap(Projection):
 
 
     def make_f_impl(self):
-        hmoy = self.hmoy
-        kz = self.kz
-
-        @numba.njit(
-            numba.complex128(numba.complex128), nogil=True, fastmath=False)
+        a, b  = self.lin_z2h
+        @numba.njit(nogil=True, fastmath=False)
         def numba_impl(z):
-            return np.exp(hmoy + kz * z)
-
+            return np.exp(a * z + b)
         self.f = numba_impl
 
 
     def make_df_impl(self):
         premul_1j = self.premul_1j
-        kz = self.kz
+#        a, b = self.lin_z2h_local
 
         if self.rotates_df:
-            @numba.njit(
-                numba.complex128(numba.complex128), nogil=True, fastmath=False)
+            @numba.njit(nogil=True, fastmath=False)
             def numba_impl(z):
-                return  np.exp(kz * z)
+                return 1.
 
         else:
-            @numba.njit(
-                numba.complex128(numba.complex128), nogil=True, fastmath=False)
+            @numba.njit(nogil=True, fastmath=False)
             def numba_impl(z):
                 # Todo: adjust np.exp(kz * z.imag) to hmoy_local
                 if premul_1j:
-                    return kz * np.exp(kz * z.imag)
-                return  np.exp(kz * z.real)
+                    return 1.
+                return  1.
 
         self.df = numba_impl
 
 
     def make_dfBS_impl(self):
-        dh = self.dh
+        if hasattr(self, "exp_step_hmoy"):
+            dh = self.dh - self.exp_step_hmoy
+        else:
+            dh = self.dh
         premul_1j = self.premul_1j
 
         if self.rotates_df:
@@ -364,9 +405,8 @@ class Expmap(Projection):
                     zhr = dh * z.imag
                 else:
                     zhr = dh * z.real
-                r = np.exp(zhr) # TODO : should be zhr + (zmoy - zmoy_local)
-#                if premul_1j:
-#                    return  0., -r, r, 0.
+                r = np.exp(zhr)
+
                 if premul_1j:
                     return  0., -r, r, 0.
                 else:
@@ -375,31 +415,36 @@ class Expmap(Projection):
         self.dfBS = numba_impl
 
     @property
-    def scale_mpf(self):
+    def scale(self):
+        # Returns the scaling in mpf - for perturbation implementation & derivative
+        if hasattr(self, "exp_step_hmoy"):
+            return mpmath.exp(self.exp_step_hmoy)
         return mpmath.exp(self.hmoy)
 
-    @property
-    def scale(self):
-        # Returns the scaling - for perturbation implementation
-        return mpmath.exp(self.hmoy)
+#    @property
+#    def scale(self):
+#        # Returns the scaling - for perturbation implementation & derivative
+#        if hasattr(self, "exp_step_hmoy"):
+#            return mpmath.exp(self.exp_step_hmoy)
+#        return mpmath.exp(self.hmoy)
+
 
     def bounding_box(self, xy_ratio):
         # Returns a bounding box - for perturbation implementation only
-        # proj_dx = self.dx * self.projection.scale
+        # proj_dx = self.dx * [[-w, w] x [-h, h]]
         # corner_a = lin_proj_impl_noscale(0.5 * (w + 1j * h)) * proj_dx
         # corner_a is absolute the distance to center
-        if hasattr(self, "_h_step"):
-            print("******* BOUNDING BOX with _h_step", self._h_step)
-            wh = 0.5 * self.dh + (self._h_step - self.hmax)
+        if hasattr(self, "exp_step_hmax"):
+            wh = 0.5 * self.exp_step_hmax
         else:
-            wh = 0.5 * self.dh
-
-        w = np.exp(wh) # TODO here could use a mpf mpmath.exp(wh)
+            wh = 0.5 * self.h_max
+        w = mpmath.exp(wh)
         return w, w
 
     @property
     def min_local_scale(self):
-        return  np.exp(-0.5 * self.dh)
+        # This is the overal min local of |df|
+        return mpmath.exp(-0.5 * self.hmin)
 
 
 #============================================================================== 

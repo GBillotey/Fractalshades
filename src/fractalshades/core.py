@@ -319,7 +319,7 @@ class Fractal_plotter:
 
         self._raw_arr = dict()
         self._current_tile = {
-            "value": 0,
+            "value": getattr(self, "_tiles_stack", 0),
             "time": 0.  # time of last evt in seconds
         }
 
@@ -908,31 +908,52 @@ class Fractal_plotter:
         hmax = proj.hmax
         nh = proj.nh(f)
         stp = exp_zoom_step
+        chunk_size = fs.settings.chunk_size 
+
 
         for r in range(0, nh + 1, stp):
             # Need to trigger a recalculation of BLA validity radius
             # we will call reset_bla_tree and modify in place cycle_indep_args
+            i_max = min(r + stp, nh)
+            i_min = max(r - chunk_size, 0)
+
             if orientation == "horizontal":
-                exp_step = (hmax * r + hmin * (nh - r)) / nh
+                exp_step_hmax = (hmax * i_max + hmin * (nh - i_max)) / nh
+                exp_step_hmin = (hmax * i_min + hmin * (nh - i_min)) / nh
             else:
-                exp_step = (hmax * (nh - r) + hmin * r) / nh
-            proj.set_exp_zoom_step(exp_step)
+                exp_step_hmax = (hmax * (nh - i_max) + hmin * i_max) / nh
+                exp_step_hmin = (hmax * (nh - i_min) + hmin * i_min) / nh
+
+            exp_step_hmoy = (exp_step_hmax + exp_step_hmin) * 0.5
+            exp_step_dh = exp_step_hmax - exp_step_hmin
+            print("SETTING exp_step_hmoy, exp_step_dh", exp_step_hmoy, exp_step_dh)
+
+#            if orientation == "horizontal":
+#                exp_step = (hmax * r + hmin * (nh - r)) / nh
+#            else:
+#                exp_step = (hmax * (nh - r) + hmin * r) / nh
+                
+            proj.set_exp_zoom_step(exp_step_hmoy, exp_step_dh)
             self.reset_bla_tree()
 
             def validates_h(chunk_slice):
                 """ Escapes the tiles not matching the target h range"""
                 (_, ixx, _, _) = chunk_slice
-                ret = r < ixx <= (r + stp)
-                return ret
+                return r < ixx <= (r + stp)
 
             def validates_v(chunk_slice):
                 """ Escapes the tiles not matching the target h range"""
                 (_, _, _, iyy) = chunk_slice
-                ret = r < iyy <= (r + stp)
-                return ret
+                return r < iyy <= (r + stp)
 
             validates = (validates_h if orientation == "horizontal" 
                          else validates_v)
+
+            # manage the self._current_tile["value"] increment
+            try:
+                self._tiles_stack = self._current_tile["value"]
+            except AttributeError:
+                self._tiles_stack = 0
 
             self.process(
                 mode=self._mode,
@@ -1120,9 +1141,6 @@ class Fractal_plotter:
         
         note: layer is layer obj
         """
-        print("**** IN open_postdb", layer.postname)
-        
-        
         postdb_path = self.postdb_path(layer)
         layer_name = layer.postname
         self.open_postdb_status(postdb_path)
@@ -2038,7 +2056,7 @@ advanced users when subclassing.
         c_pix = np.ravel(
             self.chunk_pixel_pos(chunk_slice, jitter, supersampling)
         )
-
+        print('_calc_data', self._calc_data.keys())
         state = self._calc_data[calc_name]["state"]
         subset = state.subset
         if subset is not None:

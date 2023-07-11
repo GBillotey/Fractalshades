@@ -120,7 +120,7 @@ directory : str
         self.proj_impl = projection.f
 
         # check the dps...
-        pix = projection.min_local_scale * projection.scale * self.dx / self.nx
+        pix = projection.min_local_scale * self.dx / self.nx
         with mpmath.workdps(6):
             # Sets the working dps to 10e-1 x pixel size
             required_dps = int(-mpmath.log10(pix / nx) + 1)
@@ -170,18 +170,18 @@ directory : str
         --------
         kc: full precision, scaling coefficient
         """
-        # TODO: shall be adapted for projections implementing deep-zoom
+        # Shall be adapted for projections implementing deep-zoom
         # (mainly, exponential projection)
         c0 = self.x + 1j * self.y
 
         w, h = self.projection.bounding_box(self.xy_ratio)
-        proj_dx = self.dx * self.projection.scale
+        dx = self.dx
         mat = self.lin_mat
 
-        corner_a = lin_proj_impl_noscale(mat, 0.5 * (w + 1j * h)) * proj_dx
-        corner_b = lin_proj_impl_noscale(mat, 0.5 * (- w + 1j * h)) * proj_dx
-        corner_c = lin_proj_impl_noscale(mat, 0.5 * (- w - 1j * h)) * proj_dx
-        corner_d = lin_proj_impl_noscale(mat, 0.5 * (w - 1j * h)) * proj_dx
+        corner_a = mpc_lin_proj_impl_noscale(mat, 0.5 * w, 0.5 * h) * dx
+        corner_b = mpc_lin_proj_impl_noscale(mat, -0.5 * w , 0.5 * h) * dx
+        corner_c = mpc_lin_proj_impl_noscale(mat, -0.5 * w, -0.5 * h) * dx
+        corner_d = mpc_lin_proj_impl_noscale(mat, 0.5 * w, -0.5 * h) * dx
 
         c0 = self.x + 1j * self.y
         ref = self.FP_params["ref_point"]
@@ -437,7 +437,7 @@ directory : str
         # CUSTOM class impl
         # Initialise the reference path
         holomorphic = self.holomorphic
-        calc_deriv_c = self.calc_dZndc if holomorphic else self.calc_hessian
+#        calc_deriv_c = self.calc_dZndc if holomorphic else self.calc_hessian
         calc_dZndz = self.calc_dZndz if holomorphic else False
 
         # 1) compute or retrieve the reference orbit
@@ -457,43 +457,53 @@ directory : str
 
         # 2) compute the orbit derivatives if needed
         # Note: this is where the "scale" of the derivative is chosen
+        if holomorphic:
+            Zn_path_args = (Zn_path, has_xr, ref_index_xr, ref_xr,
+             ref_div_iter, ref_order)
+        else:
+            Zn_path_args = (Zn_path, has_xr, ref_index_xr, refx_xr, refy_xr,
+             ref_div_iter, ref_order)
+            
+        (dZndc_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path
+         ) = self.get_orbit_dfdz(*Zn_path_args)
+        
+        
+#        if self.projection.scale != 1.:
+#            # If there is a projection-induced scale, we need to use it here.
+#            scale_xr = fsx.mpf_to_Xrange(
+#                self.projection.scale, dtype=self.float_type
+#            ).ravel()
+#            dx_xr = dx_xr * scale_xr
 
-        if self.projection.scale != 1.:
-            # If there is a projection-induced scale, we need to use it here.
-            scale_xr = fsx.mpf_to_Xrange(
-                self.projection.scale, dtype=self.float_type
-            ).ravel()
-            dx_xr = dx_xr * scale_xr
-
-        dZndc_path = None
-        (dXnda_path, dXndb_path, dYnda_path, dYndb_path) = (None,) * 4
-
-        if calc_deriv_c:
-            xr_detect_activated = self.xr_detect_activated
-
-            if holomorphic:
-                dZndc_path, dZndc_xr_path = numba_dZndc_path(
-                    Zn_path, has_xr, ref_index_xr, ref_xr,
-                    ref_div_iter, ref_order,
-                    self.dfdz, dx_xr, xr_detect_activated
-                )
-                if xr_detect_activated:
-                    dZndc_path = dZndc_xr_path
-
-            else:
-                (dXnda_path, dXndb_path, dYnda_path, dYndb_path,
-                 dXnda_xr_path, dXndb_xr_path, dYnda_xr_path, dYndb_xr_path
-                ) = numba_dZndc_path_BS(
-                    Zn_path, has_xr, ref_index_xr, refx_xr, refy_xr,
-                    ref_div_iter, ref_order,
-                    self.dfxdx, self.dfxdy, self.dfydx, self.dfydy,
-                    dx_xr, xr_detect_activated #, self.reverse_y
-                )
-                if xr_detect_activated:
-                    dXnda_path = dXnda_xr_path
-                    dXndb_path = dXndb_xr_path
-                    dYnda_path = dYnda_xr_path
-                    dYndb_path = dYndb_xr_path
+#        dZndc_path = None
+#        (dXnda_path, dXndb_path, dYnda_path, dYndb_path) = (None,) * 4
+#
+#        if calc_deriv_c:
+#            xr_detect_activated = self.xr_detect_activated
+#
+#            if holomorphic:
+#                dZndc_path, dZndc_xr_path = numba_dZndc_path(
+#                    Zn_path, has_xr, ref_index_xr, ref_xr,
+#                    ref_div_iter, ref_order,
+#                    self.dfdz, dx_xr, xr_detect_activated
+#                )
+#                if xr_detect_activated:
+#                    dZndc_path = dZndc_xr_path
+#
+#            else:
+#                (dXnda_path, dXndb_path, dYnda_path, dYndb_path,
+#                 dXnda_xr_path, dXndb_xr_path, dYnda_xr_path, dYndb_xr_path
+#                ) = numba_dZndc_path_BS(
+#                    Zn_path, has_xr, ref_index_xr, refx_xr, refy_xr,
+#                    ref_div_iter, ref_order,
+#                    self.dfxdx, self.dfxdy, self.dfydx, self.dfydy,
+#                    dx_xr, xr_detect_activated #, self.reverse_y
+#                )
+#                if xr_detect_activated:
+#                    dXnda_path = dXnda_xr_path
+#                    dXndb_path = dXndb_xr_path
+#                    dYnda_path = dYnda_xr_path
+#                    dYndb_path = dYndb_xr_path
 
         # 2') compute the orbit derivatives wrt z if needed
         # (interior detection - only for holomorphic case)
@@ -555,6 +565,105 @@ directory : str
         return cycle_indep_args
 
 
+    def get_orbit_dfdz(self, *Zn_path_args):
+        """ Compute the orbit derivatives taking into account the scale induced
+        by projection
+        """
+        holomorphic = self.holomorphic
+
+        if holomorphic:
+            (Zn_path, has_xr, ref_index_xr, ref_xr,
+             ref_div_iter, ref_order) = Zn_path_args
+        else:
+            (Zn_path, has_xr, ref_index_xr, refx_xr, refy_xr,
+             ref_div_iter, ref_order) = Zn_path_args
+
+        dx_xr = fsx.mpf_to_Xrange(self.dx).ravel()
+        if self.projection.scale != 1.:
+            # If there is a projection-induced scale, we need to use it here.
+            scale_xr = fsx.mpf_to_Xrange(
+                self.projection.scale, dtype=self.float_type).ravel()
+            dx_xr[0] = dx_xr[0] * scale_xr[0]
+        
+        print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> in get_orbit_dfdz, dx_xr = ", dx_xr[0])
+
+        # Compute the orbit derivatives if needed
+        # Note: this is where the "scale" of the derivative is chosen
+        dZndc_path = None
+        (dXnda_path, dXndb_path, dYnda_path, dYndb_path) = (None,) * 4
+        calc_deriv_c = self.calc_dZndc if holomorphic else self.calc_hessian
+
+        if calc_deriv_c:
+            xr_detect_activated = self.xr_detect_activated
+
+            if holomorphic:
+                dZndc_path, dZndc_xr_path = numba_dZndc_path(
+                    Zn_path, has_xr, ref_index_xr, ref_xr,
+                    ref_div_iter, ref_order,
+                    self.dfdz, dx_xr, xr_detect_activated
+                )
+                if xr_detect_activated:
+                    dZndc_path = dZndc_xr_path
+
+            else:
+                (dXnda_path, dXndb_path, dYnda_path, dYndb_path,
+                 dXnda_xr_path, dXndb_xr_path, dYnda_xr_path, dYndb_xr_path
+                ) = numba_dZndc_path_BS(
+                    Zn_path, has_xr, ref_index_xr, refx_xr, refy_xr,
+                    ref_div_iter, ref_order,
+                    self.dfxdx, self.dfxdy, self.dfydx, self.dfydy,
+                    dx_xr, xr_detect_activated #, self.reverse_y
+                )
+                if xr_detect_activated:
+                    dXnda_path = dXnda_xr_path
+                    dXndb_path = dXndb_xr_path
+                    dYnda_path = dYnda_xr_path
+                    dYndb_path = dYndb_xr_path
+
+        return dZndc_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path
+
+
+#    def get_nonholomorphic_orbit_dfdz(self, holomorphic, calc_deriv_c, dx_xr, Zn_path):
+#        # 2) compute the orbit derivatives if needed
+#        # Note: this is where the "scale" of the derivative is chosen
+#        if self.projection.scale != 1.:
+#            # If there is a projection-induced scale, we need to use it here.
+#            scale_xr = fsx.mpf_to_Xrange(
+#                self.projection.scale, dtype=self.float_type
+#            ).ravel()
+#            dx_xr = dx_xr * scale_xr
+#
+#        dZndc_path = None
+#        (dXnda_path, dXndb_path, dYnda_path, dYndb_path) = (None,) * 4
+#
+#        if calc_deriv_c:
+#            xr_detect_activated = self.xr_detect_activated
+#
+#            if holomorphic:
+#                dZndc_path, dZndc_xr_path = numba_dZndc_path(
+#                    Zn_path, has_xr, ref_index_xr, ref_xr,
+#                    ref_div_iter, ref_order,
+#                    self.dfdz, dx_xr, xr_detect_activated
+#                )
+#                if xr_detect_activated:
+#                    dZndc_path = dZndc_xr_path
+#
+#            else:
+#                (dXnda_path, dXndb_path, dYnda_path, dYndb_path,
+#                 dXnda_xr_path, dXndb_xr_path, dYnda_xr_path, dYndb_xr_path
+#                ) = numba_dZndc_path_BS(
+#                    Zn_path, has_xr, ref_index_xr, refx_xr, refy_xr,
+#                    ref_div_iter, ref_order,
+#                    self.dfxdx, self.dfxdy, self.dfydx, self.dfydy,
+#                    dx_xr, xr_detect_activated #, self.reverse_y
+#                )
+#                if xr_detect_activated:
+#                    dXnda_path = dXnda_xr_path
+#                    dXndb_path = dXndb_xr_path
+#                    dYnda_path = dYnda_xr_path
+#                    dYndb_path = dYndb_xr_path
+
+
     def reset_bla_tree(self, cycle_indep_args):
         """ 
         Returns a new cycle_indep_args with modified of BLA validaty radius for
@@ -567,18 +676,72 @@ directory : str
         if self.BLA_eps is None:
             return
 
+        holomorphic = self.holomorphic
+        
+        if holomorphic:
+            Zn_path_args_index = (3, 6, 7, 8, 9, 10)
+        else:
+            Zn_path_args_index = (3, 8, 9, 10, 11, 12, 13)
+        Zn_path_args = tuple(cycle_indep_args[i] for i in Zn_path_args_index)
+        (dZndc_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path
+         ) = self.get_orbit_dfdz(*Zn_path_args)
+
+
         Zn_path = self.Zn_path
         self.kc = self.ref_point_kc() # We resets kc taking into account a
                                       # partial expmap range
+        
+        
 
         BLA_params = self.get_BLA_tree(Zn_path, self.BLA_eps)
-        span = (17, 21) if self.holomorphic else (21, 25)
+#        BLA_span = (17, 21) if self.holomorphic else (21, 25)
+        
+        if holomorphic:
+#            cycle_indep_args = (
+#                holomorphic,
+#                initialize, iterate,
+#                Zn_path, dZndc_path, dZndz_path,
+#                has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
+#                drift_xr, dx_xr, self.proj_impl, self.lin_mat, self.lin_scale_xr,
+#                kc, M_bla, r_bla, bla_len, stages_bla,
+#                self._interrupted
+#            )
+            
+            print("cycle_indep_args pre len", len(cycle_indep_args))
+            cycle_indep_args = (
+                cycle_indep_args[:4]
+                + (dZndc_path,)
+                + cycle_indep_args[5:17]
+                + BLA_params
+                + cycle_indep_args[21:]
+            )
+            print("cycle_indep_args post len", len(cycle_indep_args))
+#            raise NotImplementedError("todo")
+            # TypeError: not enough arguments: expected 26, got 12
+        else:
+#            cycle_indep_args = (
+#                holomorphic,
+#                initialize, iterate,
+#                Zn_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
+#                has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
+#                driftx_xr, drifty_xr, dx_xr, self.proj_impl, self.lin_mat, self.lin_scale_xr,
+#                kc, M_bla, r_bla, bla_len, stages_bla,
+#                self._interrupted
+#            )
+            
+            cycle_indep_args = (
+                cycle_indep_args[:4]
+                + (dXnda_path, dXndb_path, dYnda_path, dYndb_path,)
+                + cycle_indep_args[8:21]
+                + BLA_params
+                + cycle_indep_args[25:]
+            )
 
-        cycle_indep_args = (
-            cycle_indep_args[:span[0]]
-            + BLA_params
-            + cycle_indep_args[span[1]:]
-        )
+#        cycle_indep_args = (
+#            cycle_indep_args[:3]
+#            + BLA_params
+#            + cycle_indep_args[BLA_span[1]:]
+#        )
 
         logger.debug(f"BLA tree reset with kc: {self.kc }")
         return cycle_indep_args
@@ -2642,10 +2805,16 @@ def lin_proj_impl(lin_mat, linscale, z):
     y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
     return  linscale[0] * complex(x1, y1)
 
-@numba.njit(cache=True, fastmath=True, nogil=True)
-def lin_proj_impl_noscale(lin_mat, z):
-    x = z.real
-    y = z.imag
+#@numba.njit(cache=True, fastmath=True, nogil=True)
+#def lin_proj_impl_noscale(lin_mat, z):
+#    x = z.real
+#    y = z.imag
+#    x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
+#    y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
+#    return complex(x1, y1)
+#
+#@numba.njit(cache=True, fastmath=True, nogil=True)
+def mpc_lin_proj_impl_noscale(lin_mat, x, y):
     x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
     y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
-    return complex(x1, y1)
+    return mpmath.mpc(x1, y1)
