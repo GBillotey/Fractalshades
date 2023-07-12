@@ -319,7 +319,7 @@ class Fractal_plotter:
 
         self._raw_arr = dict()
         self._current_tile = {
-            "value": 0,
+            "value": getattr(self, "_tiles_stack", 0),
             "time": 0.  # time of last evt in seconds
         }
 
@@ -933,6 +933,12 @@ class Fractal_plotter:
 
             validates = (validates_h if orientation == "horizontal" 
                          else validates_v)
+
+            # manage the self._current_tile["value"] increment
+            try:
+                self._tiles_stack = self._current_tile["value"]
+            except AttributeError:
+                self._tiles_stack = 0
 
             self.process(
                 mode=self._mode,
