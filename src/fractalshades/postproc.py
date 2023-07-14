@@ -714,6 +714,15 @@ class DEM_pp(Postproc):
                 R = np.hypot(dXdA - dYdB, dXdB + dYdA)
                 abs_dzndc = 0.5 * (Q + R)
 
+
+            def nan_frac(arr):
+                return np.count_nonzero(np.isnan(arr)) / len(arr)
+
+            print(">> abs_dzndc MEAN in potential", np.nanmean(abs_dzndc), "nan frac", nan_frac(abs_dzndc))
+            print(">> abs_zn MEAN in potential", np.nanmean(abs_zn), "nan frac", nan_frac(abs_zn))
+            
+            
+            
             val = abs_zn * np.log(abs_zn) / abs_dzndc
 
         elif potential_dic["kind"] == "convergent":

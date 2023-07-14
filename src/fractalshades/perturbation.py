@@ -120,7 +120,8 @@ directory : str
         self.proj_impl = projection.f
 
         # check the dps...
-        pix = projection.min_local_scale * projection.scale * self.dx / self.nx
+        pix = projection.min_local_scale * self.dx / self.nx
+        # pix = projection.min_local_scale * projection.scale * self.dx / self.nx
         with mpmath.workdps(6):
             # Sets the working dps to 10e-1 x pixel size
             required_dps = int(-mpmath.log10(pix / nx) + 1)
@@ -175,13 +176,17 @@ directory : str
         c0 = self.x + 1j * self.y
 
         w, h = self.projection.bounding_box(self.xy_ratio)
-        proj_dx = self.dx * self.projection.scale
+        dx = self.dx # * self.projection.scale
         mat = self.lin_mat
 
-        corner_a = lin_proj_impl_noscale(mat, 0.5 * (w + 1j * h)) * proj_dx
-        corner_b = lin_proj_impl_noscale(mat, 0.5 * (- w + 1j * h)) * proj_dx
-        corner_c = lin_proj_impl_noscale(mat, 0.5 * (- w - 1j * h)) * proj_dx
-        corner_d = lin_proj_impl_noscale(mat, 0.5 * (w - 1j * h)) * proj_dx
+#        corner_a = lin_proj_impl_noscale(mat, 0.5 * (w + 1j * h)) * proj_dx
+#        corner_b = lin_proj_impl_noscale(mat, 0.5 * (- w + 1j * h)) * proj_dx
+#        corner_c = lin_proj_impl_noscale(mat, 0.5 * (- w - 1j * h)) * proj_dx
+#        corner_d = lin_proj_impl_noscale(mat, 0.5 * (w - 1j * h)) * proj_dx
+        corner_a = mpc_lin_proj_impl_noscale(mat, 0.5 * w, 0.5 * h) * dx
+        corner_b = mpc_lin_proj_impl_noscale(mat, -0.5 * w , 0.5 * h) * dx
+        corner_c = mpc_lin_proj_impl_noscale(mat, -0.5 * w, -0.5 * h) * dx
+        corner_d = mpc_lin_proj_impl_noscale(mat, 0.5 * w, -0.5 * h) * dx
 
         c0 = self.x + 1j * self.y
         ref = self.FP_params["ref_point"]
@@ -464,6 +469,8 @@ directory : str
                 self.projection.scale, dtype=self.float_type
             ).ravel()
             dx_xr = dx_xr * scale_xr
+            logger.debug(f"Derivative ref scale set at: {dx_xr}")
+            
 
         dZndc_path = None
         (dXnda_path, dXndb_path, dYnda_path, dYndb_path) = (None,) * 4
@@ -516,6 +523,7 @@ directory : str
                 "Resolution is too low for this zoom depth. Try to increase"
                 "the reference calculation precicion."
         )
+        logger.debug(f"Bounding box defined, with kc: {self.kc }")
 
         # Initialize BLA interpolation
         if self.BLA_eps is None:
@@ -564,24 +572,32 @@ directory : str
         Note: the fractal projection shall have been modified through
         its ``set_exp_zoom_step`` method
         """
-        if self.BLA_eps is None:
-            return
-
-        Zn_path = self.Zn_path
-        self.kc = self.ref_point_kc() # We resets kc taking into account a
-                                      # partial expmap range
-
-        BLA_params = self.get_BLA_tree(Zn_path, self.BLA_eps)
-        span = (17, 21) if self.holomorphic else (21, 25)
-
-        cycle_indep_args = (
-            cycle_indep_args[:span[0]]
-            + BLA_params
-            + cycle_indep_args[span[1]:]
-        )
-
-        logger.debug(f"BLA tree reset with kc: {self.kc }")
-        return cycle_indep_args
+        # self.kc = self.ref_point_kc()
+        logger.debug(f"Bounding box reset with kc: {self.kc }")
+        initialize = cycle_indep_args[1]
+        iterate = cycle_indep_args[2]
+        return self.get_cycle_indep_args(initialize, iterate)
+        
+#        
+#        
+#        if self.BLA_eps is None:
+#            return
+#
+#        Zn_path = self.Zn_path
+#        self.kc = self.ref_point_kc() # We resets kc taking into account a
+#                                      # partial expmap range
+#
+#        BLA_params = self.get_BLA_tree(Zn_path, self.BLA_eps)
+#        span = (17, 21) if self.holomorphic else (21, 25)
+#
+#        cycle_indep_args = (
+#            cycle_indep_args[:span[0]]
+#            + BLA_params
+#            + cycle_indep_args[span[1]:]
+#        )
+#
+#        logger.debug(f"BLA tree reset with kc: {self.kc }")
+#        return cycle_indep_args
 
 
     def fingerprint_matching(self, calc_name, test_fingerprint, log=False):
@@ -1013,6 +1029,7 @@ def numba_cycles_perturb(
     n_iter:
         current iteration
     """
+    print(">>>>>>>>>>>>>>>>>>>>>>>>>>>> IN numba_cycles_perturb with dxr", dx_xr)
     nz, npts = Z.shape
     Z_xr = Xr_template.repeat(nz)
     Z_xr_trigger = np.ones((nz,), dtype=np.bool_)
@@ -2642,10 +2659,15 @@ def lin_proj_impl(lin_mat, linscale, z):
     y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
     return  linscale[0] * complex(x1, y1)
 
-@numba.njit(cache=True, fastmath=True, nogil=True)
-def lin_proj_impl_noscale(lin_mat, z):
-    x = z.real
-    y = z.imag
+#@numba.njit(cache=True, fastmath=True, nogil=True)
+#def lin_proj_impl_noscale(lin_mat, z):
+#    x = z.real
+#    y = z.imag
+#    x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
+#    y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
+#    return complex(x1, y1)
+
+def mpc_lin_proj_impl_noscale(lin_mat, x, y):
     x1 = lin_mat[0, 0] * x + lin_mat[0, 1] * y
     y1 = lin_mat[1, 0] * x + lin_mat[1, 1] * y
-    return complex(x1, y1)
+    return mpmath.mpc(x1, y1)

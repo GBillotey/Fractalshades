@@ -907,16 +907,25 @@ class Fractal_plotter:
         hmin = proj.hmin
         hmax = proj.hmax
         nh = proj.nh(f)
-        stp = exp_zoom_step
+        stp = exp_zoom_step 
+        chunk_size = fs.settings.chunk_size
 
         for r in range(0, nh + 1, stp):
             # Need to trigger a recalculation of BLA validity radius
             # we will call reset_bla_tree and modify in place cycle_indep_args
+            i_max = min(r + stp, nh)
+            i_min = max(r - chunk_size, 0) 
+
             if orientation == "horizontal":
-                exp_step = (hmax * r + hmin * (nh - r)) / nh
+#                exp_step = (hmax * r + hmin * (nh - r)) / nh
+                exp_step_hmax = (hmax * i_max + hmin * (nh - i_max)) / nh
+                exp_step_hmin = (hmax * i_min + hmin * (nh - i_min)) / nh
             else:
-                exp_step = (hmax * (nh - r) + hmin * r) / nh
-            proj.set_exp_zoom_step(exp_step)
+#                exp_step = (hmax * (nh - r) + hmin * r) / nh
+                exp_step_hmax = (hmax * (nh - i_max) + hmin * i_max) / nh
+                exp_step_hmin = (hmax * (nh - i_min) + hmin * i_min) / nh
+                
+            proj.set_exp_zoom_step(exp_step_hmax, exp_step_hmin)
             self.reset_bla_tree()
 
             def validates_h(chunk_slice):

@@ -238,9 +238,10 @@ class Expmap(Projection):
             raise ValueError(
                 "Provide hmin, hmax with:  0 <= hmin < hmax for Expmap"
             )
-
+        self.use_step = False
         self.rotates_df = rotates_df
         self.orientation = orientation
+        self.premul_1j = {"horizontal": False, "vertical": True}[orientation]
 
         if mpmath.exp(hmax) > (1. / fs.settings.xrange_zoom_level):
             # Or ~ hmax > 690... We store internally as Xrange
@@ -254,14 +255,26 @@ class Expmap(Projection):
         self.hmoy = (hmin + hmax) * 0.5
         self.dh = hmax - hmin
 
-        self.premul_1j = {"horizontal": False, "vertical": True}[orientation]
-
     @property
-    def kz(self):
+    def pix_to_ht(self):
         dh = self.dh
         premul_1j = self.premul_1j
         xy_ratio = self.xy_ratio
         return (1j * dh * xy_ratio) if premul_1j else dh
+
+    @property
+    def pix_to_t(self):  #   pix_to_t = self.pix_to_t
+        premul_1j = self.premul_1j
+        xy_ratio = self.xy_ratio
+        return (1j * xy_ratio) if premul_1j else 1.
+
+# /!\ Warning of the part with xyratio
+#    @property
+#    def kz(self):
+#        dh = self.dh
+#        premul_1j = self.premul_1j
+#        xy_ratio = self.xy_ratio
+#        return (1j * dh * xy_ratio) if premul_1j else dh
 
 
     def nh(self, fractal):
@@ -269,14 +282,26 @@ class Expmap(Projection):
 
     def nt(self, fractal):
         return fractal.nx if self.premul_1j else fractal.ny
-        
-    def set_exp_zoom_step(self, h_step):
-        """ property used in ``save_db`` with exp_zoom_step set """
-        self._h_step = h_step
-    
+
+    def set_exp_zoom_step(self, exp_step_hmax, exp_step_hmin):
+        # property defined in ``save_db`` with exp_zoom_step set
+        logger.debug(
+                f"set_exp_zoom_step: {exp_step_hmin} {exp_step_hmax}\n"
+                f"for a full range of {self.hmin} {self.hmax}"
+        )
+        self.exp_step_hmax = exp_step_hmax
+        self.exp_step_hmin = exp_step_hmin
+        self.exp_step_hmoy = 0.5 * (exp_step_hmax + exp_step_hmin)
+        self.exp_step_dh = (exp_step_hmax - exp_step_hmin)
+        self.use_step = True
+
     def del_exp_zoom_step(self):
         """ property used in ``save_db`` with exp_zoom_step set """
-        delattr(self, "_h_step")
+#        delattr(self, "exp_step_hmax")
+#        delattr(self, "exp_step_hmin")
+#        delattr(self, "exp_step_hmoy")
+#        delattr(self, "exp_step_dh")
+        self.use_step = False
 
     def adjust_to_zoom(self, fractal):
         # We need to adjust the fractal xy_ratio in order to match hmax - hmin
@@ -287,7 +312,7 @@ class Expmap(Projection):
         else:
             xy_ratio = self.dh / (np.pi * 2.)
             nx = fractal.nx
-    
+
         fractal.xy_ratio = self.xy_ratio = xy_ratio
         fractal.zoom_kwargs["xy_ratio"] = xy_ratio
         fractal.nx = nx
@@ -302,104 +327,111 @@ class Expmap(Projection):
 
 
     def make_f_impl(self):
+        """ apply the full transform """
         hmoy = self.hmoy
-        kz = self.kz
+        pix_to_ht = self.pix_to_ht
 
         @numba.njit(
             numba.complex128(numba.complex128), nogil=True, fastmath=False)
         def numba_impl(z):
-            return np.exp(hmoy + kz * z)
+            return np.exp(hmoy + pix_to_ht * z)
 
         self.f = numba_impl
 
 
     def make_df_impl(self):
+        """ Rotate the derivatives of the transform, according to the options
+        """
         premul_1j = self.premul_1j
-        kz = self.kz
+        pix_to_t = self.pix_to_t
 
         if self.rotates_df:
             @numba.njit(
                 numba.complex128(numba.complex128), nogil=True, fastmath=False)
             def numba_impl(z):
-                return  np.exp(kz * z)
+                if premul_1j:
+                    return np.exp(pix_to_t * z.real)
+                return  np.exp(pix_to_t * z.imag)
 
         else:
             @numba.njit(
                 numba.complex128(numba.complex128), nogil=True, fastmath=False)
             def numba_impl(z):
-                # Todo: adjust np.exp(kz * z.imag) to hmoy_local
-                if premul_1j:
-                    return kz * np.exp(kz * z.imag)
-                return  np.exp(kz * z.real)
+                return 1.
 
         self.df = numba_impl
 
 
     def make_dfBS_impl(self):
-        dh = self.dh
         premul_1j = self.premul_1j
+        pix_to_t = self.pix_to_t
 
         if self.rotates_df:
             @numba.njit(nogil=True, fastmath=False)
             def numba_impl(z):
                 if premul_1j:
-                    zhr = dh * z.imag
-                    zhi = dh * z.real
+#                    zhr = z.imag
+                    zhi = pix_to_t * z.real
                 else:
-                    zhr = dh * z.real
-                    zhi = dh * z.imag
-                r = np.exp(zhr)
-                cr = np.cos(zhi) * r
-                sr = np.sin(zhi) * r
+#                    zhr = z.real
+                    zhi = pix_to_t * z.imag
+#                r = np.exp(zhr)
+                c = np.cos(zhi)
+                s = np.sin(zhi)
                 if premul_1j:
-                    return -sr, -cr, cr, -sr
+                    return -s, -c, c, -s
                 else:
-                    return cr, -sr, sr, cr
+                    return c, -s, s, c
 
         else:
             @numba.njit(nogil=True, fastmath=False)
             def numba_impl(z):
-                
-                if premul_1j:
-                    zhr = dh * z.imag
-                else:
-                    zhr = dh * z.real
-                r = np.exp(zhr) # TODO : should be zhr + (zmoy - zmoy_local)
+#                if premul_1j:
+#                    zhr = dh * z.imag
+#                else:
+#                    zhr = dh * z.real
+#                r = np.exp(zhr) # TODO : should be zhr + (zmoy - zmoy_local)
 #                if premul_1j:
 #                    return  0., -r, r, 0.
                 if premul_1j:
-                    return  0., -r, r, 0.
+                    return  0., -1., 1., 0.
                 else:
-                    return  r, 0., 0., r
+                    return  1., 0., 0., 1.
 
         self.dfBS = numba_impl
 
     @property
-    def scale_mpf(self):
+    def scale(self):
+        """ The scaling factor applied to derivative iteration """
+        if self.use_step:
+            return mpmath.exp(self.exp_step_hmoy)
         return mpmath.exp(self.hmoy)
 
-    @property
-    def scale(self):
-        # Returns the scaling - for perturbation implementation
-        return mpmath.exp(self.hmoy)
+#    @property
+#    def scale(self):
+#        # Returns the scaling - for perturbation implementation
+#        return mpmath.exp(self.hmoy)
 
     def bounding_box(self, xy_ratio):
-        # Returns a bounding box - for perturbation implementation only
-        # proj_dx = self.dx * self.projection.scale
-        # corner_a = lin_proj_impl_noscale(0.5 * (w + 1j * h)) * proj_dx
-        # corner_a is absolute the distance to center
-        if hasattr(self, "_h_step"):
-            print("******* BOUNDING BOX with _h_step", self._h_step)
-            wh = 0.5 * self.dh + (self._h_step - self.hmax)
+        """
+        This is the scaling of the bounding box for this calculation step
+        ie either the whole image or the current exmpap step sub-image.
+        """
+        if self.use_step:
+            print("******* BOUNDING BOX with hstep_max", self.exp_step_hmax)
+            wh = self.exp_step_hmax
         else:
-            wh = 0.5 * self.dh
+            wh = self.hmax
 
-        w = np.exp(wh) # TODO here could use a mpf mpmath.exp(wh)
+        w = mpmath.exp(wh)
         return w, w
 
     @property
     def min_local_scale(self):
-        return  np.exp(-0.5 * self.dh)
+        """ This is the scaling of the minimum pixel due to the projection
+        for the *whole* image (accumulated by steps if activated)
+        """
+        return mpmath.exp(self.hmin)
 
 
 #============================================================================== 
