@@ -5,6 +5,7 @@ import pickle
 #import warnings
 import logging
 import textwrap
+import copy
 
 import mpmath
 import numpy as np
@@ -325,6 +326,12 @@ directory : str
         """
         FP_params = self.FP_params
         Zn_path = self.Zn_path
+        
+        # Zn_path shall be adapted (cycle order, derivatives) in case of
+        # large projection Expmap
+        proj = self.projection
+        if isinstance(self.projection, fs.projection.Expmap):
+            FP_params, Zn_path = self.adapt_to_proj(FP_params, Zn_path, proj)
 
         ref_xr_python = FP_params["xr"]
         has_xr = (len(ref_xr_python) > 0)
@@ -379,6 +386,35 @@ directory : str
                     ref_div_iter, ref_order, driftx_xr, drifty_xr,
                     dx_xr)
 
+    def adapt_to_proj(self, FP_params, Zn_path, proj):
+        """ The full precision orbit has been calculated with maximum depth and
+        might need to be wrapped earlier for large unzooming factor (mostly,
+        to ensure the precision of derivative calculation)
+        """
+        return FP_params, Zn_path
+        # DEBUG
+        FP_params = copy.copy(FP_params)
+        print("old FP_params", FP_params)
+        print("Zn_path", Zn_path.dtype, "\n", len(Zn_path))
+        print("partials", FP_params["partials"])
+        pix = proj.min_step_scale * self.dx / self.nx
+        target = 0.001 * pix
+        print("********  target", target)
+        
+        for partial in FP_params["partials"]:
+            if partial in FP_params["xr"].keys():
+                value = FP_params["xr"][partial]
+            else:
+                value = Zn_path[partial]
+            if np.abs(value) < target:
+                print(">>>>>>>>>>>>>>>>>>>> found wrap @", partial, value)
+            FP_params["order"] = partial
+            FP_params["ref_orbit_len"] = partial
+            break
+        
+        print("new FP_params", FP_params)
+        raise RuntimeError()
+        return FP_params, Zn_path
 
 #==============================================================================
 # Printing - export functions
@@ -456,19 +492,20 @@ directory : str
             (Zn_path, has_xr, ref_index_xr, refx_xr, refy_xr,
              ref_div_iter, ref_order, driftx_xr, drifty_xr,
              dx_xr) = self.get_path_data()
+
         if ref_order is None:
             ref_order = (1 << 62) # a quite large int64
         self.set_status("Reference", "completed")
 
         # 2) compute the orbit derivatives if needed
         # Note: this is where the "scale" of the derivative is chosen
-
+        scale_deriv_xr = dx_xr
         if self.projection.scale != 1.:
             # If there is a projection-induced scale, we need to use it here.
             scale_xr = fsx.mpf_to_Xrange(
                 self.projection.scale, dtype=self.float_type
             ).ravel()
-            dx_xr = dx_xr * scale_xr
+            scale_deriv_xr = dx_xr * scale_xr
             logger.debug(f"Derivative ref scale set at: {dx_xr}")
             
 
@@ -482,7 +519,7 @@ directory : str
                 dZndc_path, dZndc_xr_path = numba_dZndc_path(
                     Zn_path, has_xr, ref_index_xr, ref_xr,
                     ref_div_iter, ref_order,
-                    self.dfdz, dx_xr, xr_detect_activated
+                    self.dfdz, scale_deriv_xr, xr_detect_activated
                 )
                 if xr_detect_activated:
                     dZndc_path = dZndc_xr_path
@@ -494,7 +531,7 @@ directory : str
                     Zn_path, has_xr, ref_index_xr, refx_xr, refy_xr,
                     ref_div_iter, ref_order,
                     self.dfxdx, self.dfxdy, self.dfydx, self.dfydy,
-                    dx_xr, xr_detect_activated #, self.reverse_y
+                    scale_deriv_xr, xr_detect_activated #, self.reverse_y
                 )
                 if xr_detect_activated:
                     dXnda_path = dXnda_xr_path
@@ -565,8 +602,10 @@ directory : str
 
     def reset_bla_tree(self, cycle_indep_args):
         """ 
-        Returns a new cycle_indep_args with modified of BLA validaty radius for
-        expmap zooms
+        Returns a new cycle_indep_args with modification of:
+            - BLA validaty radius
+            - derivative scaling (dZndc_path)
+        for deep expmap zooms
 
         cycle_indep_args : the data to modify in place
         Note: the fractal projection shall have been modified through
@@ -1029,7 +1068,7 @@ def numba_cycles_perturb(
     n_iter:
         current iteration
     """
-    print(">>>>>>>>>>>>>>>>>>>>>>>>>>>> IN numba_cycles_perturb with dxr", dx_xr)
+
     nz, npts = Z.shape
     Z_xr = Xr_template.repeat(nz)
     Z_xr_trigger = np.ones((nz,), dtype=np.bool_)
@@ -1103,6 +1142,8 @@ def numba_iterate(
         Z, Z_xr: idem for result vector Z
         Z_xr_trigger : bolean, activated when Z_xr need to be used
         """
+
+        
         w_iter = 0
         n_iter = 0
         if w_iter >= ref_order:
@@ -1126,6 +1167,9 @@ def numba_iterate(
         ref_orbit_len = Zn_path.shape[0]
         first_invalid_index = min(ref_orbit_len, ref_div_iter, ref_order)
         M_out = np.empty((2,), dtype=np.complex128)
+
+        # Index to keep track if we use the wraped index of dzndc
+        bool_dyn_rebase = False
 
         while True:
             #==========================================================
@@ -1185,7 +1229,9 @@ def numba_iterate(
             #------------------------------------------------------------------
             # dzndc subblock
             if calc_dzndc:
-                ref_dzndc = dZndc_path[w_iter] # This may be Xrange
+                ref_dzndc = dZndc_path[w_iter]
+                if bool_dyn_rebase or n_iter == 1: # Avoid wraped value at 0
+                    ref_dzndc = ref_dzndc * 0.     # This may be Xrange
                 if xr_detect_activated:
                     p_iter_dzndc(Z_xr, ref_zn_xr, ref_dzndc)
                 else:
@@ -1214,7 +1260,7 @@ def numba_iterate(
                 Z[zn] = fsxn.to_standard(Z_xr[zn])
             else:
                 p_iter_zn(Z, ref_zn, c)
-                
+
             # Increment w_iter just before the stopping conditions
             w_iter += 1
             if w_iter >= ref_order:
@@ -1344,12 +1390,11 @@ def numba_iterate(
                     if bool_dyn_rebase_xr:
                         
                         Z_xr[zn] = ZZ_xr
-                        # /!\ keep this, needed for next BLA step - TODO: for BS
+                        # /!\ keep this, needed for next BLA step
                         Z[zn] = fsxn.to_standard(ZZ_xr)
                         if calc_dzndc:
                             Z_xr[dzndc] = (
                                 Z_xr[dzndc] + dZndc_path[w_iter]
-                                - dZndc_path[0]
                             )
                         if calc_dzndz:
                             if not(nullify_dZndz):
@@ -1367,8 +1412,7 @@ def numba_iterate(
                     # No risk of underflow - safe to rebase
                     Z[zn] = ZZ
                     if calc_dzndc:
-                        # It is a cycle, we substract the first item
-                        Z[dzndc] += dZndc_path[w_iter] - dZndc_path[0]
+                        Z[dzndc] += dZndc_path[w_iter]
                     if calc_dzndz:
                         if not(nullify_dZndz):
                             if n_iter == ref_order:
@@ -1385,11 +1429,12 @@ def numba_iterate(
 
         if xr_detect_activated:
             Z[zn] = fsxn.to_standard(Z_xr[zn]) + Zn_path[w_iter]
-            if calc_dzndc:
+            if calc_dzndc: # and n_iter > 1:
                 Z[dzndc] = fsxn.to_standard(Z_xr[dzndc] + dZndc_path[w_iter])
         else:
             Z[zn] += Zn_path[w_iter]
-            if calc_dzndc:
+            if calc_dzndc:  # and n_iter > 1:
+                # if n_iter != 1:
                 Z[dzndc] += dZndc_path[w_iter]
         
         if calc_orbit: # Finalizing the orbit
@@ -1454,10 +1499,6 @@ def numba_cycles_perturb_BS(
     return 0
 
 
-
-#                calc_orbit, i_xnorbit, i_ynorbit, backshift, xn, yn,
-#                iterate_once, xnyn_iterate
-
 def numba_initialize_BS(xn, yn, dxnda, dxndb, dynda, dyndb):
     @numba.njit
     def numba_init_impl(Z, Z_xr):
@@ -1518,6 +1559,9 @@ def numba_iterate_BS(
         ref_orbit_len = Zn_path.shape[0]
         first_invalid_index = min(ref_orbit_len, ref_div_iter, ref_order)
         M_out = np.empty((8,), dtype=np.float64)
+        
+        # Index to keep track if we use the wraped index of dzndc
+        bool_dyn_rebase = False
 
         while True:
             #==========================================================
@@ -1576,6 +1620,13 @@ def numba_iterate_BS(
                 ref_dxndb = dXndb_path[w_iter]
                 ref_dynda = dYnda_path[w_iter]
                 ref_dyndb = dYndb_path[w_iter]
+
+                if bool_dyn_rebase or n_iter == 1: # Avoid the wraped value at 0
+                    ref_dxnda = ref_dxnda * 0.     # This may be Xrange
+                    ref_dxndb = ref_dxndb * 0.     # This may be Xrange
+                    ref_dynda = ref_dynda * 0.     # This may be Xrange
+                    ref_dyndb = ref_dyndb * 0.     # This may be Xrange
+
                 if xr_detect_activated:
                     p_iter_hessian(
                         Z_xr, ref_xn_xr, ref_yn_xr,
@@ -1706,20 +1757,16 @@ def numba_iterate_BS(
 
                         if calc_hessian:
                             Z_xr[dxnda] = (
-                                Z_xr[dxnda]
-                                + dXnda_path[w_iter] - dXnda_path[0]
+                                Z_xr[dxnda] + dXnda_path[w_iter]
                             )
                             Z_xr[dxndb] = (
-                                Z_xr[dxndb]
-                                + dXndb_path[w_iter] - dXndb_path[0]
+                                Z_xr[dxndb] + dXndb_path[w_iter]
                             )
                             Z_xr[dynda] = (
-                                Z_xr[dynda]
-                                + dYnda_path[w_iter] - dYnda_path[0]
+                                Z_xr[dynda] + dYnda_path[w_iter]
                             )
                             Z_xr[dyndb] = (
-                                Z_xr[dyndb]
-                                + dYndb_path[w_iter] - dYndb_path[0]
+                                Z_xr[dyndb] + dYndb_path[w_iter]
                             )
                         w_iter = 0
                         continue
@@ -1728,12 +1775,10 @@ def numba_iterate_BS(
                     Z[xn] = XX
                     Z[yn] = YY
                     if calc_hessian:
-                        # Here we need to substract the first item (as it could 
-                        # possibly be a cycle)
-                        Z[dxnda] += dXnda_path[w_iter] - dXnda_path[0]
-                        Z[dxndb] += dXndb_path[w_iter] - dXndb_path[0]
-                        Z[dynda] += dYnda_path[w_iter] - dYnda_path[0]
-                        Z[dyndb] += dYndb_path[w_iter] - dYndb_path[0]
+                        Z[dxnda] += dXnda_path[w_iter]
+                        Z[dxndb] += dXndb_path[w_iter]
+                        Z[dynda] += dYnda_path[w_iter]
+                        Z[dyndb] += dYndb_path[w_iter]
                     w_iter = 0
                     continue
 
@@ -1764,7 +1809,6 @@ def numba_iterate_BS(
                 Z[dyndb] += dYndb_path[w_iter]
 
         if calc_orbit: # Finalizing the orbit
-#            CC = c + Zn_path[1]
             xn_orbit = orbit_xn2
             yn_orbit = orbit_yn2
             AA = a + np.real(Zn_path[1])
@@ -2273,15 +2317,21 @@ def ref_path_c_from_pix_BS(
 
 @numba.njit(nogil=True, cache=True)
 def numba_dZndc_path(Zn_path, has_xr, ref_index_xr, ref_xr,
-                    ref_div_iter, ref_order, dfdz, dx_xr, xr_detect_activated):
+                    ref_div_iter, ref_order, dfdz,
+                    scale_deriv_xr, xr_detect_activated):
     """
     Compute dZndc in Xr, or std precision, depending on xr_detect_activated
     """
+    # Development note: the dx_xr which is imposed at each step
+    # imposes the deivative scaling
+    print("####################>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<############")
+    print("rerun numba_dZndc_path with scale", scale_deriv_xr)
     ref_orbit_len = Zn_path.shape[0]
     valid_pts = min(ref_orbit_len, ref_div_iter)
 
     xr_act = xr_detect_activated
-    dx = fsxn.to_standard(dx_xr[0])
+    # dx = fsxn.to_standard(dx_xr[0])
+    scale_deriv = fsxn.to_standard(scale_deriv_xr[0])
 
     if xr_act:
         dZndc_path = np.zeros((1,), dtype=numba.complex128) # dummy
@@ -2298,7 +2348,7 @@ def numba_dZndc_path(Zn_path, has_xr, ref_index_xr, ref_xr,
                 out_is_xr, out_xr, 0
             )
             ref_zn_xr = ensure_xr(ref_zn, out_xr[0], out_is_xr[0])
-            dZndc_xr_path[i] = dfdz(ref_zn_xr) * dZndc_xr_path[i - 1] + dx_xr[0]
+            dZndc_xr_path[i] = dfdz(ref_zn_xr) * dZndc_xr_path[i - 1] + scale_deriv_xr[0] 
 
         if (i == ref_order - 1):
             # /!\ We have a cycle, use the "wrapped" value at 0
@@ -2309,17 +2359,23 @@ def numba_dZndc_path(Zn_path, has_xr, ref_index_xr, ref_xr,
                 out_is_xr, out_xr, 0
             )
             ref_zn_xr = ensure_xr(ref_zn, out_xr[0], out_is_xr[0])
-            dZndc_xr_path[0] = dfdz(Zn_path[i]) * dZndc_xr_path[i] + dx_xr[0]
+            dZndc_xr_path[0] = dfdz(Zn_path[i]) * dZndc_xr_path[i] + scale_deriv_xr[0] # Note: the wraped is [0] !!
 
     else:
         dZndc_path = np.zeros((ref_orbit_len,), dtype=numba.complex128)
         dZndc_xr_path = Xr_template.repeat(1) # dummy
         for i in range(1, valid_pts):
-            dZndc_path[i] = dfdz(Zn_path[i - 1]) * dZndc_path[i - 1] + dx
+            dZndc_path[i] = dfdz(Zn_path[i - 1]) * dZndc_path[i - 1] + scale_deriv
         if (i == ref_order - 1):
             # /!\ We have a cycle, use the "wrapped" value at 0
             # Note that this value will be used... a lot !
-            dZndc_path[0] = dfdz(Zn_path[i]) * dZndc_path[i] + dx
+            dZndc_path[0] = dfdz(Zn_path[i]) * dZndc_path[i] + scale_deriv # Note: the wraped is [0] !!
+
+    # DEBUG
+    print("dZndc_path >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+    for i in range(min(valid_pts, 100)):
+        print(i, ":", dZndc_path[i])
+    print("end dZndc_path >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
     return dZndc_path, dZndc_xr_path
 
@@ -2327,14 +2383,14 @@ def numba_dZndc_path(Zn_path, has_xr, ref_index_xr, ref_xr,
 @numba.njit(nogil=True, cache=True)
 def numba_dZndc_path_BS(Zn_path, has_xr, ref_index_xr, refx_xr, refy_xr,
                     ref_div_iter, ref_order, dfxdx, dfxdy, dfydx, dfydy,
-                    dx_xr, xr_detect_activated):
+                    scale_deriv_xr, xr_detect_activated):
     """
     Compute dXndb, dXnda, dYnda , dYndb in Xr, or std precision, depending on
     xr_detect_activated
     """
     ref_orbit_len = Zn_path.shape[0]
     valid_pts = min(ref_orbit_len, ref_div_iter)
-    dx = fsxn.to_standard(dx_xr[0])
+    scale_deriv = fsxn.to_standard(scale_deriv_xr[0])
 
     if xr_detect_activated:
         dXnda_path = np.zeros((1,), dtype=numba.float64) # dummy
@@ -2363,7 +2419,7 @@ def numba_dZndc_path_BS(Zn_path, has_xr, ref_index_xr, refx_xr, refy_xr,
             )
             incr_deriv_ref_BS(
                 dXnda_xr_path, dXndb_xr_path, dYnda_xr_path, dYndb_xr_path,
-                from_i, to_i, dx_xr[0],
+                from_i, to_i, scale_deriv_xr[0],
                 ref_xn_xr, ref_yn_xr, dfxdx, dfxdy, dfydx, dfydy
             )
 
@@ -2382,7 +2438,7 @@ def numba_dZndc_path_BS(Zn_path, has_xr, ref_index_xr, refx_xr, refy_xr,
             )
             incr_deriv_ref_BS(
                 dXnda_xr_path, dXndb_xr_path, dYnda_xr_path, dYndb_xr_path,
-                from_i, to_i, dx_xr[0],
+                from_i, to_i, scale_deriv_xr[0],
                 ref_xn_xr, ref_yn_xr, dfxdx, dfxdy, dfydx, dfydy
             )
 
@@ -2403,7 +2459,7 @@ def numba_dZndc_path_BS(Zn_path, has_xr, ref_index_xr, refx_xr, refy_xr,
             Yn = np.imag(Zn_path[from_i]) #.imag
             incr_deriv_ref_BS(
                 dXnda_path, dXndb_path, dYnda_path, dYndb_path,
-                from_i, to_i, dx,
+                from_i, to_i, scale_deriv,
                 Xn, Yn, dfxdx, dfxdy, dfydx, dfydy
             )
 
@@ -2416,7 +2472,7 @@ def numba_dZndc_path_BS(Zn_path, has_xr, ref_index_xr, refx_xr, refy_xr,
             Yn = np.imag(Zn_path[from_i]) #.imag
             incr_deriv_ref_BS(
                 dXnda_path, dXndb_path, dYnda_path, dYndb_path,
-                from_i, to_i, dx,
+                from_i, to_i, scale_deriv,
                 Xn, Yn, dfxdx, dfxdy, dfydx, dfydy
             )
 
