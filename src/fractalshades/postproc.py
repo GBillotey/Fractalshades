@@ -241,7 +241,6 @@ class Raw_pp(Postproc):
         calc_name = self.calc_name
         func = self.func
         key = self.key
-        # (params, codes) = fractal.reload_params(calc_name)
         codes = fractal._calc_data[calc_name]["saved_codes"]
         (chunk_mask, c_pix, Z, U, stop_reason, stop_iter, complex_dic,
          int_dic, termination_dic) = self.raw_data[chunk_slice]
@@ -574,8 +573,6 @@ class DEM_normal_pp(Postproc):
         """  Returns the normal as a complex (x, y, 1) is the normal vec
         """
         potential_dic = self.ensure_context(chunk_slice, "potential_dic")
-#        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-#         termination_dic) = self.raw_data[chunk_slice]
         (chunk_mask, c_pix, Z, U, stop_reason, stop_iter, complex_dic,
          int_dic, termination_dic) = self.raw_data[chunk_slice]
         zn = self.get_zn(Z, complex_dic) #["zn"], :]
@@ -627,7 +624,6 @@ class DEM_normal_pp(Postproc):
             fs.core.apply_unskew_1d(skew, nx, ny)
 
         normal = normal / np.abs(normal)
-#        angle = np.exp(1jnp.angle(normal)
 
         return normal, None
 
@@ -688,8 +684,6 @@ class DEM_pp(Postproc):
     def __getitem__(self, chunk_slice):
         """  Returns the DEM - """
         potential_dic = self.ensure_context(chunk_slice,"potential_dic")
-#        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-#         termination_dic) = self.raw_data[chunk_slice]
         (chunk_mask, c_pix, Z, U, stop_reason, stop_iter, complex_dic,
          int_dic, termination_dic) = self.raw_data[chunk_slice]
 
@@ -718,11 +712,6 @@ class DEM_pp(Postproc):
             def nan_frac(arr):
                 return np.count_nonzero(np.isnan(arr)) / len(arr)
 
-            print(">> abs_dzndc MEAN in potential", np.nanmean(abs_dzndc), "nan frac", nan_frac(abs_dzndc))
-            print(">> abs_zn MEAN in potential", np.nanmean(abs_zn), "nan frac", nan_frac(abs_zn))
-            
-            
-            
             val = abs_zn * np.log(abs_zn) / abs_dzndc
 
         elif potential_dic["kind"] == "convergent":
@@ -774,8 +763,6 @@ class Attr_normal_pp(Postproc):
     def __getitem__(self, chunk_slice):
         """  Returns the normal as a complex (x, y, 1) is the normal vec
         """
-#        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-#         termination_dic) = self.raw_data[chunk_slice]
         (chunk_mask, c_pix, Z, U, stop_reason, stop_iter, complex_dic,
          int_dic, termination_dic) = self.raw_data[chunk_slice]
         attr = np.copy(Z[complex_dic["attractivity"], :])
@@ -825,8 +812,6 @@ class Attr_pp(Postproc):
     def __getitem__(self, chunk_slice):
         """  Returns the normal as a complex (x, y, 1) is the normal vec
         """
-#        (chunk_mask, c_pt, Z, U, stop_reason, stop_iter, complex_dic, int_dic,
-#         termination_dic) = self.raw_data[chunk_slice]
         (chunk_mask, c_pix, Z, U, stop_reason, stop_iter, complex_dic,
          int_dic, termination_dic) = self.raw_data[chunk_slice]
         # Plotting the 'domed' height map for the cycle attractivity
@@ -1105,10 +1090,6 @@ def Fieldlines_pp_infinity(
 
     return val
 
-#def Fieldlines_pp_infinity_BS(
-#                    c_pt, xn, yn, nu_frac, k_arr, phi_arr, xnyn_iterate,
-#                    is_backward, backshift, n
-#                )
 
 @numba.njit(nogil=True, fastmath=True)
 def Fieldlines_pp_infinity_BS(

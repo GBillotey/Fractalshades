@@ -428,10 +428,10 @@ class Custom_sequence(Sequence):
         """ Returns the ith-frame as a PIL.Image object """
         t = self.tmin + self.dt * iframe / self.nframe
 
-        print(f">>>> Computing frame {iframe} for t {t}")
-        
+        logger.info(f">>>> Computing custom frame {iframe} for t {t}")
+
         plotter, layer_postname = self.plotter_from_time(t)
-        
+
         im_layer = None
         for i, layer in enumerate(plotter.layers):
             if layer.postname == layer_postname:

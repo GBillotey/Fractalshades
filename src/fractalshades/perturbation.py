@@ -326,12 +326,6 @@ directory : str
         """
         FP_params = self.FP_params
         Zn_path = self.Zn_path
-        
-        # Zn_path shall be adapted (cycle order, derivatives) in case of
-        # large projection Expmap
-        proj = self.projection
-        if isinstance(self.projection, fs.projection.Expmap):
-            FP_params, Zn_path = self.adapt_to_proj(FP_params, Zn_path, proj)
 
         ref_xr_python = FP_params["xr"]
         has_xr = (len(ref_xr_python) > 0)
@@ -386,35 +380,6 @@ directory : str
                     ref_div_iter, ref_order, driftx_xr, drifty_xr,
                     dx_xr)
 
-    def adapt_to_proj(self, FP_params, Zn_path, proj):
-        """ The full precision orbit has been calculated with maximum depth and
-        might need to be wrapped earlier for large unzooming factor (mostly,
-        to ensure the precision of derivative calculation)
-        """
-        return FP_params, Zn_path
-        # DEBUG
-        FP_params = copy.copy(FP_params)
-        print("old FP_params", FP_params)
-        print("Zn_path", Zn_path.dtype, "\n", len(Zn_path))
-        print("partials", FP_params["partials"])
-        pix = proj.min_step_scale * self.dx / self.nx
-        target = 0.001 * pix
-        print("********  target", target)
-        
-        for partial in FP_params["partials"]:
-            if partial in FP_params["xr"].keys():
-                value = FP_params["xr"][partial]
-            else:
-                value = Zn_path[partial]
-            if np.abs(value) < target:
-                print(">>>>>>>>>>>>>>>>>>>> found wrap @", partial, value)
-            FP_params["order"] = partial
-            FP_params["ref_orbit_len"] = partial
-            break
-        
-        print("new FP_params", FP_params)
-        raise RuntimeError()
-        return FP_params, Zn_path
 
 #==============================================================================
 # Printing - export functions
@@ -575,6 +540,7 @@ directory : str
             M_bla, r_bla, bla_len, stages_bla = self.get_BLA_tree(Zn_path, eps)
             self.set_status("Bilin. approx", "completed")   
 
+        proj_dzndc_modifier = getattr(self.projection, "dzndc_modifier", None)
 
         if holomorphic:
             cycle_indep_args = (
@@ -584,6 +550,7 @@ directory : str
                 has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
                 drift_xr, dx_xr, self.proj_impl, self.lin_mat, self.lin_scale_xr,
                 kc, M_bla, r_bla, bla_len, stages_bla,
+                proj_dzndc_modifier,
                 self._interrupted
             )
         else:
@@ -594,6 +561,7 @@ directory : str
                 has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
                 driftx_xr, drifty_xr, dx_xr, self.proj_impl, self.lin_mat, self.lin_scale_xr,
                 kc, M_bla, r_bla, bla_len, stages_bla,
+                proj_dzndc_modifier,
                 self._interrupted
             )
 
@@ -616,27 +584,7 @@ directory : str
         initialize = cycle_indep_args[1]
         iterate = cycle_indep_args[2]
         return self.get_cycle_indep_args(initialize, iterate)
-        
-#        
-#        
-#        if self.BLA_eps is None:
-#            return
-#
-#        Zn_path = self.Zn_path
-#        self.kc = self.ref_point_kc() # We resets kc taking into account a
-#                                      # partial expmap range
-#
-#        BLA_params = self.get_BLA_tree(Zn_path, self.BLA_eps)
-#        span = (17, 21) if self.holomorphic else (21, 25)
-#
-#        cycle_indep_args = (
-#            cycle_indep_args[:span[0]]
-#            + BLA_params
-#            + cycle_indep_args[span[1]:]
-#        )
-#
-#        logger.debug(f"BLA tree reset with kc: {self.kc }")
-#        return cycle_indep_args
+
 
 
     def fingerprint_matching(self, calc_name, test_fingerprint, log=False):
@@ -1049,9 +997,9 @@ def numba_cycles_perturb(
     initialize, iterate,
     Zn_path, dZndc_path, dZndz_path,
     has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
-    # drift_xr, dx_xr, proj_impl, lin_proj_impl,
     drift_xr, dx_xr, proj_impl, lin_mat, lin_scale_xr,
-    kc, M_bla, r_bla, bla_len, stages_bla, # suppressed  P, n_iter_init
+    kc, M_bla, r_bla, bla_len, stages_bla,
+    proj_dzndc_modifier,
     _interrupted
 ):
     """
@@ -1091,7 +1039,8 @@ def numba_cycles_perturb(
         n_iter = iterate(
             cpt, c_xr, Zpt, Z_xr, Z_xr_trigger, Upt, stop_pt, # n_iter_init,
             Zn_path, dZndc_path, dZndz_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
-            refpath_ptr, out_is_xr, out_xr, M_bla, r_bla, bla_len, stages_bla
+            refpath_ptr, out_is_xr, out_xr, M_bla, r_bla, bla_len, stages_bla,
+            proj_dzndc_modifier, c_pix[ipt]
         )
         stop_iter[0, ipt] = n_iter
         stop_reason[0, ipt] = stop_pt[0]
@@ -1133,7 +1082,8 @@ def numba_iterate(
     def numba_impl(
         c, c_xr, Z, Z_xr, Z_xr_trigger, U, stop,
         Zn_path, dZndc_path, dZndz_path, has_xr, ref_index_xr, ref_xr, ref_div_iter, ref_order,
-        refpath_ptr, out_is_xr, out_xr, M_bla, r_bla, bla_len, stages_bla
+        refpath_ptr, out_is_xr, out_xr, M_bla, r_bla, bla_len, stages_bla,
+        proj_dzndc_modifier, c_pix
     ):
         """
         Parameters
@@ -1437,6 +1387,9 @@ def numba_iterate(
                 # if n_iter != 1:
                 Z[dzndc] += dZndc_path[w_iter]
         
+        if proj_dzndc_modifier is not None:
+            Z[dzndc] *= proj_dzndc_modifier(c_pix)
+        
         if calc_orbit: # Finalizing the orbit
             zn_orbit = orbit_zn2
             CC = c + Zn_path[1]
@@ -1461,6 +1414,7 @@ def numba_cycles_perturb_BS(
     has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
     driftx_xr, drifty_xr, dx_xr, proj_impl, lin_mat, lin_scale_xr,
     kc, M_bla, r_bla, bla_len, stages_bla, # suppressed P, n_iter_init
+    proj_dzndc_modifier,
     _interrupted
 ):
 
@@ -1489,7 +1443,8 @@ def numba_cycles_perturb_BS(
             Upt, stop_pt, # suppressed n_iter_init
             Zn_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
             has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
-            refpath_ptr, out_is_xr, out_xr, M_bla, r_bla, bla_len, stages_bla
+            refpath_ptr, out_is_xr, out_xr, M_bla, r_bla, bla_len, stages_bla,
+            proj_dzndc_modifier
         )
         stop_iter[0, ipt] = n_iter
         stop_reason[0, ipt] = stop_pt[0]
@@ -1528,7 +1483,8 @@ def numba_iterate_BS(
         U, stop,
         Zn_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
         has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
-        refpath_ptr, out_is_xr, out_xr, M_bla, r_bla, bla_len, stages_bla
+        refpath_ptr, out_is_xr, out_xr, M_bla, r_bla, bla_len, stages_bla,
+        proj_dzndc_modifier
     ):
         """
         Parameters
@@ -2189,19 +2145,16 @@ def ref_BLA_get(M_bla, r_bla, bla_len, stages_bla, zn, n_iter,
         # /!\ Use strict comparisons here: to rule out underflow
         if (abs(zn) < r):
             if holomorphic:
-                    # TODO !!!
                 loc = 2 * index_bla
                 M_out[0] = M_bla[loc]
                 M_out[1] = M_bla[loc + 1]
-#                M_out[0] = M_bla[index_bla]
-#                M_out[1] = M_bla[index_bla + bla_len]
+
                 return step
             else:
                 for i in range(8):
-                    # TODO !!!
                     loc = 8 * index_bla
                     M_out[i] = M_bla[loc + i]
-#                    M_out[i] = M_bla[index_bla + i * bla_len]
+
                 return step
     return 0 # No BLA applicable
 
@@ -2324,8 +2277,6 @@ def numba_dZndc_path(Zn_path, has_xr, ref_index_xr, ref_xr,
     """
     # Development note: the dx_xr which is imposed at each step
     # imposes the deivative scaling
-    print("####################>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<############")
-    print("rerun numba_dZndc_path with scale", scale_deriv_xr)
     ref_orbit_len = Zn_path.shape[0]
     valid_pts = min(ref_orbit_len, ref_div_iter)
 
@@ -2370,12 +2321,6 @@ def numba_dZndc_path(Zn_path, has_xr, ref_index_xr, ref_xr,
             # /!\ We have a cycle, use the "wrapped" value at 0
             # Note that this value will be used... a lot !
             dZndc_path[0] = dfdz(Zn_path[i]) * dZndc_path[i] + scale_deriv # Note: the wraped is [0] !!
-
-    # DEBUG
-    print("dZndc_path >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-    for i in range(min(valid_pts, 100)):
-        print(i, ":", dZndc_path[i])
-    print("end dZndc_path >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
     return dZndc_path, dZndc_xr_path
 

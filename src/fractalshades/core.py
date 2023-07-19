@@ -2029,7 +2029,9 @@ advanced users when subclassing.
     @staticmethod
     def numba_cycle_call(cycle_dep_args, cycle_indep_args):
         # Just a thin wrapper to allow customization in derived classes
-        return numba_cycles(*cycle_dep_args, *cycle_indep_args)
+        ret_code = numba_cycles(*cycle_dep_args, *cycle_indep_args)
+        
+        return ret_code
 
     def get_cycle_indep_args(self, initialize, iterate):
         """
@@ -2037,6 +2039,8 @@ advanced users when subclassing.
         This is just a diggest of the zoom and calculation parameters
         """
         center = self.x + 1j * self.y
+        # proj_dzndc_modifier = getattr(self.projection, "dzndc_modifier", None)
+
         return (
             initialize, iterate,
             center, self.proj_impl, self.lin_mat, self.dx,
@@ -2955,7 +2959,6 @@ def numba_cycles(
 
         initialize(Zpt, Upt, cpt)
         n_iter = iterate(
-            # Zpt, Upt, cpt, stop_pt, 0,
             cpt, Zpt, Upt, stop_pt
         )
         stop_iter[0, ipt] = n_iter

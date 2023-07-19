@@ -239,6 +239,7 @@ class Expmap(Projection):
                 "Provide hmin, hmax with:  0 <= hmin < hmax for Expmap"
             )
         self.use_step = False
+        self.numba_step_implemented = False
         self.rotates_df = rotates_df
         self.orientation = orientation
         self.premul_1j = {"horizontal": False, "vertical": True}[orientation]
@@ -271,22 +272,6 @@ class Expmap(Projection):
         xy_ratio = self.xy_ratio
         return (1j * dh * xy_ratio) if premul_1j else dh
 
-#    @property
-#    def pix_to_t(self):  #   pix_to_t = self.pix_to_t
-#        premul_1j = self.premul_1j
-#        xy_ratio = self.xy_ratio
-#        return (1j * xy_ratio) if premul_1j else 1.
-
-# /!\ Warning of the part with xyratio
-#    @property
-#    def kz(self):
-#        dh = self.dh
-#        premul_1j = self.premul_1j
-#        xy_ratio = self.xy_ratio
-#        return (1j * dh * xy_ratio) if premul_1j else dh
-
-
-
 
     def set_exp_zoom_step(self, exp_step_hmax, exp_step_hmin):
         # property defined in ``save_db`` with exp_zoom_step set
@@ -300,9 +285,16 @@ class Expmap(Projection):
         self.exp_step_dh = (exp_step_hmax - exp_step_hmin)
         self.use_step = True
 
+        self.make_dzndc_modifier()
+        if not(self.numba_step_implemented):
+            self.make_df_impl()
+            self.make_dfBS_impl()
+
     def del_exp_zoom_step(self):
         """ property used in ``save_db`` with exp_zoom_step set """
         self.use_step = False
+        self.make_df_impl()
+        self.make_dfBS_impl()
 
     def adjust_to_zoom(self, fractal):
         # We need to adjust the fractal xy_ratio in order to match hmax - hmin
@@ -325,6 +317,7 @@ class Expmap(Projection):
             f"zoom parameter xy_ratio: {fractal.xy_ratio}"
         )
         self.make_impl()
+        self.make_dzndc_modifier()
 
 
     def make_f_impl(self):
@@ -332,92 +325,115 @@ class Expmap(Projection):
         hmoy = self.hmoy
         pix_to_ht = self.pix_to_ht
 
-        @numba.njit(
-            numba.complex128(numba.complex128), nogil=True, fastmath=False)
-        def numba_impl(z):
-            return np.exp(hmoy + pix_to_ht * z)
+        @numba.njit(nogil=True, fastmath=False)
+        def numba_impl(pix):
+            return np.exp(hmoy + pix_to_ht * pix)
 
         self.f = numba_impl
+
 
 
     def make_df_impl(self):
         """ Rotate the derivatives of the transform, according to the options
         """
+        if self.use_step:
+            return self.make_df_impl_step()
+
         pix_to_ht = self.pix_to_ht
 
         if self.rotates_df:
-            @numba.njit(
-                numba.complex128(numba.complex128), nogil=True, fastmath=False)
-            def numba_impl(z):
-                return np.exp(np.real(pix_to_ht * z.real))
-
+            @numba.njit(nogil=True, fastmath=False)
+            def numba_impl(pix):
+                return  np.exp(pix_to_ht * pix)
         else:
-            @numba.njit(
-                numba.complex128(numba.complex128), nogil=True, fastmath=False)
-            def numba_impl(z):
+            @numba.njit(nogil=True, fastmath=False)
+            def numba_impl(pix):
+                return np.exp(np.real(pix_to_ht * pix))
+        
+        self.df = numba_impl
+
+
+    def make_df_impl_step(self):
+        self.numba_step_implemented = True # Flag to avoid re-compiling
+        pix_to_ht = self.pix_to_ht
+        
+        if self.rotates_df:
+            @numba.njit(nogil=True, fastmath=False)
+            def numba_impl(pix):
+                return np.exp(1j * np.imag(pix_to_ht * pix))
+        else:
+            @numba.njit(nogil=True, fastmath=False)
+            def numba_impl(pix):
                 return 1.
 
         self.df = numba_impl
 
 
     def make_dfBS_impl(self):
-        premul_1j = self.premul_1j
+        """ Rotate the derivatives of the transform, according to the options
+        """
+        if self.use_step:
+            return self.make_dfBS_impl_step()
+
+        pix_to_ht = self.pix_to_ht
+
+        if self.rotates_df:
+            @numba.njit(nogil=True, fastmath=False)
+            def numba_impl(pix):
+                ht = pix_to_ht * pix
+                h = np.real(ht)
+                t = np.imag(ht)
+                r = np.exp(h)
+                cr = np.cos(t) * r
+                sr = np.sin(t) * r
+                return  -sr, -cr, cr, -sr
+        else:
+            @numba.njit(nogil=True, fastmath=False)
+            def numba_impl(pix):
+                r = np.exp(np.real(pix_to_ht * pix))
+                return r, 0., 0., r
+        
+        self.df = numba_impl
+
+
+    def make_dfBS_impl_step(self):
+        self.numba_step_implemented = True # Flag to avoid re-compiling
         pix_to_ht = self.pix_to_ht
 
         if self.rotates_df:
             @numba.njit(nogil=True, fastmath=False)
             def numba_impl(z):
-                if premul_1j:
-#                    zhr = z.imag
-                    zhi = pix_to_ht * z.real
-                else:
-#                    zhr = z.real
-                    zhi = pix_to_ht * z.imag
-#                r = np.exp(zhr)
+                zhi = np.imag(pix_to_ht * z)
                 c = np.cos(zhi)
                 s = np.sin(zhi)
-                if premul_1j:
-                    return -s, -c, c, -s
-                else:
-                    return c, -s, s, c
-
+                return c, -s, s, c
         else:
             @numba.njit(nogil=True, fastmath=False)
             def numba_impl(z):
-                if premul_1j:
-                    return  0., -1., 1., 0.
-                else:
-                    return  1., 0., 0., 1.
+                return  1., 0., 0., 1.
 
         self.dfBS = numba_impl
 
-#    @property
-#    def df_scale_factor(self):
-#        """ The scaling factor applied to derivative iteration """
-#        if self.use_step:
-#            hmoy = self.hmoy
-#            exp_step_hmoy = self.exp_step_hmoy
-#            return np.exp(hmoy - exp_step_hmoy)
-#        return 1.
-#
-#
-#    @property
-#    def df_scale_func(self):
-#        """ The scaling factor applied to derivative iteration """
-#        pix_to_ht = self.pix_to_ht
-#        if self.use_step:
-#            hmoy_df = self.exp_step_hmoy
-#        else:
-#            hmoy_df = self.hmoy
-#            # return mpmath.exp(self.exp_step_hmoy)
-#
-#        @numba.njit(nogil=True, fastmath=False)
-#        def numba_impl(z):
-#            return np.exp(hmoy_df + np.real(pix_to_ht * z))
-#
-#        return numba_impl #mpmath.exp(self.hmoy)
+    def make_dzndc_modifier(self):
+        """ Applies the scaling part of mapping at end of iteration, so that 
+        it is not needed at postproc stage - used for step iterations.
+        (Otherwise we would need to store also step information to disk for 
+        image postprocessing stage)
+        """
+        pix_to_ht = self.pix_to_ht
+        if self.use_step:
+            hshift = self.hmoy - self.exp_step_hmoy 
+        else:
+            hshift = self.hmoy
 
-    @property # TODO: suppress this
+        @numba.njit(nogil=True, fastmath=False)
+        def numba_impl(cpix):
+            return np.exp(pix_to_ht * cpix + hshift)
+
+        self.dzndc_modifier = numba_impl
+
+
+    @property
     def scale(self):
         # Returns the scaling - for perturbation implementation
         if self.use_step:
@@ -427,12 +443,11 @@ class Expmap(Projection):
         return mpmath.exp(hmoy_df)
 
     def bounding_box(self, xy_ratio):
-        """
-        This is the scaling of the bounding box for this calculation step
+        """ This is the scaling of the bounding box for this calculation step
         ie either the whole image or the current exmpap step sub-image.
         """
         if self.use_step:
-            print("******* BOUNDING BOX with hstep_max", self.exp_step_hmax)
+#            print("******* BOUNDING BOX with hstep_max", self.exp_step_hmax)
             wh = self.exp_step_hmax
         else:
             wh = self.hmax
@@ -447,15 +462,7 @@ class Expmap(Projection):
         """
         return mpmath.exp(self.hmin)
 
-    @property
-    def min_step_scale(self):
-        """ This is the scaling of the minimum pixel due to the projection
-        for the *whole* image (accumulated by steps if activated)
-        """
-        if self.use_step:
-            return mpmath.exp(self.exp_step_hmin)
-        else:
-            return mpmath.exp(self.hmin)
+
 
 #============================================================================== 
 
