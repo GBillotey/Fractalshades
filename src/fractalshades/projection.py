@@ -208,14 +208,6 @@ class Expmap(Projection):
             h_{moy} &= \\frac{1}{2} \\cdot (h_{min} + h_{max}) \\\\
             dh &= h_{max} - h_{min}
 
-        Notes
-        =====
-        Adjustment of zoom parameters:
-        The `xy_ratio` of the zoom will be adjusted (during run time) to ensure
-        that :math:`\\bar{y}_{pix}` extends from :math:`- \\pi`
-        to :math:`\\pi`. `nx` is interpreted as `nh` be the  `direction`
-        "horizontal" or "vertical".
-
         This class can be used with arbitrary-precision deep zooms.
 
         Parameters
@@ -233,6 +225,24 @@ class Expmap(Projection):
             movie making tool.
         orientation: "horizontal" | "vertical"
             The direction for the h axis. Defaults to "horizontal".
+        
+        
+        Notes
+        =====
+        Adjustment of zoom parameters
+        -----------------------------
+        The `xy_ratio` of the zoom will be adjusted (during runtime) to ensure
+        that :math:`\\bar{y}_{pix}` extends from :math:`- \\pi`
+        to :math:`\\pi`. `nx` is interpreted as `nh` be the  `direction`
+        "horizontal" or "vertical".
+        Large mappings: computation by steps
+        ------------------------------------
+        For large exponentional mappings which may cover several orders of
+        magnitude, computation will be run by steps. Each step:
+            - reuses the same reference orbit
+            - updates the BLA table as needed by the scale
+            - updates the reference size used to avoid overflow in derivatives
+        
         """
         if not(0 <= hmin < hmax):
             raise ValueError(

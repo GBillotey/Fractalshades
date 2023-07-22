@@ -314,7 +314,7 @@ class Fractal_plotter:
 
         if self.final_render:
             # We need to delete because if will not be recomputed in the
-            # calc process
+            # calc process - so it is invalidated
             self.fractal.delete_fingerprint()
 
         self._raw_arr = dict()

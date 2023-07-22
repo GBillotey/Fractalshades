@@ -751,8 +751,18 @@ class Exp_db:
         if h > allowed_hmax:
             raise ValueError(
                     "Frame outside databse data: "
-                    f"h = {h} > allowed_hmax = {allowed_hmax}"
+                    f"h = {h} > allowed_hmax = {allowed_hmax}\n"
+                    f"hmax0: {self.hmax0} "
+                    f"rpix_max: {rpix_max} "
+                    f"xy_ratio: {xy_ratio} "
+                    f"nh: {self.nh} "
+                    f"nt: {self.nt} "
+                    f"hmin: {self.hmin0}"
             )
+#            raise ValueError(
+#                    "Frame outside databse data: "
+#                    f"h = {h} > allowed_hmax = {allowed_hmax}"
+#            )
 
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Define parameters for multilevel exp_map interpolation

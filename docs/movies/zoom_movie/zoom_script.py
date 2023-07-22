@@ -47,25 +47,27 @@ def make_movie(plot_dir):
     plot_kwargs["batch_params"] = {
         "projection": fs.projection.Expmap(hmin=0., hmax=h, rotates_df=False, orientation="vertical")
     }
-    plotter, layer_name = get_plotter(**plot_kwargs)
-
-    expdb_path = plotter.save_db(
-        relpath="expmap.postdb",
-        postdb_layer=layer_name,
-        recovery_mode=True
-    )
-
-    # Debuging: plot the unwrapped expmap
-    test_expmap_plot = False
-    if test_expmap_plot:
-        expdb = fs.db.Db(expdb_path)
-        img = expdb.plot()
-        img.save(os.path.join(
-            os.path.dirname(expdb.path),
-            "expmap_full2.png"
-        ))
+#    plotter, layer_name = get_plotter(**plot_kwargs)
+#
+#    expdb_path = plotter.save_db(
+#        relpath="expmap.postdb",
+#        postdb_layer=layer_name,
+#        recovery_mode=True
+#    )
+#
+#    # Debuging: plot the unwrapped expmap
+#    test_expmap_plot = False
+#    if test_expmap_plot:
+#        expdb = fs.db.Db(expdb_path)
+#        img = expdb.plot()
+#        img.save(os.path.join(
+#            os.path.dirname(expdb.path),
+#            "expmap_full2.png"
+#        ))
 
     # Make the 'final plot' database
+    f = plot_kwargs["fractal"]
+#    del f._calc_data
     plot_kwargs["recovery_mode"] = True
     plot_kwargs["dx"] = str(mpmath.mpf(plot_kwargs["dx"]) * 2.0)
     plot_kwargs["nx"] = movie_nx * 2
@@ -84,7 +86,7 @@ def make_movie(plot_dir):
     )
 
     # Make a test final plot
-    test_final_plot = False
+    test_final_plot = True
     if test_final_plot:
         finaldb = fs.db.Db(finaldb_path)
         img = finaldb.plot()
