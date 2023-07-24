@@ -164,7 +164,7 @@ class Cartesian(Projection):
 
         This class can be used with arbitrary-precision deep zooms.
         """
-        pass
+        self.scale = 1.0
 
     def make_f_impl(self):
         """ A cartesian projection just let pass-through the coordinates"""
@@ -342,35 +342,35 @@ class Expmap(Projection):
         self.f = numba_impl
 
 
-
     def make_df_impl(self):
         """ Rotate the derivatives of the transform, according to the options
         """
         if self.use_step:
             return self.make_df_impl_step()
-
         pix_to_ht = self.pix_to_ht
 
         if self.rotates_df:
             @numba.njit(nogil=True, fastmath=False)
             def numba_impl(pix):
-                return  np.exp(pix_to_ht * pix)
+                res = np.exp(pix_to_ht * pix)
+                return res
         else:
             @numba.njit(nogil=True, fastmath=False)
             def numba_impl(pix):
-                return np.exp(np.real(pix_to_ht * pix))
-        
-        self.df = numba_impl
+                res = np.exp(np.real(pix_to_ht * pix))
+                return res
 
+        self.df = numba_impl
 
     def make_df_impl_step(self):
         self.numba_step_implemented = True # Flag to avoid re-compiling
         pix_to_ht = self.pix_to_ht
-        
+
         if self.rotates_df:
             @numba.njit(nogil=True, fastmath=False)
             def numba_impl(pix):
-                return np.exp(1j * np.imag(pix_to_ht * pix))
+                res = np.exp(1j * np.imag(pix_to_ht * pix))
+                return res
         else:
             @numba.njit(nogil=True, fastmath=False)
             def numba_impl(pix):
@@ -384,7 +384,6 @@ class Expmap(Projection):
         """
         if self.use_step:
             return self.make_dfBS_impl_step()
-
         pix_to_ht = self.pix_to_ht
 
         if self.rotates_df:
@@ -404,7 +403,6 @@ class Expmap(Projection):
                 return r, 0., 0., r
         
         self.df = numba_impl
-
 
     def make_dfBS_impl_step(self):
         self.numba_step_implemented = True # Flag to avoid re-compiling
@@ -438,7 +436,7 @@ class Expmap(Projection):
 
         @numba.njit(nogil=True, fastmath=False)
         def numba_impl(cpix):
-            return np.exp(pix_to_ht * cpix + hshift)
+            return np.exp(np.real(pix_to_ht * cpix) + hshift)
 
         self.dzndc_modifier = numba_impl
 
@@ -457,7 +455,6 @@ class Expmap(Projection):
         ie either the whole image or the current exmpap step sub-image.
         """
         if self.use_step:
-#            print("******* BOUNDING BOX with hstep_max", self.exp_step_hmax)
             wh = self.exp_step_hmax
         else:
             wh = self.hmax

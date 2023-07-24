@@ -166,28 +166,33 @@ class Movie():
             output.close()
 
 
-    def export_frames(self, out_file, first, last):
+    def export_frame(self, out_file, index=None, time=None):
         """
-        Output a range of frames to .png format (mainly for debuging purposes)
+        Output a single frame to .png format (mainly for debuging purposes).
 
         Parameters
         ----------
         out_file: str
             The path to output file will be out_file_%i%.png where i is the 
             frame number
-        first: int
-            The first saved frame index
-        last: int
-            The last saved frame index
-
+        index: int
+            The saved frame index, if not provided then `time` shall be. 
+        time: float
+            The time for the saved frame index.
         """
+        if not((index is None) or (time is None)):
+            raise ValueError(
+                "index and time parameters cannot be specified simultaneously"
+            )
+        if index is None:
+            index = round(time * self.fps)
+
         head, tail = os.path.split(out_file)
         fs.utils.mkdir_p(head)
 
-        for i in range(first, last):
-            pic = self.picture(i)
-            suffixed = tail + "_" + str(i) + ".png"
-            pic.save(os.path.join(head, suffixed))
+        pic = self.picture(index)
+        suffixed = tail + "_" + str(index) + ".png"
+        pic.save(os.path.join(head, suffixed))
 
 
 class Sequence:

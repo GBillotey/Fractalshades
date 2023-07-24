@@ -268,7 +268,8 @@ sphinx_gallery_conf = {
      'gallery_dirs': 'examples',       # path to where to save gallery generated output
      'within_subsection_order': FileNameSortKey,
      'filename_pattern': r'\.py',     # all python files r'\.py',
-     'ignore_pattern': r'skip\.py', # except those ending with skip
+     # except those ending with skip or in "movies" subdir
+     'ignore_pattern': r'(skip\.py)|(movies' + os.path.sep + ')', 
      'image_scrapers': (fractalshades_scraper),
      # 'plot_gallery': 'False',  # Activate this to skip the calculation
 }
