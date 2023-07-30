@@ -2,7 +2,6 @@
 import copy
 import os
 import logging
-#import queue
 
 import numpy as np
 import numba
@@ -759,10 +758,6 @@ class Exp_db:
                     f"nt: {self.nt} "
                     f"hmin: {self.hmin0}"
             )
-#            raise ValueError(
-#                    "Frame outside databse data: "
-#                    f"h = {h} > allowed_hmax = {allowed_hmax}"
-#            )
 
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Define parameters for multilevel exp_map interpolation
@@ -976,7 +971,7 @@ class Exp_db:
         del mmap
 
         # np -> PIL
-        return PIL.Image.fromarray(arr) # np.swapaxes(arr, 0 , 1)[::-1, :, :])
+        return PIL.Image.fromarray(arr)
 
 
     def populate_subsampling(self, filename, source, driving_dim,

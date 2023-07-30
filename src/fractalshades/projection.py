@@ -154,7 +154,7 @@ class Projection:
 
 #==============================================================================
 class Cartesian(Projection):
-    def __init__(self):
+    def __init__(self, expmap_seam=None):
         """
         A Cartesian projection. This is simply the identity function:
 
@@ -163,8 +163,23 @@ class Cartesian(Projection):
             \\bar{z}_{pix} =  z_{pix}
 
         This class can be used with arbitrary-precision deep zooms.
+
+        Parameters
+        ==========
+        `expmap_seam`: None | float
+            If not None, will ensure a smooth transition between cartesian and
+            exponential projections (by simulating the scaling a Expmap applies
+            to the derivatives). The `expmap_seam` value shall usually be set
+            at 1.0, if the Expmap projection `dx` is half of the Cartesian
+            projection `dx` (ie, the reference diameter of the Expmap matches
+            the reference width of the cartesian mapping).
+            Otherwise, it is an additionnal scaling factor.
+            Note: parameter only valid for arbitrary-precision implementations.
         """
         self.scale = 1.0
+        self.expmap_seam = expmap_seam
+        if expmap_seam is not None:
+            self.make_dzndc_modifier()
 
     def make_f_impl(self):
         """ A cartesian projection just let pass-through the coordinates"""
@@ -186,6 +201,22 @@ class Cartesian(Projection):
     @property
     def min_local_scale(self):
         return 1.
+
+    def make_dzndc_modifier(self):
+        """ Applies the scaling part of exp mapping at end of iteration.
+        """
+        expmap_seam = self.expmap_seam
+        # Development notes
+        # Expmap at h=0 -> kdiff_proj = expmap_seam, pixabs_proj = expmap_seam / 2
+        # Cartesian     -> kdiff_proj = 1.,          pixabs_proj = 1.
+
+        @numba.njit(nogil=True, fastmath=False)
+        def numba_impl(cpix):
+            return np.abs(cpix + 1.e-6) * expmap_seam
+
+        self.dzndc_modifier = numba_impl
+
+
 
 @numba.njit(nogil=True, fastmath=True)
 def cartesian_numba_impl(z):
@@ -411,9 +442,9 @@ class Expmap(Projection):
         if self.rotates_df:
             @numba.njit(nogil=True, fastmath=False)
             def numba_impl(z):
-                zhi = np.imag(pix_to_ht * z)
-                c = np.cos(zhi)
-                s = np.sin(zhi)
+                t = np.imag(pix_to_ht * z)
+                c = np.cos(t)
+                s = np.sin(t)
                 return c, -s, s, c
         else:
             @numba.njit(nogil=True, fastmath=False)

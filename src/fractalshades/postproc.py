@@ -668,7 +668,7 @@ class DEM_pp(Postproc):
         Parameters
         ==========
         `px_snap`:  None | float
-            if not None, pixels at a distance from the fractal lower
+            If not None, pixels at a distance from the fractal lower
             than `px_snap` (expressed in image pixel) will be snapped to 0.
 
         Notes

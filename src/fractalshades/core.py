@@ -915,16 +915,9 @@ class Fractal_plotter:
             # we will call reset_bla_tree and modify in place cycle_indep_args
             i_max = min(r + stp, nh)
             i_min = max(r - chunk_size, 0) 
+            exp_step_hmax = (hmax * i_max + hmin * (nh - i_max)) / nh
+            exp_step_hmin = (hmax * i_min + hmin * (nh - i_min)) / nh
 
-            if orientation == "horizontal":
-#                exp_step = (hmax * r + hmin * (nh - r)) / nh
-                exp_step_hmax = (hmax * i_max + hmin * (nh - i_max)) / nh
-                exp_step_hmin = (hmax * i_min + hmin * (nh - i_min)) / nh
-            else:
-#                exp_step = (hmax * (nh - r) + hmin * r) / nh
-                exp_step_hmax = (hmax * (nh - i_max) + hmin * i_max) / nh
-                exp_step_hmin = (hmax * (nh - i_min) + hmin * i_min) / nh
-                
             proj.set_exp_zoom_step(exp_step_hmax, exp_step_hmin)
             self.reset_bla_tree()
 
@@ -1134,9 +1127,7 @@ class Fractal_plotter:
         for different layer (final render restart data)
         
         note: layer is layer obj
-        """
-        print("**** IN open_postdb", layer.postname)
-        
+        """        
         
         postdb_path = self.postdb_path(layer)
         layer_name = layer.postname

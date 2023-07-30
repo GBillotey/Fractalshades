@@ -172,18 +172,12 @@ directory : str
         --------
         kc: full precision, scaling coefficient
         """
-        # TODO: shall be adapted for projections implementing deep-zoom
-        # (mainly, exponential projection)
         c0 = self.x + 1j * self.y
 
         w, h = self.projection.bounding_box(self.xy_ratio)
         dx = self.dx # * self.projection.scale
         mat = self.lin_mat
 
-#        corner_a = lin_proj_impl_noscale(mat, 0.5 * (w + 1j * h)) * proj_dx
-#        corner_b = lin_proj_impl_noscale(mat, 0.5 * (- w + 1j * h)) * proj_dx
-#        corner_c = lin_proj_impl_noscale(mat, 0.5 * (- w - 1j * h)) * proj_dx
-#        corner_d = lin_proj_impl_noscale(mat, 0.5 * (w - 1j * h)) * proj_dx
         corner_a = mpc_lin_proj_impl_noscale(mat, 0.5 * w, 0.5 * h) * dx
         corner_b = mpc_lin_proj_impl_noscale(mat, -0.5 * w , 0.5 * h) * dx
         corner_c = mpc_lin_proj_impl_noscale(mat, -0.5 * w, -0.5 * h) * dx
@@ -1386,7 +1380,7 @@ def numba_iterate(
             if calc_dzndc:  # and n_iter > 1:
                 # if n_iter != 1:
                 Z[dzndc] += dZndc_path[w_iter]
-        
+
         if proj_dzndc_modifier is not None:
             Z[dzndc] *= proj_dzndc_modifier(c_pix)
         
@@ -1440,11 +1434,11 @@ def numba_cycles_perturb_BS(
 
         n_iter = iterate(
             apt, bpt, a_xr, b_xr, Zpt, Z_xr, Z_xr_trigger,
-            Upt, stop_pt, # suppressed n_iter_init
+            Upt, stop_pt,
             Zn_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
             has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
             refpath_ptr, out_is_xr, out_xr, M_bla, r_bla, bla_len, stages_bla,
-            proj_dzndc_modifier
+            proj_dzndc_modifier, c_pix[ipt]
         )
         stop_iter[0, ipt] = n_iter
         stop_reason[0, ipt] = stop_pt[0]
@@ -1484,7 +1478,7 @@ def numba_iterate_BS(
         Zn_path, dXnda_path, dXndb_path, dYnda_path, dYndb_path,
         has_xr, ref_index_xr, refx_xr, refy_xr, ref_div_iter, ref_order,
         refpath_ptr, out_is_xr, out_xr, M_bla, r_bla, bla_len, stages_bla,
-        proj_dzndc_modifier
+        proj_dzndc_modifier, c_pix
     ):
         """
         Parameters
@@ -1763,6 +1757,12 @@ def numba_iterate_BS(
                 Z[dxndb] += dXndb_path[w_iter]
                 Z[dynda] += dYnda_path[w_iter]
                 Z[dyndb] += dYndb_path[w_iter]
+
+        if proj_dzndc_modifier is not None:
+            Z[dxnda] *= proj_dzndc_modifier(c_pix)
+            Z[dxndb] *= proj_dzndc_modifier(c_pix)
+            Z[dynda] *= proj_dzndc_modifier(c_pix)
+            Z[dyndb] *= proj_dzndc_modifier(c_pix)
 
         if calc_orbit: # Finalizing the orbit
             xn_orbit = orbit_xn2
