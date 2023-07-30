@@ -314,7 +314,7 @@ class Fractal_plotter:
 
         if self.final_render:
             # We need to delete because if will not be recomputed in the
-            # calc process
+            # calc process - so it is invalidated
             self.fractal.delete_fingerprint()
 
         self._raw_arr = dict()
@@ -907,16 +907,18 @@ class Fractal_plotter:
         hmin = proj.hmin
         hmax = proj.hmax
         nh = proj.nh(f)
-        stp = exp_zoom_step
+        stp = exp_zoom_step 
+        chunk_size = fs.settings.chunk_size
 
         for r in range(0, nh + 1, stp):
             # Need to trigger a recalculation of BLA validity radius
             # we will call reset_bla_tree and modify in place cycle_indep_args
-            if orientation == "horizontal":
-                exp_step = (hmax * r + hmin * (nh - r)) / nh
-            else:
-                exp_step = (hmax * (nh - r) + hmin * r) / nh
-            proj.set_exp_zoom_step(exp_step)
+            i_max = min(r + stp, nh)
+            i_min = max(r - chunk_size, 0) 
+            exp_step_hmax = (hmax * i_max + hmin * (nh - i_max)) / nh
+            exp_step_hmin = (hmax * i_min + hmin * (nh - i_min)) / nh
+
+            proj.set_exp_zoom_step(exp_step_hmax, exp_step_hmin)
             self.reset_bla_tree()
 
             def validates_h(chunk_slice):
@@ -1125,9 +1127,7 @@ class Fractal_plotter:
         for different layer (final render restart data)
         
         note: layer is layer obj
-        """
-        print("**** IN open_postdb", layer.postname)
-        
+        """        
         
         postdb_path = self.postdb_path(layer)
         layer_name = layer.postname
@@ -2020,7 +2020,9 @@ advanced users when subclassing.
     @staticmethod
     def numba_cycle_call(cycle_dep_args, cycle_indep_args):
         # Just a thin wrapper to allow customization in derived classes
-        return numba_cycles(*cycle_dep_args, *cycle_indep_args)
+        ret_code = numba_cycles(*cycle_dep_args, *cycle_indep_args)
+        
+        return ret_code
 
     def get_cycle_indep_args(self, initialize, iterate):
         """
@@ -2028,6 +2030,8 @@ advanced users when subclassing.
         This is just a diggest of the zoom and calculation parameters
         """
         center = self.x + 1j * self.y
+        # proj_dzndc_modifier = getattr(self.projection, "dzndc_modifier", None)
+
         return (
             initialize, iterate,
             center, self.proj_impl, self.lin_mat, self.dx,
@@ -2946,7 +2950,6 @@ def numba_cycles(
 
         initialize(Zpt, Upt, cpt)
         n_iter = iterate(
-            # Zpt, Upt, cpt, stop_pt, 0,
             cpt, Zpt, Upt, stop_pt
         )
         stop_iter[0, ipt] = n_iter

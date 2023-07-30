@@ -125,7 +125,8 @@ class Test_db(unittest.TestCase):
         code paths
         """
         def plotter_modifier(plotter, time):
-            """ A modifier that does nothing """
+            """ A modifier that does nothing. It might ba attached to a Frame
+            object"""
             pass
         
         for (ss, mod) in (
@@ -169,7 +170,7 @@ class Test_db(unittest.TestCase):
 
                 db = fs.db.Db(db_path)
                 if mod is not None:
-                    db.set_plotter(plotter, "cont_iter", plotting_modifier=mod)
+                    db.set_plotter(plotter, "cont_iter")
                 img = db.plot(self.frame)
                 
                 mod_str = "frozen" if mod is None else "modified"
@@ -311,12 +312,11 @@ class Test_db(unittest.TestCase):
                     db_path = plotter.save_db(postdb_layer=layer_name)
                 else:
                     db_path = plotter.save_db()
-                
-                
+
                 db = fs.db.Db(db_path)
 
                 if mod is not None:
-                    db.set_plotter(plotter, layer_name, plotting_modifier=mod)
+                    db.set_plotter(plotter, layer_name)
             
                 img = db.plot(self.frame)
                 

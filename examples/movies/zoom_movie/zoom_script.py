@@ -17,7 +17,7 @@ import fractalshades.movie
 import fractalshades.db
 import fractalshades.projection
 
-from M2_plotter import get_plotter, plot_kwargs
+from M2_plotter_zoom import get_plotter, plot_kwargs
 
 
 fs.settings.enable_multithreading = True
@@ -84,7 +84,7 @@ def make_movie(plot_dir):
     )
 
     # Make a test final plot
-    test_final_plot = False
+    test_final_plot = True
     if test_final_plot:
         finaldb = fs.db.Db(finaldb_path)
         img = finaldb.plot()
@@ -121,7 +121,7 @@ def make_movie(plot_dir):
 
     # Making the movie ad plotting a few test frames
     movie.make(os.path.join(plot_dir, "zoom.mp4"))
-    movie.export_frames(os.path.join(plot_dir, "frames"), 30, 32)
+    movie.export_frame(os.path.join(plot_dir, "frames"), time=30.)
 
 
 if __name__ == "__main__":

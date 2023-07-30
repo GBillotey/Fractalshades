@@ -2,7 +2,6 @@
 import copy
 import os
 import logging
-#import queue
 
 import numpy as np
 import numba
@@ -751,7 +750,13 @@ class Exp_db:
         if h > allowed_hmax:
             raise ValueError(
                     "Frame outside databse data: "
-                    f"h = {h} > allowed_hmax = {allowed_hmax}"
+                    f"h = {h} > allowed_hmax = {allowed_hmax}\n"
+                    f"hmax0: {self.hmax0} "
+                    f"rpix_max: {rpix_max} "
+                    f"xy_ratio: {xy_ratio} "
+                    f"nh: {self.nh} "
+                    f"nt: {self.nt} "
+                    f"hmin: {self.hmin0}"
             )
 
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -966,7 +971,7 @@ class Exp_db:
         del mmap
 
         # np -> PIL
-        return PIL.Image.fromarray(arr) # np.swapaxes(arr, 0 , 1)[::-1, :, :])
+        return PIL.Image.fromarray(arr)
 
 
     def populate_subsampling(self, filename, source, driving_dim,

@@ -323,13 +323,16 @@ class _store_func_name__add_hook:
             return_dic = method(instance, *args, **kwargs)
 
             # post call hook
-            try:
-                getattr(instance, self.indentifier + "_hook")(
+            hook = self.indentifier + "_hook"
+            if hasattr(instance, hook):
+                getattr(instance, hook)(
                     method.__name__,
                     kwargs_dic,
                     return_dic
                 )
-            except AttributeError:
+            else:
+                # No hook
+                print(">>> No hook found, _store_func_name__add_hook")
                 pass
 
         setattr(wrapper, "_@" + indentifier, True)
