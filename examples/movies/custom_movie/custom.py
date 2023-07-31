@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-============================
-Movie: writing the template
-============================
+===============================
+Movie making: a custom template
+===============================
+Demonstrate the use of successive sequences in the movie making tool. 
 """
 import os
-import sys
 import copy
 
 import numpy as np
@@ -20,8 +20,6 @@ import fractalshades.projection
 from custom_zoom_template import get_plotter, plot_kwargs
 
 fs.settings.enable_multithreading = True
-
-
 
 
 def make_movie(plot_dir):

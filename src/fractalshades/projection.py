@@ -229,13 +229,11 @@ class Expmap(Projection):
         An exponential projection will map :math:`z_{pix}` as follows:
 
         .. math::
-
             \\bar{z}_{pix} = \\exp(h_{moy}) \\cdot \\exp(dh \\cdot z_{pix}) 
 
         where:
 
         .. math::
-
             h_{moy} &= \\frac{1}{2} \\cdot (h_{min} + h_{max}) \\\\
             dh &= h_{max} - h_{min}
 
@@ -256,24 +254,25 @@ class Expmap(Projection):
             movie making tool.
         orientation: "horizontal" | "vertical"
             The direction for the h axis. Defaults to "horizontal".
-        
-        
+
         Notes
         =====
-        Adjustment of zoom parameters
-        -----------------------------
-        The `xy_ratio` of the zoom will be adjusted (during runtime) to ensure
-        that :math:`\\bar{y}_{pix}` extends from :math:`- \\pi`
-        to :math:`\\pi`. `nx` is interpreted as `nh` be the  `direction`
-        "horizontal" or "vertical".
-        Large mappings: computation by steps
-        ------------------------------------
-        For large exponentional mappings which may cover several orders of
-        magnitude, computation will be run by steps. Each step:
-            - reuses the same reference orbit
-            - updates the BLA table as needed by the scale
-            - updates the reference size used to avoid overflow in derivatives
-        
+        .. note::
+            *Adjustment of zoom parameters:*
+            The `xy_ratio` of the zoom will be adjusted (at runtime) to
+            ensure that :math:`\\bar{y}_{pix}` extends from :math:`- \\pi`
+            to :math:`\\pi`. `nx` is interpreted as `nh` for all values of the
+            `direction` parameter ("horizontal" or "vertical").
+
+        .. note::
+            *Large mappings and computation by steps:*
+            For large exponentional mappings which may cover several orders of
+            magnitude, computation will be run by steps. Each step:
+
+                - reuses the same reference orbit
+                - updates the BLA table as needed by the scale
+                - updates the reference size used to avoid overflows in
+                  derivatives
         """
         if not(0 <= hmin < hmax):
             raise ValueError(

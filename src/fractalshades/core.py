@@ -827,6 +827,7 @@ class Fractal_plotter:
         relpath : Optional, str
             path relative to self.fractal.directory. If not provided, defaults
             to either:
+
                 - :code:`"layers.db"` (when parameter`postdb_layer` is not
                   provided, and all layers are saved as float)
                 - :code:`f"{postdb_layer}.postdb"` (when parameter
@@ -846,6 +847,7 @@ class Fractal_plotter:
         Notes
         -----
         The file extension is either :
+
           - .db (denoting the float values of fields are saved)
           - .postdb (denoting the rgb arrays are saved) 
         """

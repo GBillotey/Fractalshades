@@ -3,23 +3,8 @@
 ============================
 Movie making: a pan template
 ============================
-A demonstration for the pan movie tool, which uses a precomputed database to 
-generate frames.
-
-User parameters
----------------
-
-- `postdb`
-    - if True, the database (``fractalshades.db.Db``) shall be
-      provided at *.postdb format (see the doc at 
-      ``fractalshades.Fractal_plotter.save_db`` for details) ; only the
-      zoom options dcan be modified for each frame.
-    - if False, the database (``fractalshades.db.Db``) shall be
-      provided at *.db format, both the zoom options and the plotting
-      parameters can be modified for each frame
-
-- `recovery_mode`
-    - if True, will try to reuse already computed db.
+A demonstration for the pan movie tool, which uses a precomputed cartesian
+database ``fractalshades.db.Db`` to generate frames.
 """
 import os
 
