@@ -1086,7 +1086,7 @@ def numba_iterate(
         Z, Z_xr: idem for result vector Z
         Z_xr_trigger : bolean, activated when Z_xr need to be used
         """
-
+        record_zero = Xr_template.repeat(1)[0]
         
         w_iter = 0
         n_iter = 0
@@ -1113,7 +1113,7 @@ def numba_iterate(
         M_out = np.empty((2,), dtype=np.complex128)
 
         # Index to keep track if we use the wraped index of dzndc
-        bool_dyn_rebase = False
+        bool_dyn_rebase = True
 
         while True:
             #==========================================================
@@ -1174,8 +1174,11 @@ def numba_iterate(
             # dzndc subblock
             if calc_dzndc:
                 ref_dzndc = dZndc_path[w_iter]
-                if bool_dyn_rebase or n_iter == 1: # Avoid wraped value at 0
-                    ref_dzndc = ref_dzndc * 0.     # This may be Xrange
+                if bool_dyn_rebase: # Avoid wraped value at 0
+                    if xr_detect_activated:
+                        ref_dzndc = record_zero # Record type
+                    else:
+                        ref_dzndc = 0.
                 if xr_detect_activated:
                     p_iter_dzndc(Z_xr, ref_zn_xr, ref_dzndc)
                 else:
@@ -1487,6 +1490,8 @@ def numba_iterate_BS(
         Z, Z_xr: idem for result vector Z
         Z_xr_trigger : bolean, activated when Z_xr need to be used
         """
+        record_zero = Xr_float_template.repeat(1)[0]
+
         # Wrapped iteration if we reach the cycle order 
         w_iter = 0
         n_iter = 0
@@ -1511,7 +1516,7 @@ def numba_iterate_BS(
         M_out = np.empty((8,), dtype=np.float64)
         
         # Index to keep track if we use the wraped index of dzndc
-        bool_dyn_rebase = False
+        bool_dyn_rebase = True
 
         while True:
             #==========================================================
@@ -1571,11 +1576,17 @@ def numba_iterate_BS(
                 ref_dynda = dYnda_path[w_iter]
                 ref_dyndb = dYndb_path[w_iter]
 
-                if bool_dyn_rebase or n_iter == 1: # Avoid the wraped value at 0
-                    ref_dxnda = ref_dxnda * 0.     # This may be Xrange
-                    ref_dxndb = ref_dxndb * 0.     # This may be Xrange
-                    ref_dynda = ref_dynda * 0.     # This may be Xrange
-                    ref_dyndb = ref_dyndb * 0.     # This may be Xrange
+                if bool_dyn_rebase: # Avoid the wraped value at 0
+                    if xr_detect_activated:
+                        ref_dxnda = record_zero # Record type
+                        ref_dxndb = record_zero # Record type
+                        ref_dynda = record_zero # Record type
+                        ref_dyndb = record_zero # Record type
+                    else:
+                        ref_dxnda = 0.
+                        ref_dxndb = 0.
+                        ref_dynda = 0.
+                        ref_dyndb = 0.
 
                 if xr_detect_activated:
                     p_iter_hessian(
