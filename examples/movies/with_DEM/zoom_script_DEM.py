@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-============================
-Movie: writing the template
-============================
-A demonstration for the zoom movie tool, which uses a precomputed database 
-(with Expmap projection) to generate frames.
-https://youtu.be/xo_Cx4_lb0g 
+==========================================================
+Movie making: a DEM coloring template for zooming sequence
+=========================================================
+Demonstates the use of the `expmap_seam` keyword for
+``fractalshades.projection.Cartesian`` projection, needed for seamless
+DEM (Distance Estimation) coloring
 """
 import os
 

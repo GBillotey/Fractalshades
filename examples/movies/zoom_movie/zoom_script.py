@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-============================
-Movie: writing the template
-============================
-A demonstration for the zoom movie tool, which uses a precomputed database 
-(with Expmap projection) to generate frames.
+=============================
+Movie making: a zoom template
+=============================
+A demonstration for the zoom movie tool, which uses a precomputed database
+featuring an exponentional mapping ``fractalshades.db.Exp_db`` to generate
+frames.
 """
 import os
 

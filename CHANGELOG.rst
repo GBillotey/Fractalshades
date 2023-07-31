@@ -6,9 +6,29 @@ Rev 1.1
 
 Rev 1.1.0
 .........
-- Added mappings, filters, databse export and movie making
-- renamed to ``disable_decompression_size_check``
-- improved memory management of BLA iterations, now images with up to
+- Added new flavors to the Burning ship impelmentations
+  `fractalshades.models.Burning_ship` and 
+  `fractalshades.models.Perturbation_burning_ship`: “Celtic” and
+  "Buffalo"
+- Added projection-related classes: abstract base class
+  `fractalshades.projection.Projection` and its derived classes
+  `fractalshades.projection.Cartesian`
+  `fractalshades.projection.Expmap`
+  `fractalshades.projection.Generic_mapping`
+- Added database export capabilities
+  `fractalshades.Fractal_plotter.save_db`,
+  `fractalshades.db.Db`, `fractalshades.db.Frame`,
+  `fractalshades.db.Exp_db`, `fractalshades.db.Exp_frame`.
+- Added movie making API:
+  `fractalshades.movie.Movie`,
+  `fractalshades.movie.Camera_pan`,
+  `fractalshades.movie.Camera_zoom`,
+  `fractalshades.movie.Custom_sequence`.
+- Renamed function
+  `fractalshades.settings.remove_decompression_size_check`
+  to:
+  `fractalshades.settings.disable_decompression_size_check`
+- Improved memory management of BLA iterations. Now images with up to
   500 millions iterations can be computed on a system with 16 Mo RAM.
 
 Rev 1.0
