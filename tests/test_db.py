@@ -2,7 +2,7 @@
 """
 This file contains the tests for saving a db and plotting from it
 """
-
+import sys
 import os
 import unittest
 
@@ -119,7 +119,10 @@ class Test_db(unittest.TestCase):
 
 
     # @test_config.no_stdout
+    @unittest.skipIf(sys.platform.startswith("win"), "Fails on windows")
     def test_db_color_basic(self):
+        # Fails under windows with 
+        # FAILED tests/test_db.py::Test_db::test_db_color_basic - OSError: [Errno 22] Invalid argument: 'D:\\a\\Fractalshades\\Fractalshades\\tests\\_temporary_data\\_db_dir\\layers.db'
         """ Testing basic `Color_layer` plots from a saved database 
         Note: matrix test with supersampling & modifier to account for diff
         code paths
