@@ -286,55 +286,6 @@ class Test_filters(unittest.TestCase):
 
 
 
-    def test_final_77(self):
-        """ test of the final image of a zoom with 7x7 supersampling
-        """
-        dir_77 = os.path.join(self.filter_dir, "7x7")
-        fs.utils.mkdir_p(dir_77)
-        import fractalshades.db
-        from green_mini import get_plotter, plot_kwargs
-        
-        # "Standard" plotting
-        plot_kwargs["fractal"] = (
-            fractalshades.models.mandelbrot_M2.Perturbation_mandelbrot(
-                directory=dir_77
-            )
-        )
-        plot_kwargs["has_shading"] = False
-        
-        for s in fs.core.SUPERSAMPLING_DIC.keys():
-            s = 'None'
-            plot_kwargs["supersampling"] = s
-            plotter, layer_name = get_plotter(**plot_kwargs)
-            plotter.plot()
-            break
-#            f = plotter.fractal
-            
-        # print(f._calc_data['std_zooming_calc'].keys())
-#        print(f._calc_data['std_zooming_calc']['calc_kwargs'])
-#        print(f._calc_data['std_zooming_calc']['zoom_kwargs'])
-#        print(
-#                ((f._calc_data['std_zooming_calc']['state']).__dict__).keys()
-#        )#["init_kwargs"]) #['init_kwargs']) #['directory'])
-#        raise
-        
-#        f.directory = dir_77
-
-        
-        # "db" plotting
-        finaldb_path = plotter.save_db("final.db")
-        finaldb = fs.db.Db(finaldb_path)
-        finaldb.set_plotter(plotter, layer_name)
-        img = finaldb.plot()
-        img.save(os.path.join(
-            os.path.dirname(finaldb.path),
-            "final_full2.png"
-        ))
-        print("finaldb.path", finaldb.path)
-        
-
-
-
 
         
 
