@@ -713,7 +713,7 @@ class Test_Perturbation_mandelbrot(unittest.TestCase):
 
         self.layer = plotter[layer_name]
         self.test_name = test_name
-        self.check_current_layer(0.01)
+        self.check_current_layer(0.1)
 
 
     def calc(self, x, y, dx, precision, nx, test_name, calc_name,

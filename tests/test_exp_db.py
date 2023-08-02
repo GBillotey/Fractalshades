@@ -45,11 +45,7 @@ import fractalshades.db
 
 
 
-
-
-
-# Defines the plotting function
-
+# Defines the plotting function "Green mini"
 def get_plotter(
     fractal: fs.Fractal= None,
     calc_name: str="std_zooming_calc",
@@ -410,36 +406,6 @@ def get_plotter(
     return plotter, plotter[base_layer].postname
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class Test_exp_db(unittest.TestCase):
     
     @classmethod
@@ -579,50 +545,39 @@ class Test_exp_db(unittest.TestCase):
 
 
 
-    # @test_config.no_stdout
+    @test_config.no_stdout
     def test_green(self):
         """ Testing basic `Color_layer` plots from a saved database 
         Note: matrix test with supersampling & modifier to account for diff
         code paths
         """
-        def plotter_modifier(plotter, time):
-            """ ---  A modifier that does nothing ---  """
-            pass
         
-        final_nx = 1280
-        xy_ratio = 1280. / 720. # / 480.
+        final_nx = 720
+        xy_ratio = 720. / 480. # / 480.
         h = np.log(12.)        # database zoom span
         frame_h = np.log(2.)   # Actual plot zoom level
-        nt = 4 * final_nx # equal to the number of pixels along a square
+        nt = 3 * final_nx # equal to the number of pixels along a square
         nh = int(nt / (2 * np.pi) * h + 0.5)
         
-        for (ss, mod) in (
-                 (None, None),
-#                (None, plotter_modifier),
-#                ('3x3', None),
-#                ('3x3', plotter_modifier),
-        ):
-            with self.subTest(supersampling=ss, plotting_modifier=mod):
+        for ss in (None, '3x3'):
+            with self.subTest(supersampling=ss):
 
                 plot_kwargs = self.get_plot_kwargs()
                 plot_kwargs["supersampling"] = ss
 
                 # Write the expmap database
-                proj = fs.projection.Expmap(hmin=0., hmax=h, rotates_df=False)
+                proj = fs.projection.Expmap(hmin=0., hmax=h, rotates_df=False,
+                                            orientation="vertical")
                 plot_kwargs["recovery_mode"] = True
                 plot_kwargs["nx"] = nh
                 plot_kwargs["batch_params"] = {"projection": proj}
                 plotter, layer_name = get_plotter(**plot_kwargs)
                 
-                if mod is None:
-                    # Saving the rgb image as *.postdb
-                    expdb_path = plotter.save_db(
-                        "expmap.postdb",
-                        postdb_layer = layer_name,
-                        exp_zoom_step = (4 * nt)
-                    )
-                else:
-                    expdb_path = plotter.save_db("expmap.db", exp_zoom_step=4*nt)
+                # Saving the rgb image as *.postdb
+                expdb_path = plotter.save_db(
+                    "expmap.postdb",
+                    postdb_layer = layer_name,
+                )
 
                 # Write the final database
                 proj = fs.projection.Cartesian()
@@ -632,22 +587,14 @@ class Test_exp_db(unittest.TestCase):
                 plot_kwargs["xy_ratio"] = 1.0
                 plot_kwargs["batch_params"] = {"projection": proj}
                 plotter, layer_name = get_plotter(**plot_kwargs)
-                
-                if mod is None:
-                    # Saving the rgb image as *.postdb
-                    finaldb_path = plotter.save_db(
-                        "final.postdb", postdb_layer=layer_name
-                    )
-                else:
-                    finaldb_path = plotter.save_db("final.db")
-                
+
+                # Saving the rgb image as *.postdb
+                finaldb_path = plotter.save_db(
+                    "final.postdb", postdb_layer=layer_name
+                )
+
                 # Wrap data in a Expmap database object
                 wraper_db = fs.db.Exp_db(expdb_path, finaldb_path)
-                
-                if mod is not None:
-                    wraper_db.set_plotter(
-                            plotter, layer_name, plotting_modifier=mod
-                    )
                 
                 # Plot a Frame
                 h = np.log(4.)
@@ -655,19 +602,15 @@ class Test_exp_db(unittest.TestCase):
                     h=frame_h,
                     nx=final_nx,
                     xy_ratio=xy_ratio,
-#                    pts=self.pts
                 )
                 img = wraper_db.plot(test_frame)
 
-                mod_str = "postdb" if mod is None else "modified"
+                mod_str = "postdb"
                 out_file = os.path.join(
                     self.db_dir,
                     f"test_db_color_basic_{mod_str}_{ss}.png")
                 img.save(out_file)
-                
-#                ref_file = os.path.join(
-#                    self.dir_ref, f"Color_layer_cont_iter.REF.png")
-#                self.check_image(ref_file, out_file)
+
                 
 
     def check_image(self, ref_file_path, test_file_path, err_max=0.01):
