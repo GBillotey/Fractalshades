@@ -30,6 +30,7 @@ jobs:
         python -m pip install gmpy2
 
         echo "*** listing MVS folder"
+        dir "C:\Program Files\Microsoft Visual Studio\"
         dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"
         dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.36.32532\bin\Hostx86\x64"
   
