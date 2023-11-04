@@ -8,13 +8,13 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  test:
 
     runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.8, 3.9, "3.10"]
+        python-version: [3.9, "3.10", "3.11"]
 
     steps:
     - uses: actions/checkout@v3
