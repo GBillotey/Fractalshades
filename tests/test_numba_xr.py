@@ -795,10 +795,9 @@ class Test_numba_xr(unittest.TestCase):
 
         
 
-
 if __name__ == "__main__":
     import test_config
-    full_test = False
+    full_test = True
     runner = unittest.TextTestRunner(verbosity=2)
     if full_test:
         runner.run(test_config.suite([

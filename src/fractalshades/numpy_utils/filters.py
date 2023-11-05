@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import numba
+from numba.extending import overload
 """
 This module implements a few 2d resampling tasks:
     - integer-factor decimation
@@ -250,10 +251,13 @@ class Lanczos_decimator:
         self.numba_cache[cache_key] = np_impl
         return np_impl
 
-
-
-@numba.generated_jit(nopython=True, fastmath=True, nogil=True, cache=True)
-def decimate_impl(decimation, nc, coeffs_2d, padded, out):
+def _decimate_impl(decimation, nc, coeffs_2d, padded, out):
+    pass
+@overload(_decimate_impl, nopython=True, fastmath=True, nogil=True, cache=True)
+def ov__decimate_impl(decimation, nc, coeffs_2d, padded, out):
+    """
+    Implemented as a pure jitted function through `overload`
+    """
     # the actual numba implementation
     if out.dtype != numba.uint8:
         def impl(decimation, nc, coeffs_2d, padded, out):
@@ -269,7 +273,7 @@ def decimate_impl(decimation, nc, coeffs_2d, padded, out):
                             tmp += coeffs_2d[cx, cy] * padded[iix, iiy]
                     out[ix, iy] = tmp
             return out
-
+        return impl
     else:
         def impl(decimation, nc, coeffs_2d, padded, out):
             out_nx, out_ny = out.shape
@@ -284,12 +288,21 @@ def decimate_impl(decimation, nc, coeffs_2d, padded, out):
                             tmp += coeffs_2d[cx, cy] * padded[iix, iiy]
                     out[ix, iy] = max(0, min(255, tmp + 0.5))
             return out
+        return impl
+@numba.njit
+def decimate_impl(decimation, nc, coeffs_2d, padded, out):
+    # See https://github.com/numba/numba/issues/8897
+    return _decimate_impl(decimation, nc, coeffs_2d, padded, out)
 
-    return impl
-
-
-@numba.generated_jit(nopython=True, fastmath=True, nogil=True, cache=True)
-def decimate_masked_impl(decimation, nc, coeffs_2d, padded, pmask, out):
+def _decimate_masked_impl(decimation, nc, coeffs_2d, padded, pmask, out):
+    pass
+@overload(
+    _decimate_masked_impl, nopython=True, fastmath=True, nogil=True, cache=True
+)
+def ov__decimate_masked_impl(decimation, nc, coeffs_2d, padded, pmask, out):
+    """
+    Implemented as a pure jitted function through `overload`
+    """
     # the actual numba implementation
     if out.dtype != numba.uint8:
         def impl(decimation, nc, coeffs_2d, padded, pmask, out):
@@ -313,7 +326,7 @@ def decimate_masked_impl(decimation, nc, coeffs_2d, padded, pmask, out):
                     else:
                         out[ix, iy] = tmp / f_val
             return out
-
+        return impl
     else:
         def impl(decimation, nc, coeffs_2d, padded, pmask, out):
             out_nx, out_ny = out.shape
@@ -336,10 +349,11 @@ def decimate_masked_impl(decimation, nc, coeffs_2d, padded, pmask, out):
                     else:
                         out[ix, iy] = max(0, min(255, tmp / f_val + 0.5))
             return out
-
-    return impl
-
-
+        return impl
+@numba.njit
+def decimate_masked_impl(decimation, nc, coeffs_2d, padded, pmask, out):
+    # See https://github.com/numba/numba/issues/8897
+    return _decimate_masked_impl(decimation, nc, coeffs_2d, padded, pmask, out)
 
 def lanczos_upsampling_kernel(a: int, upsampling: int):
     """
@@ -416,9 +430,15 @@ class Lanczos_upsampler:
         self.numba_cache[(a, upsampling)] = np_impl
         return np_impl
 
-
-@numba.generated_jit(nopython=True, fastmath=True, nogil=True, cache=True)
-def upsampling_impl(padded, coeffs_2d, nx, ny, usp, nc, out):
+def _upsampling_impl(padded, coeffs_2d, nx, ny, usp, nc, out):
+    pass
+@overload(
+    _upsampling_impl, nopython=True, fastmath=True, nogil=True, cache=True
+)
+def ov__upsampling_impl(padded, coeffs_2d, nx, ny, usp, nc, out):
+    """
+    Implemented as a pure jitted function through `overload`
+    """
     # the actual numba implementation
     if out.dtype != numba.uint8:
         def impl(padded, coeffs_2d, nx, ny, usp, nc, out):
@@ -436,7 +456,7 @@ def upsampling_impl(padded, coeffs_2d, nx, ny, usp, nc, out):
                             tmp += coeffs_2d[kx, ky] * padded[iix, iiy]
                     out[ix, iy] = tmp # casting
             return out 
-
+        return impl
     else:
         def impl(padded, coeffs_2d, nx, ny, usp, nc, out):
             for ix in range((nx - 1) * usp + 1):
@@ -453,6 +473,8 @@ def upsampling_impl(padded, coeffs_2d, nx, ny, usp, nc, out):
                             tmp += coeffs_2d[kx, ky] * padded[iix, iiy]
                     out[ix, iy] = max(0, min(255, tmp + 0.5)) # casting
             return out 
-        
-    return impl
-        
+        return impl
+@numba.njit
+def upsampling_impl(padded, coeffs_2d, nx, ny, usp, nc, out):
+    # See https://github.com/numba/numba/issues/8897
+    return _upsampling_impl(padded, coeffs_2d, nx, ny, usp, nc, out)

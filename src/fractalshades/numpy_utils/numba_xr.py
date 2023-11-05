@@ -4,10 +4,8 @@ import operator
 import numpy as np
 import numba
 from numba.core import types, cgutils
-from numba import (
-    njit,
-    generated_jit
-)
+from numba import njit
+
 from numba.extending import (
     overload,
     overload_attribute,
@@ -36,7 +34,7 @@ release of Numba, see https://github.com/numba/numba/pull/6148)
 The workaround followed here is to provide ad-hoc implementation at datatype
 level (in numba langage, for our specific numba.types.Record types). User code
 in jitted function shall fully expand the loops to work on individual array
-elements - not on whole arrays !
+elements - not on whole arrays!
 
 As the extra complexity is not worth it, we drop support for float32, complex64
 in numba: only float64, complex128 mantissa are currently supported.
@@ -117,12 +115,9 @@ def impl_xrange_scalar(context, builder, sig, args):
     xrange_scalar.exp = exp
     return xrange_scalar._getvalue()
 
-
 #  @unbox(Xrange_scalar_Type) :
 # Not implemented, use idiom : 
 # scalar = fsxn.to_Xrange_scalar(arr.repeat(1))
-
-
 
 @box(Xrange_scalar_Type)
 def box_xrange_scalar(typ, val, c):
@@ -392,10 +387,13 @@ def extended_sub(op0, op1):
         raise TypingError("xr_sub: datatype not accepted ({}, {})".format(
             op0, op1))
 
-@generated_jit(nopython=True)
 def _need_renorm(m):
+    pass
+@overload(_need_renorm, nopython=True)
+def ov__need_renorm(m):
     """
     Returns True if abs(exponent) is above a given threshold
+    Implemented as a pure jitted function through `overload`
     """
     threshold = 100  # as 2.**100 = 1.e30
     if (m in numba_float_types):
@@ -412,7 +410,8 @@ def _need_renorm(m):
             return (need1 or need2)
         return impl
     else:
-        raise TypingError("datatype not accepted {}".format(m))
+        raise TypingError("Datatype not accepted {}".format(m))
+
 
 @overload(operator.mul)
 def extended_mul(op0, op1):
@@ -529,9 +528,13 @@ def extended_sqrt(op0):
         raise TypingError("xr_sqrt: Datatype not accepted ({})".format(
             op0))
 
-@generated_jit(nopython=True)
 def extended_abs2(op0):
-    """ square of abs of a Record field, overloaded for float64, complex128 """
+    pass
+@overload(extended_abs2, nopython=True)
+def ov_extended_abs2(op0):
+    """ square of abs of a Record field, overloaded for float64, complex128 
+    Implemented as a pure jitted function through `overload`
+    """
     if op0 in real_xr_types:
         def impl(op0):
             return Xrange_scalar(
@@ -623,9 +626,12 @@ def extended_imag(op0):
         raise TypingError("xr_real: Datatype not accepted ({})".format(
             op0))
 
-@generated_jit(nopython=True)
 def geom_mean(xr_min, xr_max):
+    pass
+@overload(geom_mean, nopython=True)
+def ov_geom_mean(xr_min, xr_max):
     """ Returns the geometric mean of 2 real, positive Xrange scalars
+    Implemented as a pure jitted function through `overload`
     """
     if (xr_min in real_xr_types) and (xr_max in real_xr_types):
         def impl(xr_min, xr_max):
@@ -641,14 +647,18 @@ def geom_mean(xr_min, xr_max):
         raise TypingError("geom_mean: Expected real_xr_types({}, {})".format(
             xr_min, xr_max))
 
-
-@generated_jit(nopython=True)
 def _normalize(m, exp):
-    """ Returns a normalized couple """
+    pass
+@overload(_normalize, nopython=True)
+def ov__normalize(m, exp):
+    """ Returns a normalized couple
+    Implemented as a pure jitted function through `overload`
+    """
     # Implementation for float
     if (m in numba_float_types):
         def impl(m, exp):
             return _normalize_real(m, exp)
+        return impl
     # Implementation for complex
     elif (m in numba_complex_types):
         def impl(m, exp):
@@ -657,9 +667,9 @@ def _normalize(m, exp):
             co_nm_real, co_nm_imag, co_nexp = _coexp_ufunc(
                 nm_re, nexp_re, nm_im, nexp_im)
             return (co_nm_real + 1j * co_nm_imag, co_nexp)
+        return impl
     else:
         raise TypingError("datatype not accepted {}".format(m))
-    return impl
 
 @njit(types.Tuple((numba.float64, numba.int32))(numba.float64,))
 def _frexp(m):
@@ -695,9 +705,13 @@ def _exp2_shift(m, shift):
         + (exp << 0x34)
         + (bits & 0xfffffffffffff), numba.float64)
 
-@generated_jit(nopython=True)
 def _coexp_ufunc(m0, exp0, m1, exp1):
-    """ Returns a co-exp couple of couples """
+    pass
+@overload(_coexp_ufunc, nopython=True)
+def ov__coexp_ufunc(m0, exp0, m1, exp1):
+    """ Returns a co-exp couple of couples
+    Implemented as a pure jitted function through `overload`
+    """
     # Implementation for real
     if (m0 in numba_float_types) and (m1 in numba_float_types):
         def impl(m0, exp0, m1, exp1):
@@ -716,6 +730,7 @@ def _coexp_ufunc(m0, exp0, m1, exp1):
             else: # exp0 == exp1
                 exp = exp0
             return (co_m0, co_m1, exp)
+        return impl
     # Implementation for complex
     elif (m0 in numba_complex_types) or (m1 in numba_complex_types):
         def impl(m0, exp0, m1, exp1):
@@ -736,9 +751,9 @@ def _coexp_ufunc(m0, exp0, m1, exp1):
             else: # exp0 == exp1
                 exp = exp0
             return (co_m0, co_m1, exp)
+        return impl
     else:
         raise TypingError("datatype not accepted {}{}".format(m0, m1))
-    return impl
 
 @overload_method(numba.types.Record, "normalize")
 def normalize(rec):
@@ -766,28 +781,36 @@ def normalize(rec):
         raise TypingError("datatype not accepted {}".format(dtype))
     return impl
 
-
-@generated_jit(nopython=True)
 def to_Xrange_scalar(item):
-    """ Xrange Scalar from float / complex / Record """ 
+    pass
+@overload(to_Xrange_scalar, nopython=True)
+def ov_to_Xrange_scalar(item):
+    """ Xrange Scalar from float / complex / Record
+    Implemented as a pure jitted function through `overload`
+    """ 
     if isinstance(item, types.Number):
         def impl(item):
             return Xrange_scalar(*_normalize(item, numba.int32(0)))
+        return impl
     elif isinstance(item, types.Record):
         def impl(item):
             return Xrange_scalar(item.mantissa, item.exp)
+        return impl
     else:
         raise TypingError("to_Xrange_scalar : unexpected datatype {}".format(item))
-    return impl
         
-
-@generated_jit(nopython=True)
 def to_standard(item):
-    """ Returns a standard float / complex from a Xrange array or record """
+    pass
+@overload(to_standard, nopython=True)
+def ov_to_standard(item):
+    """ Returns a standard float / complex from a Xrange array or record
+    Implemented as a pure jitted function through `overload`
+    """
     # Implementation for float
     if (item in real_xr_types):
         def impl(item):
             return np.ldexp(item.mantissa, item.exp)
+        return impl
     # Implementation for complex
     elif (item in xr_types):
         def impl(item):
@@ -801,7 +824,7 @@ def to_standard(item):
                 (co_nm_real + 1j * co_nm_imag)
                 * np.ldexp(1., co_nexp)
             )
+        return impl
     else:
         raise TypingError("datatype not accepted {}".format(item))
-    return impl
 
