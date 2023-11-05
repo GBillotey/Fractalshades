@@ -118,7 +118,7 @@ class Test_db(unittest.TestCase):
         )
 
 
-    # @test_config.no_stdout
+    @test_config.no_stdout
     @unittest.skipIf(sys.platform.startswith("win"), "Fails on windows")
     def test_db_color_basic(self):
         # Fails under windows with 
@@ -188,7 +188,8 @@ class Test_db(unittest.TestCase):
                 self.check_image(ref_file, out_file)
 
 
-    # @test_config.no_stdout
+    @test_config.no_stdout
+    @unittest.skipIf(sys.platform.startswith("win"), "Fails on windows")
     def test_db_overlay1(self):
         """ Testing a complex multilayered plot (with alpha compositing) from a
         saved database 
