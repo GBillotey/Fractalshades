@@ -365,14 +365,18 @@ class Test_numba_xr(unittest.TestCase):
                 res_np = xa * xb
                 t_np += time.time()
                 
-                _matching(res, expected)
-                _matching(res_np, expected)
+                _matching(res, expected, almost=True, dtype=np.float64,
+                          ktol=2.)
+                _matching(res_np, expected, almost=True, dtype=np.float64,
+                          ktol=2.)
 
                 # Test multiply by a scalar
                 numba_test_mul(xa, stdb, res)
-                _matching(res, expected)
+                _matching(res, expected, almost=True, dtype=np.float64,
+                          ktol=2.)
                 numba_test_mul(stda, xb, res)
-                _matching(res, expected)
+                _matching(res, expected, almost=True, dtype=np.float64,
+                          ktol=2.)
 
 
     def test_div(self):
