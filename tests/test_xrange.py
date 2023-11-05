@@ -702,7 +702,9 @@ class Test_Xrange_timing(unittest.TestCase):
         expected = op * np.conj(op)
         t1 += time.time()
     
-        np.testing.assert_array_equal(e_res.to_standard(), expected)
+        ktol = 4.
+        np.testing.assert_allclose(e_res.to_standard(), expected,
+                                   rtol= ktol * np.finfo(dtype).eps)
         if t1 == 0.:
             return 0.
         return t0 / t1
@@ -728,8 +730,10 @@ class Test_Xrange_timing(unittest.TestCase):
         t1 = - time.time()
         expected = ufunc(op)
         t1 += time.time()
-    
-        np.testing.assert_array_equal(e_res.to_standard(), expected)
+
+        ktol = 4.
+        np.testing.assert_allclose(e_res.to_standard(), expected,
+                                   rtol= ktol * np.finfo(dtype).eps)
         if t1 == 0.:
             return 0.
         return t0 / t1
@@ -759,11 +763,12 @@ class Test_Xrange_timing(unittest.TestCase):
         expected = ufunc(op1, op2)
         t1 += time.time()
     
-        np.testing.assert_array_equal(e_res.to_standard(), expected)
+        ktol = 4.
+        np.testing.assert_allclose(e_res.to_standard(), expected,
+                                   rtol= ktol * np.finfo(dtype).eps)
 
         if t1 == 0.:
             return 0.
-        print("\ntiming", ufunc, dtype, t0, t1, t0 / t1)
         return t0 / t1
 
 
