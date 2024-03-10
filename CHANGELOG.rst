@@ -31,7 +31,7 @@ Rev 1.1.0
 - Improved memory management of BLA iterations. Now images with up to
   500 millions iterations can be computed on a system with 16 Mo RAM.
 
-Rev 1.1.0
+Rev 1.1.1
 .........
 Bugfix revision, patch for numba version >0.57 (deprecated `generated_jit`)
 
