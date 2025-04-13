@@ -259,12 +259,14 @@ __MPC_DECLSPEC int  mpc_set_sj_sj   (mpc_ptr, intmax_t, intmax_t, mpc_rnd_t);
 __MPC_DECLSPEC int  mpc_set_uj_uj   (mpc_ptr, uintmax_t, uintmax_t, mpc_rnd_t);
 #endif
 
+/* Skipping this section to allow MVSC build
 #ifdef _Complex_I
 __MPC_DECLSPEC int  mpc_set_dc      (mpc_ptr, double _Complex, mpc_rnd_t);
 __MPC_DECLSPEC int  mpc_set_ldc     (mpc_ptr, long double _Complex, mpc_rnd_t);
 __MPC_DECLSPEC double _Complex mpc_get_dc (mpc_srcptr, mpc_rnd_t);
 __MPC_DECLSPEC long double _Complex mpc_get_ldc (mpc_srcptr, mpc_rnd_t);
 #endif
+*/
 
 #ifdef _GMP_H_HAVE_FILE
 __MPC_DECLSPEC int mpc_inp_str    (mpc_ptr, FILE *, size_t *, int, mpc_rnd_t);
