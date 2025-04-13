@@ -32,7 +32,7 @@ jobs:
         echo "*** listing MVS folder"
         dir "C:\Program Files\Microsoft Visual Studio\"
         dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"
-        dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.39.33519\bin\Hostx86\x64"
+        dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.43.34808\bin\Hostx86\x64"
   
         # Uncomment this line to get the full list of directories containing 'dumpbin.exe'
         # Get-Childitem –Path "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"  -Include dumpbin.exe -Recurse -ErrorAction SilentlyContinue 
