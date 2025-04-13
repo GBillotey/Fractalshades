@@ -3,7 +3,7 @@ requires = [
     "setuptools>=42",
     "wheel",
     "Cython",
-    "numpy>=2.2.0",
+    "numpy>=2.0,<3",
     "gmpy2" # @ git+https://github.com/aleaxit/gmpy.git"
 ]
 build-backend = "setuptools.build_meta"
