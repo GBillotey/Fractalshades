@@ -1107,8 +1107,7 @@ Reference:
         if self.is_complex:
             s_re = Xrange_array._to_char(self.real, **options)
             s_im = Xrange_array._to_char(self.imag, im=True, **options)
-            s = np.core.defchararray.add(s_re, s_im)
-            s = np.core.defchararray.add(s, "j")
+            s = s_re + s_im + "j"
         else:
             s = Xrange_array._to_char(self, **options)
         return s
@@ -1152,18 +1151,7 @@ Reference:
             if np.isnan(m2 == 0.):
                 exp10 = 0
         else:
-            m10_up = (np.abs(m10) < 1.0)
-            m10[m10_up] *= 10.
-            exp10[m10_up] -= 1
-            exp10 = np.asarray(exp10, np.int32)
-            _m10 = np.around(m10, decimals=precision)
-            m10_down= (np.abs(_m10) >= 10.0)
-            m10[m10_down] *= 0.1
-            exp10[m10_down] += 1
-            m10 = np.around(m10, decimals=precision)
-            # Special case of 0.
-            is_null = (m2 == 0.)
-            exp10[is_null] = 0
+            raise NotImplementedError("May be a change in numpy impl ?")
 
         if im :
             p_char = im_p_char # '\u2795' bold +
@@ -1171,21 +1159,23 @@ Reference:
         else:
             p_char = " "
             m_char = "-"
-        concat = np.core.defchararray.add
-        exp_digits = int(np.log10(max([np.nanmax(np.abs(exp10)), 10.]))) + 1
-        str_arr = np.where(m10 < 0., m_char, p_char)
-        str_arr = concat(str_arr,
-                         np.char.ljust(np.abs(m10).astype("|U" + 
-                                       str(precision + 2)),
-                                       precision + 2, "0"))
-        str_arr = concat(str_arr, "e")
-        str_arr = concat(str_arr, np.where(exp10 < 0, "-", "+"))
-        str_arr = concat(str_arr,
-            np.char.rjust(np.abs(exp10).astype("|U10"), exp_digits, "0"))
 
-        # Handles nan and inf values
-        np.putmask(str_arr, np.isnan(m2), nanstr)
-        np.putmask(str_arr, np.isinf(m2), infstr)
+        exp_digits = int(np.log10(max([np.nanmax(np.abs(exp10)), 10.]))) + 1
+        str_arr = m_char if (m10 < 0) else p_char
+        str_arr = (
+            str_arr
+            + np.char.ljust(
+                np.abs(m10).astype("|U" + str(precision + 2)),
+                precision + 2, "0"
+            )
+            + "e"
+            + ("-" if exp10 < 0 else "+")
+            + np.char.rjust(np.abs(exp10).astype("|U10"), exp_digits, "0")
+        )
+        if np.isnan(m2):
+            str_arr = nanstr
+        if np.isinf(m2):
+            str_arr = infstr
 
         return str_arr
 
