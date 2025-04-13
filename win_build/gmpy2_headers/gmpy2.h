@@ -1,12 +1,12 @@
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
  * gmpy2.h                                                                 *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
- * Python interface to the GMP or MPIR, MPFR, and MPC multiple precision   *
+ * Python interface to the GMP, MPFR, and MPC multiple precision           *
  * libraries.                                                              *
  *                                                                         *
  * Copyright 2000 - 2009 Alex Martelli                                     *
  *                                                                         *
- * Copyright 2008 - 2022 Case Van Horsen                                   *
+ * Copyright 2008 - 2024 Case Van Horsen                                   *
  *                                                                         *
  * This file is part of GMPY2.                                             *
  *                                                                         *
@@ -67,36 +67,41 @@ extern "C" {
 
 /* Check for minimum Python version requirements. */
 
-#if PY_VERSION_HEX < 0x02060000
-#  error "GMPY2 requires Python 2.6 or later."
+#if PY_VERSION_HEX < 0x03070000
+#  error "GMPY2 requires Python 3.7 or later."
 #endif
 
-/* Include headers for GMP/MPIR, MPFR, and MPC. */
+/* Include headers for GMP, MPFR, and MPC. */
 
-#ifdef MPIR
-#  include <mpir.h>
-#else
-#  include <gmp.h>
-#endif
-
+#include <gmp.h>
 #include <mpfr.h>
 #include <mpc.h>
 
 /* Check MPFR and MPC versions. */
 
-#if (!defined(MPC_VERSION) || (MPC_VERSION < MPC_VERSION_NUM(1,0,3)))
-#  error "GMPY2 requires MPC 1.0.3 or later."
+/* gmpy2 supports the two most recent major versions of MPFR and MPC.
+ *
+ * As of gmpy2 2.2.0, the code assumes the MPFR version is at least 4.1.0
+ * and new features included in 4.2.0 are guarded by #ifdef MPFR_420.
+ * For MPC, the minumum version is assumed to 1.2.1 and new features
+ * included in 1.3.0 are guarded by #ifdef MPC_130.
+ *
+ */
+
+#if (!defined(MPFR_VERSION) || (MPFR_VERSION < MPFR_VERSION_NUM(4,1,0)))
+#  error "GMPY2 requires MPFR 4.1.0 or later."
 #endif
 
-#if (defined(MPC_VERSION) && (MPC_VERSION >= MPC_VERSION_NUM(1,1,0)))
-#  define MPC_110
+#if (defined(MPFR_VERSION) && (MPFR_VERSION >= MPFR_VERSION_NUM(4,2,0)))
+#  define MPFR_420
 #endif
 
+#if (!defined(MPC_VERSION) || (MPC_VERSION < MPC_VERSION_NUM(1,2,1)))
+#  error "GMPY2 requires MPC 1.2.1 or later."
+#endif
 
-#if PY_VERSION_HEX < 0x030200A4
-typedef long Py_hash_t;
-typedef unsigned long Py_uhash_t;
-#  define _PyHASH_IMAG 1000003
+#if (defined(MPC_VERSION) && (MPC_VERSION == MPC_VERSION_NUM(1,3,0)))
+#  define MPC_130
 #endif
 
 /* GMPY2 Public API */
@@ -111,7 +116,6 @@ typedef unsigned long Py_uhash_t;
  *    MPC_Object
  *    XMPC_Object        (mutable version of MPC_Object)
  *    CTXT_Object
- *    CTXT_Manager_Object
  *    RandomState_Object
  */
 
@@ -177,18 +181,8 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     gmpy_context ctx;
-#ifndef WITHOUT_THREADS
-    PyThreadState *tstate;
-#endif
+    PyObject *token;
 } CTXT_Object;
-
-typedef struct {
-    PyObject_HEAD
-    CTXT_Object *new_context; /* Context that will be returned when
-                               * __enter__ is called. */
-    CTXT_Object *old_context; /* Context that will restored when
-                               * __exit__ is called. */
-} CTXT_Manager_Object;
 
 #define MPZ(obj)  (((MPZ_Object*)(obj))->z)
 #define MPQ(obj)  (((MPQ_Object*)(obj))->q)
@@ -206,7 +200,6 @@ typedef struct {
 #define MPC_Type_NUM          6
 #define XMPC_Type_NUM         7
 #define CTXT_Type_NUM         8
-#define CTXT_Manager_Type_NUM 9
 #define RandomState_Type_NUM  10
 
 /* The following functions are found in gmpy2_cache. */
@@ -311,41 +304,8 @@ typedef struct {
 
 #ifdef GMPY2_MODULE
 
-/* Define various macros to deal with differences between Python 2 and 3. */
-
-#if (PY_MAJOR_VERSION == 3)
-#define PY3
-#define Py2or3String_FromString     PyUnicode_FromString
-#define Py2or3String_FromFormat     PyUnicode_FromFormat
-#define Py2or3String_Check          PyUnicode_Check
-#define Py2or3String_Format         PyUnicode_Format
-#define Py2or3String_Type           Py_UCS4
-#define Py2or3String_1Char(obj)     (PyUnicode_READY(obj) ? (Py_UCS4)0 : PyUnicode_READ_CHAR(obj, 0))
+#define PyString_1Char(obj)     (PyUnicode_READY(obj) ? (Py_UCS4)0 : PyUnicode_READ_CHAR(obj, 0))
 #define PyStrOrUnicode_Check(op)    (PyBytes_Check(op) || PyUnicode_Check(op))
-#define PyIntOrLong_FromLong        PyLong_FromLong
-#define PyIntOrLong_Check(op)       (PyLong_Check(op))
-#define PyIntOrLong_CheckExact(op)  PyLong_CheckExact(op)
-#define PyIntOrLong_FromSize_t      PyLong_FromSize_t
-#define PyIntOrLong_FromSsize_t     PyLong_FromSsize_t
-#define PyIntOrLong_AsSsize_t       PyLong_AsSsize_t
-#define PyIntOrLong_AsLong          PyLong_AsLong
-#else
-#define PY2
-#define Py2or3String_FromString     PyString_FromString
-#define Py2or3String_FromFormat     PyString_FromFormat
-#define Py2or3String_Check          PyString_Check
-#define Py2or3String_Format         PyString_Format
-#define Py2or3String_Type           char
-#define Py2or3String_1Char(obj)     PyString_AsString(obj)[0]
-#define PyStrOrUnicode_Check(op)    (PyString_Check(op) || PyUnicode_Check(op))
-#define PyIntOrLong_FromLong        PyInt_FromLong
-#define PyIntOrLong_Check(op)       (PyInt_Check(op) || PyLong_Check(op))
-#define PyIntOrLong_CheckExact(op)  (PyInt_CheckExact(op) || PyLong_CheckExact(op))
-#define PyIntOrLong_FromSize_t      PyInt_FromSize_t
-#define PyIntOrLong_FromSsize_t     PyInt_FromSsize_t
-#define PyIntOrLong_AsSsize_t       PyInt_AsSsize_t
-#define PyIntOrLong_AsLong          PyInt_AsLong
-#endif
 
 #ifndef ABS
 #  define ABS(a)  (((a) < 0) ? -(a) : (a))
@@ -353,11 +313,7 @@ typedef struct {
 
 #if defined(MS_WIN32) && defined(_MSC_VER)
    /* so one won't need to link explicitly to gmp.lib...: */
-#  if defined(MPIR)
-#    pragma comment(lib,"mpir.lib")
-#  else
-#    pragma comment(lib,"gmp.lib")
-#  endif
+#  pragma comment(lib,"gmp.lib")
 #  define USE_ALLOCA 1
 #  define inline __inline
 #endif
@@ -424,12 +380,6 @@ typedef struct {
         return NULL;           \
     }
 #  define TEMP_FREE(B, S) free(B)
-#endif
-
-/* Various defs to mask differences between Python versions. */
-#if PY_VERSION_HEX < 0x03050000
-#define Py_RETURN_NOTIMPLEMENTED \
-    return Py_INCREF(Py_NotImplemented), Py_NotImplemented
 #endif
 
 #ifndef Py_SIZE
