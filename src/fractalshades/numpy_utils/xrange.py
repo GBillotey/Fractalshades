@@ -1107,10 +1107,6 @@ Reference:
         if self.is_complex:
             s_re = Xrange_array._to_char(self.real, **options)
             s_im = Xrange_array._to_char(self.imag, im=True, **options)
-            # s = np.core.defchararray.add(s_re, s_im)
-            # s = np.core.defchararray.add(s, "j")
-            # s = np.char.add(s_re, s_im)
-            # s = np.char.add(s, "j")
             s = s_re + s_im + "j"
         else:
             s = Xrange_array._to_char(self, **options)
@@ -1164,7 +1160,6 @@ Reference:
             p_char = " "
             m_char = "-"
 
-        # concat = np.char.add # np.core.defchararray.add
         exp_digits = int(np.log10(max([np.nanmax(np.abs(exp10)), 10.]))) + 1
         str_arr = m_char if (m10 < 0) else p_char
         str_arr = (
