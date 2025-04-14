@@ -34,7 +34,7 @@ include_dirs = (
     + [np.get_include()]  
 )
 
-if sys.platform == "win32":
+if sys.platform == "none":
     # An import library is necessary when calling functions in a DLL; it
     # provides the stubs that hook up to the DLL at runtime.
     # This means, during build process the following files need to be added
