@@ -61,7 +61,7 @@ print("\n * Generate import library from the dlls")
 # Note path sep under windows : '\'
 for dll in glob.glob(gmpy2_dir + "/" + "*.dll"):
     print(">>> dll file:", dll)
-    os_exc = f"win_build\dll2lib.bat 64 {dll}"
+    os_exc = rf"win_build\dll2lib.bat 64 {dll}"
     print("execute:", os_exc)
     os.system(os_exc)
 
