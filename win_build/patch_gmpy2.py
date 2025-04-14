@@ -23,11 +23,11 @@ gmpy2_libs = gmpy2_dir + ".libs"
 patched_headers = ["mpc.h"]
 
 for header in patched_headers:
-    shutil.copy2(
-        os.path.join("win_build/gmpy2_headers", header),
+    copied = shutil.copy2(
+        os.path.join("win_build", "gmpy2_headers", header),
         gmpy2_libs
     )
-    print(rf"Copied {os.path.join('win_build\gmpy2_headers', header)} to {gmpy2_libs}")
+    print(rf"Copied {os.path.join('win_build', 'gmpy2_headers', header)} to {copied}")
 
 print("\n * Checking gmpy2 install")
 ctx = gmpy2.get_context()
