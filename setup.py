@@ -46,7 +46,7 @@ if sys.platform == "win32":
         include_dirs=include_dirs,
         library_dirs=include_dirs,
         libraries=[
-            'libgcc_s_seh-1',
+            # 'libgcc_s_seh-1',
             'libgmp-10',
             'libmpc-3',
             'libmpfr-6',
