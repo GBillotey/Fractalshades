@@ -19,6 +19,15 @@ MVS_dir = r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MS
 gmpy2_dir = os.path.dirname(gmpy2.__file__)
 gmpy2_libs = gmpy2_dir + ".libs"
 
+# Headers to be parched
+patched_headers = ["mpc.h"]
+
+for header in patched_headers:
+    shutil.copy2(
+        os.path.join("win_build/gmpy2_headers", header),
+        gmpy2_libs
+    )
+    print(rf"Copied {os.path.join('win_build/gmpy2_headers', header)} to {gmpy2_libs}")
 
 print("\n * Checking gmpy2 install")
 ctx = gmpy2.get_context()
@@ -69,8 +78,8 @@ print(os.listdir(gmpy2_libs))
 #     os.system(os_exc)
 
 # Move the created .lib files to gmpy2 install dir
-for lib in glob.glob("*lib"):
-    shutil.copy2(lib, gmpy2_dir)
+# for lib in glob.glob("*lib"):
+#    shutil.copy2(lib, gmpy2_dir)
     
-print("executed, folder content:")
-print(os.listdir(gmpy2_dir))
+# print("executed, folder content:")
+# print(os.listdir(gmpy2_dir))
