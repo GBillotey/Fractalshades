@@ -19,13 +19,18 @@ MVS_dir = r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MS
 gmpy2_dir = os.path.dirname(gmpy2.__file__)
 gmpy2_libs = gmpy2_dir + ".libs"
 
+print("\n * listing files in site-package gmpy2 :\n")
+print(os.listdir(gmpy2_dir))
+print("\n * listing files in site-package gmpy2.libs :\n")
+print(os.listdir(gmpy2_libs))
+
 # Headers to be parched
 patched_headers = ["mpc.h"]
 
 for header in patched_headers:
     copied = shutil.copy2(
         os.path.join("win_build", "gmpy2_headers", header),
-        gmpy2_libs
+        gmpy2_dir
     )
     print(rf"Copied {os.path.join('win_build', 'gmpy2_headers', header)} to {copied}")
 
@@ -38,8 +43,7 @@ print("2 * 1.0j =", a * 2.)
 
 # print("\n * listing files in gmpy2 dir :")
 # print(os.listdir(gmpy2_dir))
-print("\n * listing files in site-package gmpy2.libs :")
-print(os.listdir(gmpy2_libs))
+
 # gmpy2_dir content :
 #  'gmpy2.cp38-win_amd64.pyd'
 #  'gmpy2.h',
