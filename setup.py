@@ -28,13 +28,16 @@ import gmpy2
 
 extra_link_args = []
 
+gmpy2_dir = os.path.dirname(gmpy2.__file__)
+gmpy2_libs = gmpy2_dir + ".libs"
 include_dirs = (
     sys.path
-    + [os.path.dirname(gmpy2.__file__)]
+    + [gmpy2_dir]
+    + [gmpy2_libs]
     + [np.get_include()]  
 )
 
-if sys.platform == "none":
+if sys.platform == "win32":
     # An import library is necessary when calling functions in a DLL; it
     # provides the stubs that hook up to the DLL at runtime.
     # This means, during build process the following files need to be added
