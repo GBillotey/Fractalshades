@@ -40,10 +40,9 @@ jobs:
         echo "**** Running python gmpy2 pathch script"
         python win_build\patch_gmpy2.py
 
-    - name: Set up MinGW
-      uses: egor-tensin/setup-mingw@v2
-      with:
-        platform: x64
+    - name: MinGW GCC
+      run: |
+        gcc --version
 
     - name: Install dependencies
       run: |
