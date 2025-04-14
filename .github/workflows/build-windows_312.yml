@@ -41,8 +41,10 @@ jobs:
         python win_build\patch_gmpy2.py
 
     - name: MinGW GCC
+      # libgcc_s_seh-1.lib is needed in the path
       run: |
         gcc --version
+        Get-Childitem –Path "C:" -Include libgcc_s_seh-1.lib -Recurse -ErrorAction SilentlyContinue 
 
     - name: Install dependencies
       run: |
