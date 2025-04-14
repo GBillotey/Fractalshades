@@ -10,12 +10,15 @@ import glob
 
 import gmpy2
 
-gmpy2_dir = os.path.dirname(gmpy2.__file__)
-
 # Find the directory for MS Visual studio cl.exe dumpbin.exe lib.exe
 # Note : should we automate this ?
 # https://stackoverflow.com/questions/54305638/how-to-find-vswhere-exe-path
 MVS_dir = r"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.43.34808\bin\Hostx86\x64"
+
+# Windows dll have been moved to gmpy2.libs
+gmpy2_dir = os.path.dirname(gmpy2.__file__)
+gmpy2_libs = gmpy2_dir + ".libs"
+
 
 print("\n * Checking gmpy2 install")
 ctx = gmpy2.get_context()
@@ -24,10 +27,10 @@ print("gmpy2 install DIR:\n", gmpy2_dir)
 print("gmpy2 context:\n", ctx)
 print("2 * 1.0j =", a * 2.)
 
-print("\n * listing files in gmpy2 dir :")
-print(os.listdir(gmpy2_dir))
-print("\n * listing files in site-package dir :")
-print(os.listdir(os.path.dirname(gmpy2_dir)))
+# print("\n * listing files in gmpy2 dir :")
+# print(os.listdir(gmpy2_dir))
+print("\n * listing files in site-package gmpy2.libs :")
+print(os.listdir(gmpy2_libs))
 # gmpy2_dir content :
 #  'gmpy2.cp38-win_amd64.pyd'
 #  'gmpy2.h',
@@ -41,29 +44,29 @@ print(os.listdir(os.path.dirname(gmpy2_dir)))
 #  '__init__.py',
 #  '__pycache__'
 
-print("\n * Adding necessary header files to gmpy2 insatll dir")
-# Currently we store the heeaders locally ; we could also download them
-# at runtime
-for header in glob.glob("win_build/gmpy2_headers/*.h"):
-    print("Copy header file", header, "-->", gmpy2_dir)
-    shutil.copy2(header, gmpy2_dir)
+# print("\n * Adding necessary header files to gmpy2 insatll dir")
+# # Currently we store the heeaders locally ; we could also download them
+# # at runtime
+# for header in glob.glob("win_build/gmpy2_headers/*.h"):
+#     print("Copy header file", header, "-->", gmpy2_dir)
+#     shutil.copy2(header, gmpy2_dir)
 
-print("\n * Listing files in Microsoft Visual Studio dir :")
-print("MVS_dir", MVS_dir)
-print(os.listdir(MVS_dir))
-print("\n * Adding MVS_dir to system PATH")
-os.environ["PATH"] += os.pathsep + MVS_dir
-print("...", os.environ["PATH"][-600:])
+# print("\n * Listing files in Microsoft Visual Studio dir :")
+# print("MVS_dir", MVS_dir)
+# print(os.listdir(MVS_dir))
+# print("\n * Adding MVS_dir to system PATH")
+# os.environ["PATH"] += os.pathsep + MVS_dir
+# print("...", os.environ["PATH"][-600:])
 
 
-print("\n * Generate import library from the dlls")
-# Note : need dumpbin and lib in path
-# Note path sep under windows : '\'
-for dll in glob.glob(gmpy2_dir + "/" + "*.dll"):
-    print(">>> dll file:", dll)
-    os_exc = rf"win_build\dll2lib.bat 64 {dll}"
-    print("execute:", os_exc)
-    os.system(os_exc)
+# print("\n * Generate import library from the dlls")
+# # Note : need dumpbin and lib in path
+# # Note path sep under windows : '\'
+# for dll in glob.glob(gmpy2_dir + "/" + "*.dll"):
+#     print(">>> dll file:", dll)
+#     os_exc = rf"win_build\dll2lib.bat 64 {dll}"
+#     print("execute:", os_exc)
+#     os.system(os_exc)
 
 # Move the created .lib files to gmpy2 install dir
 for lib in glob.glob("*lib"):
