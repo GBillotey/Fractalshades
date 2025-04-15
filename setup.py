@@ -41,6 +41,7 @@ ext_FP = setuptools.Extension(
     "fractalshades.mpmath_utils.FP_loop",
     [r"src/fractalshades/mpmath_utils/FP_loop.pyx"],
     include_dirs=include_dirs,
+    library_dirs=include_dirs,
     libraries=['gmp', 'mpfr', 'mpc'],
     extra_link_args=extra_link_args
 )
