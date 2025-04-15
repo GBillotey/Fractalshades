@@ -40,11 +40,6 @@ jobs:
         echo "**** Running python gmpy2 patch script"
         python win_build\patch_gmpy2.py
 
-    - name: MinGW GCC
-      # libgcc_s_seh-1.lib & all is needed in the path..
-      run: |
-        gcc --version
-
     - name: Install dependencies
       run: |
         echo "install build dependencies /"
