@@ -25,7 +25,6 @@ import gmpy2
 # https://github.com/numpy/numpy/issues/11653
 # https://stackoverflow.com/questions/52749662/using-deprecated-numpy-api
 
-
 extra_link_args = []
 
 gmpy2_dir = os.path.dirname(gmpy2.__file__)
@@ -37,37 +36,20 @@ include_dirs = (
     + [np.get_include()]  
 )
 
-if sys.platform == "win32":
-    # An import library is necessary when calling functions in a DLL; it
-    # provides the stubs that hook up to the DLL at runtime.
-    # This means, during build process the following files need to be added
-    # to gmpy2 site-package directory: header files and .lib files for the dll
+# Note under Windows:
+# An import library is necessary when calling functions in a DLL; it
+# provides the stubs that hook up to the DLL at runtime.
+# This means, during build process the following files are needed in
+# gmpy2 or gmpy2.lib site-package directory: header files and .lib files for the librairies
 # https://stackoverflow.com/questions/9946322/how-to-generate-an-import-library-lib-file-from-a-dll
-    ext_FP = setuptools.Extension(
-        "fractalshades.mpmath_utils.FP_loop",
-        [r"src/fractalshades/mpmath_utils/FP_loop.pyx"],
-        include_dirs=include_dirs,
-        library_dirs=include_dirs,
-        libraries=[
-            # 'libgcc_s_seh-1',
-            # 'libgmp-10',
-            # 'libmpc-3',
-            # 'libmpfr-6',
-            # 'libwinpthread-1',
-            'gmp', 'mpfr', 'mpc'
-        ],
-        extra_link_args=extra_link_args
-    )
 
-else:
-    # Building extension for UNIX-like platforms
-    ext_FP = setuptools.Extension(
-        "fractalshades.mpmath_utils.FP_loop",
-        [r"src/fractalshades/mpmath_utils/FP_loop.pyx"],
-        include_dirs=include_dirs,
-        libraries=['gmp', 'mpfr', 'mpc'],
-        extra_link_args=extra_link_args
-    )
+ext_FP = setuptools.Extension(
+    "fractalshades.mpmath_utils.FP_loop",
+    [r"src/fractalshades/mpmath_utils/FP_loop.pyx"],
+    include_dirs=include_dirs,
+    libraries=['gmp', 'mpfr', 'mpc'],
+    extra_link_args=extra_link_args
+)
 
 setuptools.setup(
     ext_modules=cythonize(
