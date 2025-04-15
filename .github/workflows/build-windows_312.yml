@@ -37,15 +37,8 @@ jobs:
         # Uncomment this line to get the full list of directories containing 'dumpbin.exe'
         # Get-Childitem –Path "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"  -Include dumpbin.exe -Recurse -ErrorAction SilentlyContinue 
 
-        echo "**** Running python gmpy2 pathch script"
+        echo "**** Running python gmpy2 patch script"
         python win_build\patch_gmpy2.py
-
-    - name: MinGW GCC
-      # libgcc_s_seh-1.lib is needed in the path ?
-      run: |
-        gcc --version
-  
-        # Get-Childitem –Path "C:" -Include libgcc_s_seh-1.lib -Recurse -ErrorAction SilentlyContinue 
 
     - name: Install dependencies
       run: |
