@@ -42,16 +42,6 @@ for header in patched_headers:
     print(rf"Copied {os.path.join('win_build', 'gmpy2_headers', header)} to {copied}")
 print("====== Done\n")
 
-print("\n * ==== Generate import library from the dlls")
-# Note : need dumpbin and lib in path
-# Note path sep under windows : '\'
-for dll in glob.glob(gmpy2_libs + "/" + "*.dll"):
-     print(">>> dll file:", dll)
-     os_exc = rf"win_build\dll2lib.bat 64 {dll}"
-     print("execute:", os_exc)
-     os.system(os_exc)
- 
-# Move the created .lib files to gmpy2 install dir
 for lib in glob.glob("*lib"):
     shutil.copy2(lib, gmpy2_libs)
 print("====== Done\n")
