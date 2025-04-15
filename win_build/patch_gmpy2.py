@@ -41,7 +41,3 @@ for header in patched_headers:
     )
     print(rf"Copied {os.path.join('win_build', 'gmpy2_headers', header)} to {copied}")
 print("====== Done\n")
-
-for lib in glob.glob("*lib"):
-    shutil.copy2(lib, gmpy2_libs)
-print("====== Done\n")
