@@ -50,10 +50,11 @@ if sys.platform == "win32":
         library_dirs=include_dirs,
         libraries=[
             # 'libgcc_s_seh-1',
-            'libgmp-10',
-            'libmpc-3',
-            'libmpfr-6',
-            'libwinpthread-1',
+            # 'libgmp-10',
+            # 'libmpc-3',
+            # 'libmpfr-6',
+            # 'libwinpthread-1',
+            'gmp', 'mpfr', 'mpc'
         ],
         extra_link_args=extra_link_args
     )
