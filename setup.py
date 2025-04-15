@@ -10,18 +10,11 @@ import gmpy2
 # [build-system]
 
 # Note : Build-time dependency on NUMPY :
-# https://numpy.org/doc/stable/user/depending_on_numpy.html
-# If a package either uses the NumPy C API directly or it uses some other tool 
-# that depends on it like Cython or Pythran, NumPy is a build-time dependency
-# of the package. Because the NumPy ABI is only forward compatible, you must
-# build your own binaries (wheels or other package formats) against the lowest
-# NumPy version that you support (or an even older version).
-# For that purpose fractalshades uses the package oldest-supported-numpy
-# https://pypi.org/project/oldest-supported-numpy/
+# https://numpy.org/doc/stable/dev/depending_on_numpy.html#adding-a-dependency-on-numpy
 # see: pyproject.toml
 
-# Note: A "Using deprecated NumPy API" deprecation warning will appear when 
-# compiling C extensions with Cython
+# A "Using deprecated NumPy API" deprecation warning will appear when 
+# compiling C extensions with Cython. This is a red herring.
 # https://github.com/numpy/numpy/issues/11653
 # https://stackoverflow.com/questions/52749662/using-deprecated-numpy-api
 
@@ -42,6 +35,7 @@ include_dirs = (
 # This means, during build process the following files are needed in
 # gmpy2 or gmpy2.lib site-package directory: header files and .lib files for the librairies
 # https://stackoverflow.com/questions/9946322/how-to-generate-an-import-library-lib-file-from-a-dll
+# New versions of gmpy2 (2.2.1) ship these .lib files.
 
 ext_FP = setuptools.Extension(
     "fractalshades.mpmath_utils.FP_loop",
