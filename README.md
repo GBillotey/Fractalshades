@@ -1,5 +1,6 @@
 [![test-linux](https://github.com/GBillotey/Fractalshades/actions/workflows/test-linux.yml/badge.svg)](https://github.com/GBillotey/Fractalshades/actions/workflows/test-linux.yml)
 [![test-windows](https://github.com/GBillotey/Fractalshades/actions/workflows/test-windows.yml/badge.svg)](https://github.com/GBillotey/Fractalshades/actions/workflows/test-windows.yml)
+[![build-windows](https://github.com/GBillotey/Fractalshades/actions/workflows/build-windows_39.yml/badge.svg)](https://github.com/GBillotey/Fractalshades/actions/workflows/build-windows_39.yml)
 [![build-windows](https://github.com/GBillotey/Fractalshades/actions/workflows/build-windows_310.yml/badge.svg)](https://github.com/GBillotey/Fractalshades/actions/workflows/build-windows_310.yml)
 [![build-windows](https://github.com/GBillotey/Fractalshades/actions/workflows/build-windows_311.yml/badge.svg)](https://github.com/GBillotey/Fractalshades/actions/workflows/build-windows_311.yml)
 [![build-windows](https://github.com/GBillotey/Fractalshades/actions/workflows/build-windows_311.yml/badge.svg)](https://github.com/GBillotey/Fractalshades/actions/workflows/build-windows_312.yml)
