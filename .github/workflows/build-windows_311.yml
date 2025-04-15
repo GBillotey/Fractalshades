@@ -32,12 +32,12 @@ jobs:
         echo "*** listing MVS folder"
         dir "C:\Program Files\Microsoft Visual Studio\"
         dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"
-        dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.39.33519\bin\Hostx86\x64"
+        dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.43.34808\bin\Hostx86\x64"
   
         # Uncomment this line to get the full list of directories containing 'dumpbin.exe'
         # Get-Childitem –Path "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"  -Include dumpbin.exe -Recurse -ErrorAction SilentlyContinue 
 
-        echo "**** Running python gmpy2 pathch script"
+        echo "**** Running python gmpy2 patch script"
         python win_build\patch_gmpy2.py
 
     - name: Install dependencies
@@ -51,7 +51,7 @@ jobs:
         python3 -m build --no-isolation
 
     - name: Archive production artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: dist-without-markdown
         path: |
