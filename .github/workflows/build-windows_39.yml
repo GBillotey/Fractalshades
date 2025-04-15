@@ -1,0 +1,59 @@
+# This workflow will build fractalshades wheels unders windows and store these wheels as github artifacts
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
+
+name: build-windows 3.9
+
+on:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  build:
+
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.9',]
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install gmpy2 and adds the headers - creates the .lib files
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install --upgrade build
+        python -m pip install gmpy2
+
+        echo "*** listing MVS folder"
+        dir "C:\Program Files\Microsoft Visual Studio\"
+        dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"
+        dir "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.43.34808\bin\Hostx86\x64"
+  
+        # Uncomment this line to get the full list of directories containing 'dumpbin.exe'
+        # Get-Childitem –Path "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC"  -Include dumpbin.exe -Recurse -ErrorAction SilentlyContinue 
+
+        echo "**** Running python gmpy2 patch script"
+        python win_build\patch_gmpy2.py
+
+    - name: Install dependencies
+      run: |
+        echo "install build dependencies /"
+        # Is it really needed ? yes because some are imported in setup.py !
+        python -m pip install -r win_build/build_requirements.txt
+
+    - name: Builds Fractalshades
+      run: |
+        python3 -m build --no-isolation
+
+    - name: Archive production artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist-without-markdown
+        path: |
+            dist
+        retention-days: 5
