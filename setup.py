@@ -25,7 +25,7 @@ gmpy2_libs = gmpy2_dir + ".libs"
 include_dirs = (
     sys.path
     + [gmpy2_dir]
-    + [gmpy2_libs]
+    # + [gmpy2_libs]
     + [np.get_include()]  
 )
 
@@ -41,7 +41,7 @@ ext_FP = setuptools.Extension(
     "fractalshades.mpmath_utils.FP_loop",
     [r"src/fractalshades/mpmath_utils/FP_loop.pyx"],
     include_dirs=include_dirs,
-    library_dirs=include_dirs,
+    library_dirs=[gmpy2_libs],
     libraries=['gmp', 'mpfr', 'mpc'],
     extra_link_args=extra_link_args
 )
