@@ -217,5 +217,3 @@ Rev 0.4.1
 - rotation in GUI
 - Newton search in GUI
 - When one quit and relaunch the GUI, all previous parameters are reloaded
-
-
