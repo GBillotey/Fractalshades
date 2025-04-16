@@ -18,14 +18,13 @@ import gmpy2
 # https://github.com/numpy/numpy/issues/11653
 # https://stackoverflow.com/questions/52749662/using-deprecated-numpy-api
 
-extra_link_args = []
-
 gmpy2_dir = os.path.dirname(gmpy2.__file__)
 gmpy2_libs = gmpy2_dir + ".libs"
+
+extra_link_args = []
 include_dirs = (
     sys.path
     + [gmpy2_dir]
-    # + [gmpy2_libs]
     + [np.get_include()]  
 )
 
