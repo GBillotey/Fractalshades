@@ -1,12 +1,20 @@
 Changelog
 *********
 
+Rev 1.2
+~~~~~~~
+
+Rev 1.2.0
+.........
+- This release adds support for python 3.9 to 3.13 under Windows & Linux.
+  (tested with gmpy2 2.2.1 - numpy 2.2.4 - numba 0.61.2)
+
 Rev 1.1
 ~~~~~~~
 
 Rev 1.1.0
 .........
-- Added new flavors to the Burning ship impelmentations
+- Added new flavors to the Burning ship implementations
   `fractalshades.models.Burning_ship` and 
   `fractalshades.models.Perturbation_burning_ship`: “Celtic” and
   "Buffalo"
