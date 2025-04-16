@@ -1,6 +1,6 @@
 numba>=0.52.0
 mpmath>=1.1.0
-gmpy2
+gmpy2>=2.2.1
 Pillow
 PyQt6>=6.1.0
 pygments>=2.9.0
