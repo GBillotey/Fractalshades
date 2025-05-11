@@ -9,6 +9,10 @@ Rev 1.2.0
 - This release adds support for python 3.9 to 3.13 under Windows & Linux.
   (tested with gmpy2 2.2.1 - numpy 2.2.4 - numba 0.61.2)
 
+Rev 1.2.1
+.........
+- Bugfix release: solves issues in the movie making submodule.
+
 Rev 1.1
 ~~~~~~~
 

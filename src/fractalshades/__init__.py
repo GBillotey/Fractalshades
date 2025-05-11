@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 __author__ = "Fractalshades development team"
 __license__ = "MIT"
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 
 import numpy as np
 import warnings
