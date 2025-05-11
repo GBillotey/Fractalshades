@@ -69,8 +69,8 @@ def make_movie(plot_dir):
     movie = fs.movie.Movie(size=movie_size, fps=60)
     movie.add_sequence(pan_sequence)
     movie.make(os.path.join(plot_dir, "pan.mp4"), crf=20)
-    movie.export_frames(os.path.join(plot_dir, "frames"), 30, 32)
-
+    movie.export_frame(os.path.join(plot_dir, "frames"), 30)
+    movie.export_frame(os.path.join(plot_dir, "frames"), 32)
 
 if __name__ == "__main__":
     plot_dir = os.path.splitext(os.path.realpath(__file__))[0]
