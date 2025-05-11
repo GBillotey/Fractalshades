@@ -146,7 +146,7 @@ class Movie():
             # Advanced Video Coding (AVC), also referred to as H.264 or
             # MPEG-4 Part 10, is a video compression standard based on
             # block-oriented, motion-compensated coding.
-            stream = output.add_stream(codec_name, rate=str(self.fps))
+            stream = output.add_stream(codec_name, rate=self.fps)
             stream.width = self.width
             stream.height = self.height
             stream.pix_fmt = pix_fmt
