@@ -18,8 +18,16 @@ def acceptable_expr(expr, safe_vars):
         if isinstance(expr, ast.Expression):
             return inner(expr.body)
 
-        elif isinstance(expr, ast.Num):
-            return True
+        elif isinstance(expr, ast.Constant):
+            # ast.Num was removed in Python 3.12; ast.Constant replaces it.
+            # Constant is broader than Num, so keep the numeric-only check:
+            # this guards an eval() and must not start accepting strings,
+            # bytes, None or Ellipsis.  bool is excluded explicitly since it
+            # is a subclass of int.
+            return (
+                isinstance(expr.value, (int, float, complex))
+                and not isinstance(expr.value, bool)
+            )
         
         elif isinstance(expr, ast.UnaryOp):
             return inner(expr.operand)

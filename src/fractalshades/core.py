@@ -1752,10 +1752,15 @@ advanced users when subclassing.
             (ix, ixx, iy, iyy) = chunk_slice
 
         if subset is not None:
+            # int(...) is required: np.count_nonzero returns np.int64, whose
+            # repr under numpy 2.x is "np.int64(n)" instead of "n".  This
+            # value ends up in the shape tuple of an .npy header, which numpy
+            # re-reads with ast.literal_eval -- and that rejects the call
+            # syntax, so the memmap could be written but never reopened.
             if chunk_slice is None:
-                return np.count_nonzero(self.subset[None])
+                return int(np.count_nonzero(self.subset[None]))
             else:
-                subset_pts = np.count_nonzero(subset[chunk_slice])
+                subset_pts = int(np.count_nonzero(subset[chunk_slice]))
                 return subset_pts
         else:
             if chunk_slice is None:

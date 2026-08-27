@@ -4,6 +4,7 @@ import numpy as np
 import unittest
 
 import fractalshades as fs
+import fractalshades.colors  # noqa: F401 - needed for the fs.colors attribute
 import fractalshades.utils as fsutils
 import test_config
 
