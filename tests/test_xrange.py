@@ -674,6 +674,23 @@ class Test_Xrange_array(unittest.TestCase):
             #_matching(b_xr, expected)
 
 
+def _cpu_time():
+    """ Per-process CPU time, in seconds.
+
+    These tests assert on a *ratio* of two timings, so they only make sense
+    if both measurements are unaffected by whatever else the machine is
+    doing.  time.time() is wall-clock: under load (e.g. the full suite, or a
+    busy CI box) the process gets descheduled and the measured interval
+    includes time spent running other processes, which inflates whichever
+    operation happened to be unlucky and makes the ratio -- and hence the
+    test -- flaky.
+
+    CLOCK_PROCESS_CPUTIME_ID counts only CPU time consumed by this process,
+    so descheduling no longer pollutes the measurement.
+    """
+    return time.clock_gettime(time.CLOCK_PROCESS_CPUTIME_ID)
+
+
 class Test_Xrange_timing(unittest.TestCase):
     
     def test_timing(self):
@@ -684,7 +701,6 @@ class Test_Xrange_timing(unittest.TestCase):
     
     
     def timing_abs2_complex(self, dtype=np.float64):
-        import time
         n_vec = 40000
         max_bin_exp = 20
         rg = np.random.default_rng(1) 
@@ -694,13 +710,13 @@ class Test_Xrange_timing(unittest.TestCase):
         e_op = Xrange_array(op, exp)
         op = op * 2.**exp
         
-        t0 = - time.time()
+        t0 = - _cpu_time()
         e_res = e_op.abs2()
-        t0 += time.time()
+        t0 += _cpu_time()
         
-        t1 = - time.time()
+        t1 = - _cpu_time()
         expected = op * np.conj(op)
-        t1 += time.time()
+        t1 += _cpu_time()
     
         ktol = 4.
         np.testing.assert_allclose(e_res.to_standard(), expected,
@@ -711,8 +727,6 @@ class Test_Xrange_timing(unittest.TestCase):
 
 
     def timing_op1_complex(self, ufunc, dtype=np.float64):
-        import time
-        
         n_vec = 40000
         max_bin_exp = 20
         
@@ -723,13 +737,13 @@ class Test_Xrange_timing(unittest.TestCase):
         e_op = Xrange_array(op, exp)
         op = op * (2.**exp)
         
-        t0 = - time.time()
+        t0 = - _cpu_time()
         e_res = ufunc(e_op)
-        t0 += time.time()
+        t0 += _cpu_time()
         
-        t1 = - time.time()
+        t1 = - _cpu_time()
         expected = ufunc(op)
-        t1 += time.time()
+        t1 += _cpu_time()
 
         ktol = 4.
         np.testing.assert_allclose(e_res.to_standard(), expected,
@@ -755,13 +769,13 @@ class Test_Xrange_timing(unittest.TestCase):
         op2 = op2 * 2.**exp2
     
     
-        t0 = - time.time()
+        t0 = - _cpu_time()
         e_res = ufunc(e_op1, e_op2)
-        t0 += time.time()
+        t0 += _cpu_time()
         
-        t1 = - time.time()
+        t1 = - _cpu_time()
         expected = ufunc(op1, op2)
-        t1 += time.time()
+        t1 += _cpu_time()
     
         ktol = 4.
         np.testing.assert_allclose(e_res.to_standard(), expected,
